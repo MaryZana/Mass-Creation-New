@@ -26,11 +26,70 @@ type BulkActionType = 'bid' | 'budget' | 'funding' | 'autorefill' | 'delete' | '
 const CATEGORIES = ['Брюки', 'Платья', 'Футболки', 'Аксессуары', 'Обувь', 'Электроника', 'Дом', 'Кольца', 'Фоторамки', 'Спортивная одежда', 'Косметика', 'Игрушки'];
 const ACCOUNT_BALANCES = { 'Баланс': 150000, 'Счет': 30000 };
 const PAGE_SIZE = 50;
+const MASTER_PASSWORD = '01020808';
 
 // --- Helpers ---
 export const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
 
 // --- Sub-Components ---
+
+const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState(false);
+
+  const handleLogin = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (password === MASTER_PASSWORD) {
+      // Logic changed: no more localStorage saving
+      onAuth();
+    } else {
+      setError(true);
+      setPassword('');
+      setTimeout(() => setError(false), 2000);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-50 flex items-center justify-center z-[200]">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
+        <div className="flex items-center gap-2 justify-center mb-8">
+          <span className="text-3xl font-bold text-gray-400">WB</span>
+          <span className="text-2xl text-gray-300">|</span>
+          <span className="text-xl font-medium text-gray-800">Продвижение</span>
+        </div>
+        <h1 className="text-xl font-bold text-center mb-6">Вход в систему</h1>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Введите пароль</label>
+            <input 
+              type="password" 
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500 animate-shake' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-center tracking-widest text-lg`}
+              placeholder="••••••••"
+            />
+            {error && <p className="text-red-500 text-xs mt-2 text-center">Неверный пароль</p>}
+          </div>
+          <button 
+            type="submit"
+            className="w-full bg-purple-600 text-white font-bold py-3.5 rounded-xl hover:bg-purple-700 transition-all shadow-lg shadow-purple-200 active:scale-[0.98]"
+          >
+            Войти
+          </button>
+        </form>
+      </div>
+      <style>{`
+        @keyframes shake {
+          0%, 100% { transform: translateX(0); }
+          25% { transform: translateX(-5px); }
+          75% { transform: translateX(5px); }
+        }
+        .animate-shake { animation: shake 0.2s ease-in-out 0s 2; }
+      `}</style>
+    </div>
+  );
+};
 
 const Header = () => ( <header className="bg-white border-b border-gray-200 sticky top-0 z-50"> <div className="flex items-center justify-between px-6 h-14 bg-white"> <div className="flex items-center gap-8"> <div className="flex items-center gap-2"> <span className="text-2xl font-bold text-gray-400">WB</span> <span className="text-xl text-gray-300">|</span> <span className="text-lg font-medium text-gray-800">Продвижение</span> </div> <button className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors"> Продвижение </button> <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600 font-medium"> <a href="#" className="hover:text-purple-600">Медиа</a> <a href="#" className="hover:text-purple-600">Наружная реклама</a> <a href="#" className="hover:text-purple-600">Мой магазин</a> <a href="#" className="hover:text-purple-600">Внешний трафик</a> </nav> </div> <div className="flex items-center gap-6"> <div className="relative"> <Bell className="w-6 h-6 text-gray-600" /> <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">99+</span> </div> <HelpCircle className="w-6 h-6 text-gray-600" /> <div className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer"> <span>МЕГАПОЛИС...</span> <ChevronDown className="w-4 h-4" /> </div> </div> </div> <div className="px-6 h-12 flex items-center justify-between border-t border-gray-100 bg-white"> <div className="flex items-center gap-8 text-sm font-medium"> <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Кампании</a> <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Статистика</a> <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Финансы</a> <a href="#" className="flex items-center gap-1 text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent"> Новости <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">99+</span> </a> <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Помощь</a> <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Мои бонусы</a> </div> <div className="flex items-center gap-2 text-gray-800 font-semibold"> <Wallet className="w-5 h-5 text-gray-400" /> <span>10 433 793 ₽</span> </div> </div> </header> );
 
@@ -505,7 +564,7 @@ const AutoRefillModal: React.FC<{
                         <input type="checkbox" checked={frequencyEnabled} onChange={e => setFrequencyEnabled(e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"/>
                         <span>не чаще</span>
                     </label>
-                    <input type="number" value={frequencyValue} onChange={e => setFrequencyValue(Number(e.target.value))} className="w-16 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500" />
+                    <input type="number" value={frequencyValue} onChange={setFrequencyValue} className="w-16 border border-gray-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500" />
                     <span>раза в день <span className="tooltip inline-flex items-center"><Info className="w-4 h-4" /><span className="tooltip-text">Ограничение на частоту пополнения</span></span></span>
                 </div>
               </div>
@@ -847,6 +906,8 @@ const EmptyStatePlaceholder = () => (
 
 
 export default function App() {
+  // Logic changed: session authentication only (reset on reload)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [appState, setAppState] = useState<'creation' | 'list'>('creation');
   const [activeTab, setActiveTab] = useState<'single' | 'mass'>('mass');
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
@@ -1383,6 +1444,10 @@ export default function App() {
   const editableInputClass = "w-full text-sm bg-white border border-gray-300 rounded-lg shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5";
   const hasActiveFilterTags = selectedSources.length > 0 || selectedCategories.length > 0;
 
+  if (!isAuthenticated) {
+    return <AuthScreen onAuth={() => setIsAuthenticated(true)} />;
+  }
+
   if (appState === 'list') {
     return (
       <div className="min-h-screen bg-[#F6F69] font-sans text-gray-900 relative">
@@ -1724,6 +1789,7 @@ export default function App() {
                   </> : <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Ставка</span><span className="tooltip-text">Единая ставка для всех зон показов</span></div></th> } 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip"><span>Бонусы</span><span className="tooltip-text">Использовать промо-бонусы для оплаты</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip"><span>АП</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
+                  {editingGroupId === group.id && <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)] text-gray-500">Условия АП</th>}
                   <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"></th> 
                 </tr> 
               </thead> 
@@ -1816,6 +1882,11 @@ export default function App() {
             )}
         </div>
       </td> 
+      {editingGroupId === group.id && (
+        <td className="px-2 py-1.5 align-top text-[10px] text-gray-400 leading-tight">
+          {row.autoReplenishment ? "Если бюджет меньше 1 000 ₽, пополнять на 1 000 ₽ не чаще 1 раза в день." : ""}
+        </td>
+      )}
       <td className="px-2 py-1.5 text-left align-top">
         <div className="tooltip">
             <button onClick={() => handleDeleteCampaign(row.id)} className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100 transition-colors">
@@ -1824,7 +1895,7 @@ export default function App() {
             <span className="tooltip-text">Удалить</span>
         </div>
       </td> 
-      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={5} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={5} className="px-2 py-2 text-xs"> <div className="text-gray-600">Баланс: <span className="font-semibold text-gray-800">{totals.balance.toLocaleString('ru-RU')} ₽</span></div> <div className="text-gray-600">Счет: <span className="font-semibold text-gray-800">{totals.account.toLocaleString('ru-RU')} ₽</span></div> </td> <td colSpan={isCpmManual ? 4 : 3} className="px-2 py-2 font-bold text-lg text-gray-900 text-right"> {totals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
+      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={5} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={editingGroupId === group.id ? 6 : 5} className="px-2 py-2 text-xs"> <div className="text-gray-600">Баланс: <span className="font-semibold text-gray-800">{totals.balance.toLocaleString('ru-RU')} ₽</span></div> <div className="text-gray-600">Счет: <span className="font-semibold text-gray-800">{totals.account.toLocaleString('ru-RU')} ₽</span></div> </td> <td colSpan={isCpmManual ? 4 : 3} className="px-2 py-2 font-bold text-lg text-gray-900 text-right"> {totals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
         ) : (
             <EmptyStatePlaceholder />
         )}
