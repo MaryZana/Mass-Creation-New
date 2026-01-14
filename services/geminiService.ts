@@ -40,7 +40,6 @@ export const validateUploadedFile = async (
     - A few records (around 3-5) should have critical errors that are filtered out later (CampaignStatus = "Error"). E.g., "Товар закончился", "Артикул не найден".
     - Include a few duplicate records by 'nmId'.
     - 'campaignName' should be generated based on the formula: "[productName] + [${config.paymentModel}] + [${currentDate}]".
-    - 'fundingSource' should be a mix of 'Баланс' and 'Счет'.
     - 'nmId' should be a realistic 8-digit number.
     - 'budget' should be between 1000 and 50000.
     - IF the campaign is CPM and Manual, generate 'searchBid' and 'recommendationsBid' fields (each between 50-500). DO NOT generate 'bid'.
@@ -70,7 +69,6 @@ export const validateUploadedFile = async (
               recommendationsBid: { type: Type.NUMBER },
               budget: { type: Type.NUMBER },
               autoReplenishment: { type: Type.BOOLEAN },
-              fundingSource: { type: Type.STRING, enum: ['Баланс', 'Счет'] },
               status: { type: Type.STRING, enum: [CampaignStatus.VALID, CampaignStatus.ERROR, CampaignStatus.CORRECTED] },
               errorMessage: { type: Type.STRING },
               usePromoBonuses: { type: Type.BOOLEAN },
@@ -88,7 +86,7 @@ export const validateUploadedFile = async (
                 }
               },
             },
-            required: ["id", "nmId", "productName", "campaignName", "imageUrl", "category", "budget", "autoReplenishment", "fundingSource", "status", "usePromoBonuses"]
+            required: ["id", "nmId", "productName", "campaignName", "imageUrl", "category", "budget", "autoReplenishment", "status", "usePromoBonuses"]
           }
         }
       }
@@ -127,7 +125,6 @@ export const getFallbackMockData = (config: CampaignConfig): Omit<CampaignRecord
       category: category,
       budget: 5000 + i * 100,
       autoReplenishment: true,
-      fundingSource: i % 3 === 0 ? 'Счет' : 'Баланс',
       status: CampaignStatus.VALID,
       usePromoBonuses: true,
     };

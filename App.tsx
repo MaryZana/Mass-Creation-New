@@ -20,11 +20,10 @@ interface TemplateGroup {
 }
 
 type SelectableProduct = Pick<CampaignRecord, 'nmId' | 'productName' | 'imageUrl' | 'category' | 'cpcCompatible'>;
-type BulkActionType = 'bid' | 'budget' | 'funding' | 'autorefill' | 'delete' | 'autobidder' | null;
+type BulkActionType = 'bid' | 'budget' | 'autorefill' | 'delete' | 'autobidder' | null;
 
 // --- Constants ---
 const CATEGORIES = ['Брюки', 'Платья', 'Футболки', 'Аксессуары', 'Обувь', 'Электроника', 'Дом', 'Кольца', 'Фоторамки', 'Спортивная одежда', 'Косметика', 'Игрушки'];
-const ACCOUNT_BALANCES = { 'Баланс': 150000, 'Счет': 30000 };
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
 
@@ -298,7 +297,6 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                 category: p.category,
                 budget: 5000,
                 autoReplenishment: true,
-                fundingSource: 'Баланс',
                 status: CampaignStatus.VALID,
                 usePromoBonuses: true,
                 source: uploadInfo ? uploadInfo.fileName : 'Ручное добавление',
@@ -586,34 +584,6 @@ const AutoRefillModal: React.FC<{
           </div>
           
           <div className="bg-gray-50/70 p-6 rounded-xl border border-gray-100">
-             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold flex items-center gap-2">Источники списания <span className="tooltip"><Info className="w-4 h-4 text-gray-400" /><span className="tooltip-text">Выберите, откуда списывать деньги</span></span></h3>
-                <button className="flex items-center gap-1.5 text-sm text-purple-600 font-medium hover:text-purple-800">
-                    <RefreshCw className="w-4 h-4" />
-                    <span>Обновить счета</span>
-                </button>
-             </div>
-             <div className="space-y-4">
-                <div className="flex items-center p-4 border border-purple-300 bg-purple-50 rounded-lg">
-                    <input type="radio" name="funding-source" defaultChecked className="w-4 h-4 text-purple-600 border-gray-300 focus:ring-purple-500"/>
-                    <div className="ml-3 flex-grow flex items-center gap-2">
-                        <SingleAccountIcon className="w-6 h-6 text-purple-700"/>
-                        <div>
-                            <p className="font-semibold text-gray-800">Единый счёт: 6 234 ₽</p>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex items-center p-4 border border-gray-200 rounded-lg">
-                    <div className="flex-grow">
-                        <p className="font-semibold text-gray-800">Промо-бонусы: 226 694 612 В</p>
-                        <p className="text-xs text-gray-500">(до 100% от суммы пополнения)</p>
-                    </div>
-                    <ModalToggleSwitch checked={usePromoBonuses} onChange={setUsePromoBonuses} />
-                </div>
-             </div>
-          </div>
-
-          <div className="bg-gray-50/70 p-6 rounded-xl border border-gray-100">
             <h3 className="text-lg font-bold">История автопополнений</h3>
             <p className="text-sm text-gray-500 mt-2">Появится, когда кампания пополнится автоматически</p>
           </div>
@@ -653,8 +623,7 @@ const BulkEditModal = ({
 
     useEffect(() => {
         if(isOpen) {
-            if (action === 'funding') setValue('Баланс');
-            else if (action === 'autorefill') setValue(true);
+            if (action === 'autorefill') setValue(true);
             else if (action === 'bid' && categories.length > 1) {
                 setValue(categories.reduce((acc, cat) => ({...acc, [cat]: ''}), {}));
             }
@@ -668,7 +637,6 @@ const BulkEditModal = ({
         switch(action) {
             case 'budget': return 'Задать бюджет';
             case 'bid': return 'Задать ставки';
-            case 'funding': return 'Источник списания';
             case 'autorefill': return 'Настроить автопополнение';
             case 'autobidder': return 'Преследование ставки';
             default: return '';
@@ -739,21 +707,6 @@ const BulkEditModal = ({
                                 <p className="text-xs text-gray-500 mt-2">Будет установлена как единая ставка или ставка поиска/рекомендаций в зависимости от типа кампании.</p>
                             </div>
                         )
-                    )}
-                    {action === 'funding' && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Выберите источник</label>
-                            <div className="space-y-2">
-                                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="radio" name="funding" checked={value === 'Баланс'} onChange={() => setValue('Баланс')} className="text-purple-600 focus:ring-purple-500" />
-                                    <span>Баланс</span>
-                                </label>
-                                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                                    <input type="radio" name="funding" checked={value === 'Счет'} onChange={() => setValue('Счет')} className="text-purple-600 focus:ring-purple-500" />
-                                    <span>Счет</span>
-                                </label>
-                            </div>
-                        </div>
                     )}
                     {action === 'autorefill' && (
                          <div>
@@ -1034,57 +987,21 @@ export default function App() {
 
   const globalTotals = allValidCampaigns.reduce(
     (acc, campaign) => {
-        if (campaign.fundingSource === 'Баланс') {
-            acc.balance += campaign.budget;
-        } else if (campaign.fundingSource === 'Счет') {
-            acc.account += campaign.budget;
-        }
         acc.total += campaign.budget;
         return acc;
     },
-    { balance: 0, account: 0, total: 0 }
+    { total: 0 }
   );
-
-  const globalBalanceDeficit = Math.max(0, globalTotals.balance - ACCOUNT_BALANCES['Баланс']);
-  const globalAccountDeficit = Math.max(0, globalTotals.account - ACCOUNT_BALANCES['Счет']);
 
   const launchPreview = useMemo(() => {
     if (!allValidCampaigns || allValidCampaigns.length === 0) {
         return { successfulCount: 0, readyToLaunchCount: 0, amountToDebit: 0 };
     }
 
-    let amountToDebit = 0;
-    const campaignsFromBalance = allValidCampaigns.filter(c => c.fundingSource === 'Баланс').sort((a, b) => a.budget - b.budget);
-    const campaignsFromAccount = allValidCampaigns.filter(c => c.fundingSource === 'Счет').sort((a, b) => a.budget - b.budget);
-
-    let currentBalance = ACCOUNT_BALANCES['Баланс'];
-    let successfulBalanceCampaigns = 0;
-    for (const campaign of campaignsFromBalance) {
-        if (currentBalance >= campaign.budget) {
-            currentBalance -= campaign.budget;
-            amountToDebit += campaign.budget;
-            successfulBalanceCampaigns++;
-        } else {
-            break; 
-        }
-    }
-
-    let currentAccount = ACCOUNT_BALANCES['Счет'];
-    let successfulAccountCampaigns = 0;
-    for (const campaign of campaignsFromAccount) {
-        if (currentAccount >= campaign.budget) {
-            currentAccount -= campaign.budget;
-            amountToDebit += campaign.budget;
-            successfulAccountCampaigns++;
-        } else {
-            break;
-        }
-    }
-
-    const successfulCount = successfulBalanceCampaigns + successfulAccountCampaigns;
+    const amountToDebit = allValidCampaigns.reduce((sum, c) => sum + c.budget, 0);
     return {
-        successfulCount,
-        readyToLaunchCount: allValidCampaigns.length - successfulCount,
+        successfulCount: allValidCampaigns.length,
+        readyToLaunchCount: 0,
         amountToDebit
     };
   }, [allValidCampaigns]);
@@ -1368,7 +1285,6 @@ export default function App() {
           const newCamp = { ...campaign };
           
           if (action === 'budget') newCamp.budget = Number(value);
-          if (action === 'funding') newCamp.fundingSource = value;
           if (action === 'autorefill') newCamp.autoReplenishment = Boolean(value);
           if (action === 'bid') {
                 const isMultiCategory = typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -1414,26 +1330,10 @@ export default function App() {
   useEffect(() => {
     if (isLaunching) {
       const timer = setTimeout(() => {
-        const mutableBalances = { ...ACCOUNT_BALANCES };
-        const successfulCampaigns: CampaignRecord[] = [];
-        const failed: CampaignRecord[] = [];
-
-        const shuffledCampaigns = [...allValidCampaigns].sort(() => Math.random() - 0.5);
-
-        for (const campaign of shuffledCampaigns) {
-            if (mutableBalances[campaign.fundingSource] >= campaign.budget) {
-                mutableBalances[campaign.fundingSource] -= campaign.budget;
-                successfulCampaigns.push(campaign);
-            } else {
-                failed.push({
-                    ...campaign,
-                    errorMessage: `Недостаточно средств на источнике: "${campaign.fundingSource}"`,
-                });
-            }
-        }
+        const successfulCampaigns = [...allValidCampaigns];
         
-        setCreationResult({ success: successfulCampaigns.length, error: failed.length });
-        setFailedCampaigns(failed);
+        setCreationResult({ success: successfulCampaigns.length, error: 0 });
+        setFailedCampaigns([]);
         setIsLaunching(false);
       }, 10000); 
 
@@ -1730,7 +1630,7 @@ export default function App() {
 
             const validCount = filteredGroupCampaigns.length; 
             
-            const totals = filteredGroupCampaigns.reduce( (acc, campaign) => { if (campaign.fundingSource === 'Баланс') { acc.balance += campaign.budget; } else if (campaign.fundingSource === 'Счет') { acc.account += campaign.budget; } acc.total += campaign.budget; return acc; }, { balance: 0, account: 0, total: 0 } ); const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE); const paginatedIds = paginatedCampaigns.map(c => c.id); const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL; 
+            const totals = filteredGroupCampaigns.reduce( (acc, campaign) => { acc.total += campaign.budget; return acc; }, { total: 0 } ); const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE); const paginatedIds = paginatedCampaigns.map(c => c.id); const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL; 
             
             const selectedOnPageCount = paginatedIds.filter(id => selectedCampaignIds.includes(id)).length;
             const allOnPageSelected = selectedOnPageCount === paginatedIds.length && paginatedIds.length > 0;
@@ -1780,7 +1680,6 @@ export default function App() {
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[14%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Категория</span><span className="tooltip-text">Категория, к которой относится товар</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Зона показов</span><span className="tooltip-text">Места показа рекламы: Поиск и/или Рекомендации</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Источник списания</span><span className="tooltip-text">Откуда будут списываться средства за рекламу</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[8%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[8%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Преследование ставки</span><span className="tooltip-text">Настроить автоматическое управление ставками</span></div></th> 
                   {isCpmManual ? <> 
@@ -1811,7 +1710,7 @@ export default function App() {
             </div>
         )}
       </td>
-      <td className="px-2 py-1.5 text-gray-600 align-top">{row.category}</td> <td className="px-2 py-1.5 text-gray-600 align-top">{group.config.bidType === BidType.MANUAL ? 'Ручная' : 'Единая'}</td> <td className="px-2 py-1.5 align-top text-gray-800"> {editingGroupId === group.id ? ( <select value={row.fundingSource} onChange={(e) => handleUpdateCampaign(group.id, row.id, 'fundingSource', e.target.value)} className={editableInputClass} > <option value="Баланс">Баланс</option> <option value="Счет">Счет</option> </select> ) : ( row.fundingSource )} </td> 
+      <td className="px-2 py-1.5 text-gray-600 align-top">{row.category}</td> <td className="px-2 py-1.5 text-gray-600 align-top">{group.config.bidType === BidType.MANUAL ? 'Ручная' : 'Единая'}</td> 
       <td className="px-2 py-1.5 text-gray-800 align-top">
         {editingGroupId === group.id ? (
             <input type="number" value={row.budget} onChange={(e) => handleUpdateCampaign(group.id, row.id, 'budget', Number(e.target.value))} className={editableInputClass}/>
@@ -1895,7 +1794,7 @@ export default function App() {
             <span className="tooltip-text">Удалить</span>
         </div>
       </td> 
-      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={5} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={editingGroupId === group.id ? 6 : 5} className="px-2 py-2 text-xs"> <div className="text-gray-600">Баланс: <span className="font-semibold text-gray-800">{totals.balance.toLocaleString('ru-RU')} ₽</span></div> <div className="text-gray-600">Счет: <span className="font-semibold text-gray-800">{totals.account.toLocaleString('ru-RU')} ₽</span></div> </td> <td colSpan={isCpmManual ? 4 : 3} className="px-2 py-2 font-bold text-lg text-gray-900 text-right"> {totals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
+      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={4} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={editingGroupId === group.id ? 6 : 5} className="px-2 py-2"></td> <td colSpan={isCpmManual ? 4 : 3} className="px-2 py-2 font-bold text-lg text-gray-900 text-right"> {totals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
         ) : (
             <EmptyStatePlaceholder />
         )}
@@ -1912,10 +1811,6 @@ export default function App() {
            <button onClick={() => openBulkActionModal('bid')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
              <Zap className="w-4 h-4 text-gray-500" />
              <span>Задать ставки</span>
-           </button>
-           <button onClick={() => openBulkActionModal('funding')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
-             <Wallet className="w-4 h-4 text-gray-500" />
-             <span>Источник</span>
            </button>
            <button onClick={() => openBulkActionModal('autorefill')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
              <RefreshCw className="w-4 h-4 text-gray-500" />
@@ -1945,43 +1840,12 @@ export default function App() {
     <div> <h3 className="font-bold text-gray-800">Общий итог к списанию за {totalAllValidCount} {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}</h3> 
         <div className="flex items-center gap-6 text-sm mt-1"> 
             <div> 
-                <span className="text-gray-500">Баланс: </span> 
-                <span className="font-semibold text-gray-900">{globalTotals.balance.toLocaleString('ru-RU')} ₽</span> 
-                {globalBalanceDeficit > 0 && 
-                    <span className="ml-2 text-red-500 font-medium">
-                        (не хватает {globalBalanceDeficit.toLocaleString('ru-RU')} ₽ 
-                        <a href="#" onClick={(e) => e.preventDefault()} className="text-blue-600 font-medium hover:underline text-sm ml-2">пополнить</a>)
-                    </span>
-                } 
-            </div> 
-            <div> 
-                <span className="text-gray-500">Счет: </span> 
-                <span className="font-semibold text-gray-900">{globalTotals.account.toLocaleString('ru-RU')} ₽</span> 
-                {globalAccountDeficit > 0 && 
-                    <span className="ml-2 text-red-500 font-medium">
-                        (не хватает {globalAccountDeficit.toLocaleString('ru-RU')} ₽
-                        <a href="#" onClick={(e) => e.preventDefault()} className="text-blue-600 font-medium hover:underline text-sm ml-2">пополнить</a>)
-                    </span>
-                } 
-            </div> 
-            <div className="pl-6 border-l border-gray-200 flex items-center gap-4"> 
-                <div> 
-                    <span className="text-gray-500">Всего: </span> 
-                    <span className="font-bold text-lg text-purple-600"> {globalTotals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })} </span> 
-                </div> 
+                <span className="text-gray-500">Всего: </span> 
+                <span className="font-bold text-lg text-purple-600"> {globalTotals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })} </span> 
             </div> 
         </div> 
     </div>
     <div className="flex items-center gap-4">
-        {(globalBalanceDeficit > 0 || globalAccountDeficit > 0) && launchPreview.readyToLaunchCount > 0 && (
-            <div className="flex items-start gap-2 max-w-md mr-4 text-xs text-gray-800 leading-tight">
-                <Bell className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-                <div className="text-left">
-                    Не хватает средств для {launchPreview.readyToLaunchCount} {getPlural(launchPreview.readyToLaunchCount, 'кампании', 'кампаний', 'кампаний')}.<br/>
-                    Они будут созданы в статусе «Готово к запуску».
-                </div>
-            </div>
-        )}
         <button onClick={launchCampaigns} disabled={isLaunching} className="px-8 py-4 rounded-xl text-lg font-bold shadow-lg shadow-purple-200 transition-all transform hover:-translate-y-0.5 bg-gradient-to-r from-purple-600 to-purple-500 text-white hover:shadow-xl disabled:bg-gray-400 disabled:shadow-none disabled:cursor-not-allowed"> {`Запустить ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`} </button>
     </div>
     </div> </footer> )} </div> );

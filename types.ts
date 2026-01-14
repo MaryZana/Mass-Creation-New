@@ -49,7 +49,6 @@ export interface CampaignRecord {
   recommendationsBid?: number; // For CPM manual recommendations
   budget: number;
   autoReplenishment: boolean;
-  fundingSource: 'Баланс' | 'Счет'; // New field for funding source
   status: CampaignStatus;
   errorMessage?: string;
   correctionDetails?: CorrectionDetails[]; // Detailed info for auto-corrections, now an array
