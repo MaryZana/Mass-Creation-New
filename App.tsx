@@ -8,6 +8,7 @@ import { MultiSelect } from './components/MultiSelect';
 import { ProductMultiSelect } from './components/ProductMultiSelect';
 import { SuccessPage } from './components/SuccessPage';
 import { ReviewEditsModal } from './components/ReviewEditsModal';
+import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 
 // --- Types ---
 interface TemplateGroup {
@@ -1430,6 +1431,8 @@ export default function App() {
   const [downloadCount, setDownloadCount] = useState(0);
   const [isApplyingEdits, setIsApplyingEdits] = useState(false);
   const [editResult, setEditResult] = useState<{ success: number; error: number; failedIds?: number[] } | null>(null);
+  const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
 
   const [inlineErrors, setInlineErrors] = useState<Record<string, string>>({});
@@ -1467,11 +1470,26 @@ export default function App() {
     setIsApplyingEdits(true);
     setEditResult(null);
 
-    setTimeout(() => {
+    if (applyEditsTimeoutRef.current) {
+        clearTimeout(applyEditsTimeoutRef.current);
+    }
+
+    applyEditsTimeoutRef.current = setTimeout(() => {
         setIsApplyingEdits(false);
         setEditResult({ success: 19, error: 5, failedIds: [1304655, 1304658, 1304661, 1304670, 1304674] });
         setToastMessage("Изменения применены");
-    }, 2000);
+        applyEditsTimeoutRef.current = null;
+    }, 60000); // 1 minute
+  };
+
+  const handleCancelEdits = () => {
+    if (applyEditsTimeoutRef.current) {
+        clearTimeout(applyEditsTimeoutRef.current);
+        applyEditsTimeoutRef.current = null;
+    }
+    setIsApplyingEdits(false);
+    setToastMessage("Применение изменений отменено");
+    setShowToast(true);
   };
 
   useEffect(() => {
@@ -2005,6 +2023,9 @@ export default function App() {
             isApplyingEdits={isApplyingEdits}
             editResult={editResult}
             onClearEditResult={() => setEditResult(null)}
+            onCancelEdits={handleCancelEdits}
+            onOpenReview={() => setIsReviewEditsModalOpen(true)}
+            onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
           />
         </main>
          <UploadEditsModal 
@@ -2016,6 +2037,12 @@ export default function App() {
         <ReviewEditsModal 
           isOpen={isReviewEditsModalOpen}
           onClose={() => setIsReviewEditsModalOpen(false)}
+        />
+        <ChangesHistoryModal
+            isOpen={isHistoryModalOpen}
+            onClose={() => setIsHistoryModalOpen(false)}
+            showToast={setShowToast}
+            setToastMessage={setToastMessage}
         />
         {selectedListedCampaignIds.length > 0 && (
           <BulkActionIsland 
@@ -2306,26 +2333,11 @@ export default function App() {
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
                 </div>
                 {inlineErrors[`${row.id}-budget`] && <p className="text-red-500 text-[10px] mt-0.5 absolute">{inlineErrors[`${row.id}-budget`]}</p>}
-                {(row.bonusAmount && row.bonusAmount > 0) ? (
-                    <div className="text-[11px] mt-1.5">
-                        <span className="text-gray-500">С бонусами: {formatForDisplay(row.bonusAmount)} B. </span>
-                        <button onClick={() => setCampaignForBonusEdit(row)} className="text-purple-600 hover:underline">Изменить</button>
-                    </div>
-                ) : (
-                    <button onClick={() => setCampaignForBonusEdit(row)} className="text-purple-600 hover:underline text-[11px] mt-1.5">
-                        Списать бонусы
-                    </button>
-                )}
             </div>
         ) : (
             <div className="tooltip">
                 <div className="flex flex-col cursor-not-allowed">
                     <span className="font-medium">{`${formatForDisplay(row.budget)} ₽`}</span>
-                    {row.bonusAmount && row.bonusAmount > 0 ? (
-                        <span className="text-[10px] text-gray-500 leading-none mt-0.5">
-                            {`${formatForDisplay(row.budget - row.bonusAmount)} ₽ + ${formatForDisplay(row.bonusAmount)} B`}
-                        </span>
-                    ) : null}
                 </div>
                  <span className="tooltip-text">Чтобы изменить бюджет, нажмите «Редактировать»</span>
             </div>

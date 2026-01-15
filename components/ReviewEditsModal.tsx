@@ -81,7 +81,6 @@ for (let i = 0; i < 15; i++) { // Generate 15 campaigns
     let campaignChange: Partial<CampaignChange> = {};
 
     switch (changeType) {
-        case 1: campaignChange.replenishmentAmount = 250000; break;
         case 2:
             campaignChange.oldAutoRefill = true;
             campaignChange.newAutoRefill = false;
@@ -105,12 +104,13 @@ for (let i = 0; i < 15; i++) { // Generate 15 campaigns
     }
 
     const newAutoRefill = campaignChange.newAutoRefill ?? true;
-    
+    const replenishmentAmount = Math.floor(Math.random() * 4001) + 1000;
+
     MOCK_CHANGES.push({
         id: campaignId,
         name: `Кампания #${campaignId}`,
         products,
-        replenishmentAmount: 200000,
+        replenishmentAmount: replenishmentAmount,
         oldIsActive: true,
         newIsActive: true,
         oldAutoRefill: true,
@@ -167,7 +167,7 @@ const ReviewTable = ({ data, view }: { data: CampaignChange[], view: 'new' | 'ol
                 <th scope="col" className="p-3 font-semibold text-left text-gray-600 w-32 border-r">ID Кампании</th>
                 <th scope="col" className="p-3 font-semibold text-left text-gray-600 w-48 border-r">Статус</th>
                 <th scope="col" className="p-3 font-semibold text-left text-gray-600 w-32 border-r">ID Товара</th>
-                <th scope="col" className="p-3 font-semibold text-left text-gray-600 w-48 border-r">Сумма пополнения</th>
+                <th scope="col" className="p-3 font-semibold text-left text-gray-600 w-48 border-r">Сумма пополнения бюджета</th>
                 <th scope="col" className="p-3 font-semibold text-left text-gray-600 w-[450px] border-r">Ставки по кластерам</th>
                 <th scope="col" className="p-3 font-semibold text-left text-gray-600 w-64 border-r">Преследование ставки</th>
                 <th scope="col" className="p-3 font-semibold text-center text-gray-600 w-40 border-r">Статус АП</th>

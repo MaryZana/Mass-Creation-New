@@ -88,6 +88,9 @@ interface SuccessPageProps {
   isApplyingEdits: boolean;
   editResult: { success: number; error: number; failedIds?: number[] } | null;
   onClearEditResult: () => void;
+  onOpenReview: () => void;
+  onCancelEdits: () => void;
+  onOpenHistoryModal: () => void;
 }
 
 interface DisplayCampaign {
@@ -251,54 +254,26 @@ const EditResultBlock = ({ successCount, errorCount, onClear, failedIds = [] }: 
     );
 };
 
-const CampaignListSkeleton = () => {
-    return (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 animate-pulse">
-            <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                    <thead className="bg-gray-50 text-gray-500 font-medium">
-                        <tr>
-                            <th className="p-4 w-12"><div className="h-4 w-4 bg-gray-200 rounded"></div></th>
-                            <th className="p-4 w-10"></th>
-                            <th className="p-4 text-left font-medium min-w-[300px]"><div className="h-4 bg-gray-200 rounded w-3/4"></div></th>
-                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-2/3"></div></th>
-                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
-                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
-                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
-                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/4"></div></th>
-                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
-                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-2/3"></div></th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                        {Array.from({ length: 5 }).map((_, index) => (
-                            <tr key={index}>
-                                <td className="p-4"><div className="h-4 w-4 bg-gray-200 rounded"></div></td>
-                                <td className="p-4"><div className="h-4 w-6 bg-gray-200 rounded-full"></div></td>
-                                <td className="p-4">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-md shrink-0 bg-gray-200"></div>
-                                        <div>
-                                            <div className="h-4 bg-gray-200 rounded w-48 mb-2"></div>
-                                            <div className="h-3 bg-gray-200 rounded w-32"></div>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
-                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
-                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
-                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
-                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-10"></div></td>
-                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-12"></div></td>
-                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
+const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () => void; }> = ({ onOpenReview, onCancel }) => (
+  <div className="bg-white rounded-xl p-8 mb-6 shadow-sm border border-gray-100 flex flex-col items-center text-center animate-in fade-in duration-300">
+    <Loader className="w-12 h-12 text-purple-600 animate-spin" />
+    <h2 className="text-xl font-bold text-gray-900 mt-4">
+      Внесем изменения через 1 минуту
+    </h2>
+    <p className="text-gray-500 mt-2 text-sm max-w-md">
+      Изменения будут применены автоматически. Вы можете просмотреть их или отменить применение.
+    </p>
+    <div className="flex items-center gap-4 mt-6">
+      <button onClick={onCancel} className="px-5 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
+        Отменить изменения
+      </button>
+      <button onClick={onOpenReview} className="px-5 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
+        Смотреть файл с изменениями
+      </button>
+    </div>
+  </div>
+);
+
 
 const DateFilter = ({ defaultLabel }: { defaultLabel: string }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -404,6 +379,41 @@ const CampaignDropdown = ({ onNavigateToCreation }: { onNavigateToCreation: () =
     );
 };
 
+const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory }: { onOpenUpload: () => void, onOpenHistory: () => void }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (ref.current && !ref.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div className="relative" ref={ref}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+                <Download className="w-5 h-5 text-gray-500" />
+                <span>Загрузить Excel</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                    <a href="#" onClick={(e) => { e.preventDefault(); onOpenUpload(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Загрузить Excel</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); onOpenHistory(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">История изменений</a>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 export const SuccessPage: React.FC<SuccessPageProps> = ({ 
     isLaunching, 
     launchTotal, 
@@ -417,6 +427,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     isApplyingEdits,
     editResult,
     onClearEditResult,
+    onOpenReview,
+    onCancelEdits,
+    onOpenHistoryModal,
 }) => {
   const [campaigns, setCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
   const [currentPage, setCurrentPage] = useState(1);
@@ -481,37 +494,34 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           failedIds={editResult.failedIds}
         />
       )}
-      
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 mb-6">
-        <CampaignDropdown onNavigateToCreation={onNavigateToCreation} />
-        <button 
-          onClick={onOpenUploadEditsModal}
-          className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-            <Download className="w-5 h-5 text-gray-500" />
-            <span>Загрузить Excel с правками</span>
-        </button>
-        <div className="relative flex-grow ml-2">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-          <input 
-            type="text" 
-            placeholder="Поиск по ID кампании или названию"
-            className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
-          />
-        </div>
-        <DateFilter defaultLabel="Период статистики" />
-        <DateFilter defaultLabel="Дата создания" />
-        <button className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-          <Filter className="w-5 h-5 text-gray-500" />
-          <span>Фильтр</span>
-        </button>
-      </div>
 
-      {isApplyingEdits ? (
-        <CampaignListSkeleton />
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+      {isApplyingEdits && <ApplyingChangesBlock onOpenReview={onOpenReview} onCancel={onCancelEdits} />}
+      
+      <div>
+          {/* Toolbar */}
+          <div className="flex items-center gap-2 mb-6">
+              <CampaignDropdown onNavigateToCreation={onNavigateToCreation} />
+              <ExcelActionsDropdown 
+                  onOpenUpload={onOpenUploadEditsModal}
+                  onOpenHistory={onOpenHistoryModal}
+              />
+              <div className="relative flex-grow ml-2">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input 
+                  type="text" 
+                  placeholder="Поиск по ID кампании или названию"
+                  className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
+              />
+              </div>
+              <DateFilter defaultLabel="Период статистики" />
+              <DateFilter defaultLabel="Дата создания" />
+              <button className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors">
+              <Filter className="w-5 h-5 text-gray-500" />
+              <span>Фильтр</span>
+              </button>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
           <div className="overflow-x-auto">
               <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 font-medium">
@@ -519,10 +529,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           <th className="p-4 w-12"><input type="checkbox" checked={isAllOnPageSelected} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></th>
                           <th className="p-4 w-10"></th>
                           <th className="p-4 text-left font-medium min-w-[300px]">
-                              <div className="flex items-center gap-1">
-                                  Товар/Кампания <ArrowUp className="w-4 h-4" />
-                              </div>
-                          </th>
+                                <div className="flex items-center gap-1">
+                                    Товар/Кампания <ArrowUp className="w-4 h-4" />
+                                </div>
+                            </th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4" /></div></th>
@@ -537,11 +547,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           <tr key={c.id} className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
                               <td className="p-4"><input type="checkbox" checked={selectedCampaigns.includes(c.id)} onChange={(e) => handleSelectSingle(c.id, e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></td>
                               <td className="p-4">
-                                <ToggleSwitch
-                                    checked={c.status === 'active'}
-                                    onChange={(isChecked) => handleStatusToggle(c.id, isChecked)}
-                                    disabled={c.status === 'draft' || c.status === 'error'}
-                                />
+                                  <ToggleSwitch
+                                      checked={c.status === 'active'}
+                                      onChange={(isChecked) => handleStatusToggle(c.id, isChecked)}
+                                      disabled={c.status === 'draft' || c.status === 'error'}
+                                  />
                               </td>
                               <td className="p-4">
                                   <div className="flex items-center gap-3">
@@ -590,8 +600,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               current={currentPage}
               onChange={setCurrentPage}
           />
-        </div>
-      )}
+          </div>
+      </div>
     </div>
   );
 };
