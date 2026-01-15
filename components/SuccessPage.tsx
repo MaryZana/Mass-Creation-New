@@ -14,6 +14,8 @@ import {
     ThumbsUp,
     Loader,
     Info,
+    Download,
+    ClipboardCheck
 } from './Icons';
 import { CampaignRecord } from '../types';
 
@@ -79,6 +81,13 @@ interface SuccessPageProps {
   launchResult: { success: number; error: number } | null;
   failedCampaigns: CampaignRecord[];
   onClearLaunchResult: () => void;
+  onNavigateToCreation: () => void;
+  onOpenUploadEditsModal: () => void;
+  selectedCampaigns: string[];
+  onSelectionChange: (ids: string[]) => void;
+  isApplyingEdits: boolean;
+  editResult: { success: number; error: number; failedIds?: number[] } | null;
+  onClearEditResult: () => void;
 }
 
 interface DisplayCampaign {
@@ -178,6 +187,119 @@ const ResultBlock = ({ successCount, errorCount, onClear }: { successCount: numb
     )
 };
 
+const EditResultBlock = ({ successCount, errorCount, onClear, failedIds = [] }: { successCount: number, errorCount: number, onClear: () => void, failedIds?: number[] }) => {
+    const [isCopied, setIsCopied] = useState(false);
+
+    const handleCopy = () => {
+        if (!failedIds || failedIds.length === 0) return;
+        navigator.clipboard.writeText(failedIds.join('\n')).then(() => {
+            setIsCopied(true);
+            setTimeout(() => setIsCopied(false), 2500);
+        });
+    };
+
+    const handleDownload = () => {
+        if (!failedIds || failedIds.length === 0) return;
+        const csvContent = "data:text/csv;charset=utf-8,campaign_id\n" + failedIds.map(id => `${id}`).join("\n");
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "failed_campaign_ids.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    return (
+        <div className="bg-white rounded-xl p-5 mb-6 shadow-sm border border-gray-100 relative animate-in fade-in duration-300">
+            <button onClick={onClear} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100">
+                <X className="w-5 h-5" />
+            </button>
+            <div className="flex items-start gap-4">
+                <CheckCircle className="w-8 h-8 text-green-500 mt-1 shrink-0" />
+                <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                        Изменения применены
+                    </h2>
+                    <div className="flex items-center flex-wrap gap-x-6 gap-y-1 mt-1 text-sm">
+                       <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-green-500"/>
+                          <span className="text-gray-800 font-medium">Успешно: {successCount} {getPlural(successCount, 'кампания', 'кампании', 'кампаний')}</span>
+                       </div>
+                       {errorCount > 0 && (
+                          <div className="flex items-center gap-2">
+                             <AlertTriangle className="w-4 h-4 text-red-500"/>
+                             <span className="text-gray-800 font-medium">С ошибками: {errorCount} {getPlural(errorCount, 'кампания', 'кампании', 'кампаний')}</span>
+                          </div>
+                       )}
+                    </div>
+                     {errorCount > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3">
+                            <button onClick={handleCopy} disabled={isCopied} className="flex items-center gap-2 text-sm font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all disabled:opacity-70 disabled:cursor-wait">
+                               <ClipboardCheck className="w-4 h-4" />
+                               <span>{isCopied ? 'ID скопированы!' : 'Скопировать ID с ошибками'}</span>
+                           </button>
+                           <button onClick={handleDownload} className="flex items-center gap-2 text-sm font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all">
+                               <Download className="w-4 h-4" />
+                               <span>Скачать список с ошибками</span>
+                           </button>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+const CampaignListSkeleton = () => {
+    return (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100 animate-pulse">
+            <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                    <thead className="bg-gray-50 text-gray-500 font-medium">
+                        <tr>
+                            <th className="p-4 w-12"><div className="h-4 w-4 bg-gray-200 rounded"></div></th>
+                            <th className="p-4 w-10"></th>
+                            <th className="p-4 text-left font-medium min-w-[300px]"><div className="h-4 bg-gray-200 rounded w-3/4"></div></th>
+                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-2/3"></div></th>
+                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
+                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
+                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
+                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/4"></div></th>
+                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-1/2"></div></th>
+                            <th className="p-4 text-left font-medium"><div className="h-4 bg-gray-200 rounded w-2/3"></div></th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {Array.from({ length: 5 }).map((_, index) => (
+                            <tr key={index}>
+                                <td className="p-4"><div className="h-4 w-4 bg-gray-200 rounded"></div></td>
+                                <td className="p-4"><div className="h-4 w-6 bg-gray-200 rounded-full"></div></td>
+                                <td className="p-4">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-md shrink-0 bg-gray-200"></div>
+                                        <div>
+                                            <div className="h-4 bg-gray-200 rounded w-48 mb-2"></div>
+                                            <div className="h-3 bg-gray-200 rounded w-32"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-16"></div></td>
+                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-10"></div></td>
+                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-12"></div></td>
+                                <td className="p-4"><div className="h-4 bg-gray-200 rounded w-20"></div></td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
 const DateFilter = ({ defaultLabel }: { defaultLabel: string }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [label, setLabel] = useState(defaultLabel);
@@ -248,8 +370,54 @@ const DateFilter = ({ defaultLabel }: { defaultLabel: string }) => {
   );
 }
 
+const CampaignDropdown = ({ onNavigateToCreation }: { onNavigateToCreation: () => void }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
 
-export const SuccessPage: React.FC<SuccessPageProps> = ({ isLaunching, launchTotal, launchResult, failedCampaigns, onClearLaunchResult }) => {
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (ref.current && !ref.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+        <div className="relative" ref={ref}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className="flex items-center gap-2 bg-purple-600 text-white font-semibold px-4 py-2.5 rounded-lg hover:bg-purple-700 transition-colors"
+            >
+                <Plus className="w-5 h-5" />
+                <span>Кампания</span>
+                <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                    <a href="#" onClick={(e) => { e.preventDefault(); alert('Создание одной кампании в разработке'); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Одна кампания</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); onNavigateToCreation(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Много кампаний</a>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export const SuccessPage: React.FC<SuccessPageProps> = ({ 
+    isLaunching, 
+    launchTotal, 
+    launchResult, 
+    failedCampaigns, 
+    onClearLaunchResult, 
+    onNavigateToCreation,
+    onOpenUploadEditsModal,
+    selectedCampaigns,
+    onSelectionChange,
+    isApplyingEdits,
+    editResult,
+    onClearEditResult,
+}) => {
   const [campaigns, setCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
   const [currentPage, setCurrentPage] = useState(1);
   const CAMPAIGNS_PAGE_SIZE = 10;
@@ -258,6 +426,25 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({ isLaunching, launchTot
     (currentPage - 1) * CAMPAIGNS_PAGE_SIZE,
     currentPage * CAMPAIGNS_PAGE_SIZE
   );
+  
+  const paginatedIds = paginatedCampaigns.map(c => c.id);
+  const isAllOnPageSelected = paginatedIds.length > 0 && paginatedIds.every(id => selectedCampaigns.includes(id));
+
+  const handleSelectAll = (isChecked: boolean) => {
+      if(isChecked) {
+          onSelectionChange([...new Set([...selectedCampaigns, ...paginatedIds])]);
+      } else {
+          onSelectionChange(selectedCampaigns.filter(id => !paginatedIds.includes(id)));
+      }
+  }
+  
+  const handleSelectSingle = (id: string, isChecked: boolean) => {
+      if(isChecked) {
+          onSelectionChange([...selectedCampaigns, id]);
+      } else {
+          onSelectionChange(selectedCampaigns.filter(cid => cid !== id));
+      }
+  }
 
   const handleStatusToggle = (campaignId: string, isChecked: boolean) => {
     setCampaigns(prevCampaigns =>
@@ -286,15 +473,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({ isLaunching, launchTot
               onClear={onClearLaunchResult}
           />
       )}
+      {!isLaunching && !isApplyingEdits && editResult && (
+        <EditResultBlock 
+          successCount={editResult.success}
+          errorCount={editResult.error}
+          onClear={onClearEditResult}
+          failedIds={editResult.failedIds}
+        />
+      )}
       
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-6">
-        <button className="flex items-center gap-2 bg-purple-600 text-white font-semibold px-4 py-2.5 rounded-lg hover:bg-purple-700 transition-colors">
-          <Plus className="w-5 h-5" />
-          <span>Кампания</span>
-        </button>
-        <button className="bg-gray-700 text-white font-semibold px-4 py-2.5 rounded-lg hover:bg-gray-800 transition-colors">
-          Массовое создание
+        <CampaignDropdown onNavigateToCreation={onNavigateToCreation} />
+        <button 
+          onClick={onOpenUploadEditsModal}
+          className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+            <Download className="w-5 h-5 text-gray-500" />
+            <span>Загрузить Excel с правками</span>
         </button>
         <div className="relative flex-grow ml-2">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -312,87 +508,90 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({ isLaunching, launchTot
         </button>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-        <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-500 font-medium">
-                    <tr>
-                        <th className="p-4 w-12"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></th>
-                        <th className="p-4 w-10"></th>
-                        <th className="p-4 text-left font-medium min-w-[300px]">
-                            <div className="flex items-center gap-1">
-                                Товар/Кампания <ArrowUp className="w-4 h-4" />
-                            </div>
-                        </th>
-                        <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4" /></div></th>
-                        <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
-                        <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4" /></div></th>
-                        <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Показы <HelpCircle className="w-4 h-4" /></div></th>
-                        <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">CTR <HelpCircle className="w-4 h-4" /></div></th>
-                        <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Заказы <HelpCircle className="w-4 h-4" /></div></th>
-                        <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Доля затрат <HelpCircle className="w-4 h-4" /></div></th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {paginatedCampaigns.map(c => (
-                        <tr key={c.id} className="hover:bg-gray-50">
-                            <td className="p-4"><input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></td>
-                            <td className="p-4">
-                              <ToggleSwitch
-                                  checked={c.status === 'active'}
-                                  onChange={(isChecked) => handleStatusToggle(c.id, isChecked)}
-                                  disabled={c.status === 'draft' || c.status === 'error'}
-                              />
-                            </td>
-                            <td className="p-4">
-                                <div className="flex items-center gap-3">
-                                    <img src={c.image} alt={c.name} className="w-10 h-10 rounded-md shrink-0"/>
-                                    <div>
-                                        <p className="font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
-                                        <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
-                                            <StatusBadge status={c.status} text={c.statusText} />
-                                            <span>ID {c.campaignId}</span>
-                                            {c.tags.map(tag => (
-                                                <div key={tag.text} className={`flex items-center gap-1 ${tag.type === 'warning' ? 'text-amber-700' : tag.type === 'error' ? 'text-red-700' : ''}`}>
-                                                    {tag.icon} {tag.text}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td className="p-4">
-                                <div className="font-semibold">{c.type}</div>
-                                <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
-                                    {c.typeDetails && <span>{c.typeDetails}</span>}
-                                    {c.typeIcons.map((icon, i) => <span key={i} className="p-1 bg-gray-100 rounded">{icon}</span>)}
-                                </div>
-                            </td>
-                            <td className="p-4">
-                                <div className="font-semibold">{formatCurrency(c.budget)}</div>
-                                <div className={`flex items-center gap-1 text-xs mt-1 ${c.autoRefillStatus === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
-                                    {c.autoRefillStatus === 'ok' ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                                    Автопополнение
-                                </div>
-                            </td>
-                            <td className="p-4">{formatCurrency(c.spend)}</td>
-                            <td className="p-4">{formatNumber(c.impressions)}</td>
-                            <td className="p-4">{formatPercentage(c.ctr)}</td>
-                            <td className="p-4">{formatNumber(c.orders)}</td>
-                            <td className="p-4">{formatPercentage(c.spendShare)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+      {isApplyingEdits ? (
+        <CampaignListSkeleton />
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-gray-500 font-medium">
+                      <tr>
+                          <th className="p-4 w-12"><input type="checkbox" checked={isAllOnPageSelected} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></th>
+                          <th className="p-4 w-10"></th>
+                          <th className="p-4 text-left font-medium min-w-[300px]">
+                              <div className="flex items-center gap-1">
+                                  Товар/Кампания <ArrowUp className="w-4 h-4" />
+                              </div>
+                          </th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Показы <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">CTR <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Заказы <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Доля затрат <HelpCircle className="w-4 h-4" /></div></th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                      {paginatedCampaigns.map(c => (
+                          <tr key={c.id} className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
+                              <td className="p-4"><input type="checkbox" checked={selectedCampaigns.includes(c.id)} onChange={(e) => handleSelectSingle(c.id, e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></td>
+                              <td className="p-4">
+                                <ToggleSwitch
+                                    checked={c.status === 'active'}
+                                    onChange={(isChecked) => handleStatusToggle(c.id, isChecked)}
+                                    disabled={c.status === 'draft' || c.status === 'error'}
+                                />
+                              </td>
+                              <td className="p-4">
+                                  <div className="flex items-center gap-3">
+                                      <img src={c.image} alt={c.name} className="w-10 h-10 rounded-md shrink-0"/>
+                                      <div>
+                                          <p className="font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
+                                          <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
+                                              <StatusBadge status={c.status} text={c.statusText} />
+                                              <span>ID {c.campaignId}</span>
+                                              {c.tags.map(tag => (
+                                                  <div key={tag.text} className={`flex items-center gap-1 ${tag.type === 'warning' ? 'text-amber-700' : tag.type === 'error' ? 'text-red-700' : ''}`}>
+                                                      {tag.icon} {tag.text}
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </div>
+                                  </div>
+                              </td>
+                              <td className="p-4">
+                                  <div className="font-semibold">{c.type}</div>
+                                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
+                                      {c.typeDetails && <span>{c.typeDetails}</span>}
+                                      {c.typeIcons.map((icon, i) => <span key={i} className="p-1 bg-gray-100 rounded">{icon}</span>)}
+                                  </div>
+                              </td>
+                              <td className="p-4">
+                                  <div className="font-semibold">{formatCurrency(c.budget)}</div>
+                                  <div className={`flex items-center gap-1 text-xs mt-1 ${c.autoRefillStatus === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
+                                      {c.autoRefillStatus === 'ok' ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+                                      Автопополнение
+                                  </div>
+                              </td>
+                              <td className="p-4">{formatCurrency(c.spend)}</td>
+                              <td className="p-4">{formatNumber(c.impressions)}</td>
+                              <td className="p-4">{formatPercentage(c.ctr)}</td>
+                              <td className="p-4">{formatNumber(c.orders)}</td>
+                              <td className="p-4">{formatPercentage(c.spendShare)}</td>
+                          </tr>
+                      ))}
+                  </tbody>
+              </table>
+          </div>
+          <Pagination
+              total={campaigns.length}
+              pageSize={CAMPAIGNS_PAGE_SIZE}
+              current={currentPage}
+              onChange={setCurrentPage}
+          />
         </div>
-        <Pagination
-            total={campaigns.length}
-            pageSize={CAMPAIGNS_PAGE_SIZE}
-            current={currentPage}
-            onChange={setCurrentPage}
-        />
-      </div>
+      )}
     </div>
   );
 };

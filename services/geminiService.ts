@@ -31,7 +31,7 @@ export const validateUploadedFile = async (
     Rules:
     - Language: Russian.
     - 'usePromoBonuses' should always be true.
-    - 'autoReplenishment' must always be true.
+    - 'autoReplenishment' must always be false.
     - Use a generic placeholder image URL for all items: 'https://placehold.co/64x64/e2e8f0/94a3b8?text=W'.
     - The majority of records should be perfectly valid (CampaignStatus = "Valid").
     - A small number of records (around 8-10) should have fixable errors (CampaignStatus = "Corrected"). 
@@ -40,6 +40,7 @@ export const validateUploadedFile = async (
     - A few records (around 3-5) should have critical errors that are filtered out later (CampaignStatus = "Error"). E.g., "Товар закончился", "Артикул не найден".
     - Include a few duplicate records by 'nmId'.
     - 'campaignName' should be generated based on the formula: "[productName] + [${config.paymentModel}] + [${currentDate}]".
+    - 'fundingSource' should always be 'Единый счёт'.
     - 'nmId' should be a realistic 8-digit number.
     - 'budget' should be between 1000 and 50000.
     - IF the campaign is CPM and Manual, generate 'searchBid' and 'recommendationsBid' fields (each between 50-500). DO NOT generate 'bid'.
@@ -48,7 +49,6 @@ export const validateUploadedFile = async (
 
   try {
     const response = await ai.models.generateContent({
-      // FIX: Updated model to gemini-3-flash-preview for better performance and adherence to guidelines for this task.
       model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
@@ -69,6 +69,7 @@ export const validateUploadedFile = async (
               recommendationsBid: { type: Type.NUMBER },
               budget: { type: Type.NUMBER },
               autoReplenishment: { type: Type.BOOLEAN },
+              fundingSource: { type: Type.STRING, enum: ['Единый счёт'] },
               status: { type: Type.STRING, enum: [CampaignStatus.VALID, CampaignStatus.ERROR, CampaignStatus.CORRECTED] },
               errorMessage: { type: Type.STRING },
               usePromoBonuses: { type: Type.BOOLEAN },
@@ -86,7 +87,7 @@ export const validateUploadedFile = async (
                 }
               },
             },
-            required: ["id", "nmId", "productName", "campaignName", "imageUrl", "category", "budget", "autoReplenishment", "status", "usePromoBonuses"]
+            required: ["id", "nmId", "productName", "campaignName", "imageUrl", "category", "budget", "autoReplenishment", "fundingSource", "status", "usePromoBonuses"]
           }
         }
       }
@@ -106,7 +107,6 @@ export const validateUploadedFile = async (
   }
 };
 
-// FIX: Export the `getFallbackMockData` function so it can be imported and used in other modules.
 export const getFallbackMockData = (config: CampaignConfig): Omit<CampaignRecord, 'source'>[] => {
   const currentDate = new Date().toLocaleDateString('ru-RU');
   const placeholderUrl = 'https://placehold.co/64x64/e2e8f0/94a3b8?text=W';
@@ -124,7 +124,8 @@ export const getFallbackMockData = (config: CampaignConfig): Omit<CampaignRecord
       imageUrl: placeholderUrl,
       category: category,
       budget: 5000 + i * 100,
-      autoReplenishment: true,
+      autoReplenishment: false,
+      fundingSource: 'Единый счёт',
       status: CampaignStatus.VALID,
       usePromoBonuses: true,
     };
@@ -136,18 +137,15 @@ export const getFallbackMockData = (config: CampaignConfig): Omit<CampaignRecord
       record.bid = 150 + i;
     }
 
-    // Generate ~8 corrected records
     if (i > 60 && i <= 68) {
       record.status = CampaignStatus.CORRECTED;
       const correctionField = isCpmManual ? 'searchBid' : 'bid';
       record.correctionDetails = [{ field: correctionField, oldValue: 100, newValue: 150, reason: 'Минимальная ставка 150 ₽' }];
     }
-    // Generate ~2 error records
     if (i > 68) {
       record.status = CampaignStatus.ERROR;
       record.errorMessage = 'Товар закончился';
     }
-    // Add a duplicate
      if (i === 70) {
       record.nmId = 14029381; // Duplicate
     }

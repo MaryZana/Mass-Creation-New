@@ -19,7 +19,15 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   disabled = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [tempSelected, setTempSelected] = useState<string[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTempSelected([...selected]);
+    }
+  }, [isOpen, selected]);
+
 
   // Handle click outside to close
   useEffect(() => {
@@ -36,13 +44,22 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   }, []);
 
   const toggleOption = (option: string) => {
-    onChange(
-      selected.includes(option)
-        ? selected.filter(item => item !== option)
-        : [...selected, option]
+    setTempSelected(
+      tempSelected.includes(option)
+        ? tempSelected.filter(item => item !== option)
+        : [...tempSelected, option]
     );
   };
   
+  const handleApply = () => {
+    onChange(tempSelected);
+    setIsOpen(false);
+  };
+
+  const handleReset = () => {
+    setTempSelected([]);
+  };
+
   // Logic for displaying selected values
   const displayValue = useMemo(() => {
     if (selected.length === 0) return null;
@@ -62,10 +79,10 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
       <div 
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={`
-          w-full p-2.5 border rounded-xl text-sm flex items-center justify-between transition-all
+          w-full min-h-[46px] px-3 py-2.5 border rounded-lg text-sm flex items-center justify-between transition-all
           ${disabled 
             ? 'bg-gray-100 cursor-not-allowed border-gray-200' 
-            : `bg-white cursor-pointer ${isOpen ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-300 hover:border-gray-400'}`
+            : `bg-white cursor-pointer ${isOpen ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-200 hover:border-gray-300'}`
           }
         `}
       >
@@ -77,13 +94,13 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
 
       {/* Dropdown Menu */}
       {isOpen && !disabled && (
-        <div className="absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-gray-200 rounded-xl shadow-xl z-[110] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
           
           {/* Options List */}
           <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
             {options.length > 0 ? (
               options.map((option) => {
-                const isSelected = selected.includes(option);
+                const isSelected = tempSelected.includes(option);
                 return (
                   <div 
                     key={option} 
@@ -114,6 +131,22 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
               </div>
             )}
           </div>
+
+           <div className="bg-gray-50 border-t border-gray-100 p-2 flex items-center justify-between gap-2">
+            <button 
+              onClick={handleReset}
+              className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              Сбросить
+            </button>
+            <button 
+              onClick={handleApply}
+              className="px-6 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm transition-all"
+            >
+               Применить
+            </button>
+          </div>
+
         </div>
       )}
     </div>

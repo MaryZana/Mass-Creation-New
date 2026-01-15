@@ -48,7 +48,9 @@ export interface CampaignRecord {
   searchBid?: number; // For CPM manual search
   recommendationsBid?: number; // For CPM manual recommendations
   budget: number;
+  bonusAmount?: number; // Amount funded by bonuses
   autoReplenishment: boolean;
+  fundingSource: 'Единый счёт'; // Changed to Unified Account
   status: CampaignStatus;
   errorMessage?: string;
   correctionDetails?: CorrectionDetails[]; // Detailed info for auto-corrections, now an array

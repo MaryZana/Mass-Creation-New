@@ -138,7 +138,7 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
       </div>
 
       {isOpen && (
-        <div className="absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+        <div className="absolute top-[calc(100%+4px)] left-0 w-full bg-white border border-gray-200 rounded-xl shadow-xl z-[110] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
           
           <div className="p-3 border-b border-gray-100">
             <div className="relative">
@@ -193,7 +193,7 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                     
                     <div className="relative group/image">
                       <img src={p.imageUrl} alt={p.productName} className="w-8 h-8 rounded-md shrink-0 object-cover" />
-                      <div className="hidden group-hover/image:block absolute left-full top-0 ml-2 z-[60] w-20 aspect-[3/4] bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden pointer-events-none">
+                      <div className="hidden group-hover/image:block absolute left-full top-0 ml-2 z-[120] w-20 aspect-[3/4] bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden pointer-events-none">
                         <img src={p.imageUrl} alt={p.productName} className="w-full h-full object-cover" />
                       </div>
                     </div>
