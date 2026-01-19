@@ -9,6 +9,7 @@ import { ProductMultiSelect } from './components/ProductMultiSelect';
 import { SuccessPage } from './components/SuccessPage';
 import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
+import { MassEditPage } from './components/MassEditPage';
 
 // --- Types ---
 interface TemplateGroup {
@@ -1349,11 +1350,17 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
     );
 };
 
-const BulkActionIsland = ({ count, onConfigureAR, onDownload, onClear }: { count: number, onConfigureAR: () => void, onDownload: () => void, onClear: () => void }) => {
+const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onClear }: { count: number, onConfigureAR: () => void, onDownload: () => void, onEdit?: () => void, onClear: () => void }) => {
     return (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md rounded-xl shadow-2xl z-[80] p-2 flex items-center gap-2 border border-gray-200 animate-in slide-in-from-bottom-4 fade-in">
             <span className="text-sm font-medium text-gray-800 px-3">Выбрано: {count}</span>
             <div className="h-6 w-px bg-gray-200"></div>
+            {onEdit && (
+                <button onClick={onEdit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
+                    <Edit2 className="w-4 h-4 text-gray-500" />
+                    <span>Редактировать</span>
+                </button>
+            )}
             <button onClick={onConfigureAR} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
                 <RefreshCw className="w-4 h-4 text-gray-500" />
                 <span>Настроить АП</span>
@@ -1381,7 +1388,7 @@ const DownloadNotification = ({ count }: { count: number }) => (
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [appState, setAppState] = useState<'creation' | 'list'>('list');
+  const [appState, setAppState] = useState<'creation' | 'list' | 'editing'>('list');
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -1442,6 +1449,7 @@ export default function App() {
 
   const handleNavigateToList = () => setAppState('list');
   const handleNavigateToCreation = () => setAppState('creation');
+  const handleNavigateToEditing = () => setAppState('editing');
 
   const handleNavigationAttempt = (action: () => void) => {
     const hasUnsavedChanges = appState === 'creation' && templateGroups.length > 0;
@@ -2005,6 +2013,12 @@ export default function App() {
 
   if (!isAuthenticated) return <AuthScreen onAuth={() => setIsAuthenticated(true)} />;
 
+  if (appState === 'editing') {
+    return (
+      <MassEditPage onNavigateToList={() => handleNavigationAttempt(handleNavigateToList)} />
+    );
+  }
+
   if (appState === 'list') {
     return (
       <div className="min-h-screen bg-[#F6F69] font-sans text-gray-900 relative">
@@ -2032,11 +2046,18 @@ export default function App() {
           isOpen={isUploadEditsModalOpen} 
           onClose={() => setIsUploadEditsModalOpen(false)}
           onApply={handleApplyEdits}
-          onOpenReview={() => setIsReviewEditsModalOpen(true)}
+          onOpenReview={() => {
+            setIsUploadEditsModalOpen(false);
+            handleNavigationAttempt(handleNavigateToEditing);
+          }}
         />
         <ReviewEditsModal 
           isOpen={isReviewEditsModalOpen}
           onClose={() => setIsReviewEditsModalOpen(false)}
+          onEdit={() => {
+            setIsReviewEditsModalOpen(false);
+            handleNavigationAttempt(handleNavigateToEditing);
+          }}
         />
         <ChangesHistoryModal
             isOpen={isHistoryModalOpen}
@@ -2048,6 +2069,7 @@ export default function App() {
           <BulkActionIsland 
             count={selectedListedCampaignIds.length}
             onClear={() => setSelectedListedCampaignIds([])}
+            onEdit={() => handleNavigationAttempt(handleNavigateToEditing)}
             onConfigureAR={() => {
               setToastMessage("Функция 'Настроить АП' в разработке");
               setShowToast(true);
@@ -2204,8 +2226,8 @@ export default function App() {
                             </button>
                         )}
                     </div>
-                    <MultiSelect options={uniqueSources} selected={selectedSources} onChange={setSelectedSources} placeholder="Источник" className="w-full sm:w-auto sm:min-w-[180px]" isFilter={true} />
-                    <MultiSelect options={uniqueCategories} selected={selectedCategories} onChange={setSelectedCategories} placeholder="Категория" className="w-full sm:w-auto sm:min-w-[180px]" isFilter={true} />
+                    <MultiSelect options={uniqueSources} selected={selectedSources} onChange={setSelectedSources} placeholder="Источник" className="w-full sm:w-auto sm:min-w-[260px]" />
+                    <MultiSelect options={uniqueCategories} selected={selectedCategories} onChange={setSelectedCategories} placeholder="Категория" className="w-full sm:w-auto sm:min-w-[260px]" />
                 </div>
                 {hasActiveFilterTags && (
                   <div className="mt-4 flex items-center flex-wrap gap-2">
@@ -2313,7 +2335,7 @@ export default function App() {
                  <div className="relative">
                     <input 
                         type="text" 
-                        defaultValue={formatForDisplay(row.budget)}
+                        value={row.budget === null || row.budget === undefined ? '' : formatForDisplay(row.budget)}
                         onChange={(e) => {
                             const val = e.target.value;
                             if (val !== '') {
