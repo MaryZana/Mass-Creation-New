@@ -1228,7 +1228,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                               <div className="flex items-center gap-1.5 text-xs text-gray-600 mt-1.5 flex-wrap">
                                                   {c.campaignTags.map((tag, idx) => (
                                                       <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md">
-                                                          {tag}
+                                                          #{tag}
                                                       </span>
                                                   ))}
                                               </div>
