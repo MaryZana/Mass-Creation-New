@@ -91,6 +91,8 @@ interface SuccessPageProps {
   onOpenReview: () => void;
   onCancelEdits: () => void;
   onOpenHistoryModal: () => void;
+  showUploadHint?: boolean;
+  onDismissUploadHint?: () => void;
 }
 
 interface DisplayCampaign {
@@ -101,6 +103,7 @@ interface DisplayCampaign {
   statusText: string;
   campaignId: number;
   tags: { text: string; icon: React.ReactNode; type: 'warning' | 'info' | 'error' }[];
+  campaignTags: string[];
   type: 'CPC' | 'CPM';
   typeDetails: string;
   typeIcons: React.ReactNode[];
@@ -131,26 +134,26 @@ const currentDate = new Date().toLocaleDateString('ru-RU');
 
 const MOCK_CAMPAIGNS: DisplayCampaign[] = [
     // Category 1: Платья (10 items)
-    { id: '1', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Летнее платье "Ривьера" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304655, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '2', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Вечернее платье "Грация" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304656, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '3', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-футляр "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304657, tags: [], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '4', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Сарафан "Прованс" CPM от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304658, tags: [], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
-    { id: '5', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье с принтом "Флора" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304659, tags: [], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 80200, impressions: 250000, ctr: 1.1, orders: 75, spendShare: 14.1 },
-    { id: '6', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Коктейльное платье "Шарм" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304660, tags: [], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '7', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Длинное платье "Макси" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304661, tags: [], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 500000, spend: 250000, impressions: 600000, ctr: 1.5, orders: 120, spendShare: 18.2 },
-    { id: '8', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-рубашка "Кэжуал" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304662, tags: [], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 150000, spend: 145000, impressions: 400000, ctr: 0.9, orders: 50, spendShare: 11.0 },
-    { id: '9', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Пляжное платье "Бриз" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304663, tags: [], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 100000, spend: 98000, impressions: 150000, ctr: 2.0, orders: 100, spendShare: 25.0 },
-    { id: '10', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Трикотажное платье "Уют" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304664, tags: [], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 200000, spend: 50000, impressions: 180000, ctr: 1.0, orders: 60, spendShare: 12.5 },
-    { id: '11', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Джинсы "Classic Fit" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304665, tags: [], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 250000, spend: 120000, impressions: 450000, ctr: 1.3, orders: 95, spendShare: 16.0 },
-    { id: '12', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Брюки-карго "Комбат" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304666, tags: [], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 180000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '13', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Классические брюки "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304667, tags: [], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 400000, spend: 390000, impressions: 800000, ctr: 1.1, orders: 150, spendShare: 19.5 },
-    { id: '14', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Спортивные брюки "Тренд" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304668, tags: [], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 220000, spend: 215000, impressions: 300000, ctr: 1.8, orders: 110, spendShare: 22.0 },
-    { id: '15', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Льняные брюки "Лето" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304669, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 120000, spend: 30000, impressions: 100000, ctr: 0.8, orders: 40, spendShare: 10.0 },
-    { id: '16', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Сумка-шоппер "Эко" CPM от ${currentDate}`, status: 'error', statusText: 'приостановлена', campaignId: 1304670, tags: [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' }], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 0, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
-    { id: '17', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Кожаный ремень "Классика" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304671, tags: [], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 90000, spend: 85000, impressions: 120000, ctr: 2.2, orders: 130, spendShare: 28.0 },
-    { id: '18', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Шелковый платок "Париж" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304672, tags: [], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 75000, spend: 15000, impressions: 90000, ctr: 1.0, orders: 45, spendShare: 11.5 },
-    { id: '19', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Солнцезащитные очки "Авиатор" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304673, tags: [], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 150000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
+    { id: '1', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Летнее платье "Ривьера" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304655, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа', 'Хиты со скидкой'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '2', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Вечернее платье "Грация" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304656, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Сезонная распродажа'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '3', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-футляр "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304657, tags: [], campaignTags: ['Уценка', 'Последние размеры'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '4', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Сарафан "Прованс" CPM от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304658, tags: [], campaignTags: ['Ликвидация остатков'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
+    { id: '5', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье с принтом "Флора" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304659, tags: [], campaignTags: ['Чёрная пятница', 'Хиты со скидкой'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 80200, impressions: 250000, ctr: 1.1, orders: 75, spendShare: 14.1 },
+    { id: '6', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Коктейльное платье "Шарм" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304660, tags: [], campaignTags: ['Новый год'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '7', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Длинное платье "Макси" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304661, tags: [], campaignTags: ['8 марта', 'Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 500000, spend: 250000, impressions: 600000, ctr: 1.5, orders: 120, spendShare: 18.2 },
+    { id: '8', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-рубашка "Кэжуал" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304662, tags: [], campaignTags: ['1 сентября (школа)'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 150000, spend: 145000, impressions: 400000, ctr: 0.9, orders: 50, spendShare: 11.0 },
+    { id: '9', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Пляжное платье "Бриз" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304663, tags: [], campaignTags: ['Зимняя распродажа', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 100000, spend: 98000, impressions: 150000, ctr: 2.0, orders: 100, spendShare: 25.0 },
+    { id: '10', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Трикотажное платье "Уют" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304664, tags: [], campaignTags: ['Акция поставщика'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 200000, spend: 50000, impressions: 180000, ctr: 1.0, orders: 60, spendShare: 12.5 },
+    { id: '11', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Джинсы "Classic Fit" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304665, tags: [], campaignTags: ['Распродажа витрины', 'Уценка'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 250000, spend: 120000, impressions: 450000, ctr: 1.3, orders: 95, spendShare: 16.0 },
+    { id: '12', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Брюки-карго "Комбат" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304666, tags: [], campaignTags: ['Последние размеры'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 180000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '13', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Классические брюки "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304667, tags: [], campaignTags: ['Хиты со скидкой', 'Сезонная распродажа'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 400000, spend: 390000, impressions: 800000, ctr: 1.1, orders: 150, spendShare: 19.5 },
+    { id: '14', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Спортивные брюки "Тренд" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304668, tags: [], campaignTags: ['Чёрная пятница'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 220000, spend: 215000, impressions: 300000, ctr: 1.8, orders: 110, spendShare: 22.0 },
+    { id: '15', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Льняные брюки "Лето" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304669, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 120000, spend: 30000, impressions: 100000, ctr: 0.8, orders: 40, spendShare: 10.0 },
+    { id: '16', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Сумка-шоппер "Эко" CPM от ${currentDate}`, status: 'error', statusText: 'приостановлена', campaignId: 1304670, tags: [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' }], campaignTags: ['Проблемные', 'Уценка'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 0, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
+    { id: '17', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Кожаный ремень "Классика" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304671, tags: [], campaignTags: ['Новый год', '8 марта'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 90000, spend: 85000, impressions: 120000, ctr: 2.2, orders: 130, spendShare: 28.0 },
+    { id: '18', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Шелковый платок "Париж" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304672, tags: [], campaignTags: ['Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 75000, spend: 15000, impressions: 90000, ctr: 1.0, orders: 45, spendShare: 11.5 },
+    { id: '19', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Солнцезащитные очки "Авиатор" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304673, tags: [], campaignTags: ['Акция поставщика', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 150000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Распродажа витрины'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
 ];
 
 const StatusBadge = ({ status, text }: { status: DisplayCampaign['status'], text: string }) => {
@@ -190,7 +193,7 @@ const ResultBlock = ({ successCount, errorCount, onClear }: { successCount: numb
     )
 };
 
-const EditResultBlock = ({ successCount, errorCount, onClear, failedIds = [] }: { successCount: number, errorCount: number, onClear: () => void, failedIds?: number[] }) => {
+const EditResultBlock = ({ successCount, errorCount, onClear, failedIds = [], onShowFailed }: { successCount: number, errorCount: number, onClear: () => void, failedIds?: number[], onShowFailed: (ids: number[]) => void }) => {
     const [isCopied, setIsCopied] = useState(false);
 
     const handleCopy = () => {
@@ -224,19 +227,35 @@ const EditResultBlock = ({ successCount, errorCount, onClear, failedIds = [] }: 
                     <h2 className="text-xl font-bold text-gray-900">
                         Изменения применены
                     </h2>
-                    <div className="flex items-center flex-wrap gap-x-6 gap-y-1 mt-1 text-sm">
+                    <div className="flex flex-col gap-1 mt-1 text-sm">
                        <div className="flex items-center gap-2">
                           <CheckCircle className="w-4 h-4 text-green-500"/>
                           <span className="text-gray-800 font-medium">Успешно: {successCount} {getPlural(successCount, 'кампания', 'кампании', 'кампаний')}</span>
                        </div>
                        {errorCount > 0 && (
-                          <div className="flex items-center gap-2">
-                             <AlertTriangle className="w-4 h-4 text-red-500"/>
-                             <span className="text-gray-800 font-medium">С ошибками: {errorCount} {getPlural(errorCount, 'кампания', 'кампании', 'кампаний')}</span>
+                          <div className="flex items-start gap-2 text-sm">
+                             <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5"/>
+                             <div className="text-gray-800">
+                               <div className="font-medium">
+                                 Не хватило денег для пополнения {errorCount} {getPlural(errorCount, 'кампании', 'кампаний', 'кампаний')}.
+                               </div>
+                               <div className="text-gray-700">
+                                 Эти кампании были изменены и находятся в статусе «Готово к запуску». Пополните бюджет и запустите их.
+                               </div>
+                               {failedIds && failedIds.length > 0 && (
+                                 <button
+                                   type="button"
+                                   onClick={() => onShowFailed(failedIds)}
+                                   className="mt-1 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
+                                 >
+                                   Показать в списке
+                                 </button>
+                               )}
+                             </div>
                           </div>
                        )}
                     </div>
-                     {errorCount > 0 && (
+                     {errorCount > 0 && failedIds && failedIds.length > 0 && (
                         <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3">
                             <button onClick={handleCopy} disabled={isCopied} className="flex items-center gap-2 text-sm font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all disabled:opacity-70 disabled:cursor-wait">
                                <ClipboardCheck className="w-4 h-4" />
@@ -260,9 +279,12 @@ const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () =>
     <h2 className="text-xl font-bold text-gray-900 mt-4">
       Внесем изменения через 1 минуту
     </h2>
-    <p className="text-gray-500 mt-2 text-sm max-w-md">
-      Изменения будут применены автоматически. Вы можете просмотреть их или отменить применение.
-    </p>
+    <div className="mt-2 max-w-xl px-4 py-3 rounded-lg bg-purple-50 border border-purple-100 flex items-start gap-3 text-left">
+      <AlertTriangle className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
+      <p className="text-sm text-gray-900 font-semibold">
+        Мы применяем изменения. Пожалуйста, не вносите правки в эти кампании до завершения процесса.
+      </p>
+    </div>
     <div className="flex items-center gap-4 mt-6">
       <button onClick={onCancel} className="px-5 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
         Отменить изменения
@@ -379,38 +401,502 @@ const CampaignDropdown = ({ onNavigateToCreation }: { onNavigateToCreation: () =
     );
 };
 
-const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory }: { onOpenUpload: () => void, onOpenHistory: () => void }) => {
+const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory, showUploadHint = false, onDismissUploadHint }: { onOpenUpload: () => void, onOpenHistory: () => void, showUploadHint?: boolean, onDismissUploadHint?: () => void }) => {
     const [isOpen, setIsOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
+    const tooltipRef = useRef<HTMLDivElement>(null);
+    const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const [showHoverTooltip, setShowHoverTooltip] = useState(false);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (ref.current && !ref.current.contains(event.target as Node)) {
                 setIsOpen(false);
             }
+            if (tooltipRef.current && !tooltipRef.current.contains(event.target as Node) && showUploadHint) {
+                // Don't close tooltip on outside click, only on dismiss button
+            }
         };
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            if (hoverTimerRef.current) {
+                clearTimeout(hoverTimerRef.current);
+            }
+        };
+    }, [showUploadHint]);
+
+    const handleMouseEnter = () => {
+        hoverTimerRef.current = setTimeout(() => {
+            setShowHoverTooltip(true);
+        }, 1500);
+    };
+
+    const handleMouseLeave = () => {
+        if (hoverTimerRef.current) {
+            clearTimeout(hoverTimerRef.current);
+            hoverTimerRef.current = null;
+        }
+        setShowHoverTooltip(false);
+    };
 
     return (
         <div className="relative" ref={ref}>
             <button 
                 onClick={() => setIsOpen(!isOpen)}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
                 className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
             >
                 <Download className="w-5 h-5 text-gray-500" />
                 <span>Загрузить Excel</span>
                 <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
             </button>
+            {showHoverTooltip && (
+                <div 
+                    className="absolute bottom-full left-0 mb-2 bg-gray-900 text-white rounded-lg shadow-xl z-30 px-3 py-2 text-sm whitespace-nowrap animate-in fade-in slide-in-from-bottom-2 duration-200"
+                    onMouseEnter={() => setShowHoverTooltip(true)}
+                    onMouseLeave={handleMouseLeave}
+                >
+                    Массовая загрузка изменений по кампаниям
+                    <div className="absolute top-full left-4 w-2 h-2 bg-gray-900 transform rotate-45 -mt-1"></div>
+                </div>
+            )}
             {isOpen && (
                 <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
                     <a href="#" onClick={(e) => { e.preventDefault(); onOpenUpload(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Загрузить Excel</a>
                     <a href="#" onClick={(e) => { e.preventDefault(); onOpenHistory(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">История изменений</a>
                 </div>
             )}
+            {showUploadHint && (
+                <div 
+                    ref={tooltipRef}
+                    className="absolute top-full left-0 mt-2 w-80 bg-gray-900 text-white rounded-lg shadow-xl z-30 p-4 animate-in fade-in slide-in-from-top-2 duration-200"
+                >
+                    <div className="flex items-start gap-3">
+                        <Info className="w-5 h-5 text-white shrink-0 mt-0.5" />
+                        <div className="flex-1">
+                            <p className="text-sm font-medium mb-1">Загрузите изменённый файл</p>
+                            <p className="text-xs text-gray-300 leading-relaxed">
+                                Вы скачали Excel файл с параметрами кампаний. Внесите необходимые изменения в файл и загрузите его обратно через кнопку "Загрузить Excel" для применения изменений.
+                            </p>
+                        </div>
+                        {onDismissUploadHint && (
+                            <button
+                                onClick={onDismissUploadHint}
+                                className="shrink-0 text-gray-400 hover:text-white transition-colors"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        )}
+                    </div>
+                    <div className="absolute -top-2 left-6 w-4 h-4 bg-gray-900 transform rotate-45"></div>
+                </div>
+            )}
         </div>
     );
+};
+
+const FilterDropdown = ({ 
+  isOpen, 
+  onClose, 
+  onApply, 
+  category, onCategoryChange,
+  status, onStatusChange,
+  autorefill, onAutorefillChange,
+  payment, onPaymentChange,
+  sort, onSortChange,
+  tempStatus, onTempStatusChange,
+  tempAutorefill, onTempAutorefillChange,
+  tempPayment, onTempPaymentChange,
+  tempSort, onTempSortChange,
+  tempCategory, onTempCategoryChange,
+  tempTags, onTempTagsChange,
+  tempTagsSearch, onTempTagsSearchChange,
+  tempTagsCategory, onTempTagsCategoryChange,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onApply: () => void;
+  category: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags';
+  onCategoryChange: (cat: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags') => void;
+  status: string;
+  onStatusChange: (val: string) => void;
+  autorefill: string;
+  onAutorefillChange: (val: string) => void;
+  payment: string;
+  onPaymentChange: (val: string) => void;
+  sort: string;
+  onSortChange: (val: string) => void;
+  tempStatus: string;
+  onTempStatusChange: (val: string) => void;
+  tempAutorefill: string;
+  onTempAutorefillChange: (val: string) => void;
+  tempPayment: string;
+  onTempPaymentChange: (val: string) => void;
+  tempSort: string;
+  onTempSortChange: (val: string) => void;
+  tempCategory: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags';
+  onTempCategoryChange: (cat: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags') => void;
+  tempTags: string[];
+  onTempTagsChange: (tags: string[]) => void;
+  tempTagsSearch: string;
+  onTempTagsSearchChange: (search: string) => void;
+  tempTagsCategory: string;
+  onTempTagsCategoryChange: (category: string) => void;
+}) => {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      ref={dropdownRef}
+      className="absolute top-full right-0 mt-2 w-[800px] bg-white rounded-2xl shadow-2xl max-h-[600px] overflow-hidden flex flex-col z-20 animate-in fade-in zoom-in-95 duration-100"
+    >
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Column - Categories */}
+        <div className="w-64 bg-gray-50 border-r border-gray-200 p-4 flex flex-col">
+          <h3 className="text-sm font-semibold text-gray-700 mb-4">Фильтр</h3>
+          <div className="flex flex-col gap-1">
+            <button 
+              onClick={() => onTempCategoryChange('status')} 
+              className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                tempCategory === 'status' 
+                  ? 'bg-purple-50 text-purple-700' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Статус кампаний
+            </button>
+            <button 
+              onClick={() => onTempCategoryChange('autorefill')} 
+              className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                tempCategory === 'autorefill' 
+                  ? 'bg-purple-50 text-purple-700' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Автопополнение
+            </button>
+            <button 
+              onClick={() => onTempCategoryChange('payment')} 
+              className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                tempCategory === 'payment' 
+                  ? 'bg-purple-50 text-purple-700' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Модель оплаты
+            </button>
+            <button 
+              onClick={() => onTempCategoryChange('sort')} 
+              className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                tempCategory === 'sort' 
+                  ? 'bg-purple-50 text-purple-700' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Тип сортировки кампаний
+            </button>
+            <button 
+              onClick={() => onTempCategoryChange('tags')} 
+              className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                tempCategory === 'tags' 
+                  ? 'bg-purple-50 text-purple-700' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              По тегам
+            </button>
+          </div>
+        </div>
+
+        {/* Right Column - Options */}
+        <div className="flex-1 p-6 overflow-y-auto">
+          {tempCategory === 'status' && (
+            <>
+              <div className="space-y-3">
+                {[
+                  { value: 'all-except-archived', label: 'Все, кроме архивных' },
+                  { value: 'ready-to-launch', label: 'Готовые к запуску' },
+                  { value: 'active', label: 'Активные' },
+                  { value: 'paused', label: 'Приостановленные' },
+                  { value: 'archived', label: 'Архивные' }
+                ].map(option => (
+                  <label key={option.value} className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      tempStatus === option.value 
+                        ? 'border-purple-600 bg-purple-600' 
+                        : 'border-gray-300 group-hover:border-purple-400'
+                    }`}>
+                      {tempStatus === option.value && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                    </div>
+                    <span className={`text-sm ${
+                      tempStatus === option.value 
+                        ? 'text-gray-900 font-medium' 
+                        : 'text-gray-700'
+                    }`}>
+                      {option.label}
+                    </span>
+                    <input 
+                      type="radio" 
+                      name="status" 
+                      value={option.value} 
+                      checked={tempStatus === option.value} 
+                      onChange={(e) => onTempStatusChange(e.target.value)} 
+                      className="sr-only" 
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tempCategory === 'autorefill' && (
+            <>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Автопополнение</h3>
+              <div className="space-y-3">
+                {[
+                  { value: 'all', label: 'Все' },
+                  { value: 'enabled', label: 'Включено' },
+                  { value: 'disabled', label: 'Выключено' }
+                ].map(option => (
+                  <label key={option.value} className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      tempAutorefill === option.value 
+                        ? 'border-purple-600 bg-purple-600' 
+                        : 'border-gray-300 group-hover:border-purple-400'
+                    }`}>
+                      {tempAutorefill === option.value && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                    </div>
+                    <span className={`text-sm ${
+                      tempAutorefill === option.value 
+                        ? 'text-gray-900 font-medium' 
+                        : 'text-gray-700'
+                    }`}>
+                      {option.label}
+                    </span>
+                    <input 
+                      type="radio" 
+                      name="autorefill" 
+                      value={option.value} 
+                      checked={tempAutorefill === option.value} 
+                      onChange={(e) => onTempAutorefillChange(e.target.value)} 
+                      className="sr-only" 
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tempCategory === 'payment' && (
+            <>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Модель оплаты</h3>
+              <div className="space-y-3">
+                {[
+                  { value: 'all', label: 'Все' },
+                  { value: 'CPC', label: 'CPC' },
+                  { value: 'CPM', label: 'CPM' }
+                ].map(option => (
+                  <label key={option.value} className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      tempPayment === option.value 
+                        ? 'border-purple-600 bg-purple-600' 
+                        : 'border-gray-300 group-hover:border-purple-400'
+                    }`}>
+                      {tempPayment === option.value && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                    </div>
+                    <span className={`text-sm ${
+                      tempPayment === option.value 
+                        ? 'text-gray-900 font-medium' 
+                        : 'text-gray-700'
+                    }`}>
+                      {option.label}
+                    </span>
+                    <input 
+                      type="radio" 
+                      name="payment" 
+                      value={option.value} 
+                      checked={tempPayment === option.value} 
+                      onChange={(e) => onTempPaymentChange(e.target.value)} 
+                      className="sr-only" 
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tempCategory === 'sort' && (
+            <>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Тип сортировки кампаний</h3>
+              <div className="space-y-3">
+                {[
+                  { value: 'by-date', label: 'По дате создания' },
+                  { value: 'by-name', label: 'По названию' }
+                ].map(option => (
+                  <label key={option.value} className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      tempSort === option.value 
+                        ? 'border-purple-600 bg-purple-600' 
+                        : 'border-gray-300 group-hover:border-purple-400'
+                    }`}>
+                      {tempSort === option.value && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                    </div>
+                    <span className={`text-sm ${
+                      tempSort === option.value 
+                        ? 'text-gray-900 font-medium' 
+                        : 'text-gray-700'
+                    }`}>
+                      {option.label}
+                    </span>
+                    <input 
+                      type="radio" 
+                      name="sort" 
+                      value={option.value} 
+                      checked={tempSort === option.value} 
+                      onChange={(e) => onTempSortChange(e.target.value)} 
+                      className="sr-only" 
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tempCategory === 'tags' && (
+            <>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">По тегам</h3>
+              
+              {/* Search for tags */}
+              <div className="mb-6">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Поиск тегов"
+                    value={tempTagsSearch}
+                    onChange={(e) => onTempTagsSearchChange(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
+                  />
+                </div>
+              </div>
+
+              {/* Tags list */}
+              <div className="mb-6">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Теги</h4>
+                <div className="flex flex-wrap gap-2">
+                  {['Сезонная распродажа', 'Ликвидация остатков', 'Чёрная пятница', 'Новый год', '8 марта', '1 сентября (школа)', 'Летняя распродажа', 'Зимняя распродажа', 'Межсезонье', 'Скидка по купону', 'Акция поставщика', 'Распродажа витрины', 'Уценка', 'Последние размеры', 'Хиты со скидкой'].filter(tag => 
+                    tag.toLowerCase().includes(tempTagsSearch.toLowerCase())
+                  ).map(tag => (
+                    <label 
+                      key={tag}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
+                        tempTags.includes(tag)
+                          ? 'bg-purple-50 border-purple-600 text-purple-700'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-purple-300'
+                      }`}
+                    >
+                      <input 
+                        type="checkbox" 
+                        checked={tempTags.includes(tag)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            onTempTagsChange([...tempTags, tag]);
+                          } else {
+                            onTempTagsChange(tempTags.filter(t => t !== tag));
+                          }
+                        }}
+                        className="sr-only"
+                      />
+                      <span className="text-sm font-medium">{tag}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Category selection */}
+              <div className="mb-6">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Категория</h4>
+                <div className="space-y-2">
+                  {['Брюки', 'Платья', 'Футболки', 'Аксессуары', 'Обувь', 'Электроника', 'Дом', 'Кольца', 'Фоторамки', 'Спортивная одежда', 'Косметика', 'Игрушки'].map(category => (
+                    <label key={category} className="flex items-center gap-3 cursor-pointer group">
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                        tempTagsCategory === category 
+                          ? 'border-purple-600 bg-purple-600' 
+                          : 'border-gray-300 group-hover:border-purple-400'
+                      }`}>
+                        {tempTagsCategory === category && <CheckCircle className="w-3 h-3 text-white" />}
+                      </div>
+                      <span className={`text-sm ${
+                        tempTagsCategory === category 
+                          ? 'text-gray-900 font-medium' 
+                          : 'text-gray-700'
+                      }`}>
+                        {category}
+                      </span>
+                      <input 
+                        type="radio" 
+                        name="tagsCategory" 
+                        value={category} 
+                        checked={tempTagsCategory === category} 
+                        onChange={(e) => onTempTagsCategoryChange(e.target.value)} 
+                        className="sr-only" 
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Reset button */}
+              {(tempTags.length > 0 || tempTagsCategory !== '' || tempTagsSearch !== '') && (
+                <div className="pt-4 border-t border-gray-200">
+                  <button
+                    onClick={() => {
+                      onTempTagsChange([]);
+                      onTempTagsCategoryChange('');
+                      onTempTagsSearchChange('');
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                  >
+                    Сбросить фильтр
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Footer with buttons */}
+      <div className="border-t border-gray-200 p-4 flex items-center justify-end gap-3">
+        <button 
+          onClick={onClose} 
+          className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+        >
+          Отмена
+        </button>
+        <button 
+          onClick={onApply} 
+          className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm transition-all"
+        >
+          Применить
+        </button>
+      </div>
+    </div>
+  );
 };
 
 
@@ -430,10 +916,133 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onOpenReview,
     onCancelEdits,
     onOpenHistoryModal,
+    showUploadHint = false,
+    onDismissUploadHint,
 }) => {
-  const [campaigns, setCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
+  const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
   const [currentPage, setCurrentPage] = useState(1);
   const CAMPAIGNS_PAGE_SIZE = 10;
+
+  // Filter states
+  const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+  const [filterCategory, setFilterCategory] = useState<'status' | 'autorefill' | 'payment' | 'sort' | 'tags'>('status');
+  const [filterStatus, setFilterStatus] = useState<string>('all-except-archived');
+  const [filterAutorefill, setFilterAutorefill] = useState<string>('all');
+  const [filterPayment, setFilterPayment] = useState<string>('all');
+  const [filterSort, setFilterSort] = useState<string>('by-date');
+  const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [filterTagsCategory, setFilterTagsCategory] = useState<string>('');
+
+  // Temporary filter states for dropdown
+  const [tempFilterCategory, setTempFilterCategory] = useState<'status' | 'autorefill' | 'payment' | 'sort' | 'tags'>('status');
+  const [tempFilterStatus, setTempFilterStatus] = useState<string>('all-except-archived');
+  const [tempFilterAutorefill, setTempFilterAutorefill] = useState<string>('all');
+  const [tempFilterPayment, setTempFilterPayment] = useState<string>('all');
+  const [tempFilterSort, setTempFilterSort] = useState<string>('by-date');
+  const [tempTags, setTempTags] = useState<string[]>([]);
+  const [tempTagsSearch, setTempTagsSearch] = useState<string>('');
+  const [tempTagsCategory, setTempTagsCategory] = useState<string>('');
+  const [failedFilterIds, setFailedFilterIds] = useState<number[] | null>(null);
+
+  // Initialize temporary states when dropdown opens
+  useEffect(() => {
+    if (isFilterDropdownOpen) {
+      setTempFilterCategory(filterCategory);
+      setTempFilterStatus(filterStatus);
+      setTempFilterAutorefill(filterAutorefill);
+      setTempFilterPayment(filterPayment);
+      setTempFilterSort(filterSort);
+      setTempTags(filterTags);
+      setTempTagsSearch('');
+      setTempTagsCategory(filterTagsCategory);
+    }
+  }, [isFilterDropdownOpen, filterCategory, filterStatus, filterAutorefill, filterPayment, filterSort, filterTags, filterTagsCategory]);
+
+  const handleApplyFilters = () => {
+    setFilterCategory(tempFilterCategory);
+    setFilterStatus(tempFilterStatus);
+    setFilterAutorefill(tempFilterAutorefill);
+    setFilterPayment(tempFilterPayment);
+    setFilterSort(tempFilterSort);
+    setFilterTags(tempTags);
+    setFilterTagsCategory(tempTagsCategory);
+    setIsFilterDropdownOpen(false);
+  };
+
+  const handleCancelFilters = () => {
+    // Reset temporary states to current applied states
+    setTempFilterCategory(filterCategory);
+    setTempFilterStatus(filterStatus);
+    setTempFilterAutorefill(filterAutorefill);
+    setTempFilterPayment(filterPayment);
+    setTempFilterSort(filterSort);
+    setTempTags(filterTags);
+    setTempTagsSearch('');
+    setTempTagsCategory(filterTagsCategory);
+    setIsFilterDropdownOpen(false);
+  };
+
+  // Filter and sort campaigns
+  const campaigns = React.useMemo(() => {
+    let filtered = [...allCampaigns];
+
+    // Filter by status
+    if (filterStatus !== 'all-except-archived') {
+      if (filterStatus === 'ready-to-launch') {
+        filtered = filtered.filter(c => c.status === 'draft');
+      } else if (filterStatus === 'active') {
+        filtered = filtered.filter(c => c.status === 'active');
+      } else if (filterStatus === 'paused') {
+        filtered = filtered.filter(c => c.status === 'paused');
+      } else if (filterStatus === 'archived') {
+        filtered = filtered.filter(c => c.status === 'error');
+      }
+    } else {
+      filtered = filtered.filter(c => c.status !== 'error');
+    }
+
+    // Filter by autorefill
+    if (filterAutorefill !== 'all') {
+      if (filterAutorefill === 'enabled') {
+        filtered = filtered.filter(c => c.autoRefill === true);
+      } else if (filterAutorefill === 'disabled') {
+        filtered = filtered.filter(c => c.autoRefill === false);
+      }
+    }
+
+    // Filter by payment model
+    if (filterPayment !== 'all') {
+      filtered = filtered.filter(c => c.type === filterPayment);
+    }
+
+    // Filter by tags
+    if (filterTags.length > 0) {
+      filtered = filtered.filter(c => {
+        if (!c.campaignTags || c.campaignTags.length === 0) return false;
+        return filterTags.some(tag => c.campaignTags.includes(tag));
+      });
+    }
+
+    // Filter by tags category
+    if (filterTagsCategory && filterTagsCategory !== '') {
+      // This would filter by category if needed - for now we'll skip this as categories are not in DisplayCampaign
+      // Can be implemented later if category field is added
+    }
+
+    // Filter by failed IDs (from edit result block)
+    if (failedFilterIds && failedFilterIds.length > 0) {
+      const idSet = new Set(failedFilterIds);
+      filtered = filtered.filter(c => idSet.has(c.campaignId));
+    }
+
+    // Sort campaigns
+    if (filterSort === 'by-name') {
+      filtered.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    // by-date is default order (no sorting needed)
+
+    return filtered;
+  }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterTags, filterTagsCategory, failedFilterIds]);
 
   const paginatedCampaigns = campaigns.slice(
     (currentPage - 1) * CAMPAIGNS_PAGE_SIZE,
@@ -460,7 +1069,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }
 
   const handleStatusToggle = (campaignId: string, isChecked: boolean) => {
-    setCampaigns(prevCampaigns =>
+    setAllCampaigns(prevCampaigns =>
         prevCampaigns.map(campaign => {
             if (campaign.id === campaignId) {
                 const newStatus = isChecked ? 'active' : 'paused';
@@ -490,8 +1099,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         <EditResultBlock 
           successCount={editResult.success}
           errorCount={editResult.error}
-          onClear={onClearEditResult}
+          onClear={() => {
+            onClearEditResult();
+            setFailedFilterIds(null);
+          }}
           failedIds={editResult.failedIds}
+          onShowFailed={(ids) => {
+            if (ids && ids.length > 0) {
+              setFailedFilterIds(ids);
+              // Сбрасываем пагинацию на первую страницу, чтобы точно увидеть отфильтрованные кампании
+              setCurrentPage(1);
+            }
+          }}
         />
       )}
 
@@ -504,21 +1123,59 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               <ExcelActionsDropdown 
                   onOpenUpload={onOpenUploadEditsModal}
                   onOpenHistory={onOpenHistoryModal}
+                  showUploadHint={showUploadHint}
+                  onDismissUploadHint={onDismissUploadHint}
               />
               <div className="relative flex-grow ml-2">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input 
                   type="text" 
-                  placeholder="Поиск по ID кампании или названию"
+                  placeholder="поиск по ID, артикуту и названию"
                   className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
               />
               </div>
               <DateFilter defaultLabel="Период статистики" />
               <DateFilter defaultLabel="Дата создания" />
-              <button className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors">
-              <Filter className="w-5 h-5 text-gray-500" />
-              <span>Фильтр</span>
-              </button>
+              <div className="relative">
+                <button 
+                  onClick={() => setIsFilterDropdownOpen(prev => !prev)} 
+                  className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <Filter className="w-5 h-5 text-gray-500" />
+                  <span>Фильтр</span>
+                </button>
+                <FilterDropdown
+                  isOpen={isFilterDropdownOpen}
+                  onClose={handleCancelFilters}
+                  onApply={handleApplyFilters}
+                  category={filterCategory}
+                  onCategoryChange={setFilterCategory}
+                  status={filterStatus}
+                  onStatusChange={setFilterStatus}
+                  autorefill={filterAutorefill}
+                  onAutorefillChange={setFilterAutorefill}
+                  payment={filterPayment}
+                  onPaymentChange={setFilterPayment}
+                  sort={filterSort}
+                  onSortChange={setFilterSort}
+                  tempCategory={tempFilterCategory}
+                  onTempCategoryChange={setTempFilterCategory}
+                  tempStatus={tempFilterStatus}
+                  onTempStatusChange={setTempFilterStatus}
+                  tempAutorefill={tempFilterAutorefill}
+                  onTempAutorefillChange={setTempFilterAutorefill}
+                  tempPayment={tempFilterPayment}
+                  onTempPaymentChange={setTempFilterPayment}
+                  tempSort={tempFilterSort}
+                  onTempSortChange={setTempFilterSort}
+                  tempTags={tempTags}
+                  onTempTagsChange={setTempTags}
+                  tempTagsSearch={tempTagsSearch}
+                  onTempTagsSearchChange={setTempTagsSearch}
+                  tempTagsCategory={tempTagsCategory}
+                  onTempTagsCategoryChange={setTempTagsCategory}
+                />
+              </div>
           </div>
 
           <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
@@ -567,6 +1224,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                                   </div>
                                               ))}
                                           </div>
+                                          {c.campaignTags && c.campaignTags.length > 0 && (
+                                              <div className="flex items-center gap-1.5 text-xs text-gray-600 mt-1.5 flex-wrap">
+                                                  {c.campaignTags.map((tag, idx) => (
+                                                      <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md">
+                                                          {tag}
+                                                      </span>
+                                                  ))}
+                                              </div>
+                                          )}
                                       </div>
                                   </div>
                               </td>

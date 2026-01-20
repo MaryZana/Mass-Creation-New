@@ -65,12 +65,18 @@ for (let i = 0; i < 15; i++) { // Generate 15 campaigns
             } while (usedClusterNames.has(clusterName));
             usedClusterNames.add(clusterName);
 
-            const oldBid = 100 + (Math.floor(Math.random() * 20)) * 5;
-            const shouldChange = Math.random() > 0.7;
+            // For first 5 campaigns (i < 5), set oldBid below minimum (300) to show minimum bid change
+            const oldBid = i < 5 ? (100 + Math.floor(Math.random() * 40) * 5) : (100 + (Math.floor(Math.random() * 20)) * 5);
+            // For first 5 campaigns (i < 5), always change bids to ensure highlighting works
+            const shouldChange = i < 5 ? true : Math.random() > 0.7;
+            // For first 5 campaigns, ensure newBid is at least 300 (minimum bid)
+            const newBidValue = shouldChange 
+              ? (i < 5 ? Math.max(300, oldBid + 50) : oldBid + (Math.floor(Math.random() * 10) - 4) * 5)
+              : oldBid;
             clusters.push({
                 name: clusterName,
                 oldBid: oldBid,
-                newBid: shouldChange ? oldBid + (Math.floor(Math.random() * 10) - 4) * 5 : oldBid,
+                newBid: newBidValue,
             });
         }
 

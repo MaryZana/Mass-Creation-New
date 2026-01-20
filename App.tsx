@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -1190,6 +1190,7 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isProcessingFile, setIsProcessingFile] = useState(false);
+    const [isExcelHelpOpen, setIsExcelHelpOpen] = useState(false);
 
     const handleSetStep = (newStep: number) => {
         if (newStep === 1 && step > 1) {
@@ -1250,15 +1251,22 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
             case 1:
                 return (
                     <div>
-                        <p className="text-center text-gray-600 mb-6">Загрузите файл с изменениями по кампаниям, мы применим их массово.</p>
                         {!file ? (
                              <div onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`p-8 border-2 border-dashed rounded-xl text-center transition-colors ${isDragging ? 'border-purple-500 bg-purple-50' : 'border-gray-300'}`}>
                                 <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.csv" className="hidden" />
                                 <UploadCloud className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                                <h3 className="font-semibold text-gray-800">Перетащите файл сюда</h3>
-                                <p className="text-gray-500 text-sm">или</p>
-                                <button onClick={() => fileInputRef.current?.click()} className="mt-2 text-purple-600 font-semibold hover:underline">Выберите файл на компьютере</button>
-                                <p className="text-xs text-gray-400 mt-4">Поддерживаемые форматы: XLSX, CSV</p>
+                                <p className="font-medium text-gray-800 mb-1">
+                                    Загрузите изменния по кампаниям в формате файла XLSX, CSV
+                                </p>
+                                <p className="text-xs text-gray-500">
+                                    Одновременно можно внести изменения не более чем в 25 кампаний
+                                </p>
+                                <button
+                                    onClick={() => fileInputRef.current?.click()}
+                                    className="mt-3 text-sm font-semibold text-purple-600 hover:text-purple-700 hover:underline"
+                                >
+                                    Выберите файл на компьютере
+                                </button>
                             </div>
                         ) : (
                             <div className="my-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
@@ -1278,8 +1286,6 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
                                 </div>
                             </div>
                         )}
-                        <p className="text-xs text-gray-500 mt-4 text-center">Одновременно можно внести изменения не более чем в 25 кампаний.</p>
-
                         <div className="mt-6 flex justify-end">
                             <button 
                                 onClick={() => handleSetStep(2)} 
@@ -1298,8 +1304,16 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
                         <div className="space-y-2 text-sm">
                             <div className="flex justify-between"><span>Кампании:</span><span className="font-medium">24</span></div>
                             <div className="flex justify-between"><span>Товары:</span><span className="font-medium">87</span></div>
+                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
+                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                                <span className="text-sm text-gray-700">Поменяли минимальные ставки для 5 кампаний</span>
+                            </div>
                             <div className="border-t pt-2 my-2"></div>
-                            <div className="flex justify-between font-bold text-base"><span>Будет списано с ЕЛС:</span><span>125 400 ₽</span></div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between"><span>Общая сумма бюджета всех редактируемых кампаний:</span><span className="font-medium">250 000 ₽</span></div>
+                                <div className="flex justify-between font-bold text-base"><span>Будет списано с ЕЛС:</span><span>125 400 ₽</span></div>
+                                <p className="text-xs text-gray-500 mt-1">(часть кампаний уже пополнены деньгами, спишем только недостающую часть)</p>
+                            </div>
                         </div>
                         <div className="mt-6 flex justify-between items-center">
                             <button onClick={() => handleSetStep(1)} className="px-5 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
@@ -1321,7 +1335,11 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
                         <p className="text-gray-600 text-sm mt-4">
                             Изменения будут применены к <span className="font-bold text-gray-800">24 кампаниям</span> и <span className="font-bold text-gray-800">87 товарам</span>.
                         </p>
-                        <p className="text-gray-600 text-sm mt-2">Будет списано с ЕЛС: <span className="font-bold text-lg text-gray-800">125 400 ₽</span></p>
+                        <div className="mt-4 space-y-1">
+                            <p className="text-gray-600 text-sm">Общая сумма бюджета всех редактируемых кампаний: <span className="font-bold text-lg text-gray-800">250 000 ₽</span></p>
+                            <p className="text-gray-600 text-sm">Будет списано с ЕЛС: <span className="font-bold text-lg text-gray-800">125 400 ₽</span></p>
+                            <p className="text-xs text-gray-500 mt-1">(часть кампаний уже пополнены деньгами, спишем только недостающую часть)</p>
+                        </div>
                          <div className="mt-6 flex justify-center gap-3">
                             <button onClick={() => handleSetStep(2)} className="px-6 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Назад</button>
                             <button onClick={onApply} className="px-6 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">Применить и списать</button>
@@ -1335,7 +1353,25 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
             <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl m-auto" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                    <h2 className="text-xl font-bold text-gray-900">Загрузить Excel с правками</h2>
+                    <div className="flex-1">
+                        <h2 className="text-xl font-bold text-gray-900">Загрузить Excel с правками</h2>
+                        <button
+                            type="button"
+                            onClick={() => setIsExcelHelpOpen(prev => !prev)}
+                            className="mt-2 flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
+                        >
+                            <HelpCircle className="w-4 h-4 text-purple-500" />
+                            <span>Где взять Excel?</span>
+                            <ChevronDown
+                                className={`w-4 h-4 text-gray-500 transition-transform ${isExcelHelpOpen ? 'rotate-180' : ''}`}
+                            />
+                        </button>
+                        {isExcelHelpOpen && (
+                            <p className="mt-2 text-xs text-gray-600 max-w-2xl">
+                                В списке кампаний выберите нужные кампании, нажмите «Скачать Excel для правок», внесите изменения в файле и затем загрузите его здесь.
+                            </p>
+                        )}
+                    </div>
                     <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-100"><X className="w-6 h-6" /></button>
                 </div>
 
@@ -1353,19 +1389,19 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
 const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onClear }: { count: number, onConfigureAR: () => void, onDownload: () => void, onEdit?: () => void, onClear: () => void }) => {
     return (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md rounded-xl shadow-2xl z-[80] p-2 flex items-center gap-2 border border-gray-200 animate-in slide-in-from-bottom-4 fade-in">
-            <span className="text-sm font-medium text-gray-800 px-3">Выбрано: {count}</span>
+            <span className="text-sm font-medium text-gray-800 px-3 whitespace-nowrap">Выбрано: {count}</span>
             <div className="h-6 w-px bg-gray-200"></div>
             {onEdit && (
-                <button onClick={onEdit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
+                <button onClick={onEdit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
                     <Edit2 className="w-4 h-4 text-gray-500" />
                     <span>Редактировать</span>
                 </button>
             )}
-            <button onClick={onConfigureAR} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
+            <button onClick={onConfigureAR} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
                 <RefreshCw className="w-4 h-4 text-gray-500" />
                 <span>Настроить АП</span>
             </button>
-            <button onClick={onDownload} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
+            <button onClick={onDownload} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
                 <Download className="w-4 h-4 text-gray-500" />
                 <span>Скачать Excel для правок</span>
             </button>
@@ -1436,8 +1472,11 @@ export default function App() {
   const [pendingNavigationAction, setPendingNavigationAction] = useState<(() => void) | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<'idle' | 'loading'>('idle');
   const [downloadCount, setDownloadCount] = useState(0);
+  const [isEditDownloadModalOpen, setIsEditDownloadModalOpen] = useState(false);
+  const [showUploadHint, setShowUploadHint] = useState(false);
   const [isApplyingEdits, setIsApplyingEdits] = useState(false);
   const [editResult, setEditResult] = useState<{ success: number; error: number; failedIds?: number[] } | null>(null);
+  const [isFromExcelModal, setIsFromExcelModal] = useState(false);
   const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
 
@@ -1470,7 +1509,12 @@ export default function App() {
         setDownloadStatus('idle');
         setToastMessage("Загрузка завершена");
         setShowToast(true);
+        setShowUploadHint(true); // Show hint after download
     }, 2000);
+  };
+
+  const handleOpenEditDownloadModal = () => {
+    setIsEditDownloadModalOpen(true);
   };
 
   const handleApplyEdits = () => {
@@ -1586,20 +1630,10 @@ export default function App() {
       const timer1 = setTimeout(() => setLoadingStatusText("Загружаем товары в группы..."), 1200);
       const timer2 = setTimeout(() => {
           const sourceFile = items[0]?.source || "Ручное добавление";
-          const existingGroupIndex = templateGroups.findIndex(g => g.config.paymentModel === config.paymentModel && g.config.bidType === config.bidType && g.sourceFiles.has(sourceFile));
-          if (existingGroupIndex !== -1) {
-            setTemplateGroups(prev => {
-              const newGroups = [...prev];
-              const existingGroup = newGroups[existingGroupIndex];
-              newGroups[existingGroupIndex] = { ...existingGroup, campaigns: [...existingGroup.campaigns, ...items] };
-              return newGroups;
-            });
-            setToastMessage(`${items.length} ${getPlural(items.length, 'товар', 'товара', 'товаров')} добавлено в существующую группу`);
-          } else {
-            const newGroup: TemplateGroup = { id: `manual-${Date.now()}`, config, campaigns: items, duplicateNmIds: new Set(), correctedNmIds: new Set(), currentPage: 1, sourceFiles: new Set([sourceFile]) };
-            setTemplateGroups(prev => [...prev, newGroup]);
-            setToastMessage(`Создана новая группа с ${items.length} ${getPlural(items.length, 'товаром', 'товарами', 'товарами')}`);
-          }
+          // Always create a new group instead of merging with existing ones
+          const newGroup: TemplateGroup = { id: `manual-${Date.now()}`, config, campaigns: items, duplicateNmIds: new Set(), correctedNmIds: new Set(), currentPage: 1, sourceFiles: new Set([sourceFile]) };
+          setTemplateGroups(prev => [...prev, newGroup]);
+          setToastMessage(`Создана новая группа с ${items.length} ${getPlural(items.length, 'товаром', 'товарами', 'товарами')}`);
           setShowToast(true);
           setIsTableLoading(false);
           clearTimeout(timer1);
@@ -2015,7 +2049,14 @@ export default function App() {
 
   if (appState === 'editing') {
     return (
-      <MassEditPage onNavigateToList={() => handleNavigationAttempt(handleNavigateToList)} />
+      <MassEditPage 
+        onNavigateToList={() => {
+          setIsFromExcelModal(false);
+          handleNavigationAttempt(handleNavigateToList);
+        }} 
+        onStartApplyingEdits={handleApplyEdits}
+        fromExcelModal={isFromExcelModal}
+      />
     );
   }
 
@@ -2040,6 +2081,8 @@ export default function App() {
             onCancelEdits={handleCancelEdits}
             onOpenReview={() => setIsReviewEditsModalOpen(true)}
             onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
+            showUploadHint={showUploadHint}
+            onDismissUploadHint={() => setShowUploadHint(false)}
           />
         </main>
          <UploadEditsModal 
@@ -2048,6 +2091,7 @@ export default function App() {
           onApply={handleApplyEdits}
           onOpenReview={() => {
             setIsUploadEditsModalOpen(false);
+            setIsFromExcelModal(true);
             handleNavigationAttempt(handleNavigateToEditing);
           }}
         />
@@ -2056,6 +2100,7 @@ export default function App() {
           onClose={() => setIsReviewEditsModalOpen(false)}
           onEdit={() => {
             setIsReviewEditsModalOpen(false);
+            setIsFromExcelModal(false);
             handleNavigationAttempt(handleNavigateToEditing);
           }}
         />
@@ -2069,14 +2114,104 @@ export default function App() {
           <BulkActionIsland 
             count={selectedListedCampaignIds.length}
             onClear={() => setSelectedListedCampaignIds([])}
-            onEdit={() => handleNavigationAttempt(handleNavigateToEditing)}
+            onEdit={() => {
+              setIsFromExcelModal(false);
+              handleNavigationAttempt(handleNavigateToEditing);
+            }}
             onConfigureAR={() => {
               setToastMessage("Функция 'Настроить АП' в разработке");
               setShowToast(true);
             }}
-            onDownload={handleDownloadForEdit}
+            onDownload={handleOpenEditDownloadModal}
           />
         )}
+
+        {isEditDownloadModalOpen && (
+          <div
+            className="fixed inset-0 z-[96] bg-black/50 flex items-center justify-center p-4"
+            onClick={() => setIsEditDownloadModalOpen(false)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-bold text-gray-900">Скачать Excel для правок</h2>
+                  <p className="mt-1 text-sm text-gray-600">Какие параметры будете менять?</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsEditDownloadModalOpen(false)}
+                  className="p-1 rounded-full text-gray-400 hover:bg-gray-100"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 mb-6">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 text-purple-600 border-gray-300 rounded"
+                    defaultChecked
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">Базовые настройки</div>
+                    <div className="text-xs text-gray-500 mt-0.5">Бюджет, автопополнение</div>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 text-purple-600 border-gray-300 rounded"
+                    defaultChecked
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">Ставки</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Ставки и настройка преследования ставок
+                    </div>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-4 w-4 text-purple-600 border-gray-300 rounded"
+                    defaultChecked
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-gray-900">Кластера</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      Настройка ставок по кластерам
+                    </div>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsEditDownloadModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsEditDownloadModalOpen(false);
+                    handleDownloadForEdit();
+                  }}
+                  className="px-5 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg"
+                >
+                  Скачать
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {downloadStatus === 'loading' && <DownloadNotification count={downloadCount} />}
         <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
       </div>
@@ -2226,8 +2361,8 @@ export default function App() {
                             </button>
                         )}
                     </div>
-                    <MultiSelect options={uniqueSources} selected={selectedSources} onChange={setSelectedSources} placeholder="Источник" className="w-full sm:w-auto sm:min-w-[260px]" />
-                    <MultiSelect options={uniqueCategories} selected={selectedCategories} onChange={setSelectedCategories} placeholder="Категория" className="w-full sm:w-auto sm:min-w-[260px]" />
+                    <MultiSelect options={uniqueSources} selected={selectedSources} onChange={setSelectedSources} placeholder="Источник" className="w-full sm:w-auto sm:min-w-[260px]" autoApply={true} />
+                    <MultiSelect options={uniqueCategories} selected={selectedCategories} onChange={setSelectedCategories} placeholder="Категория" className="w-full sm:w-auto sm:min-w-[260px]" autoApply={true} />
                 </div>
                 {hasActiveFilterTags && (
                   <div className="mt-4 flex items-center flex-wrap gap-2">

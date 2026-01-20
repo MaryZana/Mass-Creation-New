@@ -8,6 +8,7 @@ interface MultiSelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  autoApply?: boolean;
 }
 
 export const MultiSelect: React.FC<MultiSelectProps> = ({
@@ -17,6 +18,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   placeholder = 'Выберите категории',
   className,
   disabled = false,
+  autoApply = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [tempSelected, setTempSelected] = useState<string[]>([]);
@@ -44,11 +46,13 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   }, []);
 
   const toggleOption = (option: string) => {
-    setTempSelected(
-      tempSelected.includes(option)
-        ? tempSelected.filter(item => item !== option)
-        : [...tempSelected, option]
-    );
+    const newSelection = tempSelected.includes(option)
+      ? tempSelected.filter(item => item !== option)
+      : [...tempSelected, option];
+    setTempSelected(newSelection);
+    if (autoApply) {
+      onChange(newSelection);
+    }
   };
   
   const handleApply = () => {
@@ -132,20 +136,22 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
             )}
           </div>
 
-           <div className="bg-gray-50 border-t border-gray-100 p-2 flex items-center justify-between gap-2">
-            <button 
-              onClick={handleReset}
-              className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              Сбросить
-            </button>
-            <button 
-              onClick={handleApply}
-              className="px-6 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm transition-all"
-            >
-               Применить
-            </button>
-          </div>
+          {!autoApply && (
+            <div className="bg-gray-50 border-t border-gray-100 p-2 flex items-center justify-between gap-2">
+              <button 
+                onClick={handleReset}
+                className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                Сбросить
+              </button>
+              <button 
+                onClick={handleApply}
+                className="px-6 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm transition-all"
+              >
+                 Применить
+              </button>
+            </div>
+          )}
 
         </div>
       )}
