@@ -377,7 +377,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
                   </div>
                   <p className="text-xs text-gray-500 flex-1">
-                    Равномерно распределим сумму лимита в течении дня
                   </p>
                 </div>
                 <div className="flex items-center gap-2 mt-2">
@@ -441,7 +440,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                 </button>
                 <div className="flex items-center gap-2 flex-1 flex-wrap">
                   <span className="text-base text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
-                    Единая ставка: продвижение сразу в поиске и рекомендациях,
+                    Единая ставка: продвижение сразу в поиске, каталоге и рекомендациях, мин. ставка 30 - 230 ₽ в зависимости от категории товаров
                   </span>
                   {bidType === 'unified' ? (
                     <>
@@ -474,7 +473,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                 </button>
                 <div className="flex items-center gap-2 flex-1 flex-wrap">
                   <span className="text-base text-[#4A4A59]" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
-                    Ручная ставка: выбирайте зоны показов и ставку для них,
+                    Ручная ставка: выбирайте зоны показов и ставку для них, мин. ставка 40 - 500 ₽ в зависимости от категории товаров
                   </span>
                   {bidType === 'manual' ? (
                     <>
@@ -627,15 +626,14 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                 options={MOCK_PRODUCTS}
                 selected={products}
                 onChange={(selected) => {
-                  // Ограничиваем выбор только одним товаром - берем последний выбранный
-                  const singleProduct = selected.length > 0 ? [selected[selected.length - 1]] : [];
-                  setProducts(singleProduct);
+                  setProducts(selected);
                   setIsAddProductsModalOpen(false);
                   setToastMessage('Товар добавлен');
                   setShowToast(true);
                 }}
                 isCpcMode={paymentModel === 'CPC'}
                 submitLabel="Добавить товар"
+                singleSelect={true}
               />
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">

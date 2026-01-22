@@ -58,6 +58,51 @@ const CompactLaunchLoader: React.FC<{ total: number }> = ({ total }) => (
 );
 
 
+const Toast = ({ show, message, onClose, isSuccess = false }: { show: boolean, message: string, onClose: () => void, isSuccess?: boolean }) => {
+  useEffect(() => {
+    if (show) {
+      const timer = setTimeout(onClose, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [show, onClose]);
+  
+  if (!show) return null;
+  
+  return (
+    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 ${isSuccess ? 'bg-green-600' : 'bg-gray-900'} text-white px-6 py-3 rounded-lg shadow-xl z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-md`}>
+      <span className="font-medium whitespace-pre-line">{message}</span>
+    </div>
+  );
+};
+
+const DailyLimitInfoTooltip: React.FC = () => {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <div 
+      className="relative inline-block"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      <HelpCircle className="w-4 h-4 text-gray-600 cursor-help" />
+      {isVisible && (
+        <>
+          <div className="absolute left-1/2 -translate-x-1/2 top-full w-80 h-2" onMouseEnter={() => setIsVisible(true)}></div>
+          <div 
+            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+            onMouseEnter={() => setIsVisible(true)}
+            onMouseLeave={() => setIsVisible(false)}
+          >
+            <p className="font-semibold mb-2">Как работает дневной лимит?</p>
+            <p className="mb-2">Сумму, которую вы зададите в лимите мы будем расходовать в течение дня равномерно, она не сгорит за 1-2 часа. Так вы достигаете наилучших показателей по показам.</p>
+            <a href="#" className="text-purple-300 hover:underline">Читать подробнее</a>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const ToggleSwitch = ({ id, checked, onChange, disabled = false }: { id?: string; checked: boolean; onChange: (checked: boolean) => void, disabled?: boolean }) => ( <button id={id} role="switch" aria-checked={checked} onClick={() => !disabled && onChange(!checked)} disabled={disabled} className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${ disabled ? 'cursor-not-allowed bg-gray-200' : 'cursor-pointer' } ${ checked ? (disabled ? 'bg-purple-300' : 'bg-purple-600') : 'bg-gray-300' }`} > <span aria-hidden="true" className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${ checked ? 'translate-x-3' : 'translate-x-0' }`} /> </button> );
 
 const Pagination = ({ total, pageSize, current, onChange }: { total: number, pageSize: number, current: number, onChange: (page: number) => void }) => {
@@ -122,6 +167,7 @@ interface DisplayCampaign {
   budget: number | null;
   remainingBudget: number | null;
   dailyLimit?: number | null;
+  scheduledDailyLimit?: number | null;
   spend: number | null;
   impressions: number | null;
   ctr: number | null;
@@ -179,15 +225,12 @@ const MOCK_CAMPAIGNS: DisplayCampaign[] = [
     { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Распродажа витрины'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 1300, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
 ];
 
-const DailyLimitTooltip: React.FC<{ dailyLimit: number; onClick?: () => void }> = ({ dailyLimit, onClick }) => {
+const DailyLimitTooltip: React.FC<{ dailyLimit: number; scheduledDailyLimit?: number | null; onClick?: () => void }> = ({ dailyLimit, scheduledDailyLimit, onClick }) => {
     const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+    const [isClockTooltipVisible, setIsClockTooltipVisible] = useState(false);
     
     return (
-        <div 
-            className="relative inline-block text-xs mt-1"
-            onMouseEnter={() => setIsTooltipVisible(true)}
-            onMouseLeave={() => setIsTooltipVisible(false)}
-        >
+        <div className="flex items-center gap-1 text-xs mt-1">
             <span 
                 onClick={(e) => {
                     e.preventDefault();
@@ -198,20 +241,376 @@ const DailyLimitTooltip: React.FC<{ dailyLimit: number; onClick?: () => void }> 
             >
                 Лимит на день {formatForDisplay(dailyLimit)}р
             </span>
-            {isTooltipVisible && (
-                <>
-                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsTooltipVisible(true)}></div>
-                    <div 
-                        className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-                        onMouseEnter={() => setIsTooltipVisible(true)}
-                        onMouseLeave={() => setIsTooltipVisible(false)}
-                    >
-                        <p>Идет равномерная открутка установленного лимита на день</p>
-                    </div>
-                </>
+            {scheduledDailyLimit && (
+                <div 
+                    className="relative inline-block"
+                    onMouseEnter={() => setIsClockTooltipVisible(true)}
+                    onMouseLeave={() => setIsClockTooltipVisible(false)}
+                >
+                    <Clock className="w-4 h-4 text-gray-600 cursor-help" />
+                    {isClockTooltipVisible && (
+                        <>
+                            <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsClockTooltipVisible(true)}></div>
+                            <div 
+                                className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+                                onMouseEnter={() => setIsClockTooltipVisible(true)}
+                                onMouseLeave={() => setIsClockTooltipVisible(false)}
+                            >
+                                <p className="mb-2">Завтра в 12:30 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimit)}₽</p>
+                            </div>
+                        </>
+                    )}
+                </div>
             )}
+            <div 
+                className="relative inline-block"
+                onMouseEnter={() => setIsTooltipVisible(true)}
+                onMouseLeave={() => setIsTooltipVisible(false)}
+            >
+                {isTooltipVisible && (
+                    <>
+                        <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsTooltipVisible(true)}></div>
+                        <div 
+                            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+                            onMouseEnter={() => setIsTooltipVisible(true)}
+                            onMouseLeave={() => setIsTooltipVisible(false)}
+                        >
+                            <p>Идет равномерная открутка установленного лимита на день</p>
+                        </div>
+                    </>
+                )}
+            </div>
         </div>
     );
+};
+
+const DailyLimitModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  currentBudget: number;
+  dailyLimit?: number | null;
+  onDailyLimitChange?: (limit: number | null, isScheduled?: boolean) => void;
+}> = ({ isOpen, onClose, currentBudget, dailyLimit, onDailyLimitChange }) => {
+  const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
+  const [dailyLimitValue, setDailyLimitValue] = useState('');
+  const [savedDailyLimit, setSavedDailyLimit] = useState('');
+  const [isScheduledForNextDay, setIsScheduledForNextDay] = useState(false);
+  const [scheduledDailyLimit, setScheduledDailyLimit] = useState<string | null>(null);
+  const [previousScheduledLimit, setPreviousScheduledLimit] = useState<string | null>(null);
+  const [isClockTooltipVisible, setIsClockTooltipVisible] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const [budgetError, setBudgetError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      if (dailyLimit) {
+        setIsDailyLimitEnabled(true);
+        setDailyLimitValue(String(dailyLimit));
+        setSavedDailyLimit(String(dailyLimit));
+      } else {
+        setIsDailyLimitEnabled(false);
+        setDailyLimitValue('');
+        setSavedDailyLimit('');
+      }
+      setIsScheduledForNextDay(false);
+      setScheduledDailyLimit(null);
+      setPreviousScheduledLimit(null);
+      setIsClockTooltipVisible(false);
+      setShowToast(false);
+      setToastMessage('');
+      setBudgetError('');
+    }
+  }, [isOpen, dailyLimit]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-2">
+            <ToggleSwitch 
+              checked={isDailyLimitEnabled} 
+              onChange={(checked) => {
+                if (checked) {
+                  setIsDailyLimitEnabled(true);
+                  setDailyLimitValue('');
+                  setSavedDailyLimit('');
+                  setIsScheduledForNextDay(false);
+                  setScheduledDailyLimit(null);
+                  setBudgetError('');
+                } else {
+                  setIsDailyLimitEnabled(false);
+                  setDailyLimitValue('');
+                  setIsScheduledForNextDay(false);
+                  setScheduledDailyLimit(null);
+                  setBudgetError('');
+                }
+              }} 
+            />
+            <h3 className="font-bold text-lg text-gray-900">Дневной лимит</h3>
+            <DailyLimitInfoTooltip />
+          </div>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+        </div>
+
+        <div className="mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          <div className="space-y-6">
+            {!isDailyLimitEnabled && (
+              <p className="text-sm text-gray-500">Включите автопополнение, чтобы кампания не останавливалась</p>
+            )}
+            <div className="flex items-center gap-4">
+              <div className="relative w-1/3">
+                <input
+                  type="text"
+                  value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
+                  disabled={!isDailyLimitEnabled}
+                  onChange={(e) => {
+                    const parsed = parseDisplayValue(e.target.value);
+                    if (!isNaN(parsed)) {
+                      if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
+                        setPreviousScheduledLimit(scheduledDailyLimit);
+                      }
+                      setDailyLimitValue(String(parsed));
+                      setIsScheduledForNextDay(false);
+                      setScheduledDailyLimit(null);
+                      setBudgetError('');
+                    } else if (e.target.value === '') {
+                      if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
+                        setPreviousScheduledLimit(scheduledDailyLimit);
+                      }
+                      setDailyLimitValue('');
+                      setIsScheduledForNextDay(false);
+                      setScheduledDailyLimit(null);
+                      setBudgetError('');
+                    }
+                  }}
+                  className={`w-full text-sm border shadow-sm outline-none transition-colors px-2 py-1.5 rounded-lg pr-6 ${
+                    !isDailyLimitEnabled 
+                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200' 
+                      : 'bg-white border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                  }`}
+                  placeholder="от 1 000₽"
+                />
+                <span className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${!isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'}`}>₽</span>
+              </div>
+              {isDailyLimitEnabled && (
+                <div className="flex items-center gap-2">
+                  {isScheduledForNextDay && scheduledDailyLimit && (
+                    <div 
+                      className="relative"
+                      onMouseEnter={() => setIsClockTooltipVisible(true)}
+                      onMouseLeave={() => setIsClockTooltipVisible(false)}
+                    >
+                      <Clock className="w-5 h-5 text-gray-600 cursor-help" />
+                      {isClockTooltipVisible && (
+                        <>
+                          <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsClockTooltipVisible(true)}></div>
+                          <div 
+                            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+                            onMouseEnter={() => setIsClockTooltipVisible(true)}
+                            onMouseLeave={() => setIsClockTooltipVisible(false)}
+                          >
+                            <p className="mb-2">Завтра в 12:30 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimit)}₽</p>
+                            <button
+                              onClick={() => {
+                                setIsScheduledForNextDay(false);
+                                setScheduledDailyLimit(null);
+                                setIsClockTooltipVisible(false);
+                              }}
+                              className="w-full px-3 py-1.5 text-xs font-medium text-gray-900 bg-white hover:bg-gray-100 rounded-md transition-colors"
+                            >
+                              Отменить
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            {budgetError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                <p className="text-sm text-red-600">{budgetError}</p>
+              </div>
+            )}
+            {isDailyLimitEnabled && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  disabled={!isDailyLimitEnabled}
+                  onClick={() => {
+                    if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
+                      setPreviousScheduledLimit(scheduledDailyLimit);
+                    }
+                    const currentValue = parseDisplayValue(dailyLimitValue) || 0;
+                    const newValue = currentValue + 1000;
+                    setDailyLimitValue(String(newValue));
+                    setIsScheduledForNextDay(false);
+                    setScheduledDailyLimit(null);
+                    setBudgetError('');
+                  }}
+                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
+                    !isDailyLimitEnabled 
+                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
+                  }`}
+                >
+                  +1000₽
+                </button>
+                <button
+                  type="button"
+                  disabled={!isDailyLimitEnabled}
+                  onClick={() => {
+                    if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
+                      setPreviousScheduledLimit(scheduledDailyLimit);
+                    }
+                    const currentValue = parseDisplayValue(dailyLimitValue) || 0;
+                    const newValue = currentValue + 3000;
+                    setDailyLimitValue(String(newValue));
+                    setIsScheduledForNextDay(false);
+                    setScheduledDailyLimit(null);
+                    setBudgetError('');
+                  }}
+                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
+                    !isDailyLimitEnabled 
+                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
+                  }`}
+                >
+                  +3000₽
+                </button>
+                <button
+                  type="button"
+                  disabled={!isDailyLimitEnabled}
+                  onClick={() => {
+                    if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
+                      setPreviousScheduledLimit(scheduledDailyLimit);
+                    }
+                    const currentValue = parseDisplayValue(dailyLimitValue) || 0;
+                    const newValue = currentValue + 5000;
+                    setDailyLimitValue(String(newValue));
+                    setIsScheduledForNextDay(false);
+                    setScheduledDailyLimit(null);
+                    setBudgetError('');
+                  }}
+                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
+                    !isDailyLimitEnabled 
+                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
+                  }`}
+                >
+                  +5000₽
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-between items-center gap-3 pt-4 border-t border-gray-100">
+          <div className="flex items-center gap-2">
+            {dailyLimitValue && parseDisplayValue(dailyLimitValue) !== parseDisplayValue(savedDailyLimit) && !isScheduledForNextDay && savedDailyLimit && isDailyLimitEnabled ? (
+              <>
+                <button
+                  onClick={() => {
+                    const parsed = parseDisplayValue(dailyLimitValue);
+                    if (parsed < 1000) {
+                      setToastMessage(`Минимальная сумма дневного лимита: ${formatForDisplay(1000)} ₽`);
+                      setShowToast(true);
+                      return;
+                    }
+                    if (parsed > currentBudget) {
+                      setBudgetError(`Недостаточно средств на балансе. Текущий баланс: ${formatForDisplay(currentBudget)} ₽, требуется: ${formatForDisplay(parsed)} ₽`);
+                      return;
+                    }
+                    setSavedDailyLimit(dailyLimitValue);
+                    setIsScheduledForNextDay(false);
+                    setScheduledDailyLimit(null);
+                    setPreviousScheduledLimit(null);
+                    setBudgetError('');
+                    setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
+                    setShowToast(true);
+                    if (onDailyLimitChange) {
+                      onDailyLimitChange(parsed);
+                    }
+                    setTimeout(() => {
+                      onClose();
+                    }, 100);
+                  }}
+                  className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  Поменять сейчас
+                </button>
+                <button
+                  onClick={() => {
+                    const parsed = parseDisplayValue(dailyLimitValue);
+                    if (parsed > currentBudget) {
+                      setBudgetError(`Недостаточно средств на балансе. Текущий баланс: ${formatForDisplay(currentBudget)} ₽, требуется: ${formatForDisplay(parsed)} ₽`);
+                      return;
+                    }
+                    setIsScheduledForNextDay(true);
+                    setScheduledDailyLimit(dailyLimitValue);
+                    const limitToSave = dailyLimitValue;
+                    setDailyLimitValue(savedDailyLimit);
+                    setPreviousScheduledLimit(null);
+                    setBudgetError('');
+                    if (onDailyLimitChange) {
+                      onDailyLimitChange(parseDisplayValue(limitToSave), true);
+                    }
+                    setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
+                    setShowToast(true);
+                    setTimeout(() => {
+                      onClose();
+                    }, 100);
+                  }}
+                  className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  С нового дня
+                </button>
+              </>
+            ) : (
+              <>
+                {isDailyLimitEnabled && (
+                  <button
+                    onClick={() => {
+                      onClose();
+                    }}
+                    className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    Сохранить
+                  </button>
+                )}
+                {!isDailyLimitEnabled && savedDailyLimit && (
+                  <button
+                    onClick={() => {
+                      if (onDailyLimitChange) {
+                        onDailyLimitChange(null);
+                      }
+                      onClose();
+                    }}
+                    className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    Сохранить
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Отмена</button>
+        </div>
+      </div>
+
+      {/* Toast */}
+      <Toast 
+        show={showToast} 
+        message={toastMessage} 
+        onClose={() => setShowToast(false)} 
+        isSuccess={toastMessage.includes('Новый дневной лимит установлен') || toastMessage.includes('Дневной лимит отключен')}
+      />
+    </div>
+  );
 };
 
 const BudgetRefillModal: React.FC<{
@@ -219,19 +618,13 @@ const BudgetRefillModal: React.FC<{
   onClose: () => void;
   onSave: (amount: number) => void;
   currentBudget: number;
-  dailyLimit?: number | null;
-  showDailyLimitSection?: boolean;
-  onDailyLimitChange?: (limit: number | null) => void;
-}> = ({ isOpen, onClose, onSave, currentBudget, dailyLimit, showDailyLimitSection = false, onDailyLimitChange }) => {
+}> = ({ isOpen, onClose, onSave, currentBudget }) => {
   const [refillAmount, setRefillAmount] = useState('3000');
   const [useBonuses, setUseBonuses] = useState(false);
   const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
   const [bonusValue, setBonusValue] = useState<number | string>(3000);
   const [budgetError, setBudgetError] = useState('');
   const [bonusError, setBonusError] = useState('');
-  const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
-  const [dailyLimitValue, setDailyLimitValue] = useState('2000');
-  const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -240,20 +633,8 @@ const BudgetRefillModal: React.FC<{
       setBonusValue(3000);
       setBudgetError('');
       setBonusError('');
-      if (showDailyLimitSection) {
-        if (dailyLimit) {
-          setIsDailyLimitEnabled(true);
-          setDailyLimitValue(String(dailyLimit));
-        } else {
-          setIsDailyLimitEnabled(false);
-          setDailyLimitValue('2000');
-        }
-      } else {
-        setIsDailyLimitEnabled(false);
-        setDailyLimitValue('2000');
-      }
     }
-  }, [isOpen, showDailyLimitSection, dailyLimit]);
+  }, [isOpen]);
 
   const selectedPkg = useMemo(() => BONUS_PACKAGES.find(p => p.id === selectedPkgId) || BONUS_PACKAGES[0], [selectedPkgId]);
   const currentBudgetValue = parseDisplayValue(refillAmount);
@@ -401,127 +782,6 @@ const BudgetRefillModal: React.FC<{
                 </div>
               )}
             </div>
-
-            {showDailyLimitSection && (
-              <div className="pt-4 border-t border-gray-100">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <ToggleSwitch 
-                      checked={isDailyLimitEnabled} 
-                      onChange={(checked) => {
-                        setIsDailyLimitEnabled(checked);
-                        if (!checked && onDailyLimitChange) {
-                          onDailyLimitChange(null);
-                        }
-                      }} 
-                    />
-                    <p className="text-sm text-gray-800 flex items-center gap-1">
-                      Дневной лимит
-                      <div 
-                        className="relative inline-block"
-                        onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}
-                        onMouseLeave={() => setIsDailyLimitTooltipVisible(false)}
-                      >
-                        <HelpCircle className="w-4 h-4 text-gray-600 cursor-help" />
-                        {isDailyLimitTooltipVisible && (
-                          <>
-                            <div className="absolute left-1/2 -translate-x-1/2 top-full w-80 h-2" onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}></div>
-                            <div 
-                              className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-                              onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}
-                              onMouseLeave={() => setIsDailyLimitTooltipVisible(false)}
-                            >
-                              <p className="font-semibold mb-2">Как работает равномерная открутка лимита?</p>
-                              <p className="mb-2">Сумму, которую вы зададите в лимите мы будем расходовать в течение дня равномерно, она не сгорит за 1-2 часа. Так вы достигаете наилучших показателей по показам.</p>
-                              <a href="#" className="text-purple-300 hover:underline">Читать подробнее</a>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    </p>
-                  </div>
-                </div>
-                {isDailyLimitEnabled && (
-                  <>
-                    <div className="flex items-center gap-4">
-                      <div className="relative w-1/3">
-                        <input
-                          type="text"
-                          value={formatForDisplay(dailyLimitValue)}
-                          onChange={(e) => {
-                            const parsed = parseDisplayValue(e.target.value);
-                            if (!isNaN(parsed)) {
-                              setDailyLimitValue(String(parsed));
-                            } else if (e.target.value === '') {
-                              setDailyLimitValue('');
-                            }
-                          }}
-                          onBlur={() => {
-                            const parsed = parseDisplayValue(dailyLimitValue);
-                            if (isNaN(parsed) || parsed < 2000) {
-                              setDailyLimitValue('2000');
-                            }
-                            if (onDailyLimitChange) {
-                              onDailyLimitChange(parseDisplayValue(dailyLimitValue));
-                            }
-                          }}
-                          className="w-full text-sm bg-white border shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5 rounded-lg pr-6 border-gray-300"
-                          placeholder="2000"
-                        />
-                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
-                      </div>
-                      <p className="text-xs text-gray-500 flex-1">
-                        Равномерно распределим сумму лимита в течении дня
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const current = parseDisplayValue(dailyLimitValue) || 0;
-                          const newValue = current + 1000;
-                          setDailyLimitValue(String(newValue));
-                          if (onDailyLimitChange) {
-                            onDailyLimitChange(newValue);
-                          }
-                        }}
-                        className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
-                      >
-                        +1000₽
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const current = parseDisplayValue(dailyLimitValue) || 0;
-                          const newValue = current + 3000;
-                          setDailyLimitValue(String(newValue));
-                          if (onDailyLimitChange) {
-                            onDailyLimitChange(newValue);
-                          }
-                        }}
-                        className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
-                      >
-                        +3000₽
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const current = parseDisplayValue(dailyLimitValue) || 0;
-                          const newValue = current + 5000;
-                          setDailyLimitValue(String(newValue));
-                          if (onDailyLimitChange) {
-                            onDailyLimitChange(newValue);
-                          }
-                        }}
-                        className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
-                      >
-                        +5000₽
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
           </div>
         </div>
 
@@ -531,11 +791,6 @@ const BudgetRefillModal: React.FC<{
             onClick={() => {
               const amount = parseDisplayValue(refillAmount);
               onSave(amount);
-              if (showDailyLimitSection && isDailyLimitEnabled && onDailyLimitChange) {
-                onDailyLimitChange(parseDisplayValue(dailyLimitValue));
-              } else if (showDailyLimitSection && !isDailyLimitEnabled && onDailyLimitChange) {
-                onDailyLimitChange(null);
-              }
             }}
             disabled={!!budgetError || !!bonusError}
             className="px-4 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
@@ -1318,7 +1573,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const CAMPAIGNS_PAGE_SIZE = 10;
   const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
   const [selectedCampaignForRefill, setSelectedCampaignForRefill] = useState<DisplayCampaign | null>(null);
-  const [isModalOpenedFromDailyLimit, setIsModalOpenedFromDailyLimit] = useState(false);
+  const [isDailyLimitModalOpen, setIsDailyLimitModalOpen] = useState(false);
 
   // Filter states
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -1686,10 +1941,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       <>
                                           <DailyLimitTooltip 
                                               dailyLimit={c.dailyLimit} 
+                                              scheduledDailyLimit={c.scheduledDailyLimit || null}
                                               onClick={() => {
                                                   setSelectedCampaignForRefill(c);
-                                                  setIsModalOpenedFromDailyLimit(true);
-                                                  setIsBudgetRefillModalOpen(true);
+                                                  setIsDailyLimitModalOpen(true);
                                               }}
                                           />
                                           {c.autoRefill && (
@@ -1731,7 +1986,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           onClose={() => {
             setIsBudgetRefillModalOpen(false);
             setSelectedCampaignForRefill(null);
-            setIsModalOpenedFromDailyLimit(false);
           }}
           onSave={(amount) => {
             setAllCampaigns(prev => prev.map(c => 
@@ -1741,18 +1995,35 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ));
             setIsBudgetRefillModalOpen(false);
             setSelectedCampaignForRefill(null);
-            setIsModalOpenedFromDailyLimit(false);
+          }}
+          currentBudget={selectedCampaignForRefill.remainingBudget || 0}
+        />
+      )}
+      {isDailyLimitModalOpen && selectedCampaignForRefill && (
+        <DailyLimitModal
+          isOpen={isDailyLimitModalOpen}
+          onClose={() => {
+            setIsDailyLimitModalOpen(false);
+            setSelectedCampaignForRefill(null);
           }}
           currentBudget={selectedCampaignForRefill.remainingBudget || 0}
           dailyLimit={selectedCampaignForRefill.dailyLimit || null}
-          showDailyLimitSection={isModalOpenedFromDailyLimit || (selectedCampaignForRefill.type === 'CPC' && selectedCampaignForRefill.dailyLimit !== null && selectedCampaignForRefill.dailyLimit !== undefined)}
-          onDailyLimitChange={(limit) => {
+          onDailyLimitChange={(limit, isScheduled = false) => {
             if (selectedCampaignForRefill) {
-              setAllCampaigns(prev => prev.map(c => 
-                c.id === selectedCampaignForRefill.id 
-                  ? { ...c, dailyLimit: limit }
-                  : c
-              ));
+              setAllCampaigns(prev => prev.map(c => {
+                if (c.id === selectedCampaignForRefill.id) {
+                  if (limit === null) {
+                    return { ...c, dailyLimit: null, scheduledDailyLimit: null };
+                  }
+                  if (isScheduled) {
+                    // Запланированный лимит на новый день
+                    return { ...c, scheduledDailyLimit: limit };
+                  }
+                  // Обычное сохранение лимита (применяется сразу)
+                  return { ...c, dailyLimit: limit, scheduledDailyLimit: null };
+                }
+                return c;
+              }));
             }
           }}
         />

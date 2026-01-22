@@ -15,6 +15,7 @@ interface ProductMultiSelectProps {
   placeholder?: string;
   className?: string;
   submitLabel?: string;
+  singleSelect?: boolean;
 }
 
 export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
@@ -25,7 +26,8 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
   disabled = false,
   placeholder = 'Выберите товары',
   className,
-  submitLabel = 'Применить'
+  submitLabel = 'Применить',
+  singleSelect = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -55,11 +57,22 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
   }, []);
 
   const toggleOption = (product: SelectableProduct) => {
-    setTempSelected(prev => 
-      prev.some(p => p.nmId === product.nmId)
-        ? prev.filter(p => p.nmId !== product.nmId)
-        : [...prev, product]
-    );
+    if (singleSelect) {
+      setTempSelected(prev => {
+        // Если товар уже выбран, снимаем выбор
+        if (prev.some(p => p.nmId === product.nmId)) {
+          return prev.filter(p => p.nmId !== product.nmId);
+        }
+        // Иначе выбираем только этот товар (заменяем предыдущий выбор)
+        return [product];
+      });
+    } else {
+      setTempSelected(prev => 
+        prev.some(p => p.nmId === product.nmId)
+          ? prev.filter(p => p.nmId !== product.nmId)
+          : [...prev, product]
+      );
+    }
   };
 
   const handleApply = () => {
@@ -112,11 +125,22 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
   }, [selectableFilteredOptions, tempSelected]);
 
   const handleSelectAll = () => {
-      if (areAllFilteredSelected) {
-          setTempSelected(prev => prev.filter(p => !selectableFilteredOptions.some(fo => fo.nmId === p.nmId)));
+      if (singleSelect) {
+          if (areAllFilteredSelected) {
+              setTempSelected([]);
+          } else {
+              // Выбираем только первый товар из списка
+              if (selectableFilteredOptions.length > 0) {
+                  setTempSelected([selectableFilteredOptions[0]]);
+              }
+          }
       } else {
-          const newSelections = selectableFilteredOptions.filter(fo => !tempSelected.some(ts => ts.nmId === fo.nmId));
-          setTempSelected(prev => [...prev, ...newSelections]);
+          if (areAllFilteredSelected) {
+              setTempSelected(prev => prev.filter(p => !selectableFilteredOptions.some(fo => fo.nmId === p.nmId)));
+          } else {
+              const newSelections = selectableFilteredOptions.filter(fo => !tempSelected.some(ts => ts.nmId === fo.nmId));
+              setTempSelected(prev => [...prev, ...newSelections]);
+          }
       }
   };
 
