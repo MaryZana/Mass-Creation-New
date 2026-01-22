@@ -20,6 +20,13 @@ import {
 } from './Icons';
 import { CampaignRecord } from '../types';
 
+// --- Constants ---
+const TOTAL_PROMO_BONUS = 226660517;
+const BONUS_PACKAGES = [
+  { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
+  { id: 'p2', amount: 17133120, maxPercent: 99, expiry: '27.03.26', displayBurn: '168.3k' },
+];
+
 // --- Helpers ---
 const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
 
@@ -95,6 +102,7 @@ interface SuccessPageProps {
   showUploadHint?: boolean;
   onDismissUploadHint?: () => void;
   onOpenCpcCampaign: (payload: { campaignId: number; name: string }) => void;
+  onOpenSingleCampaign?: () => void;
 }
 
 interface DisplayCampaign {
@@ -171,16 +179,25 @@ const MOCK_CAMPAIGNS: DisplayCampaign[] = [
     { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Распродажа витрины'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 1300, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
 ];
 
-const DailyLimitTooltip: React.FC<{ dailyLimit: number }> = ({ dailyLimit }) => {
+const DailyLimitTooltip: React.FC<{ dailyLimit: number; onClick?: () => void }> = ({ dailyLimit, onClick }) => {
     const [isTooltipVisible, setIsTooltipVisible] = useState(false);
     
     return (
         <div 
-            className="relative inline-block text-xs mt-1 text-gray-500"
+            className="relative inline-block text-xs mt-1"
             onMouseEnter={() => setIsTooltipVisible(true)}
             onMouseLeave={() => setIsTooltipVisible(false)}
         >
-            Лимит на день {formatForDisplay(dailyLimit)}р
+            <span 
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClick?.();
+                }}
+                className="text-blue-600 hover:text-purple-600 cursor-pointer transition-colors"
+            >
+                Лимит на день {formatForDisplay(dailyLimit)}р
+            </span>
             {isTooltipVisible && (
                 <>
                     <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsTooltipVisible(true)}></div>
@@ -202,13 +219,19 @@ const BudgetRefillModal: React.FC<{
   onClose: () => void;
   onSave: (amount: number) => void;
   currentBudget: number;
-}> = ({ isOpen, onClose, onSave, currentBudget }) => {
+  dailyLimit?: number | null;
+  showDailyLimitSection?: boolean;
+  onDailyLimitChange?: (limit: number | null) => void;
+}> = ({ isOpen, onClose, onSave, currentBudget, dailyLimit, showDailyLimitSection = false, onDailyLimitChange }) => {
   const [refillAmount, setRefillAmount] = useState('3000');
   const [useBonuses, setUseBonuses] = useState(false);
   const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
   const [bonusValue, setBonusValue] = useState<number | string>(3000);
   const [budgetError, setBudgetError] = useState('');
   const [bonusError, setBonusError] = useState('');
+  const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
+  const [dailyLimitValue, setDailyLimitValue] = useState('2000');
+  const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -217,8 +240,20 @@ const BudgetRefillModal: React.FC<{
       setBonusValue(3000);
       setBudgetError('');
       setBonusError('');
+      if (showDailyLimitSection) {
+        if (dailyLimit) {
+          setIsDailyLimitEnabled(true);
+          setDailyLimitValue(String(dailyLimit));
+        } else {
+          setIsDailyLimitEnabled(false);
+          setDailyLimitValue('2000');
+        }
+      } else {
+        setIsDailyLimitEnabled(false);
+        setDailyLimitValue('2000');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, showDailyLimitSection, dailyLimit]);
 
   const selectedPkg = useMemo(() => BONUS_PACKAGES.find(p => p.id === selectedPkgId) || BONUS_PACKAGES[0], [selectedPkgId]);
   const currentBudgetValue = parseDisplayValue(refillAmount);
@@ -366,6 +401,127 @@ const BudgetRefillModal: React.FC<{
                 </div>
               )}
             </div>
+
+            {showDailyLimitSection && (
+              <div className="pt-4 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <ToggleSwitch 
+                      checked={isDailyLimitEnabled} 
+                      onChange={(checked) => {
+                        setIsDailyLimitEnabled(checked);
+                        if (!checked && onDailyLimitChange) {
+                          onDailyLimitChange(null);
+                        }
+                      }} 
+                    />
+                    <p className="text-sm text-gray-800 flex items-center gap-1">
+                      Дневной лимит
+                      <div 
+                        className="relative inline-block"
+                        onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}
+                        onMouseLeave={() => setIsDailyLimitTooltipVisible(false)}
+                      >
+                        <HelpCircle className="w-4 h-4 text-gray-600 cursor-help" />
+                        {isDailyLimitTooltipVisible && (
+                          <>
+                            <div className="absolute left-1/2 -translate-x-1/2 top-full w-80 h-2" onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}></div>
+                            <div 
+                              className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+                              onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}
+                              onMouseLeave={() => setIsDailyLimitTooltipVisible(false)}
+                            >
+                              <p className="font-semibold mb-2">Как работает равномерная открутка лимита?</p>
+                              <p className="mb-2">Сумму, которую вы зададите в лимите мы будем расходовать в течение дня равномерно, она не сгорит за 1-2 часа. Так вы достигаете наилучших показателей по показам.</p>
+                              <a href="#" className="text-purple-300 hover:underline">Читать подробнее</a>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </p>
+                  </div>
+                </div>
+                {isDailyLimitEnabled && (
+                  <>
+                    <div className="flex items-center gap-4">
+                      <div className="relative w-1/3">
+                        <input
+                          type="text"
+                          value={formatForDisplay(dailyLimitValue)}
+                          onChange={(e) => {
+                            const parsed = parseDisplayValue(e.target.value);
+                            if (!isNaN(parsed)) {
+                              setDailyLimitValue(String(parsed));
+                            } else if (e.target.value === '') {
+                              setDailyLimitValue('');
+                            }
+                          }}
+                          onBlur={() => {
+                            const parsed = parseDisplayValue(dailyLimitValue);
+                            if (isNaN(parsed) || parsed < 2000) {
+                              setDailyLimitValue('2000');
+                            }
+                            if (onDailyLimitChange) {
+                              onDailyLimitChange(parseDisplayValue(dailyLimitValue));
+                            }
+                          }}
+                          className="w-full text-sm bg-white border shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5 rounded-lg pr-6 border-gray-300"
+                          placeholder="2000"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
+                      </div>
+                      <p className="text-xs text-gray-500 flex-1">
+                        Равномерно распределим сумму лимита в течении дня
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = parseDisplayValue(dailyLimitValue) || 0;
+                          const newValue = current + 1000;
+                          setDailyLimitValue(String(newValue));
+                          if (onDailyLimitChange) {
+                            onDailyLimitChange(newValue);
+                          }
+                        }}
+                        className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
+                      >
+                        +1000₽
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = parseDisplayValue(dailyLimitValue) || 0;
+                          const newValue = current + 3000;
+                          setDailyLimitValue(String(newValue));
+                          if (onDailyLimitChange) {
+                            onDailyLimitChange(newValue);
+                          }
+                        }}
+                        className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
+                      >
+                        +3000₽
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = parseDisplayValue(dailyLimitValue) || 0;
+                          const newValue = current + 5000;
+                          setDailyLimitValue(String(newValue));
+                          if (onDailyLimitChange) {
+                            onDailyLimitChange(newValue);
+                          }
+                        }}
+                        className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
+                      >
+                        +5000₽
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -375,11 +531,16 @@ const BudgetRefillModal: React.FC<{
             onClick={() => {
               const amount = parseDisplayValue(refillAmount);
               onSave(amount);
+              if (showDailyLimitSection && isDailyLimitEnabled && onDailyLimitChange) {
+                onDailyLimitChange(parseDisplayValue(dailyLimitValue));
+              } else if (showDailyLimitSection && !isDailyLimitEnabled && onDailyLimitChange) {
+                onDailyLimitChange(null);
+              }
             }}
             disabled={!!budgetError || !!bonusError}
             className="px-4 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            Пополнить
+            Применить
           </button>
         </div>
       </div>
@@ -598,7 +759,7 @@ const DateFilter = ({ defaultLabel }: { defaultLabel: string }) => {
   );
 }
 
-const CampaignDropdown = ({ onNavigateToCreation }: { onNavigateToCreation: () => void }) => {
+const CampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: { onNavigateToCreation: () => void; onOpenSingleCampaign?: () => void }) => {
     const [isOpen, setIsOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -624,7 +785,7 @@ const CampaignDropdown = ({ onNavigateToCreation }: { onNavigateToCreation: () =
             </button>
             {isOpen && (
                 <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
-                    <a href="#" onClick={(e) => { e.preventDefault(); alert('Создание одной кампании в разработке'); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Одна кампания</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); onOpenSingleCampaign?.(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Одна кампания</a>
                     <a href="#" onClick={(e) => { e.preventDefault(); onNavigateToCreation(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Много кампаний</a>
                 </div>
             )}
@@ -1150,12 +1311,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     showUploadHint = false,
     onDismissUploadHint,
     onOpenCpcCampaign,
+    onOpenSingleCampaign,
 }) => {
   const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
   const [currentPage, setCurrentPage] = useState(1);
   const CAMPAIGNS_PAGE_SIZE = 10;
   const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
   const [selectedCampaignForRefill, setSelectedCampaignForRefill] = useState<DisplayCampaign | null>(null);
+  const [isModalOpenedFromDailyLimit, setIsModalOpenedFromDailyLimit] = useState(false);
 
   // Filter states
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -1353,7 +1516,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       <div>
           {/* Toolbar */}
           <div className="flex items-center gap-2 mb-6">
-              <CampaignDropdown onNavigateToCreation={onNavigateToCreation} />
+              <CampaignDropdown onNavigateToCreation={onNavigateToCreation} onOpenSingleCampaign={onOpenSingleCampaign} />
               <ExcelActionsDropdown 
                   onOpenUpload={onOpenUploadEditsModal}
                   onOpenHistory={onOpenHistoryModal}
@@ -1521,12 +1684,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   </div>
                                   {c.type === 'CPC' && c.dailyLimit && (
                                       <>
-                                          <DailyLimitTooltip dailyLimit={c.dailyLimit} />
+                                          <DailyLimitTooltip 
+                                              dailyLimit={c.dailyLimit} 
+                                              onClick={() => {
+                                                  setSelectedCampaignForRefill(c);
+                                                  setIsModalOpenedFromDailyLimit(true);
+                                                  setIsBudgetRefillModalOpen(true);
+                                              }}
+                                          />
                                           {c.autoRefill && (
                                               <div className="flex items-center gap-1 text-xs mt-1 text-green-600">
                                                   <CheckCircle className="w-3.5 h-3.5" />
-                                                  Автопополнение
-                                              </div>
+                                      Автопополнение
+                                  </div>
                                           )}
                                       </>
                                   )}
@@ -1561,6 +1731,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           onClose={() => {
             setIsBudgetRefillModalOpen(false);
             setSelectedCampaignForRefill(null);
+            setIsModalOpenedFromDailyLimit(false);
           }}
           onSave={(amount) => {
             setAllCampaigns(prev => prev.map(c => 
@@ -1570,8 +1741,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ));
             setIsBudgetRefillModalOpen(false);
             setSelectedCampaignForRefill(null);
+            setIsModalOpenedFromDailyLimit(false);
           }}
           currentBudget={selectedCampaignForRefill.remainingBudget || 0}
+          dailyLimit={selectedCampaignForRefill.dailyLimit || null}
+          showDailyLimitSection={isModalOpenedFromDailyLimit || (selectedCampaignForRefill.type === 'CPC' && selectedCampaignForRefill.dailyLimit !== null && selectedCampaignForRefill.dailyLimit !== undefined)}
+          onDailyLimitChange={(limit) => {
+            if (selectedCampaignForRefill) {
+              setAllCampaigns(prev => prev.map(c => 
+                c.id === selectedCampaignForRefill.id 
+                  ? { ...c, dailyLimit: limit }
+                  : c
+              ));
+            }
+          }}
         />
       )}
     </div>

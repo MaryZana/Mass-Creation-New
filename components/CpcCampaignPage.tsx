@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Wallet, HelpCircle, X, RefreshCw, ChevronDown, Clock, SingleAccountIcon, Plus, Settings } from './Icons';
+import { Wallet, HelpCircle, X, RefreshCw, ChevronDown, Clock, SingleAccountIcon, Plus, Settings, Bell } from './Icons';
 
 const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
@@ -75,23 +75,56 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
+  const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
   const [campaignBudget, setCampaignBudget] = useState(1500);
   const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
 
   return (
     <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-10">
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-[1392px] mx-auto px-6 h-14 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onBack}
-            className="text-sm text-gray-600 hover:text-gray-900"
-          >
-            ← К списку кампаний
-          </button>
+      <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <div className="flex items-center justify-between px-6 h-14 bg-white">
+          <div className="flex items-center gap-8">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-gray-400">WB</span>
+              <span className="text-xl text-gray-300">|</span>
+              <span className="text-lg font-medium text-gray-800">Продвижение</span>
+            </div>
+            <button className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors">
+              Продвижение
+            </button>
+            <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600 font-medium">
+              <a href="#" className="hover:text-purple-600">Медиа</a>
+              <a href="#" className="hover:text-purple-600">Наружная реклама</a>
+              <a href="#" className="hover:text-purple-600">Мой магазин</a>
+              <a href="#" className="hover:text-purple-600">Внешний трафик</a>
+            </nav>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="relative">
+              <Bell className="w-6 h-6 text-gray-600" />
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">99+</span>
+            </div>
+            <HelpCircle className="w-6 h-6 text-gray-600" />
+            <div className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer">
+              <span>МЕГАПОЛИС...</span>
+              <ChevronDown className="w-4 h-4" />
+            </div>
+          </div>
+        </div>
+        <div className="px-6 h-12 flex items-center justify-between border-t border-gray-100 bg-white">
+          <div className="flex items-center gap-8 text-sm font-medium">
+            <a href="#" onClick={(e) => { e.preventDefault(); onBack(); }} className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Кампании</a>
+            <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Статистика</a>
+            <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Финансы</a>
+            <a href="#" className="flex items-center gap-1 text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">
+              Новости <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">99+</span>
+            </a>
+            <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Помощь</a>
+            <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Мои бонусы</a>
+          </div>
           <div className="flex items-center gap-2 text-gray-800 font-semibold">
             <Wallet className="w-5 h-5 text-gray-400" />
-            <span>10 433 793 ₽</span>
+            <span>{UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽</span>
           </div>
         </div>
       </header>
@@ -148,23 +181,31 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <ToggleSwitch checked={isAutoRefillEnabled} onChange={(checked) => {
-                    setIsAutoRefillEnabled(checked);
                     if (checked) {
+                      setWasAutoRefillToggledOn(true);
                       setIsAutoRefillModalOpen(true);
                     } else {
+                      setIsAutoRefillEnabled(false);
+                      setWasAutoRefillToggledOn(false);
                       setToastMessage('Изменения сохранены');
                       setShowToast(true);
                     }
                   }} />
                   <p className="text-sm text-gray-800 flex items-center gap-1">
                     <span 
-                      onClick={() => setIsAutoRefillModalOpen(true)}
+                      onClick={() => {
+                        setWasAutoRefillToggledOn(false);
+                        setIsAutoRefillModalOpen(true);
+                      }}
                       className="cursor-pointer hover:text-purple-600 transition-colors"
                     >
                       Автопополнение бюджета
                     </span>
                     <button
-                      onClick={() => setIsAutoRefillModalOpen(true)}
+                      onClick={() => {
+                        setWasAutoRefillToggledOn(false);
+                        setIsAutoRefillModalOpen(true);
+                      }}
                       className="p-1 hover:bg-gray-100 rounded transition-colors"
                     >
                       <Settings className="w-4 h-4 text-gray-600" />
@@ -176,7 +217,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                     Если бюджет меньше {formatForDisplay(campaignBudget)} ₽, пополняем на {formatForDisplay(campaignBudget)} ₽ не чаще 1 раза в день
                   </p>
                 )}
-                {!isAutoRefillEnabled && <div className="mb-3"></div>}
+                {!isAutoRefillEnabled && (
+                  <p className="text-xs text-gray-400 mb-3">
+                    Включите автопополнение, чтобы кампания не останавливалась
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -472,10 +517,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
       {isAutoRefillModalOpen && (
         <AutoRefillModal
           isOpen={isAutoRefillModalOpen}
-          onClose={() => setIsAutoRefillModalOpen(false)}
+          onClose={() => {
+            setIsAutoRefillModalOpen(false);
+            if (wasAutoRefillToggledOn) {
+              setIsAutoRefillEnabled(false);
+              setWasAutoRefillToggledOn(false);
+            }
+          }}
           onSave={() => {
             setIsAutoRefillEnabled(true);
             setIsAutoRefillModalOpen(false);
+            setWasAutoRefillToggledOn(false);
             setToastMessage('Автопополнение настроено');
             setShowToast(true);
           }}

@@ -11,6 +11,7 @@ import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 import { CpcCampaignPage } from './components/CpcCampaignPage';
 import { MassEditPage } from './components/MassEditPage';
+import { SingleCampaignPage } from './components/SingleCampaignPage';
 
 // --- Types ---
 interface TemplateGroup {
@@ -1425,7 +1426,7 @@ const DownloadNotification = ({ count }: { count: number }) => (
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [appState, setAppState] = useState<'creation' | 'list' | 'editing'>('list');
+  const [appState, setAppState] = useState<'creation' | 'list' | 'editing' | 'single-campaign'>('list');
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
@@ -2062,6 +2063,14 @@ export default function App() {
     );
   }
 
+  if (appState === 'single-campaign') {
+    return (
+      <SingleCampaignPage 
+        onBack={() => handleNavigationAttempt(handleNavigateToList)}
+      />
+    );
+  }
+
   if (appState === 'list') {
     return (
       <div className="min-h-screen bg-[#F6F69] font-sans text-gray-900 relative">
@@ -2089,6 +2098,7 @@ export default function App() {
               setSelectedCpcCampaign({ id: campaignId, name });
               setAppState('cpc-detail' as any);
             }}
+            onOpenSingleCampaign={() => setAppState('single-campaign')}
           />
         </main>
          <UploadEditsModal 
