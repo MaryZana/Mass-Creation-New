@@ -173,9 +173,9 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
     <div className="min-h-screen bg-[#F7F7FA] font-sans text-gray-900" style={{ background: '#F7F7FA' }}>
       <Header onNavigateToList={onBack} />
       
-      <main className={`flex flex-col items-start px-6 py-8 gap-6 ${products.length > 0 ? 'pb-24' : ''}`}>
+      <main className={`flex flex-col items-center px-6 py-8 gap-6 ${products.length > 0 ? 'pb-24' : ''}`}>
         {/* Управление кампанией */}
-        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px]">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col gap-6">
             {/* Заголовок */}
             <div className="flex justify-between items-start gap-4">
@@ -249,7 +249,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
         </div>
 
         {/* Плавающий остров — бюджет */}
-        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px]">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col gap-4">
             <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 680, fontSize: '22px', lineHeight: '28px' }}>
               Бюджет
@@ -315,7 +315,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
 
         {/* Дневной лимит - только для CPC */}
         {paymentModel === 'CPC' && (
-          <div className="bg-white rounded-2xl p-5 w-full max-w-[1200px] shadow-sm border border-gray-100">
+          <div className="bg-white rounded-2xl p-5 w-full max-w-[1200px] shadow-sm border border-gray-100 mx-auto">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <ToggleSwitch 
@@ -418,7 +418,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
         )}
 
         {/* Зоны показов */}
-        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px]">
+        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-1">
               <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 680, fontSize: '22px', lineHeight: '28px' }}>
@@ -497,16 +497,18 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
         </div>
 
         {/* Товары */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 w-full max-w-[1200px]">
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
             <h2 className="text-lg font-bold text-gray-900">Ставки по товарам</h2>
             <div className="flex flex-wrap items-center gap-3">
-              <button 
-                onClick={() => setIsAddProductsModalOpen(true)}
-                className="px-3 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900"
-              >
-                Добавить товары
-              </button>
+              {products.length === 0 && (
+                <button 
+                  onClick={() => setIsAddProductsModalOpen(true)}
+                  className="px-3 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900"
+                >
+                  Добавить товар
+                </button>
+              )}
               {products.length > 0 && (
                 <input
                   type="text"
@@ -615,23 +617,25 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
       {/* Modal for adding products */}
       {isAddProductsModalOpen && (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setIsAddProductsModalOpen(false)}>
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg text-gray-900">Добавить товары</h3>
+              <h3 className="font-bold text-lg text-gray-900">Добавить товар</h3>
               <button onClick={() => setIsAddProductsModalOpen(false)}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
             </div>
-            <div className="mb-6">
+            <div className="mb-6 flex-1 min-h-[500px]">
               <ProductMultiSelect
                 options={MOCK_PRODUCTS}
                 selected={products}
                 onChange={(selected) => {
-                  setProducts(selected);
+                  // Ограничиваем выбор только одним товаром - берем последний выбранный
+                  const singleProduct = selected.length > 0 ? [selected[selected.length - 1]] : [];
+                  setProducts(singleProduct);
                   setIsAddProductsModalOpen(false);
-                  setToastMessage('Товары добавлены');
+                  setToastMessage('Товар добавлен');
                   setShowToast(true);
                 }}
                 isCpcMode={paymentModel === 'CPC'}
-                submitLabel="Добавить товары"
+                submitLabel="Добавить товар"
               />
             </div>
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
@@ -653,10 +657,12 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                   : 'bg-purple-600 text-white hover:bg-purple-700'
               }`}
               onClick={() => {
-                if (!(paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget))) {
-                  // Handle launch campaign
-                  setToastMessage('Кампания запущена');
-                  setShowToast(true);
+                // Проверяем условия: нет ошибок в бюджете
+                const hasBudgetError = paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget);
+                
+                if (!hasBudgetError) {
+                  // Переходим на главную страницу
+                  onBack();
                 }
               }}
             >
