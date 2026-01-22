@@ -205,7 +205,7 @@ const Pagination = ({ total, pageSize, current, onChange }: { total: number; pag
 };
 
 const StatusIndicator = ({ isActive }: { isActive: boolean }) => (
-  <span className={`text-[11px] ${isActive ? 'text-green-600' : 'text-red-600'} whitespace-nowrap overflow-hidden`}>
+  <span className={`text-[10px] ${isActive ? 'text-green-600' : 'text-red-600'} whitespace-nowrap overflow-hidden`}>
     {isActive ? 'Активна' : 'Остановлена'}
   </span>
 );
@@ -830,7 +830,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
             </div>
           </div>
 
-          <div className="bg-white rounded-lg">
+          <div className="bg-white rounded-lg overflow-x-auto">
             {activeTab === 'base' && (() => {
               const campaignIndexMap = new Map<number, number>();
               let campaignCounter = 0;
@@ -842,7 +842,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
               const currentPaginatedRows = baseTableRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
               return (
-                <table className="w-full text-xs text-left table-fixed">
+                <table className="w-full min-w-[1024px] text-xs text-left table-fixed">
                   <thead className="text-gray-600">
                     <tr>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
@@ -1051,7 +1051,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
               let rowIndex = 0;
 
               return (
-                <table className="w-full text-xs text-left table-fixed">
+                <table className="w-full min-w-[1024px] text-xs text-left table-fixed">
                   <thead className="text-gray-600">
                     <tr>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
@@ -1279,7 +1279,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
               });
 
               return (
-                <table className="w-full text-xs text-left table-fixed">
+                <table className="w-full min-w-[1024px] text-xs text-left table-fixed">
                   <thead className="text-gray-600">
                     <tr>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">

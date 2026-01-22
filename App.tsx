@@ -9,6 +9,7 @@ import { ProductMultiSelect } from './components/ProductMultiSelect';
 import { SuccessPage } from './components/SuccessPage';
 import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
+import { CpcCampaignPage } from './components/CpcCampaignPage';
 import { MassEditPage } from './components/MassEditPage';
 
 // --- Types ---
@@ -1479,6 +1480,7 @@ export default function App() {
   const [isFromExcelModal, setIsFromExcelModal] = useState(false);
   const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{ id: number; name: string } | null>(null);
 
 
   const [inlineErrors, setInlineErrors] = useState<Record<string, string>>({});
@@ -2083,6 +2085,10 @@ export default function App() {
             onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
             showUploadHint={showUploadHint}
             onDismissUploadHint={() => setShowUploadHint(false)}
+            onOpenCpcCampaign={({ campaignId, name }) => {
+              setSelectedCpcCampaign({ id: campaignId, name });
+              setAppState('cpc-detail' as any);
+            }}
           />
         </main>
          <UploadEditsModal 
@@ -2215,6 +2221,19 @@ export default function App() {
         {downloadStatus === 'loading' && <DownloadNotification count={downloadCount} />}
         <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
       </div>
+    );
+  }
+
+  if (appState === 'cpc-detail' && selectedCpcCampaign) {
+    return (
+      <CpcCampaignPage
+        campaignId={selectedCpcCampaign.id}
+        name={selectedCpcCampaign.name}
+        onBack={() => {
+          setAppState('list' as any);
+          setSelectedCpcCampaign(null);
+        }}
+      />
     );
   }
 
@@ -2427,7 +2446,8 @@ export default function App() {
               )} 
               </div>
             </div> 
-            <div className="bg-white rounded-lg"> <table className="w-full text-xs text-left table-fixed"> 
+            <div className="bg-white rounded-lg overflow-x-auto">
+              <table className="w-full min-w-[1024px] text-xs text-left table-fixed"> 
               <thead className="text-gray-600"> 
                 <tr> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"> <input type="checkbox" checked={allOnPageSelected} ref={el => { if (el) el.indeterminate = isIndeterminate; }} onChange={(e) => handleSelectAllOnPage(paginatedIds, e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /> </th> 

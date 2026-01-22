@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     Plus, 
     Search, 
@@ -15,7 +15,8 @@ import {
     Loader,
     Info,
     Download,
-    ClipboardCheck
+    ClipboardCheck,
+    Clock
 } from './Icons';
 import { CampaignRecord } from '../types';
 
@@ -93,6 +94,7 @@ interface SuccessPageProps {
   onOpenHistoryModal: () => void;
   showUploadHint?: boolean;
   onDismissUploadHint?: () => void;
+  onOpenCpcCampaign: (payload: { campaignId: number; name: string }) => void;
 }
 
 interface DisplayCampaign {
@@ -110,6 +112,8 @@ interface DisplayCampaign {
   autoRefill: boolean;
   autoRefillStatus: 'ok' | 'error';
   budget: number | null;
+  remainingBudget: number | null;
+  dailyLimit?: number | null;
   spend: number | null;
   impressions: number | null;
   ctr: number | null;
@@ -125,6 +129,17 @@ const formatCurrency = (num: number | null | undefined): string => {
     if (num === null || num === undefined) return 'Н/Д';
     return `${num.toLocaleString('ru-RU')} ₽`;
 }
+
+const formatForDisplay = (num: number | string | undefined | null): string => {
+    if (num === null || num === undefined || num === '') return '0';
+    const numValue = typeof num === 'string' ? parseDisplayValue(num) : num;
+    if (isNaN(numValue) || numValue === null || numValue === undefined) return '0';
+    return numValue.toLocaleString('ru-RU', { useGrouping: true });
+};
+
+const parseDisplayValue = (str: string): number => {
+    return Number(String(str).replace(/\s/g, '').replace(/,/g, '.'));
+};
 const formatPercentage = (num: number | null | undefined): string => {
     if (num === null || num === undefined) return 'Н/Д';
     return `${num.toFixed(1).replace('.', ',')}%`;
@@ -134,27 +149,243 @@ const currentDate = new Date().toLocaleDateString('ru-RU');
 
 const MOCK_CAMPAIGNS: DisplayCampaign[] = [
     // Category 1: Платья (10 items)
-    { id: '1', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Летнее платье "Ривьера" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304655, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа', 'Хиты со скидкой'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '2', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Вечернее платье "Грация" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304656, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Сезонная распродажа'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '3', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-футляр "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304657, tags: [], campaignTags: ['Уценка', 'Последние размеры'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '4', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Сарафан "Прованс" CPM от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304658, tags: [], campaignTags: ['Ликвидация остатков'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
-    { id: '5', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье с принтом "Флора" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304659, tags: [], campaignTags: ['Чёрная пятница', 'Хиты со скидкой'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 80200, impressions: 250000, ctr: 1.1, orders: 75, spendShare: 14.1 },
-    { id: '6', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Коктейльное платье "Шарм" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304660, tags: [], campaignTags: ['Новый год'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '7', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Длинное платье "Макси" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304661, tags: [], campaignTags: ['8 марта', 'Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 500000, spend: 250000, impressions: 600000, ctr: 1.5, orders: 120, spendShare: 18.2 },
-    { id: '8', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-рубашка "Кэжуал" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304662, tags: [], campaignTags: ['1 сентября (школа)'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 150000, spend: 145000, impressions: 400000, ctr: 0.9, orders: 50, spendShare: 11.0 },
-    { id: '9', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Пляжное платье "Бриз" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304663, tags: [], campaignTags: ['Зимняя распродажа', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 100000, spend: 98000, impressions: 150000, ctr: 2.0, orders: 100, spendShare: 25.0 },
-    { id: '10', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Трикотажное платье "Уют" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304664, tags: [], campaignTags: ['Акция поставщика'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 200000, spend: 50000, impressions: 180000, ctr: 1.0, orders: 60, spendShare: 12.5 },
-    { id: '11', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Джинсы "Classic Fit" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304665, tags: [], campaignTags: ['Распродажа витрины', 'Уценка'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 250000, spend: 120000, impressions: 450000, ctr: 1.3, orders: 95, spendShare: 16.0 },
-    { id: '12', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Брюки-карго "Комбат" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304666, tags: [], campaignTags: ['Последние размеры'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 180000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '13', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Классические брюки "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304667, tags: [], campaignTags: ['Хиты со скидкой', 'Сезонная распродажа'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 400000, spend: 390000, impressions: 800000, ctr: 1.1, orders: 150, spendShare: 19.5 },
-    { id: '14', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Спортивные брюки "Тренд" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304668, tags: [], campaignTags: ['Чёрная пятница'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 220000, spend: 215000, impressions: 300000, ctr: 1.8, orders: 110, spendShare: 22.0 },
-    { id: '15', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Льняные брюки "Лето" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304669, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 120000, spend: 30000, impressions: 100000, ctr: 0.8, orders: 40, spendShare: 10.0 },
-    { id: '16', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Сумка-шоппер "Эко" CPM от ${currentDate}`, status: 'error', statusText: 'приостановлена', campaignId: 1304670, tags: [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' }], campaignTags: ['Проблемные', 'Уценка'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 0, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
-    { id: '17', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Кожаный ремень "Классика" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304671, tags: [], campaignTags: ['Новый год', '8 марта'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 90000, spend: 85000, impressions: 120000, ctr: 2.2, orders: 130, spendShare: 28.0 },
-    { id: '18', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Шелковый платок "Париж" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304672, tags: [], campaignTags: ['Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 75000, spend: 15000, impressions: 90000, ctr: 1.0, orders: 45, spendShare: 11.5 },
-    { id: '19', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Солнцезащитные очки "Авиатор" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304673, tags: [], campaignTags: ['Акция поставщика', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 150000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Распродажа витрины'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
+    { id: '1', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Летнее платье "Ривьера" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304655, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа', 'Хиты со скидкой'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 1500, dailyLimit: 2000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '2', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Вечернее платье "Грация" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304656, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Сезонная распродажа'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 800, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '3', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-футляр "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304657, tags: [], campaignTags: ['Уценка', 'Последние размеры'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 3200, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '4', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Сарафан "Прованс" CPM от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304658, tags: [], campaignTags: ['Ликвидация остатков'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 500, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
+    { id: '5', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье с принтом "Флора" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304659, tags: [], campaignTags: ['Чёрная пятница', 'Хиты со скидкой'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 2100, spend: 80200, impressions: 250000, ctr: 1.1, orders: 75, spendShare: 14.1 },
+    { id: '6', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Коктейльное платье "Шарм" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304660, tags: [], campaignTags: ['Новый год'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 4500, dailyLimit: 3000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '7', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Длинное платье "Макси" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304661, tags: [], campaignTags: ['8 марта', 'Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 5500, spend: 250000, impressions: 600000, ctr: 1.5, orders: 120, spendShare: 18.2 },
+    { id: '8', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-рубашка "Кэжуал" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304662, tags: [], campaignTags: ['1 сентября (школа)'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 150000, remainingBudget: 1200, spend: 145000, impressions: 400000, ctr: 0.9, orders: 50, spendShare: 11.0 },
+    { id: '9', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Пляжное платье "Бриз" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304663, tags: [], campaignTags: ['Зимняя распродажа', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 100000, remainingBudget: 900, spend: 98000, impressions: 150000, ctr: 2.0, orders: 100, spendShare: 25.0 },
+    { id: '10', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Трикотажное платье "Уют" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304664, tags: [], campaignTags: ['Акция поставщика'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 200000, remainingBudget: 2800, spend: 50000, impressions: 180000, ctr: 1.0, orders: 60, spendShare: 12.5 },
+    { id: '11', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Джинсы "Classic Fit" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304665, tags: [], campaignTags: ['Распродажа витрины', 'Уценка'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 250000, remainingBudget: 3800, spend: 120000, impressions: 450000, ctr: 1.3, orders: 95, spendShare: 16.0 },
+    { id: '12', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Брюки-карго "Комбат" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304666, tags: [], campaignTags: ['Последние размеры'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 180000, remainingBudget: 1700, dailyLimit: 2200, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '13', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Классические брюки "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304667, tags: [], campaignTags: ['Хиты со скидкой', 'Сезонная распродажа'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 400000, remainingBudget: 4900, spend: 390000, impressions: 800000, ctr: 1.1, orders: 150, spendShare: 19.5 },
+    { id: '14', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Спортивные брюки "Тренд" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304668, tags: [], campaignTags: ['Чёрная пятница'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 220000, remainingBudget: 1100, spend: 215000, impressions: 300000, ctr: 1.8, orders: 110, spendShare: 22.0 },
+    { id: '15', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Льняные брюки "Лето" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304669, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 120000, remainingBudget: 2400, spend: 30000, impressions: 100000, ctr: 0.8, orders: 40, spendShare: 10.0 },
+    { id: '16', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Сумка-шоппер "Эко" CPM от ${currentDate}`, status: 'error', statusText: 'приостановлена', campaignId: 1304670, tags: [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' }], campaignTags: ['Проблемные', 'Уценка'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 0, remainingBudget: 600, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
+    { id: '17', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Кожаный ремень "Классика" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304671, tags: [], campaignTags: ['Новый год', '8 марта'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 90000, remainingBudget: 3500, dailyLimit: 4000, spend: 85000, impressions: 120000, ctr: 2.2, orders: 130, spendShare: 28.0 },
+    { id: '18', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Шелковый платок "Париж" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304672, tags: [], campaignTags: ['Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 75000, remainingBudget: 4100, spend: 15000, impressions: 90000, ctr: 1.0, orders: 45, spendShare: 11.5 },
+    { id: '19', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Солнцезащитные очки "Авиатор" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304673, tags: [], campaignTags: ['Акция поставщика', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 150000, remainingBudget: 2600, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Распродажа витрины'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 1300, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
 ];
+
+const DailyLimitTooltip: React.FC<{ dailyLimit: number }> = ({ dailyLimit }) => {
+    const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+    
+    return (
+        <div 
+            className="relative inline-block text-xs mt-1 text-gray-500"
+            onMouseEnter={() => setIsTooltipVisible(true)}
+            onMouseLeave={() => setIsTooltipVisible(false)}
+        >
+            Лимит на день {formatForDisplay(dailyLimit)}р
+            {isTooltipVisible && (
+                <>
+                    <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsTooltipVisible(true)}></div>
+                    <div 
+                        className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+                        onMouseEnter={() => setIsTooltipVisible(true)}
+                        onMouseLeave={() => setIsTooltipVisible(false)}
+                    >
+                        <p>Идет равномерная открутка установленного лимита на день</p>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+};
+
+const BudgetRefillModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (amount: number) => void;
+  currentBudget: number;
+}> = ({ isOpen, onClose, onSave, currentBudget }) => {
+  const [refillAmount, setRefillAmount] = useState('3000');
+  const [useBonuses, setUseBonuses] = useState(false);
+  const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
+  const [bonusValue, setBonusValue] = useState<number | string>(3000);
+  const [budgetError, setBudgetError] = useState('');
+  const [bonusError, setBonusError] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setRefillAmount('3000');
+      setUseBonuses(false);
+      setBonusValue(3000);
+      setBudgetError('');
+      setBonusError('');
+    }
+  }, [isOpen]);
+
+  const selectedPkg = useMemo(() => BONUS_PACKAGES.find(p => p.id === selectedPkgId) || BONUS_PACKAGES[0], [selectedPkgId]);
+  const currentBudgetValue = parseDisplayValue(refillAmount);
+  const numericBonusValue = parseDisplayValue(String(bonusValue));
+
+  useEffect(() => {
+    setBudgetError('');
+    setBonusError('');
+
+    if (currentBudgetValue < 1000 && refillAmount !== '') {
+      setBudgetError('Минимальный бюджет 1000 ₽');
+    }
+
+    if (useBonuses) {
+      if (numericBonusValue > currentBudgetValue) {
+        setBonusError('Сумма бонусов не может превышать общий бюджет');
+        return;
+      }
+
+      const maxBonusFromPackage = selectedPkg.amount;
+      if (numericBonusValue > maxBonusFromPackage) {
+        setBonusError(`В пакете доступно только ${formatForDisplay(maxBonusFromPackage)} B`);
+        return;
+      }
+
+      const maxPercent = selectedPkg.maxPercent / 100;
+      const maxBonusAllowedByPercent = currentBudgetValue * maxPercent;
+
+      if (numericBonusValue > maxBonusAllowedByPercent) {
+        setBonusError(`Можно списать максимум ${formatForDisplay(Math.floor(maxBonusAllowedByPercent))} B (${selectedPkg.maxPercent}% от суммы)`);
+        return;
+      }
+    }
+  }, [refillAmount, useBonuses, bonusValue, selectedPkg, currentBudgetValue, numericBonusValue]);
+
+  const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const parsed = parseDisplayValue(e.target.value);
+    if (!isNaN(parsed)) {
+      setRefillAmount(String(parsed));
+    } else if (e.target.value === '') {
+      setRefillAmount('');
+    }
+  };
+
+  const handleBudgetBlur = () => {
+    const parsed = parseDisplayValue(refillAmount);
+    if (isNaN(parsed) || parsed < 1000) {
+      setRefillAmount('1000');
+    }
+  };
+
+  const handleBonusBlur = () => {
+    const numericValue = parseDisplayValue(String(bonusValue));
+    if (isNaN(numericValue) || numericValue < 0) {
+      setBonusValue(0);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="font-bold text-lg text-gray-900">Пополнение бюджета</h3>
+          <button onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+        </div>
+
+        <div className="mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+          <div className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">Сумма пополнения</label>
+              <div className="relative">
+                <input
+                  type="text"
+                  autoFocus
+                  className={`w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500 pr-8 ${budgetError ? 'border-red-500' : 'border-gray-300'}`}
+                  placeholder="3000"
+                  value={formatForDisplay(refillAmount)}
+                  onChange={handleBudgetChange}
+                  onBlur={handleBudgetBlur}
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
+              </div>
+              {budgetError && <p className="text-red-500 text-xs mt-1.5">{budgetError}</p>}
+            </div>
+
+            <div className="pt-4 border-t border-gray-100">
+              <div className="flex items-center gap-2 mb-4">
+                <input
+                  type="checkbox"
+                  id="bonus-toggle"
+                  checked={useBonuses}
+                  onChange={e => setUseBonuses(e.target.checked)}
+                  className="w-5 h-5 rounded text-purple-600 focus:ring-purple-500 border-gray-300 cursor-pointer"
+                />
+                <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
+                  Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
+                </label>
+              </div>
+
+              {useBonuses && (
+                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
+                    {BONUS_PACKAGES.map(pkg => (
+                      <div
+                        key={pkg.id}
+                        onClick={() => setSelectedPkgId(pkg.id)}
+                        className={`min-w-[200px] p-4 rounded-xl border-2 transition-all cursor-pointer snap-start relative ${selectedPkgId === pkg.id ? 'border-purple-600 bg-purple-50/30' : 'border-gray-100 hover:border-gray-200 bg-white'}`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className="text-xl font-bold text-gray-900">{formatForDisplay(pkg.amount)}</span>
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedPkgId === pkg.id ? 'border-purple-600' : 'border-gray-300'}`}>
+                            {selectedPkgId === pkg.id && <div className="w-2.5 h-2.5 bg-purple-600 rounded-full"></div>}
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mb-3 font-medium leading-tight">Оплата до {pkg.maxPercent}% от суммы</p>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-auto pt-1">
+                          <span className="text-orange-500">🔥</span>
+                          <span>{pkg.displayBurn} сгорят {pkg.expiry}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 flex flex-col md:flex-row md:items-center gap-6">
+                    <div className="relative w-full md:w-48">
+                      <input
+                        type="text"
+                        value={formatForDisplay(bonusValue)}
+                        onChange={e => setBonusValue(e.target.value)}
+                        onBlur={handleBonusBlur}
+                        className={`w-full border rounded-xl px-4 py-3 text-lg font-bold outline-none focus:ring-2 focus:ring-purple-500 ${bonusError ? 'border-red-500' : 'border-gray-300'}`}
+                      />
+                      <p className="text-xs text-gray-500 mt-1.5">до {formatForDisplay(numericBonusValue)} B (1B = 1P)</p>
+                    </div>
+                    <div className="text-sm text-gray-500 leading-snug">
+                      {bonusError ? (
+                        <p className="text-red-500">{bonusError}</p>
+                      ) : (
+                        <p>Списать можно максимум {selectedPkg.maxPercent}% от суммы пополнения</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Отмена</button>
+          <button
+            onClick={() => {
+              const amount = parseDisplayValue(refillAmount);
+              onSave(amount);
+            }}
+            disabled={!!budgetError || !!bonusError}
+            className="px-4 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+          >
+            Пополнить
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const StatusBadge = ({ status, text }: { status: DisplayCampaign['status'], text: string }) => {
     const baseClasses = 'px-2 py-0.5 text-xs font-medium rounded-full';
@@ -918,10 +1149,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onOpenHistoryModal,
     showUploadHint = false,
     onDismissUploadHint,
+    onOpenCpcCampaign,
 }) => {
   const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
   const [currentPage, setCurrentPage] = useState(1);
   const CAMPAIGNS_PAGE_SIZE = 10;
+  const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
+  const [selectedCampaignForRefill, setSelectedCampaignForRefill] = useState<DisplayCampaign | null>(null);
 
   // Filter states
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -1201,9 +1435,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                       {paginatedCampaigns.map(c => (
-                          <tr key={c.id} className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
-                              <td className="p-4"><input type="checkbox" checked={selectedCampaigns.includes(c.id)} onChange={(e) => handleSelectSingle(c.id, e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></td>
-                              <td className="p-4">
+                          <tr
+                            key={c.id}
+                            onClick={(e) => {
+                              if (c.type === 'CPC' && !(e.target as HTMLElement).closest('button')) {
+                                onOpenCpcCampaign({ campaignId: c.campaignId, name: c.name });
+                              }
+                            }}
+                            className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'} ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}
+                          >
+                              <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCampaigns.includes(c.id)}
+                                  onChange={(e) => handleSelectSingle(c.id, e.target.checked)}
+                                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                              </td>
+                              <td className="p-4" onClick={(e) => e.stopPropagation()}>
                                   <ToggleSwitch
                                       checked={c.status === 'active'}
                                       onChange={(isChecked) => handleStatusToggle(c.id, isChecked)}
@@ -1243,12 +1492,50 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       {c.typeIcons.map((icon, i) => <span key={i} className="p-1 bg-gray-100 rounded">{icon}</span>)}
                                   </div>
                               </td>
-                              <td className="p-4">
-                                  <div className="font-semibold">{formatCurrency(c.budget)}</div>
-                                  <div className={`flex items-center gap-1 text-xs mt-1 ${c.autoRefillStatus === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
-                                      {c.autoRefillStatus === 'ok' ? <CheckCircle className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
-                                      Автопополнение
+                              <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                                  <div className="relative inline-flex items-center group" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                          type="button"
+                                          onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setSelectedCampaignForRefill(c);
+                                              setIsBudgetRefillModalOpen(true);
+                                          }}
+                                          className="font-semibold text-blue-600 hover:text-purple-600 transition-colors cursor-pointer"
+                                      >
+                                          {formatCurrency(c.remainingBudget)}
+                                      </button>
+                                      <button
+                                          type="button"
+                                          onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setSelectedCampaignForRefill(c);
+                                              setIsBudgetRefillModalOpen(true);
+                                          }}
+                                          className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                      >
+                                          <Plus className="w-4 h-4 text-purple-600" />
+                                      </button>
                                   </div>
+                                  {c.type === 'CPC' && c.dailyLimit && (
+                                      <>
+                                          <DailyLimitTooltip dailyLimit={c.dailyLimit} />
+                                          {c.autoRefill && (
+                                              <div className="flex items-center gap-1 text-xs mt-1 text-green-600">
+                                                  <CheckCircle className="w-3.5 h-3.5" />
+                                                  Автопополнение
+                                              </div>
+                                          )}
+                                      </>
+                                  )}
+                                  {(!c.type || c.type !== 'CPC' || !c.dailyLimit) && c.autoRefill && (
+                                      <div className="flex items-center gap-1 text-xs mt-1 text-green-600">
+                                          <CheckCircle className="w-3.5 h-3.5" />
+                                          Автопополнение
+                                      </div>
+                                  )}
                               </td>
                               <td className="p-4">{formatCurrency(c.spend)}</td>
                               <td className="p-4">{formatNumber(c.impressions)}</td>
@@ -1268,6 +1555,25 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           />
           </div>
       </div>
+      {isBudgetRefillModalOpen && selectedCampaignForRefill && (
+        <BudgetRefillModal
+          isOpen={isBudgetRefillModalOpen}
+          onClose={() => {
+            setIsBudgetRefillModalOpen(false);
+            setSelectedCampaignForRefill(null);
+          }}
+          onSave={(amount) => {
+            setAllCampaigns(prev => prev.map(c => 
+              c.id === selectedCampaignForRefill.id 
+                ? { ...c, remainingBudget: (c.remainingBudget || 0) + amount }
+                : c
+            ));
+            setIsBudgetRefillModalOpen(false);
+            setSelectedCampaignForRefill(null);
+          }}
+          currentBudget={selectedCampaignForRefill.remainingBudget || 0}
+        />
+      )}
     </div>
   );
 };
