@@ -803,7 +803,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
           </div>
 
           {/* Search bar */}
-          <div className="mb-4">
+          <div className="mb-4 sticky top-[161px] z-20 bg-white pb-4">
             <div className="relative">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input 
@@ -830,7 +830,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
             </div>
           </div>
 
-          <div className="bg-white rounded-lg overflow-x-auto">
+          <div className="bg-white rounded-lg overflow-x-auto relative">
             {activeTab === 'base' && (() => {
               const campaignIndexMap = new Map<number, number>();
               let campaignCounter = 0;
@@ -843,9 +843,9 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
 
               return (
                 <table className="w-full min-w-[1024px] text-xs text-left table-fixed">
-                  <thead className="text-gray-600">
+                  <thead className="text-gray-600 bg-white">
                     <tr>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
                         <input 
                           type="checkbox" 
                           checked={allOnPageSelected} 
@@ -854,31 +854,31 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                           className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" 
                         />
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[6%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[6%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Статус</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
                         <div className="tooltip justify-start"><span>№</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Название кампании</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[10%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>ID Кампании</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[11%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[11%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>ID Товара</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[13%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[13%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Зоны показа</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Бюджет</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[8%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[8%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>АП</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[14%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[14%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start flex items-center gap-1">
                           <span>Условия АП</span>
                           <button
@@ -890,7 +890,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                           </button>
                         </div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"></th>
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -1052,9 +1052,9 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
 
               return (
                 <table className="w-full min-w-[1024px] text-xs text-left table-fixed">
-                  <thead className="text-gray-600">
+                  <thead className="text-gray-600 bg-white">
                     <tr>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
                         <input 
                           type="checkbox" 
                           checked={allOnPageSelected} 
@@ -1063,22 +1063,22 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                           className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" 
                         />
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
                         <div className="tooltip justify-start"><span>№</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Название кампании</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>ID Кампании</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Товары</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Ставка</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[30%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[30%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Преследование ставки</span></div>
                       </th>
                     </tr>
@@ -1280,9 +1280,9 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
 
               return (
                 <table className="w-full min-w-[1024px] text-xs text-left table-fixed">
-                  <thead className="text-gray-600">
+                  <thead className="text-gray-600 bg-white">
                     <tr>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
                         <input 
                           type="checkbox" 
                           checked={allOnPageSelected} 
@@ -1291,22 +1291,22 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                           className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" 
                         />
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
                         <div className="tooltip justify-start"><span>№</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[18%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Название кампании</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>ID Кампании</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[12%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>ID Товара</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[30%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[30%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Кластер</span></div>
                       </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[20%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
+                      <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[20%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
                         <div className="tooltip justify-start"><span>Ставка</span></div>
                       </th>
                     </tr>

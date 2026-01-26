@@ -23,7 +23,11 @@ const parseDisplayValue = (str: string): number => {
 interface CpcCampaignPageProps {
   campaignId: number;
   name: string;
+  remainingBudget: number | null;
+  dailyLimit: number | null;
+  scheduledDailyLimit: number | null;
   onBack: () => void;
+  onUpdateData?: (data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void;
 }
 
 const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) => (
@@ -92,10 +96,10 @@ const DailyLimitInfoTooltip: React.FC = () => {
   );
 };
 
-export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, name, onBack }) => {
+export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, onBack, onUpdateData }) => {
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
-  const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
-  const [dailyLimitValue, setDailyLimitValue] = useState('');
+  const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(dailyLimit !== null && dailyLimit !== undefined);
+  const [dailyLimitValue, setDailyLimitValue] = useState(dailyLimit ? String(dailyLimit) : '');
   const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
   const [wasDailyLimitToggledOn, setWasDailyLimitToggledOn] = useState(false);
   const [wasModalOpenedFromInput, setWasModalOpenedFromInput] = useState(false);
@@ -106,15 +110,47 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
   const [toastMessage, setToastMessage] = useState('');
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
   const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
-  const [campaignBudget, setCampaignBudget] = useState(1500);
+  const [campaignBudget, setCampaignBudget] = useState(remainingBudget ?? 1500);
+  const [campaignName, setCampaignName] = useState(name);
   const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
   const [isClockTooltipVisible, setIsClockTooltipVisible] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(true);
   const [pendingDailyLimit, setPendingDailyLimit] = useState<string | null>(null);
-  const [savedDailyLimit, setSavedDailyLimit] = useState('');
-  const [isScheduledForNextDay, setIsScheduledForNextDay] = useState(false);
-  const [scheduledDailyLimit, setScheduledDailyLimit] = useState<string | null>(null);
+  const [savedDailyLimit, setSavedDailyLimit] = useState(dailyLimit ? String(dailyLimit) : '');
+  const [isScheduledForNextDay, setIsScheduledForNextDay] = useState(scheduledDailyLimit !== null && scheduledDailyLimit !== undefined);
+  const [scheduledDailyLimitState, setScheduledDailyLimitState] = useState<string | null>(scheduledDailyLimit ? String(scheduledDailyLimit) : null);
   const [previousScheduledLimit, setPreviousScheduledLimit] = useState<string | null>(null);
+
+  // Sync with props when they change
+  useEffect(() => {
+    setCampaignName(name);
+  }, [name]);
+
+  useEffect(() => {
+    setCampaignBudget(remainingBudget ?? 1500);
+  }, [remainingBudget]);
+
+  useEffect(() => {
+    const isEnabled = dailyLimit !== null && dailyLimit !== undefined;
+    setIsDailyLimitEnabled(isEnabled);
+    if (isEnabled && dailyLimit) {
+      setDailyLimitValue(String(dailyLimit));
+      setSavedDailyLimit(String(dailyLimit));
+    } else {
+      setDailyLimitValue('');
+      setSavedDailyLimit('');
+    }
+  }, [dailyLimit]);
+
+  useEffect(() => {
+    const hasScheduled = scheduledDailyLimit !== null && scheduledDailyLimit !== undefined;
+    setIsScheduledForNextDay(hasScheduled);
+    if (hasScheduled && scheduledDailyLimit) {
+      setScheduledDailyLimitState(String(scheduledDailyLimit));
+    } else {
+      setScheduledDailyLimitState(null);
+    }
+  }, [scheduledDailyLimit]);
 
   useEffect(() => {
     if (isFirstVisit) {
@@ -304,7 +340,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                       setPendingDailyLimit(null);
                       setDailyLimitValue('');
                       setIsScheduledForNextDay(false);
-                      setScheduledDailyLimit(null);
+                      setScheduledDailyLimitState(null);
                       setToastMessage('Изменения сохранены');
                       setShowToast(true);
                     }
@@ -325,19 +361,19 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                   onChange={(e) => {
                     const parsed = parseDisplayValue(e.target.value);
                     if (!isNaN(parsed)) {
-                      if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                        setPreviousScheduledLimit(scheduledDailyLimit);
+                      if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
+                        setPreviousScheduledLimit(scheduledDailyLimitState);
                       }
                       setDailyLimitValue(String(parsed));
                       setIsScheduledForNextDay(false);
-                      setScheduledDailyLimit(null);
+                      setScheduledDailyLimitState(null);
                     } else if (e.target.value === '') {
-                      if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                        setPreviousScheduledLimit(scheduledDailyLimit);
+                      if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
+                        setPreviousScheduledLimit(scheduledDailyLimitState);
                       }
                       setDailyLimitValue('');
                       setIsScheduledForNextDay(false);
-                      setScheduledDailyLimit(null);
+                      setScheduledDailyLimitState(null);
                     }
                   }}
                   className={`w-full text-sm border shadow-sm outline-none transition-colors px-2 py-1.5 rounded-lg pr-6 ${
@@ -351,7 +387,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
               </div>
               {isDailyLimitEnabled && (
                 <div className="flex items-center gap-2">
-                  {isScheduledForNextDay && scheduledDailyLimit && (
+                  {isScheduledForNextDay && scheduledDailyLimitState && (
                     <div 
                       className="relative"
                       onMouseEnter={() => setIsClockTooltipVisible(true)}
@@ -366,11 +402,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                             onMouseEnter={() => setIsClockTooltipVisible(true)}
                             onMouseLeave={() => setIsClockTooltipVisible(false)}
                           >
-                            <p className="mb-2">Завтра в 12:30 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimit)}₽</p>
+                            <p className="mb-2">Завтра в 12:30 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimitState)}₽</p>
                             <button
                               onClick={() => {
                                 setIsScheduledForNextDay(false);
-                                setScheduledDailyLimit(null);
+                                setScheduledDailyLimitState(null);
                                 setIsClockTooltipVisible(false);
                               }}
                               className="w-full px-3 py-1.5 text-xs font-medium text-gray-900 bg-white hover:bg-gray-100 rounded-md transition-colors"
@@ -403,10 +439,13 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                               }
                               setSavedDailyLimit(dailyLimitValue);
                               setIsScheduledForNextDay(false);
-                              setScheduledDailyLimit(null);
+                              setScheduledDailyLimitState(null);
                               setPreviousScheduledLimit(null);
                               setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
                               setShowToast(true);
+                              if (onUpdateData) {
+                                onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
+                              }
                             }}
                             className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
                           >
@@ -421,9 +460,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                                 return;
                               }
                               setIsScheduledForNextDay(true);
-                              setScheduledDailyLimit(dailyLimitValue);
+                              setScheduledDailyLimitState(dailyLimitValue);
                               setDailyLimitValue(savedDailyLimit);
                               setPreviousScheduledLimit(null);
+                              if (onUpdateData) {
+                                onUpdateData({ scheduledDailyLimit: parsed });
+                              }
                             }}
                             className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
                           >
@@ -434,12 +476,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                               if (previousScheduledLimit) {
                                 setDailyLimitValue(savedDailyLimit);
                                 setIsScheduledForNextDay(true);
-                                setScheduledDailyLimit(previousScheduledLimit);
+                                setScheduledDailyLimitState(previousScheduledLimit);
                                 setPreviousScheduledLimit(null);
                               } else {
                                 setDailyLimitValue(savedDailyLimit);
                                 setIsScheduledForNextDay(false);
-                                setScheduledDailyLimit(null);
+                                setScheduledDailyLimitState(null);
                               }
                             }}
                             className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
@@ -466,6 +508,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                             setSavedDailyLimit(dailyLimitValue);
                             setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
                             setShowToast(true);
+                            if (onUpdateData) {
+                              onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
+                            }
                           }}
                           className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
                         >
@@ -482,8 +527,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                 type="button"
                 disabled={!isDailyLimitEnabled}
                 onClick={() => {
-                  if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                    setPreviousScheduledLimit(scheduledDailyLimit);
+                  if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
+                    setPreviousScheduledLimit(scheduledDailyLimitState);
                   }
                   const currentValue = parseDisplayValue(dailyLimitValue) || 0;
                   const newValue = currentValue + 1000;
@@ -503,8 +548,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                 type="button"
                 disabled={!isDailyLimitEnabled}
                 onClick={() => {
-                  if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                    setPreviousScheduledLimit(scheduledDailyLimit);
+                  if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
+                    setPreviousScheduledLimit(scheduledDailyLimitState);
                   }
                   const currentValue = parseDisplayValue(dailyLimitValue) || 0;
                   const newValue = currentValue + 3000;
@@ -524,8 +569,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                 type="button"
                 disabled={!isDailyLimitEnabled}
                 onClick={() => {
-                  if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                    setPreviousScheduledLimit(scheduledDailyLimit);
+                  if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
+                    setPreviousScheduledLimit(scheduledDailyLimitState);
                   }
                   const currentValue = parseDisplayValue(dailyLimitValue) || 0;
                   const newValue = currentValue + 5000;
@@ -702,6 +747,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
             const newBudget = campaignBudget + amount;
             setCampaignBudget(prev => prev + amount);
             setIsBudgetRefillModalOpen(false);
+            if (onUpdateData) {
+              onUpdateData({ remainingBudget: newBudget });
+            }
             if (wasDailyLimitToggledOn) {
               setIsDailyLimitEnabled(true);
               setWasDailyLimitToggledOn(false);
@@ -715,6 +763,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                 setScheduledDailyLimit(null);
                 setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
                 setShowToast(true);
+                if (onUpdateData) {
+                  onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null, remainingBudget: newBudget });
+                }
               }
               setPendingDailyLimitToSave(null);
               setWasModalOpenedFromInput(false);
@@ -762,6 +813,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                   setIsDisableLimitModalOpen(false);
                   setToastMessage('Дневной лимит отключен');
                   setShowToast(true);
+                  if (onUpdateData) {
+                    onUpdateData({ dailyLimit: null, scheduledDailyLimit: null });
+                  }
                 }}
                 className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
               >

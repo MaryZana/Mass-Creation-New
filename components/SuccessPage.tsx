@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
     Plus, 
     Search, 
@@ -146,7 +146,9 @@ interface SuccessPageProps {
   onOpenHistoryModal: () => void;
   showUploadHint?: boolean;
   onDismissUploadHint?: () => void;
-  onOpenCpcCampaign: (payload: { campaignId: number; name: string }) => void;
+  onOpenCpcCampaign: (payload: { campaignId: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null }) => void;
+  onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void;
+  onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) => void;
   onOpenSingleCampaign?: () => void;
 }
 
@@ -511,7 +513,17 @@ const DailyLimitModal: React.FC<{
 
         <div className="flex justify-between items-center gap-3 pt-4 border-t border-gray-100">
           <div className="flex items-center gap-2">
-            {dailyLimitValue && parseDisplayValue(dailyLimitValue) !== parseDisplayValue(savedDailyLimit) && !isScheduledForNextDay && savedDailyLimit && isDailyLimitEnabled ? (
+            {isDailyLimitEnabled && (
+              <button
+                onClick={() => {
+                  onClose();
+                }}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
+              >
+                Сохранить
+              </button>
+            )}
+            {dailyLimitValue && parseDisplayValue(dailyLimitValue) !== parseDisplayValue(savedDailyLimit) && !isScheduledForNextDay && savedDailyLimit && isDailyLimitEnabled && (
               <>
                 <button
                   onClick={() => {
@@ -570,32 +582,19 @@ const DailyLimitModal: React.FC<{
                   С нового дня
                 </button>
               </>
-            ) : (
-              <>
-                {isDailyLimitEnabled && (
-                  <button
-                    onClick={() => {
-                      onClose();
-                    }}
-                    className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
-                  >
-                    Сохранить
-                  </button>
-                )}
-                {!isDailyLimitEnabled && savedDailyLimit && (
-                  <button
-                    onClick={() => {
-                      if (onDailyLimitChange) {
-                        onDailyLimitChange(null);
-                      }
-                      onClose();
-                    }}
-                    className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
-                  >
-                    Сохранить
-                  </button>
-                )}
-              </>
+            )}
+            {!isDailyLimitEnabled && savedDailyLimit && (
+              <button
+                onClick={() => {
+                  if (onDailyLimitChange) {
+                    onDailyLimitChange(null);
+                  }
+                  onClose();
+                }}
+                className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
+              >
+                Сохранить
+              </button>
             )}
           </div>
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Отмена</button>
@@ -1567,8 +1566,32 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onDismissUploadHint,
     onOpenCpcCampaign,
     onOpenSingleCampaign,
+    onRegisterUpdateFn,
 }) => {
   const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
+
+  // Handle campaign data updates from edit page
+  const handleUpdateCampaignData = useCallback((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => {
+    setAllCampaigns(prev => prev.map(c => {
+      if (c.campaignId === campaignId) {
+        return {
+          ...c,
+          ...(data.name !== undefined && { name: data.name }),
+          ...(data.remainingBudget !== undefined && { remainingBudget: data.remainingBudget }),
+          ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
+          ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
+        };
+      }
+      return c;
+    }));
+  }, []);
+
+  // Expose update function to parent
+  useEffect(() => {
+    if (onRegisterUpdateFn) {
+      onRegisterUpdateFn(handleUpdateCampaignData);
+    }
+  }, [onRegisterUpdateFn]); // Removed handleUpdateCampaignData from dependencies to avoid infinite loop
   const [currentPage, setCurrentPage] = useState(1);
   const CAMPAIGNS_PAGE_SIZE = 10;
   const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
@@ -1857,7 +1880,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             key={c.id}
                             onClick={(e) => {
                               if (c.type === 'CPC' && !(e.target as HTMLElement).closest('button')) {
-                                onOpenCpcCampaign({ campaignId: c.campaignId, name: c.name });
+                                onOpenCpcCampaign({ 
+                                  campaignId: c.campaignId, 
+                                  name: c.name,
+                                  remainingBudget: c.remainingBudget,
+                                  dailyLimit: c.dailyLimit,
+                                  scheduledDailyLimit: c.scheduledDailyLimit
+                                });
                               }
                             }}
                             className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'} ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}

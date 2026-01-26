@@ -1481,7 +1481,8 @@ export default function App() {
   const [isFromExcelModal, setIsFromExcelModal] = useState(false);
   const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{ id: number; name: string } | null>(null);
+  const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{ id: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null } | null>(null);
+  const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) | null>(null);
 
 
   const [inlineErrors, setInlineErrors] = useState<Record<string, string>>({});
@@ -2094,9 +2095,17 @@ export default function App() {
             onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
             showUploadHint={showUploadHint}
             onDismissUploadHint={() => setShowUploadHint(false)}
-            onOpenCpcCampaign={({ campaignId, name }) => {
-              setSelectedCpcCampaign({ id: campaignId, name });
+            onOpenCpcCampaign={({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit }) => {
+              setSelectedCpcCampaign({ id: campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit });
               setAppState('cpc-detail' as any);
+            }}
+            onUpdateCampaignData={(campaignId, data) => {
+              if (updateCampaignDataRef.current) {
+                updateCampaignDataRef.current(campaignId, data);
+              }
+            }}
+            onRegisterUpdateFn={(fn) => {
+              updateCampaignDataRef.current = fn;
             }}
             onOpenSingleCampaign={() => setAppState('single-campaign')}
           />
@@ -2239,9 +2248,32 @@ export default function App() {
       <CpcCampaignPage
         campaignId={selectedCpcCampaign.id}
         name={selectedCpcCampaign.name}
+        remainingBudget={selectedCpcCampaign.remainingBudget}
+        dailyLimit={selectedCpcCampaign.dailyLimit}
+        scheduledDailyLimit={selectedCpcCampaign.scheduledDailyLimit}
         onBack={() => {
+          // Update campaign data in SuccessPage before going back
+          if (selectedCpcCampaign) {
+            // Data will be synced when component remounts or via callback
+          }
           setAppState('list' as any);
           setSelectedCpcCampaign(null);
+        }}
+        onUpdateData={(data) => {
+          if (selectedCpcCampaign) {
+            const updated = {
+              ...selectedCpcCampaign,
+              ...(data.name !== undefined && { name: data.name }),
+              ...(data.remainingBudget !== undefined && { remainingBudget: data.remainingBudget }),
+              ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
+              ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
+            };
+            setSelectedCpcCampaign(updated);
+            // Also update the campaign data in SuccessPage
+            if (updateCampaignDataRef.current) {
+              updateCampaignDataRef.current(selectedCpcCampaign.id, data);
+            }
+          }
         }}
       />
     );
@@ -2458,21 +2490,21 @@ export default function App() {
             </div> 
             <div className="bg-white rounded-lg overflow-x-auto">
               <table className="w-full min-w-[1024px] text-xs text-left table-fixed"> 
-              <thead className="text-gray-600"> 
+              <thead className="text-gray-600 bg-white"> 
                 <tr> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"> <input type="checkbox" checked={allOnPageSelected} ref={el => { if (el) el.indeterminate = isIndeterminate; }} onChange={(e) => handleSelectAllOnPage(paginatedIds, e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /> </th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Товар/Кампания</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[16%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Категория</span><span className="tooltip-text">Категория, к которой относится товар</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Зона показов</span><span className="tooltip-text">Места показа рекламы: Поиск и/или Рекомендации</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Преследование</span><span className="tooltip-text">Автоматическое управление ставками</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white"> <input type="checkbox" checked={allOnPageSelected} ref={el => { if (el) el.indeterminate = isIndeterminate; }} onChange={(e) => handleSelectAllOnPage(paginatedIds, e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /> </th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Товар/Кампания</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[16%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white"><div className="tooltip justify-start"><span>Категория</span><span className="tooltip-text">Категория, к которой относится товар</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Зона показов</span><span className="tooltip-text">Места показа рекламы: Поиск и/или Рекомендации</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Преследование</span><span className="tooltip-text">Автоматическое управление ставками</span></div></th> 
                   {isCpmManual ? <> 
-                    <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Поиск</span><span className="tooltip-text">Ставка для показов в результатах поиска</span></div></th> 
-                    <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Рекоменд.</span><span className="tooltip-text">Ставка для показов в рекомендациях</span></div></th> 
-                  </> : <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip justify-start"><span>Ставка</span><span className="tooltip-text">Единая ставка для всех зон показов</span></div></th> } 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"><div className="tooltip"><span>АП</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] sticky top-[161px] bg-white z-20 shadow-[0_1px_0_0_rgba(0,0,0,0.05)]"></th> 
+                    <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Поиск</span><span className="tooltip-text">Ставка для показов в результатах поиска</span></div></th> 
+                    <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Рекоменд.</span><span className="tooltip-text">Ставка для показов в рекомендациях</span></div></th> 
+                  </> : <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white"><div className="tooltip justify-start"><span>Ставка</span><span className="tooltip-text">Единая ставка для всех зон показов</span></div></th> } 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white"><div className="tooltip"><span>АП</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white"></th> 
                 </tr> 
               </thead> 
               <tbody className="divide-y divide-gray-100"> {paginatedCampaigns.map((row) => ( <tr key={row.id} className={`transition-colors ${selectedCampaignIds.includes(row.id) ? 'bg-purple-50' : 'hover:bg-gray-50'}`}> <td className="px-2 py-1.5 align-top"><input type="checkbox" checked={selectedCampaignIds.includes(row.id)} onChange={() => handleSelectCampaign(row.id)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"/></td> <td className="px-2 py-1.5 align-top"> <div className="flex items-start gap-2"> 
