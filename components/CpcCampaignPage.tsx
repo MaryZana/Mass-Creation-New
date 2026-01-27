@@ -404,7 +404,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                             onMouseEnter={() => setIsClockTooltipVisible(true)}
                             onMouseLeave={() => setIsClockTooltipVisible(false)}
                           >
-                            <p className="mb-2">Завтра в 12:30 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimitState)}₽</p>
+                            <p className="mb-2">Завтра в 00:01 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimitState)}₽</p>
                             <button
                               onClick={() => {
                                 setIsScheduledForNextDay(false);
