@@ -120,6 +120,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
   const [isScheduledForNextDay, setIsScheduledForNextDay] = useState(scheduledDailyLimit !== null && scheduledDailyLimit !== undefined);
   const [scheduledDailyLimitState, setScheduledDailyLimitState] = useState<string | null>(scheduledDailyLimit ? String(scheduledDailyLimit) : null);
   const [previousScheduledLimit, setPreviousScheduledLimit] = useState<string | null>(null);
+  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
+  const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
 
   // Sync with props when they change
   useEffect(() => {
@@ -348,7 +350,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                 }} />
                 <p className="text-sm text-gray-800 flex items-center gap-2">
                   <span>Дневной лимит</span>
-                  {!isFirstVisit && <DailyLimitInfoTooltip />}
+                  <DailyLimitInfoTooltip />
                 </p>
               </div>
             </div>
@@ -523,69 +525,39 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
               )}
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <button
-                type="button"
-                disabled={!isDailyLimitEnabled}
-                onClick={() => {
-                  if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
-                    setPreviousScheduledLimit(scheduledDailyLimitState);
-                  }
-                  const currentValue = parseDisplayValue(dailyLimitValue) || 0;
-                  const newValue = currentValue + 1000;
-                  setDailyLimitValue(String(newValue));
-                  setIsScheduledForNextDay(false);
-                  setScheduledDailyLimit(null);
-                }}
-                className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                  !isDailyLimitEnabled 
-                    ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
-                }`}
+              <label className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-3 w-3 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                  disabled={!isDailyLimitEnabled}
+                  checked={isCarryoverEnabled}
+                  onChange={(e) => {
+                    if (!isDailyLimitEnabled) return;
+                    setIsCarryoverEnabled(e.target.checked);
+                    setToastMessage('Настройка переноса лимита сохранена');
+                    setShowToast(true);
+                  }}
+                />
+                <span className={isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}>
+                  Переносить неиспользованный лимит
+                </span>
+              </label>
+              <div
+                className="relative inline-block"
+                onMouseEnter={() => setIsCarryoverTooltipVisible(true)}
+                onMouseLeave={() => setIsCarryoverTooltipVisible(false)}
               >
-                +1000₽
-              </button>
-              <button
-                type="button"
-                disabled={!isDailyLimitEnabled}
-                onClick={() => {
-                  if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
-                    setPreviousScheduledLimit(scheduledDailyLimitState);
-                  }
-                  const currentValue = parseDisplayValue(dailyLimitValue) || 0;
-                  const newValue = currentValue + 3000;
-                  setDailyLimitValue(String(newValue));
-                  setIsScheduledForNextDay(false);
-                  setScheduledDailyLimit(null);
-                }}
-                className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                  !isDailyLimitEnabled 
-                    ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
-                }`}
-              >
-                +3000₽
-              </button>
-              <button
-                type="button"
-                disabled={!isDailyLimitEnabled}
-                onClick={() => {
-                  if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
-                    setPreviousScheduledLimit(scheduledDailyLimitState);
-                  }
-                  const currentValue = parseDisplayValue(dailyLimitValue) || 0;
-                  const newValue = currentValue + 5000;
-                  setDailyLimitValue(String(newValue));
-                  setIsScheduledForNextDay(false);
-                  setScheduledDailyLimit(null);
-                }}
-                className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                  !isDailyLimitEnabled 
-                    ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
-                }`}
-              >
-                +5000₽
-              </button>
+                <HelpCircle className="w-4 h-4 text-gray-500 cursor-help" />
+                {isCarryoverTooltipVisible && (
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left">
+                    <p className="mb-1">Система старается тратить бюджет равномерно.</p>
+                    <p>
+                      Если сегодня потратится меньше дневного лимита, остаток будет добавлен к лимиту следующего дня.
+                      Общая сумма расходов не увеличивается.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -803,12 +775,13 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
               </button>
               <button
                 onClick={() => {
+                  // Отключаем дневной лимит и закрываем модалку
                   setIsDailyLimitEnabled(false);
                   setWasDailyLimitToggledOn(false);
                   setPendingDailyLimit(null);
                   setDailyLimitValue('');
                   setIsScheduledForNextDay(false);
-                  setScheduledDailyLimit(null);
+                  setScheduledDailyLimitState(null);
                   setSavedDailyLimit('');
                   setIsDisableLimitModalOpen(false);
                   setToastMessage('Дневной лимит отключен');

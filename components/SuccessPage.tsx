@@ -329,7 +329,7 @@ const DailyLimitModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6 overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6 overflow-visible" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2">
             <ToggleSwitch 
@@ -357,7 +357,7 @@ const DailyLimitModal: React.FC<{
           <button onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
         </div>
 
-        <div className="mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
+        <div className="mb-6">
           <div className="space-y-6">
             {!isDailyLimitEnabled && (
               <p className="text-sm text-gray-500">Включите автопополнение, чтобы кампания не останавливалась</p>
@@ -438,76 +438,28 @@ const DailyLimitModal: React.FC<{
                 <p className="text-sm text-red-600">{budgetError}</p>
               </div>
             )}
-            {isDailyLimitEnabled && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
+            <div className="flex items-center gap-2 mt-2">
+              <label className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-3 w-3 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
                   disabled={!isDailyLimitEnabled}
-                  onClick={() => {
-                    if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                      setPreviousScheduledLimit(scheduledDailyLimit);
-                    }
-                    const currentValue = parseDisplayValue(dailyLimitValue) || 0;
-                    const newValue = currentValue + 1000;
-                    setDailyLimitValue(String(newValue));
-                    setIsScheduledForNextDay(false);
-                    setScheduledDailyLimit(null);
-                    setBudgetError('');
-                  }}
-                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                    !isDailyLimitEnabled 
-                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
-                  }`}
-                >
-                  +1000₽
-                </button>
-                <button
-                  type="button"
-                  disabled={!isDailyLimitEnabled}
-                  onClick={() => {
-                    if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                      setPreviousScheduledLimit(scheduledDailyLimit);
-                    }
-                    const currentValue = parseDisplayValue(dailyLimitValue) || 0;
-                    const newValue = currentValue + 3000;
-                    setDailyLimitValue(String(newValue));
-                    setIsScheduledForNextDay(false);
-                    setScheduledDailyLimit(null);
-                    setBudgetError('');
-                  }}
-                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                    !isDailyLimitEnabled 
-                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
-                  }`}
-                >
-                  +3000₽
-                </button>
-                <button
-                  type="button"
-                  disabled={!isDailyLimitEnabled}
-                  onClick={() => {
-                    if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                      setPreviousScheduledLimit(scheduledDailyLimit);
-                    }
-                    const currentValue = parseDisplayValue(dailyLimitValue) || 0;
-                    const newValue = currentValue + 5000;
-                    setDailyLimitValue(String(newValue));
-                    setIsScheduledForNextDay(false);
-                    setScheduledDailyLimit(null);
-                    setBudgetError('');
-                  }}
-                  className={`px-1.5 py-0.5 text-[10px] font-medium rounded-md transition-colors ${
-                    !isDailyLimitEnabled 
-                      ? 'bg-gray-50 text-gray-400 cursor-not-allowed' 
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer'
-                  }`}
-                >
-                  +5000₽
-                </button>
+                />
+                <span className={isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}>
+                  Переносить неиспользованный лимит
+                </span>
+              </label>
+              <div className="relative inline-block group">
+                <HelpCircle className="w-4 h-4 text-gray-500 cursor-help" />
+                <div className="hidden group-hover:block absolute left-1/2 -translate-x-1/2 top-full mt-2 w-72 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left">
+                  <p className="mb-1">Система старается тратить бюджет равномерно.</p>
+                  <p>
+                    Если сегодня потратится меньше дневного лимита, остаток будет добавлен к лимиту следующего дня.
+                    Общая сумма расходов не увеличивается.
+                  </p>
+                </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
 

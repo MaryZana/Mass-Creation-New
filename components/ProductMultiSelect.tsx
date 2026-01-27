@@ -67,11 +67,11 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
         return [product];
       });
     } else {
-      setTempSelected(prev => 
-        prev.some(p => p.nmId === product.nmId)
-          ? prev.filter(p => p.nmId !== product.nmId)
-          : [...prev, product]
-      );
+    setTempSelected(prev => 
+      prev.some(p => p.nmId === product.nmId)
+        ? prev.filter(p => p.nmId !== product.nmId)
+        : [...prev, product]
+    );
     }
   };
 
@@ -135,11 +135,11 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
               }
           }
       } else {
-          if (areAllFilteredSelected) {
-              setTempSelected(prev => prev.filter(p => !selectableFilteredOptions.some(fo => fo.nmId === p.nmId)));
-          } else {
-              const newSelections = selectableFilteredOptions.filter(fo => !tempSelected.some(ts => ts.nmId === fo.nmId));
-              setTempSelected(prev => [...prev, ...newSelections]);
+      if (areAllFilteredSelected) {
+          setTempSelected(prev => prev.filter(p => !selectableFilteredOptions.some(fo => fo.nmId === p.nmId)));
+      } else {
+          const newSelections = selectableFilteredOptions.filter(fo => !tempSelected.some(ts => ts.nmId === fo.nmId));
+          setTempSelected(prev => [...prev, ...newSelections]);
           }
       }
   };
