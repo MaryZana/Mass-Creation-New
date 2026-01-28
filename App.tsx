@@ -41,6 +41,7 @@ const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
+const SELLER_PASSWORD = '23800974';
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
@@ -63,10 +64,16 @@ const parseDisplayValue = (str: string): number => {
 const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
+  const [activeTab, setActiveTab] = useState<'team' | 'seller'>('team');
 
   const handleLogin = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (password === MASTER_PASSWORD) {
+    const isValid =
+      activeTab === 'team'
+        ? password === MASTER_PASSWORD
+        : password === SELLER_PASSWORD;
+
+    if (isValid) {
       onAuth();
     } else {
       setError(true);
@@ -84,6 +91,30 @@ const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
           <span className="text-xl font-medium text-gray-800">Продвижение</span>
         </div>
         <h1 className="text-xl font-bold text-center mb-6">Вход в систему</h1>
+        <div className="flex items-center justify-center mb-4 gap-2 bg-gray-50 rounded-xl p-1">
+          <button
+            type="button"
+            onClick={() => { setActiveTab('team'); setPassword(''); setError(false); }}
+            className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'team'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-transparent text-gray-700 hover:bg-white'
+            }`}
+          >
+            Команда
+          </button>
+          <button
+            type="button"
+            onClick={() => { setActiveTab('seller'); setPassword(''); setError(false); }}
+            className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+              activeTab === 'seller'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-transparent text-gray-700 hover:bg-white'
+            }`}
+          >
+            Селлер
+          </button>
+        </div>
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Введите пароль</label>
