@@ -487,6 +487,46 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
     return new Set(shuffled.slice(0, 5));
   }, [campaigns, fromExcelModal]);
 
+  // Changes per tab (for informer icons)
+  const baseTabChangesCount = useMemo(() => {
+    if (!fromExcelModal) return 0;
+    return campaigns.filter(c =>
+      c.oldIsActive !== c.newIsActive ||
+      c.oldAutoRefill !== c.newAutoRefill ||
+      c.oldZones !== c.newZones ||
+      JSON.stringify(c.oldBidChasing) !== JSON.stringify(c.newBidChasing)
+    ).length;
+  }, [campaigns, fromExcelModal]);
+
+  const bidsTabChangesCount = useMemo(() => {
+    if (!fromExcelModal) return 0;
+    let count = 0;
+    campaigns.forEach(campaign => {
+      campaign.products.forEach(product => {
+        const hasChanged = product.clusters.some(cluster => cluster.oldBid !== cluster.newBid);
+        if (hasChanged) {
+          count += 1;
+        }
+      });
+    });
+    return count;
+  }, [campaigns, fromExcelModal]);
+
+  const clustersTabChangesCount = useMemo(() => {
+    if (!fromExcelModal) return 0;
+    let count = 0;
+    campaigns.forEach(campaign => {
+      campaign.products.forEach(product => {
+        product.clusters.forEach(cluster => {
+          if (cluster.oldBid !== cluster.newBid) {
+            count += 1;
+          }
+        });
+      });
+    });
+    return count;
+  }, [campaigns, fromExcelModal]);
+
   // Base settings table rows
   const baseTableRows = useMemo(() => {
     const rows: Array<{ campaign: CampaignChange; product: typeof MOCK_CHANGES[0]['products'][0]; rowKey: string }> = [];
@@ -763,9 +803,34 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
           {/* Tabs */}
           <div className="bg-gray-50 -mx-6 px-6 py-4 rounded-t-2xl">
             <div className="flex items-center gap-3">
-              <TabButton isActive={activeTab === 'base'} onClick={() => { setActiveTab('base'); setCurrentPage(1); }}>Базовые настройки</TabButton>
-              <TabButton isActive={activeTab === 'bids'} onClick={() => { setActiveTab('bids'); setCurrentPage(1); }}>Ставки</TabButton>
-              <TabButton isActive={activeTab === 'clusters'} onClick={() => { setActiveTab('clusters'); setCurrentPage(1); }}>Кластера</TabButton>
+              <TabButton isActive={activeTab === 'base'} onClick={() => { setActiveTab('base'); setCurrentPage(1); }}>
+                <span className="flex items-center gap-1">
+                  Базовые настройки
+                </span>
+              </TabButton>
+              <TabButton isActive={activeTab === 'bids'} onClick={() => { setActiveTab('bids'); setCurrentPage(1); }}>
+                <span className="flex items-center gap-1">
+                  Ставки
+                  {fromExcelModal && bidsTabChangesCount > 0 && (
+                    <span className="relative group inline-flex items-center">
+                      <span className="w-5 h-5 rounded-full border border-amber-500 flex items-center justify-center text-amber-500 cursor-help bg-transparent">
+                        <AlertTriangle className="w-3 h-3" />
+                      </span>
+                      <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-72 bg-gray-900 text-white text-xs rounded-lg px-3 py-2 shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none z-[60]">
+                        <p>
+                          В {bidsTabChangesCount}{' '}
+                          {getPlural(bidsTabChangesCount, 'товаре', 'товарах', 'товарах')} изменили минимальные ставки.
+                        </p>
+                      </div>
+                    </span>
+                  )}
+                </span>
+              </TabButton>
+              <TabButton isActive={activeTab === 'clusters'} onClick={() => { setActiveTab('clusters'); setCurrentPage(1); }}>
+                <span className="flex items-center gap-1">
+                  Кластера
+                </span>
+              </TabButton>
             </div>
           </div>
 
@@ -1209,28 +1274,39 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-center gap-1.5">
-                                {isEditing ? (
-                                  <BidInput 
-                                    value={searchBid || 0} 
-                                    onChange={(val) => handleUpdateProductBid(campaign.id, product.id, val)} 
-                                  />
-                                ) : (
-                                  <span className="font-medium text-gray-600">{formatCurrency(searchBid)}</span>
-                                )}
-                                {isHighlightedCampaign && isSearchChanged && searchOldBid !== null && (
-                                  <div className="relative group">
-                                    <Info className="w-4 h-4 text-amber-600 cursor-help" />
-                                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none">
-                                      <div className="space-y-1">
-                                        <div>Старая ставка (из Excel): <span className="font-semibold">{formatCurrency(searchOldBid)}</span></div>
-                                        <div>Новая ставка: <span className="font-semibold">{formatCurrency(searchBid)}</span></div>
-                                        <div className="pt-1 border-t border-gray-700">Причина: минимальная ставка {formatCurrency(minBid)}</div>
+                              <div className="flex flex-col gap-1">
+                                <div className="text-xs text-gray-500">
+                                  {(() => {
+                                    const hasSearch = zones.includes('Поиск');
+                                    const hasRecs = zones.includes('Рекомендации') || zones.includes('Реком');
+                                    if (hasSearch && !hasRecs) return 'Поиск';
+                                    if (!hasSearch && hasRecs) return 'Рекомендации';
+                                    return 'Поиск и рекомендации';
+                                  })()}
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {isEditing ? (
+                                    <BidInput 
+                                      value={searchBid || 0} 
+                                      onChange={(val) => handleUpdateProductBid(campaign.id, product.id, val)} 
+                                    />
+                                  ) : (
+                                    <span className="font-medium text-gray-600">{formatCurrency(searchBid)}</span>
+                                  )}
+                                  {isHighlightedCampaign && isSearchChanged && searchOldBid !== null && (
+                                    <div className="relative group">
+                                      <Info className="w-4 h-4 text-amber-600 cursor-help" />
+                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 bg-gray-900 text-white text-xs rounded-lg p-3 shadow-xl z-50 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all pointer-events-none">
+                                        <div className="space-y-1">
+                                          <div>Старая ставка (из Excel): <span className="font-semibold">{formatCurrency(searchOldBid)}</span></div>
+                                          <div>Новая ставка: <span className="font-semibold">{formatCurrency(searchBid)}</span></div>
+                                          <div className="pt-1 border-t border-gray-700">Причина: минимальная ставка {formatCurrency(minBid)}</div>
+                                        </div>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 transform rotate-45 -mt-1"></div>
                                       </div>
-                                      <div className="absolute top-full left-1/2 -translate-x-1/2 w-2 h-2 bg-gray-900 transform rotate-45 -mt-1"></div>
                                     </div>
-                                  </div>
-                                )}
+                                  )}
+                                </div>
                               </div>
                             )}
                           </td>
@@ -1377,7 +1453,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                             </td>
                           )}
                           <td className="px-2 py-1.5 align-top text-left text-gray-700">{cluster.name}</td>
-                          <td className={`px-2 py-1.5 align-top text-left font-medium ${isChanged ? 'bg-purple-50 text-purple-800' : 'text-gray-800'}`}>
+                          <td className="px-2 py-1.5 align-top text-left font-medium text-gray-800">
                             {isEditing ? (
                               <BidInput 
                                 value={cluster.newBid || 0} 
