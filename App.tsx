@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
+import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
   FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle
@@ -12,6 +14,9 @@ import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 import { CpcCampaignPage } from './components/CpcCampaignPage';
 import { MassEditPage } from './components/MassEditPage';
 import { SingleCampaignPage } from './components/SingleCampaignPage';
+import CampaignsPage from './pages/CampaignsPage';
+import StatsPage from './pages/StatsPage';
+import FinancePage from './pages/FinancePage';
 
 // --- Types ---
 interface TemplateGroup {
@@ -181,9 +186,27 @@ const Header = ({ onNavigateToList }: { onNavigateToList: () => void }) => (
         </div>
         <div className="px-6 h-12 flex items-center justify-between border-t border-gray-100 bg-white">
             <div className="flex items-center gap-8 text-sm font-medium">
-                <a href="#" onClick={(e) => { e.preventDefault(); onNavigateToList(); }} className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Кампании</a>
-                <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Статистика</a>
-                <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Финансы</a>
+                <NavLink
+                  to="/campaigns"
+                  onClick={() => {
+                    onNavigateToList();
+                  }}
+                  className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent"
+                >
+                  Кампании
+                </NavLink>
+                <NavLink
+                  to="/stats"
+                  className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent"
+                >
+                  Статистика
+                </NavLink>
+                <NavLink
+                  to="/finance"
+                  className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent"
+                >
+                  Финансы
+                </NavLink>
                 <a href="#" className="flex items-center gap-1 text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">
                     Новости <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">99+</span>
                 </a>
@@ -952,12 +975,11 @@ const BulkEditModal = ({
 
                             <div className="pt-4 border-t border-gray-100">
                                 <div className="flex items-center gap-2 mb-4">
-                                    <input
-                                        type="checkbox"
+                                    <Checkbox
                                         id="bonus-toggle"
                                         checked={useBonuses}
                                         onChange={e => setUseBonuses(e.target.checked)}
-                                        className="w-5 h-5 rounded text-purple-600 focus:ring-purple-500 border-gray-300 cursor-pointer"
+                                        className="w-5 h-5 text-purple-600 cursor-pointer"
                                     />
                                     <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
                                         Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
@@ -2107,169 +2129,178 @@ export default function App() {
     return (
       <div className="min-h-screen bg-[#F6F69] font-sans text-gray-900 relative">
         <Header onNavigateToList={() => handleNavigationAttempt(handleNavigateToList)} />
-        <main className="max-w-[1392px] mx-auto px-6 py-8">
-          <SuccessPage
-            isLaunching={isLaunching}
-            launchTotal={totalAllValidCount}
-            launchResult={creationResult}
-            failedCampaigns={failedCampaigns}
-            onClearLaunchResult={() => setCreationResult(null)}
-            onNavigateToCreation={() => handleNavigationAttempt(handleNavigateToCreation)}
-            onOpenUploadEditsModal={() => setIsUploadEditsModalOpen(true)}
-            selectedCampaigns={selectedListedCampaignIds}
-            onSelectionChange={setSelectedListedCampaignIds}
-            isApplyingEdits={isApplyingEdits}
-            editResult={editResult}
-            onClearEditResult={() => setEditResult(null)}
-            onCancelEdits={handleCancelEdits}
-            onOpenReview={() => setIsReviewEditsModalOpen(true)}
-            onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
-            showUploadHint={showUploadHint}
-            onDismissUploadHint={() => setShowUploadHint(false)}
-            onOpenCpcCampaign={({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit }) => {
-              setSelectedCpcCampaign({ id: campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit });
-              setAppState('cpc-detail' as any);
-            }}
-            onUpdateCampaignData={(campaignId, data) => {
-              if (updateCampaignDataRef.current) {
-                updateCampaignDataRef.current(campaignId, data);
-              }
-            }}
-            onRegisterUpdateFn={(fn) => {
-              updateCampaignDataRef.current = fn;
-            }}
-            onOpenSingleCampaign={() => setAppState('single-campaign')}
-          />
-        </main>
-         <UploadEditsModal 
-          isOpen={isUploadEditsModalOpen} 
-          onClose={() => setIsUploadEditsModalOpen(false)}
-          onApply={handleApplyEdits}
-          onOpenReview={() => {
-            setIsUploadEditsModalOpen(false);
-            setIsFromExcelModal(true);
-            handleNavigationAttempt(handleNavigateToEditing);
-          }}
-        />
-        <ReviewEditsModal 
-          isOpen={isReviewEditsModalOpen}
-          onClose={() => setIsReviewEditsModalOpen(false)}
-          onEdit={() => {
-            setIsReviewEditsModalOpen(false);
-            setIsFromExcelModal(false);
-            handleNavigationAttempt(handleNavigateToEditing);
-          }}
-        />
-        <ChangesHistoryModal
-            isOpen={isHistoryModalOpen}
-            onClose={() => setIsHistoryModalOpen(false)}
-            showToast={setShowToast}
-            setToastMessage={setToastMessage}
-        />
-        {selectedListedCampaignIds.length > 0 && (
-          <BulkActionIsland 
-            count={selectedListedCampaignIds.length}
-            onClear={() => setSelectedListedCampaignIds([])}
-            onEdit={() => {
-              setIsFromExcelModal(false);
-              handleNavigationAttempt(handleNavigateToEditing);
-            }}
-            onConfigureAR={() => {
-              setToastMessage("Функция 'Настроить АП' в разработке");
-              setShowToast(true);
-            }}
-            onDownload={handleOpenEditDownloadModal}
-          />
-        )}
-
-        {isEditDownloadModalOpen && (
-          <div
-            className="fixed inset-0 z-[96] bg-black/50 flex items-center justify-center p-4"
-            onClick={() => setIsEditDownloadModalOpen(false)}
-          >
-            <div
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">Скачать Excel для правок</h2>
-                  <p className="mt-1 text-sm text-gray-600">Какие параметры будете менять?</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setIsEditDownloadModalOpen(false)}
-                  className="p-1 rounded-full text-gray-400 hover:bg-gray-100"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="space-y-3 mb-6">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 text-purple-600 border-gray-300 rounded"
-                    defaultChecked
+        <Routes>
+          <Route
+            path="/campaigns"
+            element={
+              <CampaignsPage>
+                <main className="max-w-[1392px] mx-auto px-6 py-8">
+                  <SuccessPage
+                    isLaunching={isLaunching}
+                    launchTotal={totalAllValidCount}
+                    launchResult={creationResult}
+                    failedCampaigns={failedCampaigns}
+                    onClearLaunchResult={() => setCreationResult(null)}
+                    onNavigateToCreation={() => handleNavigationAttempt(handleNavigateToCreation)}
+                    onOpenUploadEditsModal={() => setIsUploadEditsModalOpen(true)}
+                    selectedCampaigns={selectedListedCampaignIds}
+                    onSelectionChange={setSelectedListedCampaignIds}
+                    isApplyingEdits={isApplyingEdits}
+                    editResult={editResult}
+                    onClearEditResult={() => setEditResult(null)}
+                    onCancelEdits={handleCancelEdits}
+                    onOpenReview={() => setIsReviewEditsModalOpen(true)}
+                    onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
+                    showUploadHint={showUploadHint}
+                    onDismissUploadHint={() => setShowUploadHint(false)}
+                    onOpenCpcCampaign={({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit }) => {
+                      setSelectedCpcCampaign({ id: campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit });
+                      setAppState('cpc-detail' as any);
+                    }}
+                    onUpdateCampaignData={(campaignId, data) => {
+                      if (updateCampaignDataRef.current) {
+                        updateCampaignDataRef.current(campaignId, data);
+                      }
+                    }}
+                    onRegisterUpdateFn={(fn) => {
+                      updateCampaignDataRef.current = fn;
+                    }}
+                    onOpenSingleCampaign={() => setAppState('single-campaign')}
                   />
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">Базовые настройки</div>
-                    <div className="text-xs text-gray-500 mt-0.5">Бюджет, автопополнение</div>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 text-purple-600 border-gray-300 rounded"
-                    defaultChecked
-                  />
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">Ставки</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      Ставки и настройка преследования ставок
-                    </div>
-                  </div>
-                </label>
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4 text-purple-600 border-gray-300 rounded"
-                    defaultChecked
-                  />
-                  <div>
-                    <div className="text-sm font-medium text-gray-900">Кластера</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      Настройка ставок по кластерам
-                    </div>
-                  </div>
-                </label>
-              </div>
-
-              <div className="flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsEditDownloadModalOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsEditDownloadModalOpen(false);
-                    handleDownloadForEdit();
+                </main>
+                <UploadEditsModal 
+                  isOpen={isUploadEditsModalOpen} 
+                  onClose={() => setIsUploadEditsModalOpen(false)}
+                  onApply={handleApplyEdits}
+                  onOpenReview={() => {
+                    setIsUploadEditsModalOpen(false);
+                    setIsFromExcelModal(true);
+                    handleNavigationAttempt(handleNavigateToEditing);
                   }}
-                  className="px-5 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg"
-                >
-                  Скачать
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+                />
+                <ReviewEditsModal 
+                  isOpen={isReviewEditsModalOpen}
+                  onClose={() => setIsReviewEditsModalOpen(false)}
+                  onEdit={() => {
+                    setIsReviewEditsModalOpen(false);
+                    setIsFromExcelModal(false);
+                    handleNavigationAttempt(handleNavigateToEditing);
+                  }}
+                />
+                <ChangesHistoryModal
+                    isOpen={isHistoryModalOpen}
+                    onClose={() => setIsHistoryModalOpen(false)}
+                    showToast={setShowToast}
+                    setToastMessage={setToastMessage}
+                />
+                {selectedListedCampaignIds.length > 0 && (
+                  <BulkActionIsland 
+                    count={selectedListedCampaignIds.length}
+                    onClear={() => setSelectedListedCampaignIds([])}
+                    onEdit={() => {
+                      setIsFromExcelModal(false);
+                      handleNavigationAttempt(handleNavigateToEditing);
+                    }}
+                    onConfigureAR={() => {
+                      setToastMessage("Функция 'Настроить АП' в разработке");
+                      setShowToast(true);
+                    }}
+                    onDownload={handleOpenEditDownloadModal}
+                  />
+                )}
 
-        {downloadStatus === 'loading' && <DownloadNotification count={downloadCount} />}
-        <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
+                {isEditDownloadModalOpen && (
+                  <div
+                    className="fixed inset-0 z-[96] bg-black/50 flex items-center justify-center p-4"
+                    onClick={() => setIsEditDownloadModalOpen(false)}
+                  >
+                    <div
+                      className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-start justify-between mb-4">
+                        <div>
+                          <h2 className="text-lg font-bold text-gray-900">Скачать Excel для правок</h2>
+                          <p className="mt-1 text-sm text-gray-600">Какие параметры будете менять?</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsEditDownloadModalOpen(false)}
+                          className="p-1 rounded-full text-gray-400 hover:bg-gray-100"
+                        >
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-3 mb-6">
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <Checkbox
+                            className="mt-1 h-4 w-4 text-purple-600"
+                            defaultChecked
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">Базовые настройки</div>
+                            <div className="text-xs text-gray-500 mt-0.5">Бюджет, автопополнение</div>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <Checkbox
+                            className="mt-1 h-4 w-4 text-purple-600"
+                            defaultChecked
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">Ставки</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              Ставки и настройка преследования ставок
+                            </div>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-3 cursor-pointer">
+                          <Checkbox
+                            className="mt-1 h-4 w-4 text-purple-600"
+                            defaultChecked
+                          />
+                          <div>
+                            <div className="text-sm font-medium text-gray-900">Кластера</div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              Настройка ставок по кластерам
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+
+                      <div className="flex justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setIsEditDownloadModalOpen(false)}
+                          className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg"
+                        >
+                          Отмена
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditDownloadModalOpen(false);
+                            handleDownloadForEdit();
+                          }}
+                          className="px-5 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg"
+                        >
+                          Скачать
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {downloadStatus === 'loading' && <DownloadNotification count={downloadCount} />}
+                <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
+              </CampaignsPage>
+            }
+          />
+          <Route path="/stats" element={<StatsPage />} />
+          <Route path="/finance" element={<FinancePage />} />
+          <Route path="/" element={<Navigate to="/campaigns" replace />} />
+        </Routes>
       </div>
     );
   }
@@ -2523,7 +2554,14 @@ export default function App() {
               <table className="w-full min-w-[1024px] text-xs text-left table-fixed"> 
               <thead className="text-gray-600 bg-white"> 
                 <tr> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white"> <input type="checkbox" checked={allOnPageSelected} ref={el => { if (el) el.indeterminate = isIndeterminate; }} onChange={(e) => handleSelectAllOnPage(paginatedIds, e.target.checked)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /> </th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white">
+                    <Checkbox
+                      checked={allOnPageSelected}
+                      indeterminate={isIndeterminate}
+                      onChange={(e) => handleSelectAllOnPage(paginatedIds, e.target.checked)}
+                      className="h-4 w-4 text-purple-600"
+                    />
+                  </th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Товар/Кампания</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[16%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white"><div className="tooltip justify-start"><span>Категория</span><span className="tooltip-text">Категория, к которой относится товар</span></div></th> 
@@ -2538,7 +2576,7 @@ export default function App() {
                   <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white"></th> 
                 </tr> 
               </thead> 
-              <tbody className="divide-y divide-gray-100"> {paginatedCampaigns.map((row) => ( <tr key={row.id} className={`transition-colors ${selectedCampaignIds.includes(row.id) ? 'bg-purple-50' : 'hover:bg-gray-50'}`}> <td className="px-2 py-1.5 align-top"><input type="checkbox" checked={selectedCampaignIds.includes(row.id)} onChange={() => handleSelectCampaign(row.id)} className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"/></td> <td className="px-2 py-1.5 align-top"> <div className="flex items-start gap-2"> 
+              <tbody className="divide-y divide-gray-100"> {paginatedCampaigns.map((row) => ( <tr key={row.id} className={`transition-colors ${selectedCampaignIds.includes(row.id) ? 'bg-purple-50' : 'hover:bg-gray-50'}`}> <td className="px-2 py-1.5 align-top"><Checkbox checked={selectedCampaignIds.includes(row.id)} onChange={(e) => handleSelectCampaign(row.id)} className="h-4 w-4 text-purple-600"/></td> <td className="px-2 py-1.5 align-top"> <div className="flex items-start gap-2"> 
       <div className="relative group">
         <img src={row.imageUrl} alt={row.productName} className="w-8 h-8 rounded-md object-cover bg-gray-100 shrink-0 cursor-zoom-in" />
         <div className="hidden group-hover:block absolute left-full top-0 ml-2 z-[100] w-28 aspect-[3/4] bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden pointer-events-none">

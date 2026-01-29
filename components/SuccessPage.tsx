@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Checkbox } from 'antd';
 import { 
     Plus, 
     Search, 
@@ -440,9 +441,8 @@ const DailyLimitModal: React.FC<{
             )}
             <div className="flex items-center gap-2 mt-2">
               <label className="flex items-start gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-3 w-3 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                <Checkbox
+                  className="mt-0.5 h-3 w-3 text-purple-600"
                   disabled={!isDailyLimitEnabled}
                 />
                 <span className={isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}>
@@ -675,12 +675,11 @@ const BudgetRefillModal: React.FC<{
 
             <div className="pt-4 border-t border-gray-100">
               <div className="flex items-center gap-2 mb-4">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="bonus-toggle"
                   checked={useBonuses}
                   onChange={e => setUseBonuses(e.target.checked)}
-                  className="w-5 h-5 rounded text-purple-600 focus:ring-purple-500 border-gray-300 cursor-pointer"
+                  className="w-5 h-5 text-purple-600 cursor-pointer"
                 />
                 <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
                   Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
@@ -1399,29 +1398,28 @@ const FilterDropdown = ({
                   {['Сезонная распродажа', 'Ликвидация остатков', 'Чёрная пятница', 'Новый год', '8 марта', '1 сентября (школа)', 'Летняя распродажа', 'Зимняя распродажа', 'Межсезонье', 'Скидка по купону', 'Акция поставщика', 'Распродажа витрины', 'Уценка', 'Последние размеры', 'Хиты со скидкой'].filter(tag => 
                     tag.toLowerCase().includes(tempTagsSearch.toLowerCase())
                   ).map(tag => (
-                    <label 
-                      key={tag}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
-                        tempTags.includes(tag)
-                          ? 'bg-purple-50 border-purple-600 text-purple-700'
-                          : 'bg-white border-gray-200 text-gray-700 hover:border-purple-300'
-                      }`}
-                    >
-                      <input 
-                        type="checkbox" 
-                        checked={tempTags.includes(tag)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            onTempTagsChange([...tempTags, tag]);
-                          } else {
-                            onTempTagsChange(tempTags.filter(t => t !== tag));
-                          }
-                        }}
-                        className="sr-only"
-                      />
-                      <span className="text-sm font-medium">{tag}</span>
-                    </label>
-                  ))}
+                  <label 
+                    key={tag}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
+                      tempTags.includes(tag)
+                        ? 'bg-purple-50 border-purple-600 text-purple-700'
+                        : 'bg-white border-gray-200 text-gray-700 hover:border-purple-300'
+                    }`}
+                  >
+                    <Checkbox
+                      checked={tempTags.includes(tag)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          onTempTagsChange([...tempTags, tag]);
+                        } else {
+                          onTempTagsChange(tempTags.filter(t => t !== tag));
+                        }
+                      }}
+                      className="sr-only"
+                    />
+                    <span className="text-sm font-medium">{tag}</span>
+                  </label>
+                ))}
                 </div>
               </div>
 
@@ -1810,7 +1808,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               <table className="w-full text-sm">
                   <thead className="bg-gray-50 text-gray-500 font-medium">
                       <tr>
-                          <th className="p-4 w-12"><input type="checkbox" checked={isAllOnPageSelected} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" /></th>
+                          <th className="p-4 w-12">
+                            <Checkbox
+                              checked={isAllOnPageSelected}
+                              onChange={(e) => handleSelectAll(e.target.checked)}
+                              className="w-4 h-4 text-purple-600"
+                            />
+                          </th>
                           <th className="p-4 w-10"></th>
                           <th className="p-4 text-left font-medium min-w-[300px]">
                                 <div className="flex items-center gap-1">
@@ -1844,11 +1848,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'} ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}
                           >
                               <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
+                                <Checkbox
                                   checked={selectedCampaigns.includes(c.id)}
                                   onChange={(e) => handleSelectSingle(c.id, e.target.checked)}
-                                  className="w-4 h-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                  className="w-4 h-4 text-purple-600"
                                 />
                               </td>
                               <td className="p-4" onClick={(e) => e.stopPropagation()}>

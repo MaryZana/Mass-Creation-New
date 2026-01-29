@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Checkbox } from 'antd';
 import { Wallet, HelpCircle, X, RefreshCw, ChevronDown, Clock, SingleAccountIcon, Plus, Settings, Bell } from './Icons';
 
 const UNIFIED_BALANCE = 105350;
@@ -526,9 +527,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
             </div>
             <div className="flex items-center gap-2 mt-2">
               <label className="flex items-start gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  className="mt-0.5 h-3 w-3 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                <Checkbox
+                  className="mt-0.5"
                   disabled={!isDailyLimitEnabled}
                   checked={isCarryoverEnabled}
                   onChange={(e) => {
@@ -1052,17 +1052,16 @@ const BudgetRefillModal: React.FC<{
 
             <div className="pt-4 border-t border-gray-100">
               <div className="flex items-center gap-2 mb-4">
-                <input
-                  type="checkbox"
-                  id="bonus-toggle"
-                  checked={useBonuses}
-                  onChange={e => setUseBonuses(e.target.checked)}
-                  className="w-5 h-5 rounded text-purple-600 focus:ring-purple-500 border-gray-300 cursor-pointer"
-                />
-                <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
-                  Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
-                </label>
-              </div>
+              <Checkbox
+                id="bonus-toggle"
+                checked={useBonuses}
+                onChange={e => setUseBonuses(e.target.checked)}
+                className="w-5 h-5 text-purple-600 cursor-pointer"
+              />
+              <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
+                Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
+              </label>
+            </div>
 
               {useBonuses && (
                 <div className="animate-in fade-in slide-in-from-top-2 duration-300">

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Checkbox } from 'antd';
 import { ChevronDown, Search, CheckCircle } from './Icons';
 import { CampaignRecord } from '../types';
 
@@ -180,15 +181,10 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
               onClick={handleSelectAll}
               className="flex items-center gap-3 px-2 py-2 mt-2 hover:bg-purple-50 rounded-lg cursor-pointer group transition-colors"
             >
-              <div className={`
-                  w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0
-                  ${areAllFilteredSelected
-                      ? 'bg-purple-600 border-purple-600' 
-                      : 'bg-white border-gray-300 group-hover:border-purple-400'
-                  }
-              `}>
-                  {areAllFilteredSelected && <CheckCircle className="w-3.5 h-3.5 text-white" />}
-              </div>
+            <Checkbox
+              checked={areAllFilteredSelected}
+              className="shrink-0"
+            />
               <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Выбрать все</span>
             </div>
           </div>
@@ -205,15 +201,11 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                     onClick={() => !isIncompatible && toggleOption(p)}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isIncompatible ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'hover:bg-purple-50 cursor-pointer group'}`}
                   >
-                    <div className={`
-                        w-5 h-5 rounded border flex items-center justify-center transition-all shrink-0
-                        ${isSelected && !isIncompatible 
-                            ? 'bg-purple-600 border-purple-600' 
-                            : 'bg-white border-gray-300 group-hover:border-purple-400'
-                        }
-                    `}>
-                        {isSelected && !isIncompatible && <CheckCircle className="w-3.5 h-3.5 text-white" />}
-                    </div>
+                    <Checkbox
+                      checked={isSelected && !isIncompatible}
+                      disabled={isIncompatible}
+                      className="shrink-0"
+                    />
                     
                     <div className="relative group/image">
                       <img src={p.imageUrl} alt={p.productName} className="w-8 h-8 rounded-md shrink-0 object-cover" />

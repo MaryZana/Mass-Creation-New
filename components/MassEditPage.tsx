@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { Checkbox } from 'antd';
 import { MOCK_CHANGES, CampaignChange, Product } from './ReviewEditsModal';
 import { Edit2, Trash2, Bell, HelpCircle, Wallet, ChevronDown, RefreshCw, Download, X, Search, Clock, SingleAccountIcon, Settings, Info, AlertTriangle } from './Icons';
 
@@ -911,12 +912,11 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                   <thead className="text-gray-600 bg-white">
                     <tr>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
-                        <input 
-                          type="checkbox" 
-                          checked={allOnPageSelected} 
-                          ref={el => { if (el) el.indeterminate = isIndeterminate; }} 
-                          onChange={(e) => handleSelectAllOnPage(e.target.checked)} 
-                          className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" 
+                        <Checkbox
+                          checked={allOnPageSelected}
+                          indeterminate={isIndeterminate}
+                          onChange={(e) => handleSelectAllOnPage(e.target.checked)}
+                          className="h-4 w-4 text-purple-600"
                         />
                       </th>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[6%] bg-white shadow-[0_1px_0_0_rgba(0,0,0,0.05)]">
@@ -967,11 +967,10 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                       return (
                         <tr key={rowKey} className={`transition-colors ${isSelected ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
                           <td className="px-2 py-1.5 align-top text-left">
-                            <input 
-                              type="checkbox" 
+                            <Checkbox 
                               checked={isSelected} 
                               onChange={() => handleSelectCampaign(campaign.id)} 
-                              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              className="h-4 w-4 text-purple-600"
                             />
                           </td>
                           {isFirstProduct && (
@@ -1120,12 +1119,11 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                   <thead className="text-gray-600 bg-white">
                     <tr>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
-                        <input 
-                          type="checkbox" 
-                          checked={allOnPageSelected} 
-                          ref={el => { if (el) el.indeterminate = isIndeterminate; }} 
-                          onChange={(e) => handleSelectAllOnPage(e.target.checked)} 
-                          className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" 
+                        <Checkbox
+                          checked={allOnPageSelected}
+                          indeterminate={isIndeterminate}
+                          onChange={(e) => handleSelectAllOnPage(e.target.checked)}
+                          className="h-4 w-4 text-purple-600"
                         />
                       </th>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
@@ -1171,11 +1169,10 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                       return (
                         <tr key={rowKey} className={`transition-colors ${isSelected ? 'bg-gray-50' : 'hover:bg-gray-50'}`}>
                           <td className="px-2 py-1.5 align-top text-left">
-                            <input 
-                              type="checkbox" 
+                            <Checkbox 
                               checked={isSelected} 
                               onChange={() => handleSelectCampaign(campaign.id)} 
-                              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              className="h-4 w-4 text-purple-600"
                             />
                           </td>
                           <td className="px-2 py-1.5 align-top text-left text-gray-500">{rowIndex + (currentPage - 1) * PAGE_SIZE}</td>
@@ -1359,12 +1356,11 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                   <thead className="text-gray-600 bg-white">
                     <tr>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
-                        <input 
-                          type="checkbox" 
-                          checked={allOnPageSelected} 
-                          ref={el => { if (el) el.indeterminate = isIndeterminate; }} 
-                          onChange={(e) => handleSelectAllOnPage(e.target.checked)} 
-                          className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500" 
+                        <Checkbox
+                          checked={allOnPageSelected}
+                          indeterminate={isIndeterminate}
+                          onChange={(e) => handleSelectAllOnPage(e.target.checked)}
+                          className="h-4 w-4 text-purple-600"
                         />
                       </th>
                       <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white border-b border-gray-200">
@@ -1406,11 +1402,10 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
                       return (
                         <tr key={rowKey} className={`transition-colors ${isSelected ? 'bg-purple-50' : 'hover:bg-gray-50'}`}>
                           <td className="px-2 py-1.5 align-top text-left">
-                            <input 
-                              type="checkbox" 
+                            <Checkbox 
                               checked={isSelected} 
                               onChange={() => handleSelectCampaign(campaign.id)} 
-                              className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              className="h-4 w-4 text-purple-600"
                             />
                           </td>
                           {isFirstClusterOfCampaign && (
@@ -1902,14 +1897,13 @@ const BulkActionModal = ({
                 {!budgetError && <p className="text-xs text-gray-500 mt-2">Применится ко всем выбранным кампаниям.</p>}
               </div>
 
-              <div className="pt-4 border-t border-gray-100">
+              <div className="pt-4 border-т border-gray-100">
                 <div className="flex items-center gap-2 mb-4">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     id="bonus-toggle"
                     checked={useBonuses}
                     onChange={e => setUseBonuses(e.target.checked)}
-                    className="w-5 h-5 rounded text-purple-600 focus:ring-purple-500 border-gray-300 cursor-pointer"
+                    className="w-5 h-5 text-purple-600 cursor-pointer"
                   />
                   <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
                     Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>

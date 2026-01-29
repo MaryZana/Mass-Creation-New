@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { Checkbox } from 'antd';
 import { ChevronDown, CheckCircle } from './Icons';
 
 interface MultiSelectProps {
@@ -112,15 +113,10 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                     className="flex items-center gap-3 px-3 py-2.5 hover:bg-purple-50 rounded-lg cursor-pointer group transition-colors"
                   >
                     {/* Checkbox */}
-                    <div className={`
-                      w-5 h-5 rounded border flex items-center justify-center transition-all
-                      ${isSelected 
-                        ? 'bg-purple-600 border-purple-600' 
-                        : 'bg-white border-gray-300 group-hover:border-purple-400'
-                      }
-                    `}>
-                      {isSelected && <CheckCircle className="w-3.5 h-3.5 text-white" />}
-                    </div>
+                    <Checkbox
+                      checked={isSelected}
+                      className="flex items-center justify-center"
+                    />
                     
                     {/* Text */}
                     <span className={`text-sm ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>
