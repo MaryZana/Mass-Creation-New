@@ -46,7 +46,7 @@ const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
-const SELLER_PASSWORD = '23800974';
+const SELLER_PASSWORD = '23800857';
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
