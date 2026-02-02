@@ -66,6 +66,22 @@ const parseDisplayValue = (str: string): number => {
 
 // --- Sub-Components ---
 
+/** Тёмный тултип после первого добавления списка: можно добавить CPC-кампании с теми же товарами. Показывается один раз. */
+const FirstListCpcTooltip: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => {
+  useEffect(() => {
+    const t = setTimeout(onDismiss, 8000);
+    return () => clearTimeout(t);
+  }, [onDismiss]);
+  return (
+    <div className="absolute left-0 top-full mt-2 z-50 flex items-start gap-2 max-w-[280px] px-3 py-2.5 bg-gray-800 text-white text-sm rounded-lg shadow-xl animate-in fade-in slide-in-from-top-1 duration-200">
+      <p className="flex-1">Чтобы добавить CPC-кампании с теми же товарами, нажмите «Добавить список товаров» и выберите CPC</p>
+      <button type="button" onClick={onDismiss} className="shrink-0 p-0.5 text-gray-400 hover:text-white rounded" aria-label="Закрыть">
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
 const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
@@ -491,8 +507,8 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                     </div>
                     <button onClick={handleCloseRequest} className="text-gray-400 hover:text-gray-600 p-1 rounded-full"><X className="w-6 h-6" /></button> 
                 </div> 
-                <div className="p-6 space-y-4 flex-grow overflow-y-auto custom-scrollbar">
-                    <section>
+                <div className="p-6 space-y-4 flex-grow flex flex-col min-h-0">
+                    <section className="shrink-0 overflow-visible relative z-20">
                         <h3 className="text-lg font-bold">Добавление товара</h3>
                         
                         <div className="my-4">
@@ -602,7 +618,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                     </section>
                     
                     {hasChanges && (
-                        <div className="space-y-6 pt-4 border-t border-gray-200 mt-6 animate-in fade-in duration-500">
+                        <div className="flex-grow overflow-visible space-y-6 pt-4 border-t border-gray-200 mt-6 animate-in fade-in duration-500 min-h-0">
                             <section>
                             <h3 className="text-lg font-bold mb-3">Тип продвижения</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -642,7 +658,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                         </div>
                     )}
                 </div> 
-                <div className="flex justify-end items-center gap-4 p-6 bg-gray-50/70 border-t border-gray-100 rounded-b-2xl"> 
+                <div className="flex justify-end items-center gap-4 p-6 bg-gray-50/70 border-t border-gray-100 rounded-b-2xl relative z-10"> 
                     <button onClick={handleCloseRequest} className="px-6 py-2.5 text-sm font-medium bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Отмена</button>
                     <button 
                         onClick={handleSubmit} 
@@ -1517,6 +1533,7 @@ export default function App() {
   const [isConfirmLaunchOpen, setIsConfirmLaunchOpen] = useState(false);
   const [isConfirmLaunchWithFiltersOpen, setIsConfirmLaunchWithFiltersOpen] = useState(false);
   const [showAddMoreHint, setShowAddMoreHint] = useState(true);
+  const [hasShownFirstListCpcTooltip, setHasShownFirstListCpcTooltip] = useState(false);
   const [isLaunchSummaryModalOpen, setIsLaunchSummaryModalOpen] = useState(false);
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [campaignForAutoRefill, setCampaignForAutoRefill] = useState<CampaignRecord | null>(null);
@@ -2438,10 +2455,15 @@ export default function App() {
   <main className="max-w-[1392px] mx-auto px-6 py-8">
         <section className="bg-white rounded-2xl p-6 shadow-sm mb-8">
             <div className="flex flex-wrap items-center gap-4">
-                <button onClick={() => setIsAddItemModalOpen(true)} className="px-5 py-2.5 text-sm font-bold text-white bg-gray-700 hover:bg-gray-800 rounded-lg shadow-sm transition-all flex items-center gap-2 w-auto">
-                    <Plus className="w-4 h-4" />
-                    <span>Добавить список товаров</span>
-                </button>
+                <div className="relative flex items-center gap-2">
+                    <button onClick={() => setIsAddItemModalOpen(true)} className="px-5 py-2.5 text-sm font-bold text-white bg-gray-700 hover:bg-gray-800 rounded-lg shadow-sm transition-all flex items-center gap-2 w-auto">
+                        <Plus className="w-4 h-4" />
+                        <span>Добавить список товаров</span>
+                    </button>
+                    {templateGroups.length === 1 && !hasShownFirstListCpcTooltip && (
+                      <FirstListCpcTooltip onDismiss={() => setHasShownFirstListCpcTooltip(true)} />
+                    )}
+                </div>
                  {templateGroups.length > 0 && showAddMoreHint && (
                     <div className="flex items-center gap-2 text-sm font-medium animate-in fade-in">
                         <svg width="32" height="28" viewBox="0 0 32 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-gray-400 transform -translate-y-1">
@@ -2523,7 +2545,7 @@ export default function App() {
             if (filteredGroupCampaigns.length === 0 && areFiltersActive) return null;
 
             return ( <section key={group.id} className="bg-white rounded-2xl shadow-sm px-6 pb-6 pt-0 space-y-4 animate-fade-in"> 
-            <div className="sticky top-[104px] z-30 bg-white py-3 border-b border-gray-100 mb-0 flex justify-between items-center -mx-6 px-6 rounded-t-2xl shadow-sm h-[57px]"> 
+<div className="sticky top-[104px] z-30 bg-white pt-4 pb-3 border-b border-gray-100 mb-0 flex justify-between items-center -mx-6 px-6 rounded-t-2xl shadow-sm min-h-[57px]">
               <div className="flex items-center gap-4">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">{`${group.config.paymentModel} ${group.config.bidType === BidType.MANUAL ? 'Ручная ставка' : 'Единая ставка'}`}</h2>
@@ -2572,7 +2594,7 @@ export default function App() {
                     <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Поиск</span><span className="tooltip-text">Ставка для показов в результатах поиска</span></div></th> 
                     <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Рекоменд.</span><span className="tooltip-text">Ставка для показов в рекомендациях</span></div></th> 
                   </> : <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white"><div className="tooltip justify-start"><span>Ставка</span><span className="tooltip-text">Единая ставка для всех зон показов</span></div></th> } 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white"><div className="tooltip"><span>АП</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white"><div className="tooltip"><span>Автопополнение</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white"></th> 
                 </tr> 
               </thead> 
@@ -2718,7 +2740,7 @@ export default function App() {
            </button>
            <button onClick={() => openBulkActionModal('autobidder')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
              <Wand className="w-4 h-4 text-gray-500" />
-             <span>Автобиддер</span>
+             <span>Преследование ставки</span>
            </button>
            <div className="h-6 w-px bg-gray-200 mx-1"></div>
             <div className="tooltip">
