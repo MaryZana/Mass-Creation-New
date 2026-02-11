@@ -46,7 +46,7 @@ const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
-const SELLER_PASSWORD = '23800857';
+const SELLER_PASSWORD = '23800345';
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
@@ -349,18 +349,25 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
     const [tempConfig, setTempConfig] = useState(initialConfig);
     const [selectedProducts, setSelectedProducts] = useState<SelectableProduct[]>([]);
     const excelFileInputRef = useRef<HTMLInputElement>(null);
-    const [uploadInfo, setUploadInfo] = useState<{ loaded: number, total: number, fileName: string } | null>(null);
+    const [uploadedFiles, setUploadedFiles] = useState<{ id: string; fileName: string; loaded: number; total: number }[]>([]);
     const [isProcessingExcel, setIsProcessingExcel] = useState(false);
     const [isConfirmCloseOpen, setIsConfirmCloseOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'select' | 'upload'>('select');
+    const [isDragOver, setIsDragOver] = useState(false);
+    const [manualZones, setManualZones] = useState<{ search: boolean; recommendations: boolean }>({
+        search: true,
+        recommendations: true,
+    });
 
     useEffect(() => {
         if (isOpen) {
             setTempConfig(initialConfig);
             setSelectedProducts([]);
-            setUploadInfo(null);
+            setUploadedFiles([]);
             setIsProcessingExcel(false);
             setActiveTab('select');
+            setIsDragOver(false);
+            setManualZones({ search: true, recommendations: true });
         }
     }, [isOpen, initialConfig]);
 
@@ -397,42 +404,100 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
         showToast(true);
     };
 
-    const handleExcelUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-        if (!event.target.files || event.target.files.length === 0) return;
-        
-        const file = event.target.files[0];
-        setUploadInfo(null);
-        setSelectedProducts([]);
+    const processExcelFiles = (files: File[]) => {
+        if (files.length === 0) return;
+
         setIsProcessingExcel(true);
-        setTempConfig(p => ({ ...p, categories: ['Одежда'] }));
+        setTempConfig(p => ({ ...p, categories: p.categories.length ? p.categories : ['Одежда'] }));
 
         setTimeout(() => {
-            const totalInFile = Math.floor(Math.random() * 10) + 20; 
-            const foundCount = Math.floor(totalInFile * (Math.random() * 0.2 + 0.8)); 
-            
             const allPossibleProducts = getMockProductsForCategory('Одежда');
-            const foundProducts = allPossibleProducts.slice(0, foundCount);
 
-            setSelectedProducts(foundProducts);
-            setUploadInfo({ loaded: foundCount, total: totalInFile, fileName: file.name });
+            const newEntries: { id: string; fileName: string; loaded: number; total: number; products: SelectableProduct[] }[] = [];
+
+            files.forEach((file) => {
+                const totalInFile = Math.floor(Math.random() * 10) + 20;
+                const foundCount = Math.floor(totalInFile * (Math.random() * 0.2 + 0.8));
+
+                const foundProducts = allPossibleProducts.slice(0, foundCount);
+
+                newEntries.push({
+                    id: `${file.name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                    fileName: file.name,
+                    loaded: foundCount,
+                    total: totalInFile,
+                    products: foundProducts,
+                });
+            });
+
+            setUploadedFiles(prev => [
+                ...prev,
+                ...newEntries.map(({ id, fileName, loaded, total }) => ({ id, fileName, loaded, total })),
+            ]);
+
+            const allNewProducts = newEntries.flatMap(e => e.products);
+            setSelectedProducts(prev => {
+                const existingIds = new Set(prev.map(p => p.nmId));
+                const merged = [...prev];
+                for (const p of allNewProducts) {
+                    if (!existingIds.has(p.nmId)) {
+                        merged.push(p);
+                        existingIds.add(p.nmId);
+                    }
+                }
+                return merged;
+            });
+
             setIsProcessingExcel(false);
         }, 2500);
+    };
 
+    const handleExcelUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+        if (!event.target.files || event.target.files.length === 0) return;
+        const files = Array.from(event.target.files);
+        processExcelFiles(files);
         if (excelFileInputRef.current) {
             excelFileInputRef.current.value = "";
         }
     };
 
-    const handleDeleteUpload = () => {
-        setUploadInfo(null);
-        setSelectedProducts([]);
-        setTempConfig(p => ({ ...p, categories: [] }));
-        setToastMessage("Загруженный файл удален.");
-        showToast(true);
+    const handleDropExcel = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        setIsDragOver(false);
+        const files = Array.from(event.dataTransfer.files).filter(f =>
+            f.name.toLowerCase().endsWith('.xlsx') || f.name.toLowerCase().endsWith('.csv')
+        );
+        if (files.length === 0) return;
+        processExcelFiles(files);
+    };
+
+    const handleDeleteUpload = (fileId?: string) => {
+        if (!fileId) {
+            setUploadedFiles([]);
+            setSelectedProducts([]);
+            setTempConfig(p => ({ ...p, categories: [] }));
+            setToastMessage("Загруженные файлы удалены.");
+            showToast(true);
+            return;
+        }
+
+        setUploadedFiles(prev => {
+            const next = prev.filter(f => f.id !== fileId);
+            if (next.length === 0) {
+                setSelectedProducts([]);
+                setTempConfig(p => ({ ...p, categories: [] }));
+            }
+            setToastMessage("Файл удален из списка.");
+            showToast(true);
+            return next;
+        });
     };
     
     const handleSubmit = () => {
         const currentDate = new Date().toLocaleDateString('ru-RU');
+        const excelSource = uploadedFiles.length
+            ? uploadedFiles.map(f => f.fileName).join(', ')
+            : 'Ручное добавление';
         const finalCampaigns = validSelectedProducts.map(p => {
             const campaignBase: Omit<CampaignRecord, 'bid' | 'searchBid' | 'recommendationsBid'> = {
                 id: `${p.nmId}-${Date.now()}`,
@@ -446,14 +511,23 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                 fundingSource: 'Единый счёт',
                 status: CampaignStatus.VALID,
                 usePromoBonuses: true,
-                source: uploadInfo ? uploadInfo.fileName : 'Ручное добавление',
+                source: excelSource,
                 cpcCompatible: p.cpcCompatible,
                 bonusAmount: 0,
             };
     
             if (tempConfig.paymentModel === PaymentModel.CPM) {
                 if (tempConfig.bidType === BidType.MANUAL) {
-                    return { ...campaignBase, searchBid: 300, recommendationsBid: 300 } as CampaignRecord;
+                    // распределяем ставки по зонам в зависимости от выбранных тоглов
+                    const withSearch = manualZones.search ? { searchBid: 300 } : {};
+                    const withRecs = manualZones.recommendations ? { recommendationsBid: 300 } : {};
+
+                    // если обе зоны выключены, по умолчанию включаем поиск
+                    if (!manualZones.search && !manualZones.recommendations) {
+                        return { ...campaignBase, searchBid: 300 } as CampaignRecord;
+                    }
+
+                    return { ...campaignBase, ...withSearch, ...withRecs } as CampaignRecord;
                 }
                 return { ...campaignBase, bid: 300 } as CampaignRecord;
             } else { 
@@ -464,7 +538,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
         onClose();
     };
 
-    const hasChanges = selectedProducts.length > 0 || !!uploadInfo;
+    const hasChanges = selectedProducts.length > 0 || uploadedFiles.length > 0;
 
     const handleCloseRequest = () => {
         if (hasChanges) {
@@ -499,7 +573,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
 
     return ( 
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={handleCloseRequest}> 
-            <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl m-auto flex flex-col h-[85vh]" onClick={(e) => e.stopPropagation()}> 
+            <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl m-auto flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}> 
                 <div className="flex items-start justify-between p-6 border-b border-gray-100"> 
                     <div>
                         <h2 className="text-xl font-bold text-gray-900">Добавление списка товаров</h2> 
@@ -507,7 +581,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                     </div>
                     <button onClick={handleCloseRequest} className="text-gray-400 hover:text-gray-600 p-1 rounded-full"><X className="w-6 h-6" /></button> 
                 </div> 
-                <div className="p-6 space-y-4 flex-grow flex flex-col min-h-0">
+                <div className="p-6 space-y-4 flex-grow flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
                     <section className="shrink-0 overflow-visible relative z-20">
                         <h3 className="text-lg font-bold">Добавление товара</h3>
                         
@@ -529,7 +603,24 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                         </div>
 
                         {activeTab === 'upload' && (
-                            <div>
+                            <div
+                              onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                              onDragLeave={(e) => {
+                                  if ((e.currentTarget as HTMLDivElement).contains(e.relatedTarget as Node)) return;
+                                  setIsDragOver(false);
+                              }}
+                              onDrop={handleDropExcel}
+                              className={isDragOver ? 'rounded-xl border-2 border-dashed border-purple-400 bg-purple-50/40 p-2 -m-2 transition-colors' : ''}
+                            >
+                                {/* скрытый инпут всегда доступен, чтобы кнопка \"Добавить файл\" работала при любом количестве файлов */}
+                                <input
+                                  type="file"
+                                  ref={excelFileInputRef}
+                                  className="hidden"
+                                  onChange={handleExcelUpload}
+                                  accept=".xlsx,.csv"
+                                  multiple
+                                />
                                 {activeTab === 'upload' && (
                                     <p className="text-sm text-gray-500 mb-4">
                                         Загрузите Excel-файл со списком ID товаров.{' '}
@@ -548,33 +639,65 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                     </div>
                                 )}
 
-                                {!isProcessingExcel && uploadInfo && (
+                                {!isProcessingExcel && uploadedFiles.length > 0 && (
                                     <div className="my-3 p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <FileIcon className="w-5 h-5 text-gray-400 shrink-0" />
-                                                <div className="overflow-hidden">
-                                                    <p className="font-medium text-gray-800 truncate" title={uploadInfo.fileName}>{uploadInfo.fileName}</p>
-                                                    <p className="text-xs text-gray-500">Найдено {uploadInfo.loaded} из {uploadInfo.total} товаров</p>
+                                        <div className="space-y-2">
+                                            {uploadedFiles.map(file => (
+                                              <div key={file.id} className="flex justify-between items-center">
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <FileIcon className="w-5 h-5 text-gray-400 shrink-0" />
+                                                <div className="overflow-visible relative">
+                                                        <p className="font-medium text-gray-800 truncate" title={file.fileName}>{file.fileName}</p>
+                                                        <p className="text-xs text-gray-500">
+                                                          Найдено {file.loaded} из {file.total} товаров
+                                                          <span className="ml-1 inline-flex items-center gap-1 cursor-help underline decoration-dotted tooltip">
+                                                            <span className="text-gray-500 hover:text-gray-700">почему?</span>
+                                                            <span className="tooltip-text !max-w-xs text-left z-[200]">
+                                                              <span className="font-semibold block mb-1">Почему не все товары найдены?</span>
+                                                              <span className="block mb-1">
+                                                                Мы не нашли часть ID из файла в демонстрационных данных. В реальном кабинете здесь будет указан список отсутствующих ID.
+                                                              </span>
+                                                              <span className="text-[11px] text-gray-300">
+                                                                Пример: 12345678, 87654321, 11223344
+                                                              </span>
+                                                            </span>
+                                                          </span>
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center shrink-0">
-                                                <button onClick={() => excelFileInputRef.current?.click()} className="ml-2 px-3 py-1 text-xs font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300">Заменить</button>
-                                                <button onClick={handleDeleteUpload} className="ml-2 text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100"><Trash2 className="w-4 h-4" /></button>
+                                                <div className="flex items-center shrink-0">
+                                                    <button onClick={() => handleDeleteUpload(file.id)} className="ml-2 text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100">
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                              </div>
+                                            ))}
+                                            <div className="flex justify-between items-center pt-2 border-t border-dashed border-gray-200 mt-2">
+                                                <button
+                                                  onClick={() => excelFileInputRef.current?.click()}
+                                                  className="px-3 py-1.5 text-xs font-medium text-purple-600 hover:text-purple-800 hover:bg-purple-50 rounded-lg transition-colors"
+                                                >
+                                                  Добавить файл
+                                                </button>
+                                                <button
+                                                  onClick={() => handleDeleteUpload()}
+                                                  className="px-3 py-1.5 text-xs font-medium text-gray-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                >
+                                                  Очистить все
+                                                </button>
                                             </div>
                                         </div>
                                     </div>
                                 )}
                                 
-                                {!isProcessingExcel && !uploadInfo && (
+                                {!isProcessingExcel && uploadedFiles.length === 0 && (
                                   <div>
-                                    <input type="file" ref={excelFileInputRef} className="hidden" onChange={handleExcelUpload} accept=".xlsx,.csv" />
                                     <button 
                                         onClick={() => excelFileInputRef.current?.click()}
                                         className="w-full justify-center text-sm font-medium text-purple-600 hover:text-purple-800 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-1.5 p-4 border-2 border-dashed border-gray-300 hover:border-purple-400 rounded-xl transition-colors"
                                     >
                                         <UploadCloud className="w-4 h-4" />
-                                        <span>Добавить Excel с ID товаров</span>
+                                        <span>Перетащите файлы сюда или нажмите, чтобы выбрать Excel с ID товаров</span>
                                     </button>
                                   </div>
                                 )}
@@ -585,7 +708,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                              <div className="relative">
                                 <div className="space-y-6">
                                     <div>
-                                        <MultiSelect options={CATEGORIES} selected={tempConfig.categories} onChange={(c) => { setTempConfig(p => ({...p, categories: c})); setSelectedProducts([]); }} placeholder="Выберите категории" disabled={!!uploadInfo}/>
+                                        <MultiSelect options={CATEGORIES} selected={tempConfig.categories} onChange={(c) => { setTempConfig(p => ({...p, categories: c})); setSelectedProducts([]); }} placeholder="Выберите категории" disabled={uploadedFiles.length > 0}/>
                                     </div>
                                     <div>
                                         <ProductMultiSelect
@@ -593,7 +716,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                             selected={selectedProducts}
                                             onChange={setSelectedProducts}
                                             isCpcMode={tempConfig.paymentModel === PaymentModel.CPC}
-                                            disabled={!!uploadInfo || tempConfig.categories.length === 0 || isProcessingExcel}
+                                            disabled={uploadedFiles.length > 0 || tempConfig.categories.length === 0 || isProcessingExcel}
                                             submitLabel="Применить товары"
                                         />
                                         {cpcIncompatibleInSelection.length > 0 && (
@@ -653,6 +776,60 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                     </div>
                                 </label>
                             </div>
+                            {tempConfig.bidType === BidType.MANUAL && (
+                              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
+                                  <div className="mr-4">
+                                    <p className="text-sm font-medium text-gray-900">Поиск</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Показы в результатах поиска</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setManualZones(prev => {
+                                        const next = { ...prev, search: !prev.search };
+                                        if (!next.search && !next.recommendations) {
+                                          // не даём выключить обе зоны — оставляем поиск включённым
+                                          return { ...prev, search: true };
+                                        }
+                                        return next;
+                                      })
+                                    }
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.search ? 'bg-purple-500' : 'bg-gray-300'}`}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.search ? 'translate-x-5' : 'translate-x-1'}`}
+                                    />
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
+                                  <div className="mr-4">
+                                    <p className="text-sm font-medium text-gray-900">Рекомендации</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Показы в рекомендациях и ленте</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setManualZones(prev => {
+                                        const next = { ...prev, recommendations: !prev.recommendations };
+                                        if (!next.search && !next.recommendations) {
+                                          // не даём выключить обе зоны — оставляем рекомендации включёнными
+                                          return { ...prev, recommendations: true };
+                                        }
+                                        return next;
+                                      })
+                                    }
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.recommendations ? 'bg-purple-500' : 'bg-gray-300'}`}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.recommendations ? 'translate-x-5' : 'translate-x-1'}`}
+                                    />
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             </section>
                             )}
                         </div>
@@ -1149,8 +1326,21 @@ const ExcelProcessingLoader = ({ statusText }: { statusText: string }) => (
     </section>
 );
 
-const BidInput = ({ value, onChange, presets = [150, 200, 250] }: { value: number, onChange: (value: number) => void, presets?: number[] }) => {
+const BidInput = ({
+    value,
+    onChange,
+    presets = [150, 200, 250],
+    showApplyToAllTooltip = false,
+    onApplyToAll,
+}: {
+    value: number;
+    onChange: (value: number) => void;
+    presets?: number[];
+    showApplyToAllTooltip?: boolean;
+    onApplyToAll?: (value: number) => void;
+}) => {
     const [inputValue, setInputValue] = useState(String(value || ''));
+    const [isFocused, setIsFocused] = useState(false);
 
     useEffect(() => {
         setInputValue(String(value || ''));
@@ -1163,6 +1353,7 @@ const BidInput = ({ value, onChange, presets = [150, 200, 250] }: { value: numbe
         }
         onChange(numericValue);
         setInputValue(String(numericValue));
+        setIsFocused(false);
     };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1175,13 +1366,14 @@ const BidInput = ({ value, onChange, presets = [150, 200, 250] }: { value: numbe
     };
 
     return (
-        <div className="w-full border border-gray-300 rounded-lg shadow-sm overflow-hidden">
+        <div className="w-full border border-gray-300 rounded-lg shadow-sm overflow-hidden relative">
             <div className="relative bg-white">
                  <input
                     type="text"
                     value={inputValue}
                     placeholder="Ставка"
                     onChange={handleChange}
+                    onFocus={() => setIsFocused(true)}
                     onBlur={handleBlur}
                     className="w-full text-sm text-left font-medium bg-transparent outline-none px-2 py-1.5 hide-arrows"
                 />
@@ -1202,6 +1394,38 @@ const BidInput = ({ value, onChange, presets = [150, 200, 250] }: { value: numbe
                     </button>
                 ))}
             </div>
+            {isFocused && showApplyToAllTooltip && onApplyToAll && (
+              <div className="absolute left-0 top-full mt-1 z-40 w-64 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3">
+                <p className="mb-2">Применить эту ставку для всех выбранных кампаний?</p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-xs"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      let numericValue = parseDisplayValue(inputValue);
+                      if (isNaN(numericValue) || numericValue < 300) {
+                          numericValue = 300;
+                      }
+                      onChange(numericValue);
+                      onApplyToAll(numericValue);
+                      setInputValue(String(numericValue));
+                      setIsFocused(false);
+                    }}
+                  >
+                    Применить
+                  </button>
+                  <button
+                    type="button"
+                    className="px-2 py-1 rounded-md bg-transparent border border-gray-500 hover:bg-gray-800 text-xs"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setIsFocused(false)}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            )}
         </div>
     )
 };
@@ -1752,7 +1976,6 @@ export default function App() {
         const campaignsToEdit = group.campaigns.filter(c => c.status !== CampaignStatus.ERROR);
         setEditedCampaigns(campaignsToEdit);
         setOriginalCampaignsWhileEditing(JSON.parse(JSON.stringify(campaignsToEdit)));
-        setSelectedCampaignIds([]);
     }
   };
   
@@ -2117,6 +2340,7 @@ export default function App() {
   }, [isLaunching, allValidCampaigns]);
 
   const editableInputClass = "w-full text-sm bg-white border shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5 rounded-lg";
+  const [showApplyToAllTooltipFor, setShowApplyToAllTooltipFor] = useState<string | null>(null);
   const hasActiveFilterTags = selectedSources.length > 0 || selectedCategories.length > 0;
 
   if (!isAuthenticated) return <AuthScreen onAuth={() => setIsAuthenticated(true)} />;
@@ -2538,7 +2762,12 @@ export default function App() {
             const campaignsForReview = editingGroupId === group.id ? editedCampaigns : group.campaigns.filter(c => c.status !== CampaignStatus.ERROR);
             const filteredGroupCampaigns = campaignsForReview.filter(c => filteredCampaigns.some(fc => fc.id === c.id));
             const validCount = filteredGroupCampaigns.length; 
-            const totals = filteredGroupCampaigns.reduce( (acc, campaign) => { acc.total += campaign.budget; acc.bonus += campaign.bonusAmount || 0; return acc; }, { total: 0, bonus: 0 } ); const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE); const paginatedIds = paginatedCampaigns.map(c => c.id); const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL; 
+            const totals = filteredGroupCampaigns.reduce( (acc, campaign) => { acc.total += campaign.budget; acc.bonus += campaign.bonusAmount || 0; return acc; }, { total: 0, bonus: 0 } );
+            const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE);
+            const paginatedIds = paginatedCampaigns.map(c => c.id);
+            const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL;
+            const hasSearchBids = isCpmManual && paginatedCampaigns.some(c => c.searchBid != null);
+            const hasRecommendationsBids = isCpmManual && paginatedCampaigns.some(c => c.recommendationsBid != null);
             const selectedOnPageCount = paginatedIds.filter(id => selectedCampaignIds.includes(id)).length;
             const allOnPageSelected = selectedOnPageCount === paginatedIds.length && paginatedIds.length > 0;
             const isIndeterminate = !allOnPageSelected && selectedOnPageCount > 0;
@@ -2584,16 +2813,39 @@ export default function App() {
                       className="h-4 w-4 text-purple-600"
                     />
                   </th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Товар/Кампания</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[16%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[22%] bg-white"><div className="tooltip justify-start"><span>Товар/Кампания</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[14%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white"><div className="tooltip justify-start"><span>Категория</span><span className="tooltip-text">Категория, к которой относится товар</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Зона показов</span><span className="tooltip-text">Места показа рекламы: Поиск и/или Рекомендации</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Преследование</span><span className="tooltip-text">Автоматическое управление ставками</span></div></th> 
-                  {isCpmManual ? <> 
-                    <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Поиск</span><span className="tooltip-text">Ставка для показов в результатах поиска</span></div></th> 
-                    <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Рекоменд.</span><span className="tooltip-text">Ставка для показов в рекомендациях</span></div></th> 
-                  </> : <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white"><div className="tooltip justify-start"><span>Ставка</span><span className="tooltip-text">Единая ставка для всех зон показов</span></div></th> } 
+                  {isCpmManual ? (
+                    <>
+                      {hasSearchBids && (
+                        <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white">
+                          <div className="tooltip justify-start">
+                            <span>Поиск</span>
+                            <span className="tooltip-text">Ставка для показов в результатах поиска</span>
+                          </div>
+                        </th>
+                      )}
+                      {hasRecommendationsBids && (
+                        <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white">
+                          <div className="tooltip justify-start">
+                            <span>Рекоменд.</span>
+                            <span className="tooltip-text">Ставка для показов в рекомендациях</span>
+                          </div>
+                        </th>
+                      )}
+                    </>
+                  ) : (
+                    <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white">
+                      <div className="tooltip justify-start">
+                        <span>Ставка</span>
+                        <span className="tooltip-text">Единая ставка для всех зон показов</span>
+                      </div>
+                    </th>
+                  )} 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white"><div className="tooltip"><span>Автопополнение</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white"></th> 
                 </tr> 
@@ -2606,7 +2858,14 @@ export default function App() {
         </div>
       </div>
       <div> <a href="#" className="font-medium text-purple-600 hover:underline leading-tight block">{row.productName}</a> <div className="text-gray-500 mt-0.5">ID {row.nmId}</div> </div> </div> </td> 
-      <td className="px-2 py-1.5 align-top">
+      <td
+        className="px-2 py-1.5 align-top"
+        onDoubleClick={() => {
+          if (editingGroupId !== group.id) {
+            handleStartEditing(group);
+          }
+        }}
+      >
         {editingGroupId === group.id ? (
             <textarea value={row.campaignName} onChange={(e) => handleUpdateCampaign(group.id, row.id, { campaignName: e.target.value })} rows={2} className={`${editableInputClass} resize-y min-h-[34px] border-gray-300`} />
         ) : (
@@ -2617,9 +2876,16 @@ export default function App() {
         )}
       </td>
       <td className="px-2 py-1.5 text-gray-600 align-top">{row.category}</td> <td className="px-2 py-1.5 text-gray-600 align-top">{group.config.bidType === BidType.MANUAL ? 'Ручная' : 'Единая'}</td> 
-      <td className="px-2 py-1.5 text-gray-800 align-top">
+      <td
+        className="px-2 py-1.5 text-gray-800 align-top"
+        onDoubleClick={() => {
+          if (editingGroupId !== group.id) {
+            handleStartEditing(group);
+          }
+        }}
+      >
         {editingGroupId === group.id ? (
-            <div>
+            <div className="relative">
                  <div className="relative">
                     <input 
                         type="text" 
@@ -2637,12 +2903,49 @@ export default function App() {
                             if (row.budget < 1000) {
                                 handleUpdateCampaign(group.id, row.id, { budget: 1000 });
                             }
+                            if (selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)) {
+                                setShowApplyToAllTooltipFor(row.id);
+                            }
                         }}
                         className={`${editableInputClass} pr-6 ${inlineErrors[`${row.id}-budget`] ? 'border-red-500' : 'border-gray-300'}`}
                     />
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
                 </div>
                 {inlineErrors[`${row.id}-budget`] && <p className="text-red-500 text-[10px] mt-0.5 absolute">{inlineErrors[`${row.id}-budget`]}</p>}
+                {selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id) && showApplyToAllTooltipFor === row.id && (
+                  <div className="absolute left-0 top-full mt-1 z-40 w-64 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3">
+                    <p className="mb-2">Применить это значение для всех выбранных кампаний?</p>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="px-2 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-xs"
+                        onClick={() => {
+                          const value = row.budget;
+                          if (value != null) {
+                            // В режиме редактирования работаем через editedCampaigns
+                            setEditedCampaigns(prev =>
+                              prev.map(c =>
+                                selectedCampaignIds.includes(c.id)
+                                  ? { ...c, budget: value }
+                                  : c
+                              )
+                            );
+                          }
+                          setShowApplyToAllTooltipFor(null);
+                        }}
+                      >
+                        Применить
+                      </button>
+                      <button
+                        type="button"
+                        className="px-2 py-1 rounded-md bg-transparent border border-gray-500 hover:bg-gray-800 text-xs"
+                        onClick={() => setShowApplyToAllTooltipFor(null)}
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
             </div>
         ) : (
             <div className="tooltip">
@@ -2653,7 +2956,14 @@ export default function App() {
             </div>
         )}
       </td>
-      <td className="px-2 py-1.5 align-top">
+      <td
+        className="px-2 py-1.5 align-top"
+        onDoubleClick={() => {
+          if (editingGroupId !== group.id) {
+            handleStartEditing(group);
+          }
+        }}
+      >
         {editingGroupId === group.id ? (
             <a href="#" onClick={(e) => { e.preventDefault(); openBulkActionModal('autobidder'); }} className="text-blue-600 hover:underline">настроить</a>
         ) : (
@@ -2664,35 +2974,102 @@ export default function App() {
         )}
       </td>
       {isCpmManual ? <> 
-        <td className="px-2 py-1.5 text-gray-800 align-top">
-            <div className="w-full pr-2">
-                {editingGroupId === group.id ? (
-                    <BidInput value={row.searchBid || 0} onChange={(val) => handleUpdateCampaign(group.id, row.id, { searchBid: val })} />
-                ) : (
-                    <div className="tooltip">
-                        <span className="cursor-not-allowed">{`${row.searchBid || 0} ₽`}</span>
-                        <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
-                    </div>
-                )}
-            </div>
-        </td> 
-        <td className="px-2 py-1.5 text-gray-800 align-top">
-            <div className="w-full pr-2">
-                {editingGroupId === group.id ? (
-                    <BidInput value={row.recommendationsBid || 0} onChange={(val) => handleUpdateCampaign(group.id, row.id, { recommendationsBid: val })} />
-                ) : (
-                     <div className="tooltip">
-                        <span className="cursor-not-allowed">{`${row.recommendationsBid || 0} ₽`}</span>
-                        <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
-                    </div>
-                )}
-            </div>
-        </td> 
+        {hasSearchBids && (
+          <td
+            className="px-2 py-1.5 text-gray-800 align-top"
+            onDoubleClick={() => {
+              if (editingGroupId !== group.id) {
+                handleStartEditing(group);
+              }
+            }}
+          >
+              <div className="w-full pr-2">
+                  {editingGroupId === group.id ? (
+                      <BidInput
+                        value={row.searchBid || 0}
+                        onChange={(val) => handleUpdateCampaign(group.id, row.id, { searchBid: val })}
+                        showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
+                        onApplyToAll={(val) => {
+                          // применяем ставку поиска ко всем выбранным в режиме редактирования
+                          setEditedCampaigns(prev =>
+                            prev.map(c =>
+                              selectedCampaignIds.includes(c.id)
+                                ? { ...c, searchBid: val }
+                                : c
+                            )
+                          );
+                        }}
+                      />
+                  ) : (
+                      <div className="tooltip">
+                          <span className="cursor-not-allowed">{`${row.searchBid || 0} ₽`}</span>
+                          <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
+                      </div>
+                  )}
+              </div>
+          </td> 
+        )}
+        {hasRecommendationsBids && (
+          <td
+            className="px-2 py-1.5 text-gray-800 align-top"
+            onDoubleClick={() => {
+              if (editingGroupId !== group.id) {
+                handleStartEditing(group);
+              }
+            }}
+          >
+              <div className="w-full pr-2">
+                  {editingGroupId === group.id ? (
+                      <BidInput
+                        value={row.recommendationsBid || 0}
+                        onChange={(val) => handleUpdateCampaign(group.id, row.id, { recommendationsBid: val })}
+                        showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
+                        onApplyToAll={(val) => {
+                          // применяем ставку рекомендаций ко всем выбранным
+                          setEditedCampaigns(prev =>
+                            prev.map(c =>
+                              selectedCampaignIds.includes(c.id)
+                                ? { ...c, recommendationsBid: val }
+                                : c
+                            )
+                          );
+                        }}
+                      />
+                  ) : (
+                       <div className="tooltip">
+                          <span className="cursor-not-allowed">{`${row.recommendationsBid || 0} ₽`}</span>
+                          <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
+                      </div>
+                  )}
+              </div>
+          </td> 
+        )}
         </> : 
-        <td className="px-2 py-1.5 text-gray-800 align-top">
+        <td
+          className="px-2 py-1.5 text-gray-800 align-top"
+          onDoubleClick={() => {
+            if (editingGroupId !== group.id) {
+              handleStartEditing(group);
+            }
+          }}
+        >
             <div className="w-full pr-2">
                 {editingGroupId === group.id ? (
-                    <BidInput value={row.bid || 0} onChange={(val) => handleUpdateCampaign(group.id, row.id, { bid: val })} />
+                    <BidInput
+                      value={row.bid || 0}
+                      onChange={(val) => handleUpdateCampaign(group.id, row.id, { bid: val })}
+                      showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
+                      onApplyToAll={(val) => {
+                        // применяем единую ставку ко всем выбранным
+                        setEditedCampaigns(prev =>
+                          prev.map(c =>
+                            selectedCampaignIds.includes(c.id)
+                              ? { ...c, bid: val }
+                              : c
+                          )
+                        );
+                      }}
+                    />
                 ) : (
                      <div className="tooltip">
                         <span className="cursor-not-allowed">{`${row.bid || 0} ₽`}</span>
@@ -2716,7 +3093,7 @@ export default function App() {
             <span className="tooltip-text">Удалить</span>
         </div>
       </td> 
-      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={5} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={isCpmManual ? 7 : 6} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
+      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={5} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={isCpmManual ? (2 + (hasSearchBids ? 1 : 0) + (hasRecommendationsBids ? 1 : 0)) : 6} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
         ) : (
             <EmptyStatePlaceholder />
         )}
