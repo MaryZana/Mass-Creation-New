@@ -2827,12 +2827,6 @@ export default function App() {
                     <span>Работа с таблицей</span>
                   </button>
                 </div>
-                <div className="tooltip">
-                  <button onClick={() => openDeleteGroupModal(group)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                  <span className="tooltip-text">Удалить группу</span>
-                </div>
               </div>
             </div> 
             <div className="bg-white rounded-lg overflow-x-auto">
@@ -3105,12 +3099,7 @@ export default function App() {
             )}
         </div>
       </td> 
-      <td className="px-2 py-1.5 text-left align-top">
-        <div className="tooltip">
-            <button onClick={() => handleDeleteCampaign(row.id)} className="text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100 transition-colors"> <Trash2 className="w-4 h-4" /> </button>
-            <span className="tooltip-text">Удалить</span>
-        </div>
-      </td> 
+      <td className="px-2 py-1.5 text-left align-top"></td> 
       </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={5} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={isCpmManual ? (2 + (hasSearchBids ? 1 : 0) + (hasRecommendationsBids ? 1 : 0)) : 6} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
         ) : (
             <EmptyStatePlaceholder />
