@@ -1960,10 +1960,23 @@ export default function App() {
       
       const updater = (campaigns: CampaignRecord[]) => campaigns.map(c => c.id === campaignId ? { ...c, ...updates } : c);
       
-      if(editingGroupId === groupId) {
-          setEditedCampaigns(updater); 
-      } else {
-          setTemplateGroups(prev => prev.map(g => g.id === groupId ? { ...g, campaigns: updater(g.campaigns) } : g)); 
+      // Автосохранение: всегда обновляем данные группы
+      setTemplateGroups(prev => prev.map(g => g.id === groupId ? { ...g, campaigns: updater(g.campaigns) } : g));
+
+      // Если сейчас включен режим правок для этой группы — поддерживаем локальное состояние редактируемых кампаний в синхроне
+      if (editingGroupId === groupId) {
+          setEditedCampaigns(updater);
+      }
+
+      // Короткая зелёная нотификация "Сохранено" для любых изменений
+      if (editingGroupId === groupId) {
+        if (quickSaveTimeoutRef.current) {
+          clearTimeout(quickSaveTimeoutRef.current);
+        }
+        setShowQuickSave(true);
+        quickSaveTimeoutRef.current = setTimeout(() => {
+          setShowQuickSave(false);
+        }, 1500);
       }
   };
 
@@ -2340,6 +2353,8 @@ export default function App() {
   }, [isLaunching, allValidCampaigns]);
 
   const editableInputClass = "w-full text-sm bg-white border shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5 rounded-lg";
+  const [showQuickSave, setShowQuickSave] = useState(false);
+  const quickSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showApplyToAllTooltipFor, setShowApplyToAllTooltipFor] = useState<string | null>(null);
   const hasActiveFilterTags = selectedSources.length > 0 || selectedCategories.length > 0;
 
@@ -2677,6 +2692,14 @@ export default function App() {
   <ConfirmationModal isOpen={isLaunchSummaryModalOpen} onClose={() => setIsLaunchSummaryModalOpen(false)} onConfirm={handleProceedToLaunch} title="Всё готово к запуску" confirmText={`Запустить ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`} confirmColor="purple" cancelText="Отменить" children={ <div className="space-y-3 text-left"> <p className="text-gray-800"> <b>{launchPreview.successfulCount} {getPlural(launchPreview.successfulCount, 'кампания', 'кампании', 'кампаний')}</b> запустятся. </p> <p className="text-gray-800">К списанию с Единого счета: <b>{launchPreview.amountToDebit.toLocaleString('ru-RU')} ₽</b></p> {globalTotals.bonus > 0 && <p className="text-gray-800">Будет оплачено бонусами: <b>{globalTotals.bonus.toLocaleString('ru-RU')} B</b></p>} {launchPreview.readyToLaunchCount > 0 && <p className="text-orange-600">Остальные <b>{launchPreview.readyToLaunchCount}</b> будут созданы в статусе «Готово к запуску».</p>} <p className="text-xs text-gray-500 pt-2"> Кампании можно остановить в любой момент и оставшиеся деньги вернуть на счет. </p> </div> } />
   
   <main className="max-w-[1392px] mx-auto px-6 py-8">
+        {showQuickSave && (
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] transition-all duration-300 ease-out">
+            <div className="flex items-center gap-3 bg-black/90 text-white text-sm font-semibold px-6 py-3 rounded-full shadow-2xl min-w-[180px] justify-center">
+              <Check className="w-4 h-4 text-emerald-400" />
+              <span>Сохранено</span>
+            </div>
+          </div>
+        )}
         <section className="bg-white rounded-2xl p-6 shadow-sm mb-8">
             <div className="flex flex-wrap items-center gap-4">
                 <div className="relative flex items-center gap-2">
@@ -2783,22 +2806,33 @@ export default function App() {
                 <span className="text-gray-400 text-sm font-medium">{validCount} {getPlural(validCount, 'кампания', 'кампании', 'кампаний')}</span> 
               </div> 
               <div className="flex items-center gap-2">
-              {editingGroupId === group.id ? ( 
-                <>
-                  <button onClick={handleCancelEditing} className="px-4 py-2 text-xs font-medium bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300">Отмена</button> 
-                  <button onClick={handleSaveEditing} disabled={Object.keys(inlineErrors).length > 0} className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm disabled:bg-gray-400 disabled:cursor-not-allowed">Сохранить</button> 
-                </>
-              ) : ( 
-                <>
-                  <button onClick={() => handleStartEditing(group)} className="flex items-center gap-2 px-3 py-2 bg-gray-700 text-white font-medium rounded-lg hover:bg-gray-800 text-xs"> 
-                    <Edit2 className="w-3 h-3" /> <span>Редактировать</span> 
+                <div className="inline-flex items-center rounded-lg bg-gray-100 p-1 text-xs font-medium text-gray-600">
+                  <button
+                    type="button"
+                    onClick={() => setEditingGroupId(null)}
+                    className={`px-3 py-1 rounded-md transition-colors ${
+                      editingGroupId === group.id ? 'text-gray-500' : 'bg-white text-gray-900 shadow-sm'
+                    }`}
+                  >
+                    Компактный вид
                   </button>
-                   <div className="tooltip">
-                    <button onClick={() => openDeleteGroupModal(group)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg"> <Trash2 className="w-4 h-4" /> </button>
-                    <span className="tooltip-text">Удалить группу</span>
-                   </div>
-                </>
-              )} 
+                  <button
+                    type="button"
+                    onClick={() => handleStartEditing(group)}
+                    className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1 ${
+                      editingGroupId === group.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
+                    }`}
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-gray-500" />
+                    <span>Работа с таблицей</span>
+                  </button>
+                </div>
+                <div className="tooltip">
+                  <button onClick={() => openDeleteGroupModal(group)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                  <span className="tooltip-text">Удалить группу</span>
+                </div>
               </div>
             </div> 
             <div className="bg-white rounded-lg overflow-x-auto">
@@ -2869,9 +2903,8 @@ export default function App() {
         {editingGroupId === group.id ? (
             <textarea value={row.campaignName} onChange={(e) => handleUpdateCampaign(group.id, row.id, { campaignName: e.target.value })} rows={2} className={`${editableInputClass} resize-y min-h-[34px] border-gray-300`} />
         ) : (
-            <div className="tooltip w-full">
+            <div className="w-full">
                 <textarea value={row.campaignName} readOnly rows={2} className='w-full bg-transparent p-0 resize-none outline-none cursor-not-allowed' />
-                <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
             </div>
         )}
       </td>
@@ -2948,11 +2981,8 @@ export default function App() {
                 )}
             </div>
         ) : (
-            <div className="tooltip">
-                <div className="flex flex-col cursor-not-allowed">
-                    <span className="font-medium">{`${formatForDisplay(row.budget)} ₽`}</span>
-                </div>
-                 <span className="tooltip-text">Чтобы изменить бюджет, нажмите «Редактировать»</span>
+            <div className="flex flex-col cursor-not-allowed">
+                <span className="font-medium">{`${formatForDisplay(row.budget)} ₽`}</span>
             </div>
         )}
       </td>
@@ -2967,10 +2997,7 @@ export default function App() {
         {editingGroupId === group.id ? (
             <a href="#" onClick={(e) => { e.preventDefault(); openBulkActionModal('autobidder'); }} className="text-blue-600 hover:underline">настроить</a>
         ) : (
-            <div className="tooltip">
-                <span className="text-gray-400 cursor-not-allowed">настроить</span>
-                <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
-            </div>
+            <span className="text-gray-400 cursor-not-allowed">настроить</span>
         )}
       </td>
       {isCpmManual ? <> 
@@ -3001,10 +3028,7 @@ export default function App() {
                         }}
                       />
                   ) : (
-                      <div className="tooltip">
-                          <span className="cursor-not-allowed">{`${row.searchBid || 0} ₽`}</span>
-                          <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
-                      </div>
+                      <span className="cursor-not-allowed">{`${row.searchBid || 0} ₽`}</span>
                   )}
               </div>
           </td> 
@@ -3036,10 +3060,7 @@ export default function App() {
                         }}
                       />
                   ) : (
-                       <div className="tooltip">
-                          <span className="cursor-not-allowed">{`${row.recommendationsBid || 0} ₽`}</span>
-                          <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
-                      </div>
+                       <span className="cursor-not-allowed">{`${row.recommendationsBid || 0} ₽`}</span>
                   )}
               </div>
           </td> 
@@ -3071,10 +3092,7 @@ export default function App() {
                       }}
                     />
                 ) : (
-                     <div className="tooltip">
-                        <span className="cursor-not-allowed">{`${row.bid || 0} ₽`}</span>
-                        <span className="tooltip-text">Нажмите «Редактировать», чтобы изменить</span>
-                    </div>
+                     <span className="cursor-not-allowed">{`${row.bid || 0} ₽`}</span>
                 )}
             </div>
         </td> 
@@ -3133,7 +3151,7 @@ export default function App() {
       </div>
     )}
 
-    {totalAllValidCount > 0 && selectedCampaignIds.length === 0 && editingGroupId === null && ( 
+    {totalAllValidCount > 0 && selectedCampaignIds.length === 0 && ( 
     <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-sm border-t border-gray-200"> 
     <div className="max-w-[1392px] mx-auto px-6 py-4 flex justify-between items-center"> 
     <div> <h3 className="font-bold text-gray-800">Общий итог за {totalAllValidCount} {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}</h3> 

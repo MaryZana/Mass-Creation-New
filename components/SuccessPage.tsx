@@ -1398,28 +1398,28 @@ const FilterDropdown = ({
                   {['Сезонная распродажа', 'Ликвидация остатков', 'Чёрная пятница', 'Новый год', '8 марта', '1 сентября (школа)', 'Летняя распродажа', 'Зимняя распродажа', 'Межсезонье', 'Скидка по купону', 'Акция поставщика', 'Распродажа витрины', 'Уценка', 'Последние размеры', 'Хиты со скидкой'].filter(tag => 
                     tag.toLowerCase().includes(tempTagsSearch.toLowerCase())
                   ).map(tag => (
-                  <label 
-                    key={tag}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
-                      tempTags.includes(tag)
-                        ? 'bg-purple-50 border-purple-600 text-purple-700'
-                        : 'bg-white border-gray-200 text-gray-700 hover:border-purple-300'
-                    }`}
-                  >
+                    <label 
+                      key={tag}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
+                        tempTags.includes(tag)
+                          ? 'bg-purple-50 border-purple-600 text-purple-700'
+                          : 'bg-white border-gray-200 text-gray-700 hover:border-purple-300'
+                      }`}
+                    >
                     <Checkbox
-                      checked={tempTags.includes(tag)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          onTempTagsChange([...tempTags, tag]);
-                        } else {
-                          onTempTagsChange(tempTags.filter(t => t !== tag));
-                        }
-                      }}
-                      className="sr-only"
-                    />
-                    <span className="text-sm font-medium">{tag}</span>
-                  </label>
-                ))}
+                        checked={tempTags.includes(tag)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            onTempTagsChange([...tempTags, tag]);
+                          } else {
+                            onTempTagsChange(tempTags.filter(t => t !== tag));
+                          }
+                        }}
+                        className="sr-only"
+                      />
+                      <span className="text-sm font-medium">{tag}</span>
+                    </label>
+                  ))}
                 </div>
               </div>
 
