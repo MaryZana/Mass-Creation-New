@@ -17,6 +17,14 @@ import { SingleCampaignPage } from './components/SingleCampaignPage';
 import CampaignsPage from './pages/CampaignsPage';
 import StatsPage from './pages/StatsPage';
 import FinancePage from './pages/FinancePage';
+import { isStatsExperimentEnabled } from './flags';
+
+// Плейсхолдеры изображений для пустого состояния страницы массового создания
+const EMPTY_STATE_IMG_1 = 'https://www.figma.com/api/mcp/asset/82a3fb19-ac63-4dd6-9093-3c176a7b5469';
+const EMPTY_STATE_IMG_2 = 'https://www.figma.com/api/mcp/asset/9123a3c1-9b05-4288-a464-9b5a7f6e5ec9';
+const EMPTY_STATE_IMG_3 = 'https://www.figma.com/api/mcp/asset/93a31786-4c37-4e2e-be1b-1cb423a50c10';
+const EMPTY_STATE_IMG_4 = 'https://www.figma.com/api/mcp/asset/910a7d7a-33f8-42e8-9eb3-aee871716568';
+const EMPTY_STATE_IMG_5 = 'https://www.figma.com/api/mcp/asset/1f2b7315-1b3e-460f-9e67-01b4a7d5b096';
 
 // --- Types ---
 interface TemplateGroup {
@@ -62,6 +70,15 @@ const formatForDisplay = (num: number | string | undefined | null): string => {
 };
 const parseDisplayValue = (str: string): number => {
   return Number(String(str).replace(/\s/g, '').replace(/,/g, '.'));
+};
+
+const getTemplateGroupLabel = (config: Pick<CampaignConfig, 'paymentModel' | 'bidType'>) => {
+  const model = config.paymentModel === PaymentModel.CPM ? 'CPM' : 'CPC';
+  const bid =
+    config.bidType === BidType.MANUAL
+      ? 'ручная ставка'
+      : 'единая ставка';
+  return `${model} • ${bid}`;
 };
 
 // --- Sub-Components ---
@@ -576,8 +593,8 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
             <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl m-auto flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}> 
                 <div className="flex items-start justify-between p-6 border-b border-gray-100"> 
                     <div>
-                        <h2 className="text-xl font-bold text-gray-900">Добавление списка товаров</h2> 
-                        <p className="text-sm text-gray-500 mt-1">создайте один или больше списков и запустите сразу несколько кампаний, один товар = 1 кампания</p>
+                        <h2 className="text-xl font-bold text-gray-900">Добавление товаров</h2> 
+                        <p className="text-sm text-gray-500 mt-1">товары автоматически объединяются в группы по типу кампании (например, CPM: ручная / единая ставка). Один товар = 1 кампания</p>
                     </div>
                     <button onClick={handleCloseRequest} className="text-gray-400 hover:text-gray-600 p-1 rounded-full"><X className="w-6 h-6" /></button> 
                 </div> 
@@ -1431,11 +1448,92 @@ const BidInput = ({
 };
 
 const EmptyStatePlaceholder = () => (
-    <div className="mt-6 bg-white rounded-2xl p-12 text-center border border-gray-200 shadow-sm flex flex-col items-center justify-center min-h-[300px]">
-        <h3 className="text-lg font-bold text-gray-800">Список кампаний пока пуст</h3>
-        <p className="mt-2 max-w-sm text-gray-500">
-            Нажмите «Добавить список товаров» выше, чтобы загрузить файл или выбрать товары. Они появятся здесь для дальнейшей настройки перед запуском.
-        </p>
+    <div className="mt-8 rounded-2xl border border-gray-200 bg-white px-8 py-10 shadow-sm">
+        <div className="mx-auto flex max-w-4xl flex-col gap-10 md:flex-row md:items-start">
+            <div className="flex-1 text-left">
+                <h3 className="text-2xl font-semibold tracking-tight text-gray-900">
+                    Массовое создание кампаний
+                </h3>
+                <p className="mt-3 text-sm text-gray-500 max-w-xl">
+                    Один товар = 1 кампания. Добавляйте товары, формируйте списки, массово задавайте десятки
+                    настроек и запускайте сразу несколько кампаний.
+                </p>
+            </div>
+
+            <div className="flex-1 flex flex-col gap-4">
+                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_2px_20px_rgba(0,0,0,0.06)]">
+                    <div className="flex items-center justify-between text-[13px] text-gray-800">
+                        <span className="font-medium">Товары CPC</span>
+                        <span className="text-gray-500">Ставка</span>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="h-9 w-9 rounded-md bg-gray-100" />
+                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
+                                    Футболка облегающая
+                                </span>
+                            </div>
+                            <span className="text-[13px] text-gray-500">20</span>
+                        </div>
+                        <div className="h-px bg-gray-100" />
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="relative h-9 w-9">
+                                    <div className="absolute inset-0 rounded-md bg-gray-100" />
+                                    <div className="absolute inset-1 rounded-md bg-gray-200" />
+                                </div>
+                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
+                                    Футболка облегающая
+                                </span>
+                            </div>
+                            <span className="text-[13px] text-gray-500">22</span>
+                        </div>
+                        <div className="h-px bg-gray-100" />
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="h-9 w-9 rounded-md bg-gray-200" />
+                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
+                                    Топ спортивный
+                                </span>
+                            </div>
+                            <span className="text-[13px] text-gray-500">20</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_2px_20px_rgba(0,0,0,0.06)]">
+                    <div className="flex items-center justify-between text-[13px] text-gray-800">
+                        <span className="font-medium">Товары CPM</span>
+                        <span className="text-gray-500">Ставка</span>
+                    </div>
+                    <div className="mt-2 space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="h-9 w-9 rounded-md bg-gray-100" />
+                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
+                                    Лосины спортивные
+                                </span>
+                            </div>
+                            <span className="text-[13px] text-gray-500">300</span>
+                        </div>
+                        <div className="h-px bg-gray-100" />
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="relative h-9 w-9">
+                                    <div className="absolute inset-0 rounded-md bg-gray-100" />
+                                    <div className="absolute inset-1 rounded-md bg-gray-200" />
+                                </div>
+                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
+                                    Лосины для фитнеса
+                                </span>
+                            </div>
+                            <span className="text-[13px] text-gray-500">330</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 );
 
@@ -1928,10 +2026,54 @@ export default function App() {
       const timer1 = setTimeout(() => setLoadingStatusText("Загружаем товары в группы..."), 1200);
       const timer2 = setTimeout(() => {
           const sourceFile = items[0]?.source || "Ручное добавление";
-          // Always create a new group instead of merging with existing ones
-          const newGroup: TemplateGroup = { id: `manual-${Date.now()}`, config, campaigns: items, duplicateNmIds: new Set(), correctedNmIds: new Set(), currentPage: 1, sourceFiles: new Set([sourceFile]) };
-          setTemplateGroups(prev => [...prev, newGroup]);
-          setToastMessage(`Создана новая группа с ${items.length} ${getPlural(items.length, 'товаром', 'товарами', 'товарами')}`);
+          const label = getTemplateGroupLabel(config);
+
+          setTemplateGroups(prev => {
+            const existingIndex = prev.findIndex(g =>
+              g.config.paymentModel === config.paymentModel && g.config.bidType === config.bidType
+            );
+
+            // Если уже есть группа с таким CPM/CPC + типом ставки — добавляем в неё (без дублей по nmId)
+            if (existingIndex !== -1) {
+              const existing = prev[existingIndex];
+              const existingNmIds = new Set(existing.campaigns.map(c => c.nmId));
+              const itemsToAdd = items.filter(c => !existingNmIds.has(c.nmId));
+
+              const nextGroup: TemplateGroup = {
+                ...existing,
+                campaigns: [...existing.campaigns, ...itemsToAdd],
+                sourceFiles: new Set([...Array.from(existing.sourceFiles), sourceFile]),
+              };
+
+              const next = [...prev];
+              next[existingIndex] = nextGroup;
+
+              const skipped = items.length - itemsToAdd.length;
+              if (itemsToAdd.length === 0) {
+                setToastMessage(`Все выбранные товары уже есть в группе «${label}»`);
+              } else if (skipped > 0) {
+                setToastMessage(`Добавлено ${itemsToAdd.length} ${getPlural(itemsToAdd.length, 'товар', 'товара', 'товаров')} в группу «${label}», пропущено ${skipped} дубл.`);
+              } else {
+                setToastMessage(`Добавлено ${itemsToAdd.length} ${getPlural(itemsToAdd.length, 'товар', 'товара', 'товаров')} в группу «${label}»`);
+              }
+              return next;
+            }
+
+            // Иначе создаём новую группу по принципу "объединения в группы"
+            const groupId = `group-${config.paymentModel}-${config.bidType}`;
+            const newGroup: TemplateGroup = {
+              id: groupId,
+              config,
+              campaigns: items,
+              duplicateNmIds: new Set(),
+              correctedNmIds: new Set(),
+              currentPage: 1,
+              sourceFiles: new Set([sourceFile]),
+            };
+
+            setToastMessage(`Создана группа «${label}» с ${items.length} ${getPlural(items.length, 'товаром', 'товарами', 'товарами')}`);
+            return [...prev, newGroup];
+          });
           setShowToast(true);
           setIsTableLoading(false);
           clearTimeout(timer1);
@@ -2139,6 +2281,40 @@ export default function App() {
             return;
         }
         
+        if (action === 'autobidder') {
+            // "Преследование ставки" нельзя настраивать одновременно для разных типов кампаний
+            // (например CPM ручная/единая и CPC). Требуем, чтобы выбранные кампании были одного типа.
+            const selectedIds = new Set(selectedCampaignIds);
+            const typeKeys = new Set<string>();
+            const typeLabels = new Set<string>();
+
+            for (const g of templateGroups) {
+                const key = `${g.config.paymentModel}-${g.config.bidType}`;
+                const label =
+                    g.config.paymentModel === PaymentModel.CPM
+                        ? `CPM (${g.config.bidType === BidType.MANUAL ? 'ручная ставка' : 'единая ставка'})`
+                        : `CPC`;
+
+                for (const c of g.campaigns) {
+                    if (selectedIds.has(c.id)) {
+                        typeKeys.add(key);
+                        typeLabels.add(label);
+                        // небольшая оптимизация: если уже больше одного типа — дальше можно не искать
+                        if (typeKeys.size > 1) break;
+                    }
+                }
+                if (typeKeys.size > 1) break;
+            }
+
+            if (typeKeys.size > 1) {
+                setToastMessage(
+                    `Нельзя настроить «Преследование ставки» сразу для разных типов кампаний. Сейчас выбраны: ${Array.from(typeLabels).join(', ')}. Оставьте выбранным только один тип и попробуйте снова.`
+                );
+                setShowToast(true);
+                return;
+            }
+        }
+
         const campaignsToInspect = editingGroupId ? editedCampaigns : allValidCampaigns;
 
         if (action === 'budget') {
@@ -2172,7 +2348,6 @@ export default function App() {
       if (editingGroupId) setEditedCampaigns(prev => prev.filter(c => !selectedCampaignIds.includes(c.id)));
       setToastMessage(`Удалено ${selectedCampaignIds.length} ${getPlural(selectedCampaignIds.length, 'кампания', 'кампании', 'кампаний')}`);
       setShowToast(true);
-      setSelectedCampaignIds([]);
   };
 
     const applyBulkChanges = (value: any, idsToUpdate: string[]) => {
@@ -2208,7 +2383,6 @@ export default function App() {
         setToastMessage(`Обновлено ${idsToUpdate.length} ${getPlural(idsToUpdate.length, 'кампания', 'кампании', 'кампаний')}`);
         setShowToast(true);
         setIsBulkActionModalOpen(false);
-        setSelectedCampaignIds([]);
     };
 
     const handleBulkSave = (value: any) => {
@@ -2283,7 +2457,6 @@ export default function App() {
     
         setIsBonusInsufficiencyModalOpen(false);
         setIsBulkActionModalOpen(false);
-        setSelectedCampaignIds([]);
         setBonusAppContext(null);
     };
 
@@ -2789,19 +2962,48 @@ export default function App() {
             const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE);
             const paginatedIds = paginatedCampaigns.map(c => c.id);
             const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL;
-            const hasSearchBids = isCpmManual && paginatedCampaigns.some(c => c.searchBid != null);
-            const hasRecommendationsBids = isCpmManual && paginatedCampaigns.some(c => c.recommendationsBid != null);
+            // Для CPM с ручными ставками всегда показываем обе зоны, чтобы их можно было включать/выключать прямо из списка
+            const hasSearchBids = isCpmManual;
+            const hasRecommendationsBids = isCpmManual;
+            const zonesLabel = (() => {
+              const isCpm = group.config.paymentModel === PaymentModel.CPM;
+              if (!isCpm) return null;
+
+              // CPM с единой ставкой всегда работает по обеим зонам
+              if (group.config.bidType !== BidType.MANUAL) {
+                return 'Зоны показов: Поиск, Рекомендации';
+              }
+
+              // CPM с ручными ставками: зоны можно включать/выключать по кампании
+              const anySearchEnabled = campaignsForReview.some(c => c.searchBid != null);
+              const anyRecsEnabled = campaignsForReview.some(c => c.recommendationsBid != null);
+              const zones = [
+                anySearchEnabled ? 'Поиск' : null,
+                anyRecsEnabled ? 'Рекомендации' : null,
+              ].filter(Boolean) as string[];
+              return `Зоны показов: ${zones.length ? zones.join(', ') : '—'}`;
+            })();
             const selectedOnPageCount = paginatedIds.filter(id => selectedCampaignIds.includes(id)).length;
             const allOnPageSelected = selectedOnPageCount === paginatedIds.length && paginatedIds.length > 0;
             const isIndeterminate = !allOnPageSelected && selectedOnPageCount > 0;
             if (filteredGroupCampaigns.length === 0 && areFiltersActive) return null;
 
             return ( <section key={group.id} className="bg-white rounded-2xl shadow-sm px-6 pb-6 pt-0 space-y-4 animate-fade-in"> 
-<div className="sticky top-[104px] z-30 bg-white pt-4 pb-3 border-b border-gray-100 mb-0 flex justify-between items-center -mx-6 px-6 rounded-t-2xl shadow-sm min-h-[57px]">
+<div className="sticky top-[104px] z-30 bg-white pt-3 pb-2 border-b border-gray-100 mb-0 flex justify-between items-center -mx-6 px-6 rounded-t-2xl shadow-sm min-h-[52px]">
               <div className="flex items-center gap-4">
                 <div>
                   <h2 className="text-lg font-bold text-gray-900">{`${group.config.paymentModel} ${group.config.bidType === BidType.MANUAL ? 'Ручная ставка' : 'Единая ставка'}`}</h2>
-                  <p className="text-xs text-gray-500 mt-0.5 truncate" title={Array.from(group.sourceFiles).join(', ')}> {Array.from(group.sourceFiles).join(', ')} </p>
+                  <p
+                    className="text-xs text-gray-600 mt-0.5 truncate"
+                    title={[
+                      zonesLabel,
+                      Array.from(group.sourceFiles).join(', '),
+                    ].filter(Boolean).join(' • ')}
+                  >
+                    {zonesLabel ? <span className="text-gray-700">{zonesLabel}</span> : null}
+                    {zonesLabel ? <span className="text-gray-300 mx-2">•</span> : null}
+                    <span className="text-gray-500">{Array.from(group.sourceFiles).join(', ')}</span>
+                  </p>
                 </div>
                 <span className="text-gray-400 text-sm font-medium">{validCount} {getPlural(validCount, 'кампания', 'кампании', 'кампаний')}</span> 
               </div> 
@@ -2841,40 +3043,34 @@ export default function App() {
                       className="h-4 w-4 text-purple-600"
                     />
                   </th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[22%] bg-white"><div className="tooltip justify-start"><span>Товар/Кампания</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[14%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white"><div className="tooltip justify-start"><span>Категория</span><span className="tooltip-text">Категория, к которой относится товар</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Зона показов</span><span className="tooltip-text">Места показа рекламы: Поиск и/или Рекомендации</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Товар</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Преследование</span><span className="tooltip-text">Автоматическое управление ставками</span></div></th> 
                   {isCpmManual ? (
                     <>
-                      {hasSearchBids && (
-                        <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white">
-                          <div className="tooltip justify-start">
-                            <span>Поиск</span>
-                            <span className="tooltip-text">Ставка для показов в результатах поиска</span>
-                          </div>
-                        </th>
-                      )}
-                      {hasRecommendationsBids && (
-                        <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white">
-                          <div className="tooltip justify-start">
-                            <span>Рекоменд.</span>
-                            <span className="tooltip-text">Ставка для показов в рекомендациях</span>
-                          </div>
-                        </th>
-                      )}
+                      <th className="table-header-cell px-2 py-1.5 font-normal w-[15%] bg-white">
+                        <div className="tooltip justify-start">
+                          <span>Поиск</span>
+                          <span className="tooltip-text">Ставка для показов в результатах поиска (зону можно выключить)</span>
+                        </div>
+                      </th>
+                      <th className="table-header-cell px-2 py-1.5 font-normal w-[15%] bg-white">
+                        <div className="tooltip justify-start">
+                          <span>Рекоменд.</span>
+                          <span className="tooltip-text">Ставка для показов в рекомендациях (зону можно выключить)</span>
+                        </div>
+                      </th>
                     </>
                   ) : (
-                    <th className="table-header-cell px-2 py-1.5 font-normal w-[12%] bg-white">
+                    <th className="table-header-cell px-2 py-1.5 font-normal w-[20%] bg-white">
                       <div className="tooltip justify-start">
                         <span>Ставка</span>
                         <span className="tooltip-text">Единая ставка для всех зон показов</span>
                       </div>
                     </th>
                   )} 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white"><div className="tooltip"><span>Автопополнение</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[7%] bg-white"><div className="tooltip"><span>Автопополнение</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white"></th> 
                 </tr> 
               </thead> 
@@ -2885,7 +3081,7 @@ export default function App() {
             <img src={row.imageUrl} alt={row.productName} className="w-full h-full object-cover" />
         </div>
       </div>
-      <div> <a href="#" className="font-medium text-purple-600 hover:underline leading-tight block">{row.productName}</a> <div className="text-gray-500 mt-0.5">ID {row.nmId}</div> </div> </div> </td> 
+      <div className="min-w-0"> <a href="#" title={row.productName} className="font-medium text-purple-600 hover:underline leading-tight block truncate">{row.productName}</a> <div className="text-gray-500 mt-0.5">ID {row.nmId}</div> </div> </div> </td> 
       <td
         className="px-2 py-1.5 align-top"
         onDoubleClick={() => {
@@ -2902,7 +3098,6 @@ export default function App() {
             </div>
         )}
       </td>
-      <td className="px-2 py-1.5 text-gray-600 align-top">{row.category}</td> <td className="px-2 py-1.5 text-gray-600 align-top">{group.config.bidType === BidType.MANUAL ? 'Ручная' : 'Единая'}</td> 
       <td
         className="px-2 py-1.5 text-gray-800 align-top"
         onDoubleClick={() => {
@@ -2995,19 +3190,45 @@ export default function App() {
         )}
       </td>
       {isCpmManual ? <> 
-        {hasSearchBids && (
-          <td
-            className="px-2 py-1.5 text-gray-800 align-top"
-            onDoubleClick={() => {
-              if (editingGroupId !== group.id) {
-                handleStartEditing(group);
-              }
-            }}
-          >
+        <td
+          className="px-2 py-1.5 text-gray-800 align-top"
+          onDoubleClick={() => {
+            if (editingGroupId !== group.id) {
+              handleStartEditing(group);
+            }
+          }}
+        >
+          {(() => {
+            const enabled = row.searchBid != null;
+            return (
               <div className="w-full pr-2">
-                  {editingGroupId === group.id ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (enabled) {
+                        handleUpdateCampaign(group.id, row.id, { searchBid: undefined });
+                      } else {
+                        handleUpdateCampaign(group.id, row.id, { searchBid: 300 });
+                      }
+                    }}
+                    className={`shrink-0 text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                      enabled
+                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                    }`}
+                    aria-label={enabled ? 'Выключить зону Поиск' : 'Включить зону Поиск'}
+                    title={enabled ? 'Выключить Поиск' : 'Включить Поиск'}
+                  >
+                    {enabled ? 'Вкл' : 'Выкл'}
+                  </button>
+
+                  {enabled ? (
+                    editingGroupId === group.id ? (
                       <BidInput
-                        value={row.searchBid || 0}
+                        value={row.searchBid ?? 300}
                         onChange={(val) => handleUpdateCampaign(group.id, row.id, { searchBid: val })}
                         showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
                         onApplyToAll={(val) => {
@@ -3021,25 +3242,57 @@ export default function App() {
                           );
                         }}
                       />
+                    ) : (
+                      <span className="text-gray-800">{`${row.searchBid} ₽`}</span>
+                    )
                   ) : (
-                      <span className="cursor-not-allowed">{`${row.searchBid || 0} ₽`}</span>
+                    <span className="text-gray-400">—</span>
                   )}
+                </div>
               </div>
-          </td> 
-        )}
-        {hasRecommendationsBids && (
-          <td
-            className="px-2 py-1.5 text-gray-800 align-top"
-            onDoubleClick={() => {
-              if (editingGroupId !== group.id) {
-                handleStartEditing(group);
-              }
-            }}
-          >
+            );
+          })()}
+        </td>
+
+        <td
+          className="px-2 py-1.5 text-gray-800 align-top"
+          onDoubleClick={() => {
+            if (editingGroupId !== group.id) {
+              handleStartEditing(group);
+            }
+          }}
+        >
+          {(() => {
+            const enabled = row.recommendationsBid != null;
+            return (
               <div className="w-full pr-2">
-                  {editingGroupId === group.id ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (enabled) {
+                        handleUpdateCampaign(group.id, row.id, { recommendationsBid: undefined });
+                      } else {
+                        handleUpdateCampaign(group.id, row.id, { recommendationsBid: 300 });
+                      }
+                    }}
+                    className={`shrink-0 text-[10px] px-2 py-1 rounded-full border transition-colors ${
+                      enabled
+                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
+                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+                    }`}
+                    aria-label={enabled ? 'Выключить зону Рекомендации' : 'Включить зону Рекомендации'}
+                    title={enabled ? 'Выключить Рекомендации' : 'Включить Рекомендации'}
+                  >
+                    {enabled ? 'Вкл' : 'Выкл'}
+                  </button>
+
+                  {enabled ? (
+                    editingGroupId === group.id ? (
                       <BidInput
-                        value={row.recommendationsBid || 0}
+                        value={row.recommendationsBid ?? 300}
                         onChange={(val) => handleUpdateCampaign(group.id, row.id, { recommendationsBid: val })}
                         showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
                         onApplyToAll={(val) => {
@@ -3053,12 +3306,17 @@ export default function App() {
                           );
                         }}
                       />
+                    ) : (
+                      <span className="text-gray-800">{`${row.recommendationsBid} ₽`}</span>
+                    )
                   ) : (
-                       <span className="cursor-not-allowed">{`${row.recommendationsBid || 0} ₽`}</span>
+                    <span className="text-gray-400">—</span>
                   )}
+                </div>
               </div>
-          </td> 
-        )}
+            );
+          })()}
+        </td>
         </> : 
         <td
           className="px-2 py-1.5 text-gray-800 align-top"
@@ -3100,7 +3358,7 @@ export default function App() {
         </div>
       </td> 
       <td className="px-2 py-1.5 text-left align-top"></td> 
-      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={5} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={isCpmManual ? (2 + (hasSearchBids ? 1 : 0) + (hasRecommendationsBids ? 1 : 0)) : 6} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
+      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={3} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={isCpmManual ? 6 : 5} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
         ) : (
             <EmptyStatePlaceholder />
         )}
@@ -3143,32 +3401,48 @@ export default function App() {
     {totalAllValidCount > 0 && selectedCampaignIds.length === 0 && ( 
     <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-sm border-t border-gray-200"> 
     <div className="max-w-[1392px] mx-auto px-6 py-4 flex justify-between items-center"> 
-    <div> <h3 className="font-bold text-gray-800">Общий итог за {totalAllValidCount} {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}</h3> 
-        <div className="flex items-center gap-6 text-sm mt-1"> 
-            <div> 
-                <span className="text-gray-500">Единый счёт: </span> 
-                <span className={`font-semibold ${globalDeficit > 0 ? 'text-red-500' : 'text-gray-900'}`}>
-                  {globalTotals.real.toLocaleString('ru-RU')} ₽
-                </span> 
-                {globalDeficit > 0 && 
-                    <span className="ml-2 text-red-500 font-medium">
-                        (не хватает {globalDeficit.toLocaleString('ru-RU')} ₽ 
-                        <a href="#" onClick={(e) => e.preventDefault()} className="text-blue-600 font-medium hover:underline text-sm ml-2">пополнить</a>)
-                    </span>
-                } 
-            </div> 
-            {globalTotals.bonus > 0 && (
-                <div> 
-                    <span className="text-gray-500">Бонусы: </span> 
-                    <span className="font-semibold text-gray-900">{globalTotals.bonus.toLocaleString('ru-RU')} B</span> 
-                </div>
+    <div>
+      <h3 className="font-bold text-gray-800">
+        Общий итог за {totalAllValidCount} {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}
+      </h3>
+
+      <div className="mt-1 text-sm text-gray-600">
+        <span className="text-gray-500">Сумма:</span>{' '}
+        <span className="relative inline-flex items-center group">
+          <span className="font-bold text-lg text-purple-600 cursor-default">
+            {globalTotals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })}
+          </span>
+
+          <div className="hidden group-hover:block absolute left-0 bottom-full mb-2 z-[90] w-72 rounded-xl border border-gray-200 bg-white shadow-xl p-3">
+            <div className="text-xs text-gray-500 mb-2">Разбивка списания</div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-600">Единый счёт</span>
+              <span className={`font-semibold ${globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                {globalTotals.real.toLocaleString('ru-RU')} ₽
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-sm mt-1">
+              <span className="text-gray-600">Бонусы</span>
+              <span className="font-semibold text-gray-900">
+                {globalTotals.bonus.toLocaleString('ru-RU')} B
+              </span>
+            </div>
+
+            {globalDeficit > 0 && (
+              <div className="mt-2 text-xs text-red-600">
+                Не хватает {globalDeficit.toLocaleString('ru-RU')} ₽ на едином счёте.
+              </div>
             )}
-            <div className="pl-6 border-l border-gray-200 flex items-center gap-4"> 
-                <div> 
-                    <span className="font-bold text-lg text-purple-600"> {globalTotals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })} </span> 
-                </div> 
-            </div> 
-        </div> 
+          </div>
+        </span>
+
+        {globalDeficit > 0 && (
+          <span className="ml-2 text-xs text-red-500 font-medium">
+            (не хватает {globalDeficit.toLocaleString('ru-RU')} ₽{' '}
+            <a href="#" onClick={(e) => e.preventDefault()} className="text-blue-600 font-medium hover:underline ml-1">пополнить</a>)
+          </span>
+        )}
+      </div>
     </div>
     <div className="flex items-center gap-4">
         {globalDeficit > 0 && launchPreview.readyToLaunchCount > 0 && (
