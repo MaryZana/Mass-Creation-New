@@ -54,7 +54,7 @@ const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
-const SELLER_PASSWORD = '23800345';
+const SELLER_PASSWORD = '238012328';
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
@@ -547,8 +547,14 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                     return { ...campaignBase, ...withSearch, ...withRecs } as CampaignRecord;
                 }
                 return { ...campaignBase, bid: 300 } as CampaignRecord;
-            } else { 
-                return { ...campaignBase, bid: 30 } as CampaignRecord;
+            } else {
+                // CPC: зоны Поиск и Рекомендации по выбору в модалке (manualZones)
+                const withSearch = manualZones.search ? { searchBid: 30 } : {};
+                const withRecs = manualZones.recommendations ? { recommendationsBid: 30 } : {};
+                if (!manualZones.search && !manualZones.recommendations) {
+                    return { ...campaignBase, searchBid: 30 } as CampaignRecord;
+                }
+                return { ...campaignBase, ...withSearch, ...withRecs } as CampaignRecord;
             }
         });
         onSubmit({paymentModel: tempConfig.paymentModel, bidType: tempConfig.bidType}, finalCampaigns);
@@ -847,6 +853,61 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                 </div>
                               </div>
                             )}
+                            </section>
+                            )}
+                            {tempConfig.paymentModel === PaymentModel.CPC && (
+                            <section>
+                            <h3 className="text-lg font-bold mb-4">Зоны показов</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
+                                  <div className="mr-4">
+                                    <p className="text-sm font-medium text-gray-900">Поиск</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Показы в результатах поиска</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setManualZones(prev => {
+                                        const next = { ...prev, search: !prev.search };
+                                        if (!next.search && !next.recommendations) {
+                                          return { ...prev, search: true };
+                                        }
+                                        return next;
+                                      })
+                                    }
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.search ? 'bg-purple-500' : 'bg-gray-300'}`}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.search ? 'translate-x-5' : 'translate-x-1'}`}
+                                    />
+                                  </button>
+                                </div>
+                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
+                                  <div className="mr-4">
+                                    <p className="text-sm font-medium text-gray-900">Рекомендации</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Показы в рекомендациях и ленте</p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setManualZones(prev => {
+                                        const next = { ...prev, recommendations: !prev.recommendations };
+                                        if (!next.search && !next.recommendations) {
+                                          return { ...prev, recommendations: true };
+                                        }
+                                        return next;
+                                      })
+                                    }
+                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.recommendations ? 'bg-purple-500' : 'bg-gray-300'}`}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.recommendations ? 'translate-x-5' : 'translate-x-1'}`}
+                                    />
+                                  </button>
+                                </div>
+                            </div>
                             </section>
                             )}
                         </div>
@@ -1349,12 +1410,14 @@ const BidInput = ({
     presets = [150, 200, 250],
     showApplyToAllTooltip = false,
     onApplyToAll,
+    min = 300,
 }: {
     value: number;
     onChange: (value: number) => void;
     presets?: number[];
     showApplyToAllTooltip?: boolean;
     onApplyToAll?: (value: number) => void;
+    min?: number;
 }) => {
     const [inputValue, setInputValue] = useState(String(value || ''));
     const [isFocused, setIsFocused] = useState(false);
@@ -1365,8 +1428,8 @@ const BidInput = ({
 
     const handleBlur = () => {
         let numericValue = parseDisplayValue(inputValue);
-        if (isNaN(numericValue) || numericValue < 300) {
-            numericValue = 300;
+        if (isNaN(numericValue) || numericValue < min) {
+            numericValue = min;
         }
         onChange(numericValue);
         setInputValue(String(numericValue));
@@ -1421,8 +1484,8 @@ const BidInput = ({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       let numericValue = parseDisplayValue(inputValue);
-                      if (isNaN(numericValue) || numericValue < 300) {
-                          numericValue = 300;
+                      if (isNaN(numericValue) || numericValue < min) {
+                          numericValue = min;
                       }
                       onChange(numericValue);
                       onApplyToAll(numericValue);
@@ -2962,26 +3025,27 @@ export default function App() {
             const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE);
             const paginatedIds = paginatedCampaigns.map(c => c.id);
             const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL;
-            // Для CPM с ручными ставками всегда показываем обе зоны, чтобы их можно было включать/выключать прямо из списка
-            const hasSearchBids = isCpmManual;
-            const hasRecommendationsBids = isCpmManual;
+            const isCpc = group.config.paymentModel === PaymentModel.CPC;
+            // CPM ручная и CPC: две колонки Поиск / Рекомендации с выбором зон
+            const showZoneColumns = isCpmManual || isCpc;
+            const hasSearchBids = showZoneColumns;
+            const hasRecommendationsBids = showZoneColumns;
+            const defaultZoneBid = isCpc ? 30 : 300;
             const zonesLabel = (() => {
               const isCpm = group.config.paymentModel === PaymentModel.CPM;
-              if (!isCpm) return null;
-
-              // CPM с единой ставкой всегда работает по обеим зонам
-              if (group.config.bidType !== BidType.MANUAL) {
+              if (isCpm && group.config.bidType !== BidType.MANUAL) {
                 return 'Зоны показов: Поиск, Рекомендации';
               }
-
-              // CPM с ручными ставками: зоны можно включать/выключать по кампании
-              const anySearchEnabled = campaignsForReview.some(c => c.searchBid != null);
-              const anyRecsEnabled = campaignsForReview.some(c => c.recommendationsBid != null);
-              const zones = [
-                anySearchEnabled ? 'Поиск' : null,
-                anyRecsEnabled ? 'Рекомендации' : null,
-              ].filter(Boolean) as string[];
-              return `Зоны показов: ${zones.length ? zones.join(', ') : '—'}`;
+              if (isCpm || isCpc) {
+                const anySearchEnabled = campaignsForReview.some(c => c.searchBid != null);
+                const anyRecsEnabled = campaignsForReview.some(c => c.recommendationsBid != null);
+                const zones = [
+                  anySearchEnabled ? 'Поиск' : null,
+                  anyRecsEnabled ? 'Рекомендации' : null,
+                ].filter(Boolean) as string[];
+                return `Зоны показов: ${zones.length ? zones.join(', ') : '—'}`;
+              }
+              return null;
             })();
             const selectedOnPageCount = paginatedIds.filter(id => selectedCampaignIds.includes(id)).length;
             const allOnPageSelected = selectedOnPageCount === paginatedIds.length && paginatedIds.length > 0;
@@ -2992,7 +3056,11 @@ export default function App() {
 <div className="sticky top-[104px] z-30 bg-white pt-3 pb-2 border-b border-gray-100 mb-0 flex justify-between items-center -mx-6 px-6 rounded-t-2xl shadow-sm min-h-[52px]">
               <div className="flex items-center gap-4">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">{`${group.config.paymentModel} ${group.config.bidType === BidType.MANUAL ? 'Ручная ставка' : 'Единая ставка'}`}</h2>
+                  <h2 className="text-lg font-bold text-gray-900">
+                    {group.config.paymentModel === PaymentModel.CPC
+                      ? 'CPC'
+                      : `CPM ${group.config.bidType === BidType.MANUAL ? 'Ручная ставка' : 'Единая ставка'}`}
+                  </h2>
                   <p
                     className="text-xs text-gray-600 mt-0.5 truncate"
                     title={[
@@ -3047,7 +3115,7 @@ export default function App() {
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Преследование</span><span className="tooltip-text">Автоматическое управление ставками</span></div></th> 
-                  {isCpmManual ? (
+                  {showZoneColumns ? (
                     <>
                       <th className="table-header-cell px-2 py-1.5 font-normal w-[15%] bg-white">
                         <div className="tooltip justify-start">
@@ -3189,7 +3257,7 @@ export default function App() {
             <span className="text-gray-400 cursor-not-allowed">настроить</span>
         )}
       </td>
-      {isCpmManual ? <> 
+      {showZoneColumns ? <> 
         <td
           className="px-2 py-1.5 text-gray-800 align-top"
           onDoubleClick={() => {
@@ -3203,32 +3271,25 @@ export default function App() {
             return (
               <div className="w-full pr-2">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (enabled) {
-                        handleUpdateCampaign(group.id, row.id, { searchBid: undefined });
-                      } else {
-                        handleUpdateCampaign(group.id, row.id, { searchBid: 300 });
-                      }
-                    }}
-                    className={`shrink-0 text-[10px] px-2 py-1 rounded-full border transition-colors ${
-                      enabled
-                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                    }`}
-                    aria-label={enabled ? 'Выключить зону Поиск' : 'Включить зону Поиск'}
-                    title={enabled ? 'Выключить Поиск' : 'Включить Поиск'}
-                  >
-                    {enabled ? 'Вкл' : 'Выкл'}
-                  </button>
+                  {editingGroupId === group.id && (
+                    <ToggleSwitch
+                      checked={enabled}
+                      onChange={(checked) => {
+                        if (!checked) {
+                          handleUpdateCampaign(group.id, row.id, { searchBid: undefined });
+                        } else {
+                          handleUpdateCampaign(group.id, row.id, { searchBid: row.searchBid ?? defaultZoneBid });
+                        }
+                      }}
+                    />
+                  )}
 
                   {enabled ? (
                     editingGroupId === group.id ? (
                       <BidInput
-                        value={row.searchBid ?? 300}
+                        value={row.searchBid ?? defaultZoneBid}
+                        min={defaultZoneBid}
+                        presets={defaultZoneBid === 30 ? [30, 50, 100] : undefined}
                         onChange={(val) => handleUpdateCampaign(group.id, row.id, { searchBid: val })}
                         showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
                         onApplyToAll={(val) => {
@@ -3245,6 +3306,21 @@ export default function App() {
                     ) : (
                       <span className="text-gray-800">{`${row.searchBid} ₽`}</span>
                     )
+                  ) : editingGroupId === group.id ? (
+                    <div className="w-full border border-gray-200 rounded-lg bg-gray-50 opacity-70 cursor-not-allowed">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value=""
+                          placeholder=""
+                          disabled
+                          className="w-full text-sm text-left font-medium bg-transparent outline-none px-2 py-1.5 text-gray-400"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm font-medium pointer-events-none">
+                          ₽
+                        </span>
+                      </div>
+                    </div>
                   ) : (
                     <span className="text-gray-400">—</span>
                   )}
@@ -3267,32 +3343,25 @@ export default function App() {
             return (
               <div className="w-full pr-2">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (enabled) {
-                        handleUpdateCampaign(group.id, row.id, { recommendationsBid: undefined });
-                      } else {
-                        handleUpdateCampaign(group.id, row.id, { recommendationsBid: 300 });
-                      }
-                    }}
-                    className={`shrink-0 text-[10px] px-2 py-1 rounded-full border transition-colors ${
-                      enabled
-                        ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                        : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-                    }`}
-                    aria-label={enabled ? 'Выключить зону Рекомендации' : 'Включить зону Рекомендации'}
-                    title={enabled ? 'Выключить Рекомендации' : 'Включить Рекомендации'}
-                  >
-                    {enabled ? 'Вкл' : 'Выкл'}
-                  </button>
+                  {editingGroupId === group.id && (
+                    <ToggleSwitch
+                      checked={enabled}
+                      onChange={(checked) => {
+                        if (!checked) {
+                          handleUpdateCampaign(group.id, row.id, { recommendationsBid: undefined });
+                        } else {
+                          handleUpdateCampaign(group.id, row.id, { recommendationsBid: row.recommendationsBid ?? defaultZoneBid });
+                        }
+                      }}
+                    />
+                  )}
 
                   {enabled ? (
                     editingGroupId === group.id ? (
                       <BidInput
-                        value={row.recommendationsBid ?? 300}
+                        value={row.recommendationsBid ?? defaultZoneBid}
+                        min={defaultZoneBid}
+                        presets={defaultZoneBid === 30 ? [30, 50, 100] : undefined}
                         onChange={(val) => handleUpdateCampaign(group.id, row.id, { recommendationsBid: val })}
                         showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
                         onApplyToAll={(val) => {
@@ -3309,6 +3378,21 @@ export default function App() {
                     ) : (
                       <span className="text-gray-800">{`${row.recommendationsBid} ₽`}</span>
                     )
+                  ) : editingGroupId === group.id ? (
+                    <div className="w-full border border-gray-200 rounded-lg bg-gray-50 opacity-70 cursor-not-allowed">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value=""
+                          placeholder=""
+                          disabled
+                          className="w-full text-sm text-left font-medium bg-transparent outline-none px-2 py-1.5 text-gray-400"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm font-medium pointer-events-none">
+                          ₽
+                        </span>
+                      </div>
+                    </div>
                   ) : (
                     <span className="text-gray-400">—</span>
                   )}
@@ -3358,7 +3442,7 @@ export default function App() {
         </div>
       </td> 
       <td className="px-2 py-1.5 text-left align-top"></td> 
-      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={3} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={isCpmManual ? 6 : 5} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
+      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={3} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={showZoneColumns ? 6 : 5} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
         ) : (
             <EmptyStatePlaceholder />
         )}
