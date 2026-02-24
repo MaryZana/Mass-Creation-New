@@ -59,18 +59,20 @@ const CompactLaunchLoader: React.FC<{ total: number }> = ({ total }) => (
 );
 
 
-const Toast = ({ show, message, onClose, isSuccess = false }: { show: boolean, message: string, onClose: () => void, isSuccess?: boolean }) => {
+const Toast = ({ show, message, onClose, isSuccess = false, isError = false, durationMs = 3000, aboveOverlay = false }: { show: boolean, message: string, onClose: () => void, isSuccess?: boolean, isError?: boolean, durationMs?: number, aboveOverlay?: boolean }) => {
   useEffect(() => {
     if (show) {
-      const timer = setTimeout(onClose, 3000);
+      const timer = setTimeout(onClose, durationMs);
       return () => clearTimeout(timer);
     }
-  }, [show, onClose]);
+  }, [show, onClose, durationMs]);
   
   if (!show) return null;
   
+  const bgClass = isError ? 'bg-red-600' : isSuccess ? 'bg-green-600' : 'bg-gray-900';
+  const zClass = aboveOverlay ? 'z-[110]' : 'z-[100]';
   return (
-    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 ${isSuccess ? 'bg-green-600' : 'bg-gray-900'} text-white px-6 py-3 rounded-lg shadow-xl z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-md`}>
+    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 ${bgClass} text-white px-6 py-3 rounded-lg shadow-xl ${zClass} flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-md ${isError ? 'pointer-events-none' : ''}`}>
       <span className="font-medium whitespace-pre-line">{message}</span>
     </div>
   );
@@ -147,7 +149,7 @@ interface SuccessPageProps {
   onOpenHistoryModal: () => void;
   showUploadHint?: boolean;
   onDismissUploadHint?: () => void;
-  onOpenCpcCampaign: (payload: { campaignId: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null }) => void;
+  onOpenCpcCampaign: (payload: { campaignId: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null; dailyLimitExhausted?: boolean }) => void;
   onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void;
   onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) => void;
   onOpenSingleCampaign?: () => void;
@@ -171,6 +173,8 @@ interface DisplayCampaign {
   remainingBudget: number | null;
   dailyLimit?: number | null;
   scheduledDailyLimit?: number | null;
+  /** true = лимит на сегодня израсходован, показы остановлены */
+  dailyLimitExhausted?: boolean;
   spend: number | null;
   impressions: number | null;
   ctr: number | null;
@@ -206,85 +210,92 @@ const currentDate = new Date().toLocaleDateString('ru-RU');
 
 const MOCK_CAMPAIGNS: DisplayCampaign[] = [
     // Category 1: Платья (10 items)
-    { id: '1', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Летнее платье "Ривьера" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304655, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа', 'Хиты со скидкой'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 1500, dailyLimit: 2000, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '2', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Вечернее платье "Грация" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304656, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Сезонная распродажа'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 800, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '1', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Летнее платье "Ривьера" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304655, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа', 'Хиты со скидкой'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 1500, dailyLimit: 2000, dailyLimitExhausted: false, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
+    { id: '2', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Вечернее платье "Грация" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304656, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Сезонная распродажа'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 800, dailyLimit: 1500, dailyLimitExhausted: true, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
     { id: '3', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-футляр "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304657, tags: [], campaignTags: ['Уценка', 'Последние размеры'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 3200, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
     { id: '4', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Сарафан "Прованс" CPM от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304658, tags: [], campaignTags: ['Ликвидация остатков'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 500, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
     { id: '5', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье с принтом "Флора" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304659, tags: [], campaignTags: ['Чёрная пятница', 'Хиты со скидкой'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 2100, spend: 80200, impressions: 250000, ctr: 1.1, orders: 75, spendShare: 14.1 },
-    { id: '6', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Коктейльное платье "Шарм" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304660, tags: [], campaignTags: ['Новый год'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 4500, dailyLimit: 3000, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '6', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Коктейльное платье "Шарм" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304660, tags: [], campaignTags: ['Новый год'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 4500, dailyLimit: 3000, dailyLimitExhausted: false, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
     { id: '7', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Длинное платье "Макси" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304661, tags: [], campaignTags: ['8 марта', 'Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 5500, spend: 250000, impressions: 600000, ctr: 1.5, orders: 120, spendShare: 18.2 },
     { id: '8', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-рубашка "Кэжуал" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304662, tags: [], campaignTags: ['1 сентября (школа)'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 150000, remainingBudget: 1200, spend: 145000, impressions: 400000, ctr: 0.9, orders: 50, spendShare: 11.0 },
     { id: '9', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Пляжное платье "Бриз" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304663, tags: [], campaignTags: ['Зимняя распродажа', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 100000, remainingBudget: 900, spend: 98000, impressions: 150000, ctr: 2.0, orders: 100, spendShare: 25.0 },
     { id: '10', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Трикотажное платье "Уют" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304664, tags: [], campaignTags: ['Акция поставщика'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 200000, remainingBudget: 2800, spend: 50000, impressions: 180000, ctr: 1.0, orders: 60, spendShare: 12.5 },
     { id: '11', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Джинсы "Classic Fit" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304665, tags: [], campaignTags: ['Распродажа витрины', 'Уценка'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 250000, remainingBudget: 3800, spend: 120000, impressions: 450000, ctr: 1.3, orders: 95, spendShare: 16.0 },
-    { id: '12', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Брюки-карго "Комбат" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304666, tags: [], campaignTags: ['Последние размеры'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 180000, remainingBudget: 1700, dailyLimit: 2200, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
+    { id: '12', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Брюки-карго "Комбат" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304666, tags: [], campaignTags: ['Последние размеры'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 180000, remainingBudget: 1700, dailyLimit: 2200, dailyLimitExhausted: false, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
     { id: '13', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Классические брюки "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304667, tags: [], campaignTags: ['Хиты со скидкой', 'Сезонная распродажа'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 400000, remainingBudget: 4900, spend: 390000, impressions: 800000, ctr: 1.1, orders: 150, spendShare: 19.5 },
     { id: '14', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Спортивные брюки "Тренд" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304668, tags: [], campaignTags: ['Чёрная пятница'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 220000, remainingBudget: 1100, spend: 215000, impressions: 300000, ctr: 1.8, orders: 110, spendShare: 22.0 },
     { id: '15', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Льняные брюки "Лето" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304669, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 120000, remainingBudget: 2400, spend: 30000, impressions: 100000, ctr: 0.8, orders: 40, spendShare: 10.0 },
     { id: '16', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Сумка-шоппер "Эко" CPM от ${currentDate}`, status: 'error', statusText: 'приостановлена', campaignId: 1304670, tags: [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' }], campaignTags: ['Проблемные', 'Уценка'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 0, remainingBudget: 600, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
-    { id: '17', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Кожаный ремень "Классика" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304671, tags: [], campaignTags: ['Новый год', '8 марта'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 90000, remainingBudget: 3500, dailyLimit: 4000, spend: 85000, impressions: 120000, ctr: 2.2, orders: 130, spendShare: 28.0 },
+    { id: '17', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Кожаный ремень "Классика" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304671, tags: [], campaignTags: ['Новый год', '8 марта'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 90000, remainingBudget: 3500, dailyLimit: 4000, dailyLimitExhausted: true, spend: 85000, impressions: 120000, ctr: 2.2, orders: 130, spendShare: 28.0 },
     { id: '18', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Шелковый платок "Париж" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304672, tags: [], campaignTags: ['Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 75000, remainingBudget: 4100, spend: 15000, impressions: 90000, ctr: 1.0, orders: 45, spendShare: 11.5 },
     { id: '19', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Солнцезащитные очки "Авиатор" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304673, tags: [], campaignTags: ['Акция поставщика', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 150000, remainingBudget: 2600, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
     { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Распродажа витрины'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 1300, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
 ];
 
-const DailyLimitTooltip: React.FC<{ dailyLimit: number; scheduledDailyLimit?: number | null; onClick?: () => void }> = ({ dailyLimit, scheduledDailyLimit, onClick }) => {
-    const [isTooltipVisible, setIsTooltipVisible] = useState(false);
-    const [isClockTooltipVisible, setIsClockTooltipVisible] = useState(false);
-    
-    return (
-        <div className="flex items-center gap-1 text-xs mt-1">
-            <span 
-                onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onClick?.();
-                }}
-                className="text-blue-600 hover:text-purple-600 cursor-pointer transition-colors"
-            >
-                Лимит на день {formatForDisplay(dailyLimit)}р
-            </span>
-            {scheduledDailyLimit && (
-                <div 
-                    className="relative inline-block"
-                    onMouseEnter={() => setIsClockTooltipVisible(true)}
-                    onMouseLeave={() => setIsClockTooltipVisible(false)}
-                >
-                    <Clock className="w-4 h-4 text-gray-600 cursor-help" />
-                    {isClockTooltipVisible && (
-                        <>
-                            <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsClockTooltipVisible(true)}></div>
-                            <div 
-                                className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-                                onMouseEnter={() => setIsClockTooltipVisible(true)}
-                                onMouseLeave={() => setIsClockTooltipVisible(false)}
-                            >
-                                <p className="mb-2">Завтра в 12:30 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimit)}₽</p>
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-            <div 
-                className="relative inline-block"
-                onMouseEnter={() => setIsTooltipVisible(true)}
-                onMouseLeave={() => setIsTooltipVisible(false)}
-            >
-                {isTooltipVisible && (
-                    <>
-                        <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsTooltipVisible(true)}></div>
-                        <div 
-                            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-                            onMouseEnter={() => setIsTooltipVisible(true)}
-                            onMouseLeave={() => setIsTooltipVisible(false)}
-                        >
-                            <p>Идет равномерная открутка установленного лимита на день</p>
-                        </div>
-                    </>
-                )}
-            </div>
-        </div>
-    );
+const DailyLimitTooltip: React.FC<{
+  dailyLimit: number;
+  scheduledDailyLimit?: number | null;
+  /** true = лимит израсходован, показы остановлены до завтра */
+  dailyLimitExhausted?: boolean;
+  onClick?: () => void;
+}> = ({ dailyLimit, dailyLimitExhausted, onClick }) => {
+  const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+  const hideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exhausted = !!dailyLimitExhausted;
+
+  const clearHideTimeout = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+  const scheduleHide = () => {
+    clearHideTimeout();
+    hideTimeoutRef.current = setTimeout(() => setIsTooltipVisible(false), 100);
+  };
+  useEffect(() => () => { clearHideTimeout(); }, []);
+
+  const trigger = (
+    <div
+      className="flex items-center gap-1.5 text-xs mt-1 cursor-pointer group/limit"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick?.();
+      }}
+      onMouseEnter={() => { clearHideTimeout(); setIsTooltipVisible(true); }}
+      onMouseLeave={scheduleHide}
+    >
+      {exhausted ? (
+        <Clock className="w-4 h-4 text-red-500 shrink-0" aria-hidden />
+      ) : (
+        <CheckCircle className="w-4 h-4 text-green-500 shrink-0" aria-hidden />
+      )}
+      <span className="text-blue-600 group-hover/limit:text-purple-600 transition-colors">Дневной лимит</span>
+    </div>
+  );
+
+  const tooltipText = exhausted
+    ? `Лимит в ${formatForDisplay(dailyLimit)} ₽ на сегодня израсходован. Показы остановлены до завтра. Если хотите возобновить показы сейчас увеличьте лимит`
+    : `${formatForDisplay(dailyLimit)} ₽`;
+
+  return (
+    <div className="relative inline-block">
+      {trigger}
+      {isTooltipVisible && (
+        <>
+          <div className="absolute left-0 top-full w-64 h-2" onMouseEnter={clearHideTimeout} onMouseLeave={scheduleHide} />
+          <div
+            className="absolute left-0 top-full mt-2 w-max max-w-[300px] p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+            onMouseEnter={clearHideTimeout}
+            onMouseLeave={() => { clearHideTimeout(); setIsTooltipVisible(false); }}
+          >
+            {tooltipText}
+          </div>
+        </>
+      )}
+    </div>
+  );
 };
 
 const DailyLimitModal: React.FC<{
@@ -293,14 +304,12 @@ const DailyLimitModal: React.FC<{
   currentBudget: number;
   dailyLimit?: number | null;
   onDailyLimitChange?: (limit: number | null, isScheduled?: boolean) => void;
-}> = ({ isOpen, onClose, currentBudget, dailyLimit, onDailyLimitChange }) => {
+  /** Когда пользователь пытается задать лимит выше бюджета — вызвать вместо показа ошибки в модалке (показать нотификашку на странице) */
+  onLimitAboveBudget?: (requestedLimit: number, shortfall: number) => void;
+}> = ({ isOpen, onClose, currentBudget, dailyLimit, onDailyLimitChange, onLimitAboveBudget }) => {
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
   const [dailyLimitValue, setDailyLimitValue] = useState('');
   const [savedDailyLimit, setSavedDailyLimit] = useState('');
-  const [isScheduledForNextDay, setIsScheduledForNextDay] = useState(false);
-  const [scheduledDailyLimit, setScheduledDailyLimit] = useState<string | null>(null);
-  const [previousScheduledLimit, setPreviousScheduledLimit] = useState<string | null>(null);
-  const [isClockTooltipVisible, setIsClockTooltipVisible] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [budgetError, setBudgetError] = useState('');
@@ -316,10 +325,6 @@ const DailyLimitModal: React.FC<{
         setDailyLimitValue('');
         setSavedDailyLimit('');
       }
-      setIsScheduledForNextDay(false);
-      setScheduledDailyLimit(null);
-      setPreviousScheduledLimit(null);
-      setIsClockTooltipVisible(false);
       setShowToast(false);
       setToastMessage('');
       setBudgetError('');
@@ -340,15 +345,13 @@ const DailyLimitModal: React.FC<{
                   setIsDailyLimitEnabled(true);
                   setDailyLimitValue('');
                   setSavedDailyLimit('');
-                  setIsScheduledForNextDay(false);
-                  setScheduledDailyLimit(null);
                   setBudgetError('');
                 } else {
                   setIsDailyLimitEnabled(false);
                   setDailyLimitValue('');
-                  setIsScheduledForNextDay(false);
-                  setScheduledDailyLimit(null);
+                  setSavedDailyLimit('');
                   setBudgetError('');
+                  if (onDailyLimitChange) onDailyLimitChange(null);
                 }
               }} 
             />
@@ -372,20 +375,10 @@ const DailyLimitModal: React.FC<{
                   onChange={(e) => {
                     const parsed = parseDisplayValue(e.target.value);
                     if (!isNaN(parsed)) {
-                      if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                        setPreviousScheduledLimit(scheduledDailyLimit);
-                      }
                       setDailyLimitValue(String(parsed));
-                      setIsScheduledForNextDay(false);
-                      setScheduledDailyLimit(null);
                       setBudgetError('');
                     } else if (e.target.value === '') {
-                      if (isScheduledForNextDay && scheduledDailyLimit && !previousScheduledLimit) {
-                        setPreviousScheduledLimit(scheduledDailyLimit);
-                      }
                       setDailyLimitValue('');
-                      setIsScheduledForNextDay(false);
-                      setScheduledDailyLimit(null);
                       setBudgetError('');
                     }
                   }}
@@ -398,41 +391,6 @@ const DailyLimitModal: React.FC<{
                 />
                 <span className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${!isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'}`}>₽</span>
               </div>
-              {isDailyLimitEnabled && (
-                <div className="flex items-center gap-2">
-                  {isScheduledForNextDay && scheduledDailyLimit && (
-                    <div 
-                      className="relative"
-                      onMouseEnter={() => setIsClockTooltipVisible(true)}
-                      onMouseLeave={() => setIsClockTooltipVisible(false)}
-                    >
-                      <Clock className="w-5 h-5 text-gray-600 cursor-help" />
-                      {isClockTooltipVisible && (
-                        <>
-                          <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsClockTooltipVisible(true)}></div>
-                          <div 
-                            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-                            onMouseEnter={() => setIsClockTooltipVisible(true)}
-                            onMouseLeave={() => setIsClockTooltipVisible(false)}
-                          >
-                            <p className="mb-2">Завтра в 12:30 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimit)}₽</p>
-                            <button
-                              onClick={() => {
-                                setIsScheduledForNextDay(false);
-                                setScheduledDailyLimit(null);
-                                setIsClockTooltipVisible(false);
-                              }}
-                              className="w-full px-3 py-1.5 text-xs font-medium text-gray-900 bg-white hover:bg-gray-100 rounded-md transition-colors"
-                            >
-                              Отменить
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
             {budgetError && (
               <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -463,93 +421,41 @@ const DailyLimitModal: React.FC<{
           </div>
         </div>
 
-        <div className="flex justify-between items-center gap-3 pt-4 border-t border-gray-100">
-          <div className="flex items-center gap-2">
-            {isDailyLimitEnabled && (
-              <button
-                onClick={() => {
-                  onClose();
-                }}
-                className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
-              >
-                Сохранить
-              </button>
-            )}
-            {dailyLimitValue && parseDisplayValue(dailyLimitValue) !== parseDisplayValue(savedDailyLimit) && !isScheduledForNextDay && savedDailyLimit && isDailyLimitEnabled && (
-              <>
-                <button
-                  onClick={() => {
-                    const parsed = parseDisplayValue(dailyLimitValue);
-                    if (parsed < 1000) {
-                      setToastMessage(`Минимальная сумма дневного лимита: ${formatForDisplay(1000)} ₽`);
-                      setShowToast(true);
-                      return;
-                    }
-                    if (parsed > currentBudget) {
-                      setBudgetError(`Недостаточно средств на балансе. Текущий баланс: ${formatForDisplay(currentBudget)} ₽, требуется: ${formatForDisplay(parsed)} ₽`);
-                      return;
-                    }
-                    setSavedDailyLimit(dailyLimitValue);
-                    setIsScheduledForNextDay(false);
-                    setScheduledDailyLimit(null);
-                    setPreviousScheduledLimit(null);
-                    setBudgetError('');
-                    setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
-                    setShowToast(true);
-                    if (onDailyLimitChange) {
-                      onDailyLimitChange(parsed);
-                    }
-                    setTimeout(() => {
-                      onClose();
-                    }, 100);
-                  }}
-                  className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
-                >
-                  Поменять сейчас
-                </button>
-                <button
-                  onClick={() => {
-                    const parsed = parseDisplayValue(dailyLimitValue);
-                    if (parsed > currentBudget) {
-                      setBudgetError(`Недостаточно средств на балансе. Текущий баланс: ${formatForDisplay(currentBudget)} ₽, требуется: ${formatForDisplay(parsed)} ₽`);
-                      return;
-                    }
-                    setIsScheduledForNextDay(true);
-                    setScheduledDailyLimit(dailyLimitValue);
-                    const limitToSave = dailyLimitValue;
-                    setDailyLimitValue(savedDailyLimit);
-                    setPreviousScheduledLimit(null);
-                    setBudgetError('');
-                    if (onDailyLimitChange) {
-                      onDailyLimitChange(parseDisplayValue(limitToSave), true);
-                    }
-                    setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
-                    setShowToast(true);
-                    setTimeout(() => {
-                      onClose();
-                    }, 100);
-                  }}
-                  className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
-                >
-                  С нового дня
-                </button>
-              </>
-            )}
-            {!isDailyLimitEnabled && savedDailyLimit && (
-              <button
-                onClick={() => {
-                  if (onDailyLimitChange) {
-                    onDailyLimitChange(null);
-                  }
-                  onClose();
-                }}
-                className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
-              >
-                Сохранить
-              </button>
-            )}
-          </div>
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Отмена</button>
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+          <button
+            onClick={() => {
+              if (!isDailyLimitEnabled) {
+                if (onDailyLimitChange) onDailyLimitChange(null);
+                onClose();
+                return;
+              }
+              const parsed = parseDisplayValue(dailyLimitValue);
+              if (dailyLimitValue === '' || isNaN(parsed)) {
+                setBudgetError('Введите сумму дневного лимита');
+                return;
+              }
+              if (parsed < 1000) {
+                setBudgetError(`Минимальная сумма дневного лимита: ${formatForDisplay(1000)} ₽`);
+                return;
+              }
+              if (parsed > currentBudget) {
+                if (onLimitAboveBudget) onLimitAboveBudget(parsed, parsed - currentBudget);
+                return;
+              }
+              setSavedDailyLimit(dailyLimitValue);
+              setBudgetError('');
+              setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
+              setShowToast(true);
+              if (onDailyLimitChange) onDailyLimitChange(parsed);
+              onClose();
+            }}
+            className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors"
+          >
+            Сохранить
+          </button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">
+            Отмена
+          </button>
         </div>
       </div>
 
@@ -1547,6 +1453,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
   const [selectedCampaignForRefill, setSelectedCampaignForRefill] = useState<DisplayCampaign | null>(null);
   const [isDailyLimitModalOpen, setIsDailyLimitModalOpen] = useState(false);
+  const [limitShortfallNotification, setLimitShortfallNotification] = useState<{ requestedLimit: number; shortfall: number } | null>(null);
 
   // Filter states
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -1663,8 +1570,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     // Sort campaigns
     if (filterSort === 'by-name') {
       filtered.sort((a, b) => a.name.localeCompare(b.name));
+    } else {
+      // По умолчанию: первые две позиции — кейсы «лимит работает» (id 1) и «лимит исчерпан» (id 2)
+      const case1 = filtered.find(c => c.id === '1');
+      const case2 = filtered.find(c => c.id === '2');
+      const rest = filtered.filter(c => c.id !== '1' && c.id !== '2');
+      filtered = [...(case1 ? [case1] : []), ...(case2 ? [case2] : []), ...rest];
     }
-    // by-date is default order (no sorting needed)
 
     return filtered;
   }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterTags, filterTagsCategory, failedFilterIds]);
@@ -1740,6 +1652,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       )}
 
       {isApplyingEdits && <ApplyingChangesBlock onOpenReview={onOpenReview} onCancel={onCancelEdits} />}
+
+      {limitShortfallNotification && (
+        <Toast
+          show={!!limitShortfallNotification}
+          message={`Чтобы задать дневной лимит ${formatForDisplay(limitShortfallNotification.requestedLimit)} ₽, пополните бюджет еще на ${formatForDisplay(limitShortfallNotification.shortfall)} ₽`}
+          onClose={() => setLimitShortfallNotification(null)}
+          isError
+          durationMs={2000}
+          aboveOverlay
+        />
+      )}
       
       <div>
           {/* Toolbar */}
@@ -1841,7 +1764,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   name: c.name,
                                   remainingBudget: c.remainingBudget,
                                   dailyLimit: c.dailyLimit,
-                                  scheduledDailyLimit: c.scheduledDailyLimit
+                                  scheduledDailyLimit: c.scheduledDailyLimit,
+                                  dailyLimitExhausted: c.dailyLimitExhausted
                                 });
                               }
                             }}
@@ -1921,11 +1845,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                           <Plus className="w-4 h-4 text-purple-600" />
                                       </button>
                                   </div>
-                                  {c.type === 'CPC' && c.dailyLimit && (
+                                  {c.type === 'CPC' && c.dailyLimit != null && (
                                       <>
-                                          <DailyLimitTooltip 
-                                              dailyLimit={c.dailyLimit} 
-                                              scheduledDailyLimit={c.scheduledDailyLimit || null}
+                                          <DailyLimitTooltip
+                                              dailyLimit={c.dailyLimit}
+                                              dailyLimitExhausted={c.dailyLimitExhausted}
                                               onClick={() => {
                                                   setSelectedCampaignForRefill(c);
                                                   setIsDailyLimitModalOpen(true);
@@ -1992,6 +1916,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
           currentBudget={selectedCampaignForRefill.remainingBudget || 0}
           dailyLimit={selectedCampaignForRefill.dailyLimit || null}
+          onLimitAboveBudget={(requestedLimit, shortfall) => {
+            setLimitShortfallNotification({ requestedLimit, shortfall });
+          }}
           onDailyLimitChange={(limit, isScheduled = false) => {
             if (selectedCampaignForRefill) {
               setAllCampaigns(prev => prev.map(c => {

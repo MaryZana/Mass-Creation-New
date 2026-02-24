@@ -1936,7 +1936,7 @@ export default function App() {
   const [isFromExcelModal, setIsFromExcelModal] = useState(false);
   const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{ id: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null } | null>(null);
+  const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{ id: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null; dailyLimitExhausted?: boolean } | null>(null);
   const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) | null>(null);
 
 
@@ -2645,8 +2645,8 @@ export default function App() {
                     onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
                     showUploadHint={showUploadHint}
                     onDismissUploadHint={() => setShowUploadHint(false)}
-                    onOpenCpcCampaign={({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit }) => {
-                      setSelectedCpcCampaign({ id: campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit });
+                    onOpenCpcCampaign={({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, dailyLimitExhausted }) => {
+                      setSelectedCpcCampaign({ id: campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, dailyLimitExhausted });
                       setAppState('cpc-detail' as any);
                     }}
                     onUpdateCampaignData={(campaignId, data) => {
@@ -2805,6 +2805,7 @@ export default function App() {
         remainingBudget={selectedCpcCampaign.remainingBudget}
         dailyLimit={selectedCpcCampaign.dailyLimit}
         scheduledDailyLimit={selectedCpcCampaign.scheduledDailyLimit}
+        dailyLimitExhausted={selectedCpcCampaign.dailyLimitExhausted}
         onBack={() => {
           // Update campaign data in SuccessPage before going back
           if (selectedCpcCampaign) {

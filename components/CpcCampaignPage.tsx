@@ -27,6 +27,8 @@ interface CpcCampaignPageProps {
   remainingBudget: number | null;
   dailyLimit: number | null;
   scheduledDailyLimit: number | null;
+  /** true = дневной лимит израсходован, показы остановлены до завтра */
+  dailyLimitExhausted?: boolean;
   onBack: () => void;
   onUpdateData?: (data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void;
 }
@@ -52,18 +54,19 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
   </button>
 );
 
-const Toast = ({ show, message, onClose, isSuccess = false }: { show: boolean, message: string, onClose: () => void, isSuccess?: boolean }) => {
+const Toast = ({ show, message, onClose, isSuccess = false, isError = false, durationMs = 3000 }: { show: boolean, message: string, onClose: () => void, isSuccess?: boolean, isError?: boolean, durationMs?: number }) => {
   useEffect(() => {
     if (show) {
-      const timer = setTimeout(onClose, 3000);
+      const timer = setTimeout(onClose, durationMs);
       return () => clearTimeout(timer);
     }
-  }, [show, onClose]);
+  }, [show, onClose, durationMs]);
   
   if (!show) return null;
   
+  const bgClass = isError ? 'bg-red-600' : isSuccess ? 'bg-green-600' : 'bg-gray-900';
   return (
-    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 ${isSuccess ? 'bg-green-600' : 'bg-gray-900'} text-white px-6 py-3 rounded-lg shadow-xl z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-md`}>
+    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 ${bgClass} text-white px-6 py-3 rounded-lg shadow-xl z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-md ${isError ? 'pointer-events-none' : ''}`}>
       <span className="font-medium whitespace-pre-line">{message}</span>
     </div>
   );
@@ -97,7 +100,7 @@ const DailyLimitInfoTooltip: React.FC = () => {
   );
 };
 
-export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, onBack, onUpdateData }) => {
+export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, dailyLimitExhausted, onBack, onUpdateData }) => {
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(dailyLimit !== null && dailyLimit !== undefined);
   const [dailyLimitValue, setDailyLimitValue] = useState(dailyLimit ? String(dailyLimit) : '');
@@ -109,18 +112,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
   const [previousDailyLimitValue, setPreviousDailyLimitValue] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [toastIsError, setToastIsError] = useState(false);
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
   const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
   const [campaignBudget, setCampaignBudget] = useState(remainingBudget ?? 1500);
   const [campaignName, setCampaignName] = useState(name);
   const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
-  const [isClockTooltipVisible, setIsClockTooltipVisible] = useState(false);
+  const [isExhaustedPlaqueTooltipVisible, setIsExhaustedPlaqueTooltipVisible] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(true);
   const [pendingDailyLimit, setPendingDailyLimit] = useState<string | null>(null);
   const [savedDailyLimit, setSavedDailyLimit] = useState(dailyLimit ? String(dailyLimit) : '');
-  const [isScheduledForNextDay, setIsScheduledForNextDay] = useState(scheduledDailyLimit !== null && scheduledDailyLimit !== undefined);
-  const [scheduledDailyLimitState, setScheduledDailyLimitState] = useState<string | null>(scheduledDailyLimit ? String(scheduledDailyLimit) : null);
-  const [previousScheduledLimit, setPreviousScheduledLimit] = useState<string | null>(null);
   const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
   const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
 
@@ -144,16 +145,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
       setSavedDailyLimit('');
     }
   }, [dailyLimit]);
-
-  useEffect(() => {
-    const hasScheduled = scheduledDailyLimit !== null && scheduledDailyLimit !== undefined;
-    setIsScheduledForNextDay(hasScheduled);
-    if (hasScheduled && scheduledDailyLimit) {
-      setScheduledDailyLimitState(String(scheduledDailyLimit));
-    } else {
-      setScheduledDailyLimitState(null);
-    }
-  }, [scheduledDailyLimit]);
 
   useEffect(() => {
     if (isFirstVisit) {
@@ -342,18 +333,40 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                       setWasDailyLimitToggledOn(false);
                       setPendingDailyLimit(null);
                       setDailyLimitValue('');
-                      setIsScheduledForNextDay(false);
-                      setScheduledDailyLimitState(null);
                       setToastMessage('Изменения сохранены');
                       setShowToast(true);
+                      if (onUpdateData) onUpdateData({ dailyLimit: null, scheduledDailyLimit: null });
                     }
                   }
                 }} />
-                <p className="text-sm text-gray-800 flex items-center gap-2">
-                  <span>Дневной лимит</span>
+                <p className="m-0 text-sm text-gray-800 flex items-center gap-2 leading-none">
+                  <span className="leading-snug">Дневной лимит</span>
                   <DailyLimitInfoTooltip />
                 </p>
               </div>
+              {dailyLimitExhausted && (
+                <div
+                  className="relative inline-block shrink-0"
+                  onMouseEnter={() => setIsExhaustedPlaqueTooltipVisible(true)}
+                  onMouseLeave={() => setIsExhaustedPlaqueTooltipVisible(false)}
+                >
+                  <div className="bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded-md">
+                    Дневной лимит исчерпан
+                  </div>
+                  {isExhaustedPlaqueTooltipVisible && (
+                    <>
+                      <div className="absolute right-0 top-full w-48 h-2" onMouseEnter={() => setIsExhaustedPlaqueTooltipVisible(true)} />
+                      <div
+                        className="absolute right-0 top-full mt-2 w-max max-w-[300px] p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+                        onMouseEnter={() => setIsExhaustedPlaqueTooltipVisible(true)}
+                        onMouseLeave={() => setIsExhaustedPlaqueTooltipVisible(false)}
+                      >
+                        Показы остановлены до завтра. Если хотите возобновить показы сейчас увеличьте лимит
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-4">
               <div className="relative w-1/3">
@@ -364,19 +377,33 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                   onChange={(e) => {
                     const parsed = parseDisplayValue(e.target.value);
                     if (!isNaN(parsed)) {
-                      if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
-                        setPreviousScheduledLimit(scheduledDailyLimitState);
-                      }
                       setDailyLimitValue(String(parsed));
-                      setIsScheduledForNextDay(false);
-                      setScheduledDailyLimitState(null);
                     } else if (e.target.value === '') {
-                      if (isScheduledForNextDay && scheduledDailyLimitState && !previousScheduledLimit) {
-                        setPreviousScheduledLimit(scheduledDailyLimitState);
-                      }
                       setDailyLimitValue('');
-                      setIsScheduledForNextDay(false);
-                      setScheduledDailyLimitState(null);
+                    }
+                  }}
+                  onBlur={() => {
+                    if (!isDailyLimitEnabled) return;
+                    const parsed = parseDisplayValue(dailyLimitValue);
+                    if (dailyLimitValue === '' || parseDisplayValue(dailyLimitValue) === parseDisplayValue(savedDailyLimit)) return;
+                    if (isNaN(parsed) || parsed < 1000) {
+                      setToastMessage(`Минимальная сумма дневного лимита: ${formatForDisplay(1000)} ₽`);
+                      setShowToast(true);
+                      return;
+                    }
+                    if (parsed > campaignBudget) {
+                      // Возвращаем инпут к предыдущему сохранённому значению, если лимит выше бюджета
+                      setDailyLimitValue(savedDailyLimit || '');
+                      setToastMessage(`Чтобы задать дневной лимит ${formatForDisplay(parsed)} ₽, пополните бюджет еще на ${formatForDisplay(parsed - campaignBudget)} ₽`);
+                      setToastIsError(true);
+                      setShowToast(true);
+                      return;
+                    }
+                    setSavedDailyLimit(dailyLimitValue);
+                    setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
+                    setShowToast(true);
+                    if (onUpdateData) {
+                      onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
                     }
                   }}
                   className={`w-full text-sm border shadow-sm outline-none transition-colors px-2 py-1.5 rounded-lg pr-6 ${
@@ -388,147 +415,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                 />
                 <span className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${!isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'}`}>₽</span>
               </div>
-              {isDailyLimitEnabled && (
-                <div className="flex items-center gap-2">
-                  {isScheduledForNextDay && scheduledDailyLimitState && (
-                    <div 
-                      className="relative"
-                      onMouseEnter={() => setIsClockTooltipVisible(true)}
-                      onMouseLeave={() => setIsClockTooltipVisible(false)}
-                    >
-                      <Clock className="w-5 h-5 text-gray-600 cursor-help" />
-                      {isClockTooltipVisible && (
-                        <>
-                          <div className="absolute left-1/2 -translate-x-1/2 top-full w-64 h-2" onMouseEnter={() => setIsClockTooltipVisible(true)}></div>
-                          <div 
-                            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-                            onMouseEnter={() => setIsClockTooltipVisible(true)}
-                            onMouseLeave={() => setIsClockTooltipVisible(false)}
-                          >
-                            <p className="mb-2">Завтра в 00:01 лимит поменяется на новый: {formatForDisplay(scheduledDailyLimitState)}₽</p>
-                            <button
-                              onClick={() => {
-                                setIsScheduledForNextDay(false);
-                                setScheduledDailyLimitState(null);
-                                setIsClockTooltipVisible(false);
-                              }}
-                              className="w-full px-3 py-1.5 text-xs font-medium text-gray-900 bg-white hover:bg-gray-100 rounded-md transition-colors"
-                            >
-                              Отменить
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {dailyLimitValue && parseDisplayValue(dailyLimitValue) !== parseDisplayValue(savedDailyLimit) && !isScheduledForNextDay && (
-                    <>
-                      {savedDailyLimit ? (
-                        <>
-                          <button
-                            onClick={() => {
-                              const parsed = parseDisplayValue(dailyLimitValue);
-                              if (parsed < 1000) {
-                                setToastMessage(`Минимальная сумма дневного лимита: ${formatForDisplay(1000)} ₽`);
-                                setShowToast(true);
-                                return;
-                              }
-                              if (parsed > campaignBudget) {
-                                setWasModalOpenedFromInput(true);
-                                setWasDailyLimitToggledOn(false);
-                                setPendingDailyLimitToSave(dailyLimitValue);
-                                setIsBudgetRefillModalOpen(true);
-                                return;
-                              }
-                              setSavedDailyLimit(dailyLimitValue);
-                              setIsScheduledForNextDay(false);
-                              setScheduledDailyLimitState(null);
-                              setPreviousScheduledLimit(null);
-                              setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
-                              setShowToast(true);
-                              if (onUpdateData) {
-                                onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
-                              }
-                            }}
-                            className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
-                          >
-                            Поменять сейчас
-                          </button>
-                          <button
-                            onClick={() => {
-                              const parsed = parseDisplayValue(dailyLimitValue);
-                              if (parsed > campaignBudget) {
-                                setToastMessage(`Недостаточно средств на балансе. Текущий баланс: ${formatForDisplay(campaignBudget)} ₽, требуется: ${formatForDisplay(parsed)} ₽`);
-                                setShowToast(true);
-                                return;
-                              }
-                              setIsScheduledForNextDay(true);
-                              setScheduledDailyLimitState(dailyLimitValue);
-                              setDailyLimitValue(savedDailyLimit);
-                              setPreviousScheduledLimit(null);
-                              if (onUpdateData) {
-                                onUpdateData({ scheduledDailyLimit: parsed });
-                              }
-                            }}
-                            className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
-                          >
-                            С нового дня
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (previousScheduledLimit) {
-                                setDailyLimitValue(savedDailyLimit);
-                                setIsScheduledForNextDay(true);
-                                setScheduledDailyLimitState(previousScheduledLimit);
-                                setPreviousScheduledLimit(null);
-                              } else {
-                                setDailyLimitValue(savedDailyLimit);
-                                setIsScheduledForNextDay(false);
-                                setScheduledDailyLimitState(null);
-                              }
-                            }}
-                            className="px-4 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
-                          >
-                            Отмена
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            const parsed = parseDisplayValue(dailyLimitValue);
-                            if (parsed < 1000) {
-                              setToastMessage(`Минимальная сумма дневного лимита: ${formatForDisplay(1000)} ₽`);
-                              setShowToast(true);
-                              return;
-                            }
-                            if (parsed > campaignBudget) {
-                              setWasModalOpenedFromInput(true);
-                              setWasDailyLimitToggledOn(false);
-                              setPendingDailyLimitToSave(dailyLimitValue);
-                              setIsBudgetRefillModalOpen(true);
-                              return;
-                            }
-                            setSavedDailyLimit(dailyLimitValue);
-                            setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
-                            setShowToast(true);
-                            if (onUpdateData) {
-                              onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
-                            }
-                          }}
-                          className="px-4 py-1.5 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors whitespace-nowrap"
-                        >
-                          Сохранить
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <label className="flex items-start gap-2 text-xs">
+              <label className="flex items-center gap-2 text-xs cursor-pointer m-0">
                 <Checkbox
-                  className="mt-0.5"
                   disabled={!isDailyLimitEnabled}
                   checked={isCarryoverEnabled}
                   onChange={(e) => {
@@ -731,8 +621,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
               if (parsed <= newBudget) {
                 setSavedDailyLimit(pendingDailyLimitToSave);
                 setDailyLimitValue(pendingDailyLimitToSave);
-                setIsScheduledForNextDay(false);
-                setScheduledDailyLimit(null);
                 setToastMessage(`Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`);
                 setShowToast(true);
                 if (onUpdateData) {
@@ -780,8 +668,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                   setWasDailyLimitToggledOn(false);
                   setPendingDailyLimit(null);
                   setDailyLimitValue('');
-                  setIsScheduledForNextDay(false);
-                  setScheduledDailyLimitState(null);
                   setSavedDailyLimit('');
                   setIsDisableLimitModalOpen(false);
                   setToastMessage('Дневной лимит отключен');
@@ -803,8 +689,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
       <Toast 
         show={showToast} 
         message={toastMessage} 
-        onClose={() => setShowToast(false)} 
-        isSuccess={toastMessage.includes('Новый дневной лимит установлен') || toastMessage.includes('Дневной лимит отключен')}
+        onClose={() => { setShowToast(false); setToastIsError(false); }} 
+        isSuccess={!toastIsError && (toastMessage.includes('Новый дневной лимит установлен') || toastMessage.includes('Дневной лимит отключен'))}
+        isError={toastIsError}
+        durationMs={toastIsError ? 2000 : 3000}
       />
     </div>
   );
