@@ -269,7 +269,7 @@ const DailyLimitTooltip: React.FC<{
       {exhausted ? (
         <Clock className="w-4 h-4 text-red-500 shrink-0" aria-hidden />
       ) : (
-        <CheckCircle className="w-4 h-4 text-green-500 shrink-0" aria-hidden />
+        <CheckCircle className="w-4 h-4 text-green-600 shrink-0" aria-hidden />
       )}
       <span className="text-blue-600 group-hover/limit:text-purple-600 transition-colors">Дневной лимит</span>
     </div>
