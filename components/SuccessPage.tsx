@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
     Plus, 
+    Menu,
     Search, 
     Calendar, 
     Filter, 
     CheckCircle, 
     X, 
     ChevronDown, 
+    ChevronRight,
     HelpCircle, 
     ArrowUp,
     Zap,
@@ -17,9 +20,15 @@ import {
     Info,
     Download,
     ClipboardCheck,
-    Clock
+    Clock,
+    Settings,
+    MoreVertical,
+    Trash2,
+    Edit2,
+    Check
 } from './Icons';
 import { CampaignRecord } from '../types';
+import { PRODUCTS_SOURCE, CATEGORIES, type CampaignSpec } from './SuccessPageTestData';
 
 // --- Constants ---
 const TOTAL_PROMO_BONUS = 226660517;
@@ -159,11 +168,19 @@ interface DisplayCampaign {
   id: string;
   image: string;
   name: string;
+  /** Категория товара для сортировки по категории */
+  category?: string;
   status: 'active' | 'paused' | 'draft' | 'error';
   statusText: string;
   campaignId: number;
   tags: { text: string; icon: React.ReactNode; type: 'warning' | 'info' | 'error' }[];
   campaignTags: string[];
+  /** Теги товара (дубль от товара для отображения в кампании) */
+  productTags?: string[];
+  /** ID товара для учёта productTagsOverride */
+  productId?: string;
+  /** Несколько товаров в одной кампании — объединяем их теги в списке */
+  productIds?: string[];
   type: 'CPC' | 'CPM';
   typeDetails: string;
   typeIcons: React.ReactNode[];
@@ -208,29 +225,399 @@ const formatPercentage = (num: number | null | undefined): string => {
 
 const currentDate = new Date().toLocaleDateString('ru-RU');
 
-const MOCK_CAMPAIGNS: DisplayCampaign[] = [
-    // Category 1: Платья (10 items)
-    { id: '1', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Летнее платье "Ривьера" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304655, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа', 'Хиты со скидкой'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 1500, dailyLimit: 2000, dailyLimitExhausted: false, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '2', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Вечернее платье "Грация" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304656, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Сезонная распродажа'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 800, dailyLimit: 1500, dailyLimitExhausted: true, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '3', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-футляр "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304657, tags: [], campaignTags: ['Уценка', 'Последние размеры'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 3200, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8 },
-    { id: '4', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Сарафан "Прованс" CPM от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304658, tags: [], campaignTags: ['Ликвидация остатков'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 500, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
-    { id: '5', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье с принтом "Флора" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304659, tags: [], campaignTags: ['Чёрная пятница', 'Хиты со скидкой'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 300000, remainingBudget: 2100, spend: 80200, impressions: 250000, ctr: 1.1, orders: 75, spendShare: 14.1 },
-    { id: '6', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Коктейльное платье "Шарм" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304660, tags: [], campaignTags: ['Новый год'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 300000, remainingBudget: 4500, dailyLimit: 3000, dailyLimitExhausted: false, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '7', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Длинное платье "Макси" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304661, tags: [], campaignTags: ['8 марта', 'Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 5500, spend: 250000, impressions: 600000, ctr: 1.5, orders: 120, spendShare: 18.2 },
-    { id: '8', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Платье-рубашка "Кэжуал" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304662, tags: [], campaignTags: ['1 сентября (школа)'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 150000, remainingBudget: 1200, spend: 145000, impressions: 400000, ctr: 0.9, orders: 50, spendShare: 11.0 },
-    { id: '9', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Пляжное платье "Бриз" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304663, tags: [], campaignTags: ['Зимняя распродажа', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 100000, remainingBudget: 900, spend: 98000, impressions: 150000, ctr: 2.0, orders: 100, spendShare: 25.0 },
-    { id: '10', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=W', name: `Трикотажное платье "Уют" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304664, tags: [], campaignTags: ['Акция поставщика'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 200000, remainingBudget: 2800, spend: 50000, impressions: 180000, ctr: 1.0, orders: 60, spendShare: 12.5 },
-    { id: '11', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Джинсы "Classic Fit" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304665, tags: [], campaignTags: ['Распродажа витрины', 'Уценка'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 250000, remainingBudget: 3800, spend: 120000, impressions: 450000, ctr: 1.3, orders: 95, spendShare: 16.0 },
-    { id: '12', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Брюки-карго "Комбат" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304666, tags: [], campaignTags: ['Последние размеры'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: true, autoRefillStatus: 'ok', budget: 180000, remainingBudget: 1700, dailyLimit: 2200, dailyLimitExhausted: false, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '13', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Классические брюки "Офис" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304667, tags: [], campaignTags: ['Хиты со скидкой', 'Сезонная распродажа'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 400000, remainingBudget: 4900, spend: 390000, impressions: 800000, ctr: 1.1, orders: 150, spendShare: 19.5 },
-    { id: '14', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Спортивные брюки "Тренд" CPC от ${currentDate}`, status: 'paused', statusText: 'приостановлена', campaignId: 1304668, tags: [], campaignTags: ['Чёрная пятница'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 220000, remainingBudget: 1100, spend: 215000, impressions: 300000, ctr: 1.8, orders: 110, spendShare: 22.0 },
-    { id: '15', image: 'https://placehold.co/64x64/BFDBFE/1E3A8A?text=W', name: `Льняные брюки "Лето" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304669, tags: [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' }], campaignTags: ['Летняя распродажа'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 120000, remainingBudget: 2400, spend: 30000, impressions: 100000, ctr: 0.8, orders: 40, spendShare: 10.0 },
-    { id: '16', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Сумка-шоппер "Эко" CPM от ${currentDate}`, status: 'error', statusText: 'приостановлена', campaignId: 1304670, tags: [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' }], campaignTags: ['Проблемные', 'Уценка'], type: 'CPM', typeDetails: 'Ручная', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 0, remainingBudget: 600, spend: null, impressions: null, ctr: null, orders: null, spendShare: null },
-    { id: '17', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Кожаный ремень "Классика" CPC от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304671, tags: [], campaignTags: ['Новый год', '8 марта'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 90000, remainingBudget: 3500, dailyLimit: 4000, dailyLimitExhausted: true, spend: 85000, impressions: 120000, ctr: 2.2, orders: 130, spendShare: 28.0 },
-    { id: '18', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Шелковый платок "Париж" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304672, tags: [], campaignTags: ['Скидка по купону'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 75000, remainingBudget: 4100, spend: 15000, impressions: 90000, ctr: 1.0, orders: 45, spendShare: 11.5 },
-    { id: '19', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Солнцезащитные очки "Авиатор" CPC от ${currentDate}`, status: 'draft', statusText: 'черновик', campaignId: 1304673, tags: [], campaignTags: ['Акция поставщика', 'Межсезонье'], type: 'CPC', typeDetails: '', typeIcons: [<Search className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 150000, remainingBudget: 2600, spend: 0, impressions: 0, ctr: 0, orders: 0, spendShare: 0 },
-    { id: '20', image: 'https://placehold.co/64x64/FED7AA/9A3412?text=W', name: `Наручные часы "Статус" CPM от ${currentDate}`, status: 'active', statusText: 'активна', campaignId: 1304674, tags: [{ text: 'Заканчивается бюджет', icon: <AlertTriangle className="w-3 h-3 text-amber-600" />, type: 'warning' }], campaignTags: ['Распродажа витрины'], type: 'CPM', typeDetails: 'Единая', typeIcons: [<Search className="w-4 h-4 text-gray-400" />, <ThumbsUp className="w-4 h-4 text-gray-400" />], autoRefill: false, autoRefillStatus: 'error', budget: 500000, remainingBudget: 1300, spend: 495000, impressions: 1000000, ctr: 1.6, orders: 200, spendShare: 20.5 },
-];
+// Типы для дерева товаров (вкладка «Товары»)
+type ProductCampaign = {
+  id: string; campaignId: number; name: string; status: 'active' | 'paused' | 'draft' | 'error'; statusText: string;
+  type: string; typeDetails: string; budget: number; remainingBudget: number; autoRefill: boolean;
+  dailyLimit: number | null; dailyLimitExhausted?: boolean; spend: number; impressions: number; ctr: number; orders: number; spendShare: number; avgPosition?: number;
+  changeSpend?: number; changeImpressions?: number; changeCtr?: number; changeOrders?: number; changeShare?: number; changePosition?: number;
+};
+type ProductRow = {
+  id: string; image: string; name: string; article: string; articleWb: string; articleSeller: string; category: string; campaignCount: number; tags: string[];
+  campaigns: ProductCampaign[];
+  agg?: { spend: number; impressions: number; ctr: number; orders: number; spendShare: number; changeSpend?: number; changeImpressions?: number; changeCtr?: number; changeOrders?: number; changeShare?: number };
+};
+
+/** Строит списки кампаний и дерево товаров из единого источника (PRODUCTS_SOURCE). Связь товар ↔ кампании консистентна. */
+function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; productTree: ProductRow[] } {
+  let campaignId = 1400000;
+  const campaigns: DisplayCampaign[] = [];
+  const productTree: ProductRow[] = [];
+
+  const tagToDisplay = (tag: CampaignSpec['tag']) => {
+    if (!tag) return [];
+    if (tag === 'info') return [{ text: 'Сезонный тренд', icon: <Zap className="w-3 h-3" />, type: 'info' as const }];
+    if (tag === 'warning') return []; // бейдж «Заканчивается бюджет» не используется
+    return [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' as const }];
+  };
+
+  for (const p of PRODUCTS_SOURCE) {
+    const articleWb = p.articleWb ?? p.article;
+    const articleSeller = p.articleSeller ?? String((Number(p.article) || 0) + 5000000);
+    const productCampaigns: ProductCampaign[] = [];
+    let aggSpend = 0, aggImpressions = 0, aggOrders = 0;
+    let aggCtrSum = 0, aggShareSum = 0, aggCount = 0;
+
+    for (let i = 0; i < p.campaigns.length; i++) {
+      const spec = p.campaigns[i];
+      const cid = campaignId++;
+      const tag = (spec.campaignTags && spec.campaignTags[0]) || (p.tags && p.tags[0]) || '—';
+      const campName = `${articleWb} / ${articleSeller} / ${p.name} / ${tag}`;
+      productCampaigns.push({
+        id: `pc-${p.id}-${i}`,
+        campaignId: cid,
+        name: campName,
+        status: spec.status,
+        statusText: spec.statusText,
+        type: spec.type,
+        typeDetails: spec.typeDetails,
+        budget: spec.budget,
+        remainingBudget: spec.remainingBudget,
+        autoRefill: spec.autoRefill,
+        dailyLimit: spec.dailyLimit ?? null,
+        dailyLimitExhausted: spec.dailyLimitExhausted,
+        spend: spec.spend,
+        impressions: spec.impressions,
+        ctr: spec.ctr,
+        orders: spec.orders,
+        spendShare: spec.spendShare,
+        avgPosition: spec.avgPosition,
+        changeImpressions: spec.changeImpressions,
+        changeCtr: spec.changeCtr,
+        changeOrders: spec.changeOrders,
+        changeShare: spec.changeShare,
+        changePosition: spec.changePosition,
+      });
+      if (spec.spend > 0 || spec.impressions > 0) {
+        aggSpend += spec.spend;
+        aggImpressions += spec.impressions;
+        aggOrders += spec.orders;
+        aggCtrSum += spec.ctr;
+        aggShareSum += spec.spendShare;
+        aggCount++;
+      }
+
+      const typeIcons = spec.type === 'CPC' ? [<Search className="w-4 h-4 text-gray-400" key="s" />] : [<Search className="w-4 h-4 text-gray-400" key="s" />, <ThumbsUp className="w-4 h-4 text-gray-400" key="t" />];
+      campaigns.push({
+        id: String(cid),
+        image: p.image,
+        name: campName,
+        category: p.category,
+        status: spec.status,
+        statusText: spec.statusText,
+        campaignId: cid,
+        tags: tagToDisplay(spec.tag),
+        campaignTags: spec.campaignTags,
+        productTags: p.tags,
+        productId: p.id,
+        type: spec.type,
+        typeDetails: spec.typeDetails,
+        typeIcons,
+        autoRefill: spec.autoRefill,
+        autoRefillStatus: spec.autoRefill ? 'ok' : 'error',
+        budget: spec.budget,
+        remainingBudget: spec.remainingBudget,
+        dailyLimit: spec.dailyLimit,
+        dailyLimitExhausted: spec.dailyLimitExhausted,
+        spend: spec.spend,
+        impressions: spec.impressions,
+        ctr: spec.ctr,
+        orders: spec.orders,
+        spendShare: spec.spendShare,
+      });
+    }
+
+    const agg = productCampaigns.length > 0 ? {
+      spend: aggSpend,
+      impressions: aggImpressions,
+      ctr: aggCount ? Math.round((aggCtrSum / aggCount) * 10) / 10 : 0,
+      orders: aggOrders,
+      spendShare: aggCount ? Math.round((aggShareSum / aggCount) * 10) / 10 : 0,
+      changeSpend: -29.5,
+      changeImpressions: -9.7,
+      changeCtr: -1.3,
+      changeOrders: 7.3,
+      changeShare: -7.1,
+    } : undefined;
+
+    productTree.push({
+      id: p.id,
+      image: p.image,
+      name: p.name,
+      article: p.article,
+      articleWb: p.articleWb ?? p.article,
+      articleSeller: p.articleSeller ?? String((Number(p.article) || 0) + 5000000),
+      category: p.category,
+      campaignCount: p.campaigns.length,
+      tags: p.tags,
+      campaigns: productCampaigns,
+      agg,
+    });
+  }
+
+  return { campaigns, productTree };
+}
+
+const { campaigns: MOCK_CAMPAIGNS, productTree: MOCK_PRODUCTS_TREE } = buildCampaignsAndProductTree();
+
+/** Цвета точек для тегов (назначаются автоматически по индексу) */
+const TAG_DOT_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-rose-500', 'bg-cyan-500'];
+/** Пастельные фоны для чипов тегов в дропдауне */
+const TAG_PASTEL_BG = ['bg-green-100', 'bg-amber-100', 'bg-blue-100', 'bg-purple-100', 'bg-rose-100', 'bg-cyan-100'];
+const MAX_TAGS_PER_PRODUCT = 15;
+const MAX_TAG_LENGTH = 12;
+
+/** Теги товара: один тег + «+N» при наличии ещё. Серый лейбл, цветная точка. Клик по тегам открывает дропдаун. */
+const ProductTagsDisplay: React.FC<{
+  tags: string[];
+  tagColorByTagName?: Record<string, number>;
+  onClick?: () => void;
+}> = ({ tags, tagColorByTagName, onClick }) => {
+  const visible = tags?.length ? tags.slice(0, 1) : [];
+  const restCount = tags?.length ? tags.length - 1 : 0;
+  const content = (
+    <>
+      {visible.map((label, i) => {
+        const colorIndex = (tagColorByTagName?.[label] ?? i) % TAG_DOT_COLORS.length;
+        return (
+          <span key={i} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 text-gray-700 text-xs">
+            {label.trim() === '' ? (
+              <Plus className="w-3.5 h-3.5 text-gray-500 shrink-0" aria-hidden />
+            ) : (
+              <>
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[colorIndex]}`} aria-hidden />
+                <span>{label}</span>
+              </>
+            )}
+          </span>
+        );
+      })}
+      {restCount > 0 && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 text-gray-600 text-xs">
+          <Plus className="w-3.5 h-3.5 shrink-0" aria-hidden />
+          <span>{restCount}</span>
+        </span>
+      )}
+    </>
+  );
+  if (onClick) {
+    return (
+      <button type="button" onClick={(e) => { e.stopPropagation(); onClick(); }} className="flex items-center gap-1.5 text-left hover:opacity-80 transition-opacity">
+        {content}
+      </button>
+    );
+  }
+  return <div className="flex items-center gap-1.5">{content}</div>;
+};
+
+/** Дропдаун добавления и редактирования тегов товара */
+const TagDropdown: React.FC<{
+  anchorRef: React.RefObject<HTMLElement | null>;
+  tags: string[];
+  tagColorByTagName: Record<string, number>;
+  onClose: () => void;
+  onSave: (tags: string[], tagColors: Record<string, number>) => void;
+}> = ({ anchorRef, tags, tagColorByTagName, onClose, onSave }) => {
+  const [localTags, setLocalTags] = useState<string[]>(() => [...tags]);
+  const [localColors, setLocalColors] = useState<Record<string, number>>(() => ({ ...tagColorByTagName }));
+  const [inputValue, setInputValue] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingName, setEditingName] = useState('');
+  const [editingColorIndex, setEditingColorIndex] = useState(0);
+  const [openKebabIndex, setOpenKebabIndex] = useState<number | null>(null);
+  const [kebabPosition, setKebabPosition] = useState({ top: 0, left: 0 });
+  const panelRef = useRef<HTMLDivElement>(null);
+  const submenuRef = useRef<HTMLDivElement>(null);
+
+  const getColorIndex = (tag: string, index: number) => localColors[tag] ?? (index % TAG_PASTEL_BG.length);
+
+  const handleAddTag = () => {
+    const name = inputValue.trim().slice(0, MAX_TAG_LENGTH);
+    if (!name || localTags.length >= MAX_TAGS_PER_PRODUCT) return;
+    if (localTags.includes(name)) {
+      setInputValue('');
+      return;
+    }
+    const newTags = [...localTags, name];
+    const colorIndex = newTags.length % TAG_PASTEL_BG.length;
+    setLocalTags(newTags);
+    setLocalColors(prev => ({ ...prev, [name]: colorIndex }));
+    setInputValue('');
+  };
+
+  const handleDeleteTag = (index: number) => {
+    const tag = localTags[index];
+    setLocalTags(prev => prev.filter((_, i) => i !== index));
+    setLocalColors(prev => {
+      const next = { ...prev };
+      delete next[tag];
+      return next;
+    });
+    setOpenKebabIndex(null);
+    setEditingIndex(null);
+  };
+
+  const startEdit = (index: number) => {
+    setEditingIndex(index);
+    setEditingName(localTags[index]);
+    setEditingColorIndex(getColorIndex(localTags[index], index));
+    setOpenKebabIndex(null);
+  };
+
+  const saveEdit = () => {
+    if (editingIndex === null) return;
+    const newName = editingName.trim().slice(0, MAX_TAG_LENGTH);
+    const oldName = localTags[editingIndex];
+    if (newName) {
+      const newTags = [...localTags];
+      newTags[editingIndex] = newName;
+      setLocalTags(newTags);
+      setLocalColors(prev => {
+        const next = { ...prev };
+        if (oldName !== newName) delete next[oldName];
+        next[newName] = editingColorIndex;
+        return next;
+      });
+    }
+    setEditingIndex(null);
+  };
+
+  const [position, setPosition] = useState({ top: 0, left: 0 });
+
+  const handleClickOutside = (e: MouseEvent) => {
+    const target = e.target as Node;
+    if (
+      panelRef.current && !panelRef.current.contains(target) &&
+      anchorRef.current && !anchorRef.current.contains(target) &&
+      submenuRef.current && !submenuRef.current.contains(target)
+    ) {
+      setOpenKebabIndex(null);
+      onSave(localTags, localColors);
+      onClose();
+    }
+  };
+
+  useEffect(() => {
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [localTags, localColors]);
+
+  useEffect(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPosition({ top: rect.bottom + 4, left: rect.left });
+  }, []);
+
+  const dropdownStyle = { position: 'fixed' as const, top: position.top, left: position.left, zIndex: 50 };
+
+  return (
+    <div ref={panelRef} className="bg-white rounded-xl border border-gray-200 shadow-lg py-4 px-4 min-w-[280px] max-w-[320px]" style={dropdownStyle}>
+      {/* Поле: выберите ярлык или создайте новый */}
+      <div className="mb-3">
+        <input
+          type="text"
+          value={inputValue}
+          maxLength={MAX_TAG_LENGTH}
+          onChange={(e) => setInputValue(e.target.value.slice(0, MAX_TAG_LENGTH))}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
+          placeholder="Название тега (до 12 символов)"
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+        />
+        <div className="flex items-center justify-between mt-1.5">
+          <span className="text-xs text-gray-500">Выберите ярлык или создайте новый</span>
+          <span className="text-xs text-gray-500">{localTags.length}/{MAX_TAGS_PER_PRODUCT}</span>
+        </div>
+      </div>
+
+      {/* Режим редактирования одного тега */}
+      {editingIndex !== null ? (
+        <div className="border-t border-gray-100 pt-3 mt-3 space-y-3">
+          <input
+            type="text"
+            value={editingName}
+            maxLength={MAX_TAG_LENGTH}
+            onChange={(e) => setEditingName(e.target.value.slice(0, MAX_TAG_LENGTH))}
+            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            placeholder="Название тега (до 12 символов)"
+            autoFocus
+          />
+          <div className="flex items-center gap-2">
+            {TAG_PASTEL_BG.map((bg, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setEditingColorIndex(i)}
+                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${bg} ${editingColorIndex === i ? 'border-gray-800 ring-2 ring-offset-1 ring-purple-400' : 'border-gray-200'}`}
+                title={`Цвет ${i + 1}`}
+              >
+                {editingColorIndex === i && <Check className="w-3.5 h-3.5 text-gray-800" />}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => handleDeleteTag(editingIndex)} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg">
+              <Trash2 className="w-4 h-4 shrink-0" />
+              Удалить
+            </button>
+            <button type="button" onClick={saveEdit} className="ml-auto px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+              Готово
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Список тегов: троеточие открывает второй дропдаун поверх основного */}
+          <div className="space-y-2 max-h-64 overflow-y-auto">
+            {localTags.map((tag, idx) => (
+              <div key={idx} className="flex items-center justify-between gap-2 group">
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm text-gray-900 min-w-0 flex-1 truncate ${TAG_PASTEL_BG[getColorIndex(tag, idx)]}`}>
+                  {tag.trim() === '' ? <Plus className="w-4 h-4 text-gray-500 shrink-0" /> : <span className="truncate">{tag}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    setKebabPosition({ top: rect.bottom + 4, left: Math.max(8, rect.right - 140) });
+                    setOpenKebabIndex(openKebabIndex === idx ? null : idx);
+                  }}
+                  className="p-1.5 rounded-md hover:bg-gray-200 text-gray-600 hover:text-gray-900 shrink-0"
+                  aria-label="Ещё"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+          {/* Второй дропдаун (Редактировать / Удалить) поверх основного — через portal */}
+          {openKebabIndex !== null && typeof document !== 'undefined' && ReactDOM.createPortal(
+            <div
+              ref={submenuRef}
+              className="fixed py-1.5 bg-white border border-gray-200 rounded-lg shadow-xl z-[100] min-w-[140px]"
+              style={{ top: kebabPosition.top, left: kebabPosition.left }}
+            >
+              <button
+                type="button"
+                onClick={() => startEdit(openKebabIndex)}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-gray-900 hover:bg-gray-100 rounded-none first:rounded-t-lg"
+              >
+                <Edit2 className="w-4 h-4 text-gray-600 shrink-0" /> Редактировать
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteTag(openKebabIndex)}
+                className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50 rounded-none last:rounded-b-lg"
+              >
+                <Trash2 className="w-4 h-4 shrink-0" /> Удалить
+              </button>
+            </div>,
+            document.body
+          )}
+        </>
+      )}
+    </div>
+  );
+};
 
 const DailyLimitTooltip: React.FC<{
   dailyLimit: number;
@@ -296,6 +683,79 @@ const DailyLimitTooltip: React.FC<{
       )}
     </div>
   );
+};
+
+/** Общий компонент ячейки «Дневной лимит» для вкладок Кампании и Товары: сумма + прогресс-бар или «Н/Д». При onClick — кликабельно и показывается тултип. */
+const DailyLimitCell: React.FC<{
+  dailyLimit: number | null;
+  dailyLimitExhausted?: boolean;
+  onClick?: () => void;
+}> = ({ dailyLimit, dailyLimitExhausted, onClick }) => {
+  const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+  const hideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exhausted = !!dailyLimitExhausted;
+
+  const clearHideTimeout = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+  const scheduleHide = () => {
+    clearHideTimeout();
+    hideTimeoutRef.current = setTimeout(() => setIsTooltipVisible(false), 100);
+  };
+  useEffect(() => () => { clearHideTimeout(); }, []);
+
+  const tooltipText = dailyLimit != null && exhausted
+    ? `Лимит в ${formatForDisplay(dailyLimit)} ₽ на сегодня израсходован. Показы остановлены до завтра. Если хотите возобновить показы сейчас увеличьте лимит`
+    : '';
+
+  const content =
+    dailyLimit != null ? (
+      <div className="space-y-1">
+        <span className="font-medium">{formatForDisplay(dailyLimit)} ₽</span>
+        <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className="h-full bg-purple-600 rounded-full" style={{ width: exhausted ? '100%' : '60%' }} />
+        </div>
+      </div>
+    ) : (
+      <span className="text-gray-400">Н/Д</span>
+    );
+
+  if (onClick != null) {
+    return (
+      <div
+        className="relative inline-block"
+        onMouseEnter={() => { clearHideTimeout(); setIsTooltipVisible(true); }}
+        onMouseLeave={scheduleHide}
+      >
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={(e) => { e.stopPropagation(); onClick(); }}
+          onKeyDown={(e) => { e.key === 'Enter' && (e.preventDefault(), onClick()); }}
+          className="cursor-pointer"
+        >
+          {content}
+        </div>
+        {isTooltipVisible && tooltipText && (
+          <>
+            <div className="absolute left-0 top-full w-64 h-2" onMouseEnter={clearHideTimeout} onMouseLeave={scheduleHide} />
+            <div
+              className="absolute left-0 top-full mt-2 w-max max-w-[300px] p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+              onMouseEnter={clearHideTimeout}
+              onMouseLeave={() => { clearHideTimeout(); setIsTooltipVisible(false); }}
+            >
+              {tooltipText}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return <>{content}</>;
 };
 
 const DailyLimitModal: React.FC<{
@@ -870,7 +1330,7 @@ const DateFilter = ({ defaultLabel }: { defaultLabel: string }) => {
   );
 }
 
-const CampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: { onNavigateToCreation: () => void; onOpenSingleCampaign?: () => void }) => {
+const CreateCampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: { onNavigateToCreation: () => void; onOpenSingleCampaign?: () => void }) => {
     const [isOpen, setIsOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -885,19 +1345,24 @@ const CampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: { onNa
     }, []);
 
     return (
-        <div className="relative" ref={ref}>
-            <button 
+        <div className="relative shrink-0" ref={ref}>
+            <button
+                type="button"
                 onClick={() => setIsOpen(!isOpen)}
-                className="flex items-center gap-2 bg-purple-600 text-white font-semibold px-4 py-2.5 rounded-lg hover:bg-purple-700 transition-colors"
+                className="flex items-center justify-center gap-1.5 shrink-0 px-4 py-3 rounded-[10px] bg-[#9a41fe] hover:bg-[#8840e5] text-white text-base leading-5 transition-colors"
             >
-                <Plus className="w-5 h-5" />
-                <span>Кампания</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <Plus className="w-5 h-5 shrink-0" aria-hidden />
+                <span>Создать кампанию</span>
+                <ChevronDown className={`w-5 h-5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
-                    <a href="#" onClick={(e) => { e.preventDefault(); onOpenSingleCampaign?.(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Одна кампания</a>
-                    <a href="#" onClick={(e) => { e.preventDefault(); onNavigateToCreation(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Много кампаний</a>
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                    <button type="button" onClick={() => { onOpenSingleCampaign?.(); setIsOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        Создать одну кампанию
+                    </button>
+                    <button type="button" onClick={() => { onNavigateToCreation(); setIsOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        Много кампаний
+                    </button>
                 </div>
             )}
         </div>
@@ -949,11 +1414,11 @@ const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory, showUploadHint = fa
                 onClick={() => setIsOpen(!isOpen)}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
-                className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
+                className="flex items-center justify-center w-11 h-11 rounded-[10px] bg-white border border-[#f0f0f3] text-gray-700 hover:bg-gray-50 transition-colors"
+                title="Загрузить Excel"
+                aria-label="Меню загрузки Excel"
             >
-                <Download className="w-5 h-5 text-gray-500" />
-                <span>Загрузить Excel</span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                <Menu className="w-5 h-5 text-gray-700" />
             </button>
             {showHoverTooltip && (
                 <div 
@@ -1000,6 +1465,8 @@ const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory, showUploadHint = fa
     );
 };
 
+type FilterTab = 'status' | 'autorefill' | 'payment' | 'sort' | 'category' | 'tags';
+
 const FilterDropdown = ({ 
   isOpen, 
   onClose, 
@@ -1009,20 +1476,23 @@ const FilterDropdown = ({
   autorefill, onAutorefillChange,
   payment, onPaymentChange,
   sort, onSortChange,
+  filterByCategory, onFilterByCategoryChange,
   tempStatus, onTempStatusChange,
   tempAutorefill, onTempAutorefillChange,
   tempPayment, onTempPaymentChange,
   tempSort, onTempSortChange,
   tempCategory, onTempCategoryChange,
+  tempFilterByCategory, onTempFilterByCategoryChange,
   tempTags, onTempTagsChange,
   tempTagsSearch, onTempTagsSearchChange,
   tempTagsCategory, onTempTagsCategoryChange,
+  availableTags,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onApply: () => void;
-  category: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags';
-  onCategoryChange: (cat: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags') => void;
+  category: FilterTab;
+  onCategoryChange: (cat: FilterTab) => void;
   status: string;
   onStatusChange: (val: string) => void;
   autorefill: string;
@@ -1031,6 +1501,8 @@ const FilterDropdown = ({
   onPaymentChange: (val: string) => void;
   sort: string;
   onSortChange: (val: string) => void;
+  filterByCategory: string;
+  onFilterByCategoryChange: (val: string) => void;
   tempStatus: string;
   onTempStatusChange: (val: string) => void;
   tempAutorefill: string;
@@ -1039,14 +1511,17 @@ const FilterDropdown = ({
   onTempPaymentChange: (val: string) => void;
   tempSort: string;
   onTempSortChange: (val: string) => void;
-  tempCategory: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags';
-  onTempCategoryChange: (cat: 'status' | 'autorefill' | 'payment' | 'sort' | 'tags') => void;
+  tempCategory: FilterTab;
+  onTempCategoryChange: (cat: FilterTab) => void;
+  tempFilterByCategory: string;
+  onTempFilterByCategoryChange: (val: string) => void;
   tempTags: string[];
   onTempTagsChange: (tags: string[]) => void;
   tempTagsSearch: string;
   onTempTagsSearchChange: (search: string) => void;
   tempTagsCategory: string;
   onTempTagsCategoryChange: (category: string) => void;
+  availableTags: string[];
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -1072,6 +1547,16 @@ const FilterDropdown = ({
         <div className="w-64 bg-gray-50 border-r border-gray-200 p-4 flex flex-col">
           <h3 className="text-sm font-semibold text-gray-700 mb-4">Фильтр</h3>
           <div className="flex flex-col gap-1">
+            <button 
+              onClick={() => onTempCategoryChange('category')} 
+              className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                tempCategory === 'category' 
+                  ? 'bg-purple-50 text-purple-700' 
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Категория
+            </button>
             <button 
               onClick={() => onTempCategoryChange('status')} 
               className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
@@ -1242,13 +1727,42 @@ const FilterDropdown = ({
             </>
           )}
 
+          {tempCategory === 'category' && (
+            <>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Категория товара</h3>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                    tempFilterByCategory === '' ? 'border-purple-600 bg-purple-600' : 'border-gray-300 group-hover:border-purple-400'
+                  }`}>
+                    {tempFilterByCategory === '' && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                  </div>
+                  <span className={`text-sm ${tempFilterByCategory === '' ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>Все категории</span>
+                  <input type="radio" name="filterByCategory" value="" checked={tempFilterByCategory === ''} onChange={() => onTempFilterByCategoryChange('')} className="sr-only" />
+                </label>
+                {CATEGORIES.map(cat => (
+                  <label key={cat} className="flex items-center gap-3 cursor-pointer group">
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                      tempFilterByCategory === cat ? 'border-purple-600 bg-purple-600' : 'border-gray-300 group-hover:border-purple-400'
+                    }`}>
+                      {tempFilterByCategory === cat && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                    </div>
+                    <span className={`text-sm ${tempFilterByCategory === cat ? 'text-gray-900 font-medium' : 'text-gray-700'}`}>{cat}</span>
+                    <input type="radio" name="filterByCategory" value={cat} checked={tempFilterByCategory === cat} onChange={() => onTempFilterByCategoryChange(cat)} className="sr-only" />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
           {tempCategory === 'sort' && (
             <>
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Тип сортировки кампаний</h3>
               <div className="space-y-3">
                 {[
                   { value: 'by-date', label: 'По дате создания' },
-                  { value: 'by-name', label: 'По названию' }
+                  { value: 'by-name', label: 'По названию' },
+                  { value: 'by-category', label: 'По категории' }
                 ].map(option => (
                   <label key={option.value} className="flex items-center gap-3 cursor-pointer group">
                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
@@ -1297,11 +1811,14 @@ const FilterDropdown = ({
                 </div>
               </div>
 
-              {/* Tags list */}
+              {/* Tags list — только теги, уже добавленные на страницу */}
               <div className="mb-6">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">Теги</h4>
+                {availableTags.length === 0 ? (
+                  <p className="text-sm text-gray-500">Нет тегов на странице</p>
+                ) : (
                 <div className="flex flex-wrap gap-2">
-                  {['Сезонная распродажа', 'Ликвидация остатков', 'Чёрная пятница', 'Новый год', '8 марта', '1 сентября (школа)', 'Летняя распродажа', 'Зимняя распродажа', 'Межсезонье', 'Скидка по купону', 'Акция поставщика', 'Распродажа витрины', 'Уценка', 'Последние размеры', 'Хиты со скидкой'].filter(tag => 
+                  {availableTags.filter(tag => 
                     tag.toLowerCase().includes(tempTagsSearch.toLowerCase())
                   ).map(tag => (
                     <label 
@@ -1327,43 +1844,11 @@ const FilterDropdown = ({
                     </label>
                   ))}
                 </div>
-              </div>
-
-              {/* Category selection */}
-              <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Категория</h4>
-                <div className="space-y-2">
-                  {['Брюки', 'Платья', 'Футболки', 'Аксессуары', 'Обувь', 'Электроника', 'Дом', 'Кольца', 'Фоторамки', 'Спортивная одежда', 'Косметика', 'Игрушки'].map(category => (
-                    <label key={category} className="flex items-center gap-3 cursor-pointer group">
-                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                        tempTagsCategory === category 
-                          ? 'border-purple-600 bg-purple-600' 
-                          : 'border-gray-300 group-hover:border-purple-400'
-                      }`}>
-                        {tempTagsCategory === category && <CheckCircle className="w-3 h-3 text-white" />}
-                      </div>
-                      <span className={`text-sm ${
-                        tempTagsCategory === category 
-                          ? 'text-gray-900 font-medium' 
-                          : 'text-gray-700'
-                      }`}>
-                        {category}
-                      </span>
-                      <input 
-                        type="radio" 
-                        name="tagsCategory" 
-                        value={category} 
-                        checked={tempTagsCategory === category} 
-                        onChange={(e) => onTempTagsCategoryChange(e.target.value)} 
-                        className="sr-only" 
-                      />
-                    </label>
-                  ))}
-                </div>
+                )}
               </div>
 
               {/* Reset button */}
-              {(tempTags.length > 0 || tempTagsCategory !== '' || tempTagsSearch !== '') && (
+              {(tempTags.length > 0 || tempTagsSearch !== '') && (
                 <div className="pt-4 border-t border-gray-200">
                   <button
                     onClick={() => {
@@ -1457,24 +1942,77 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   // Filter states
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
-  const [filterCategory, setFilterCategory] = useState<'status' | 'autorefill' | 'payment' | 'sort' | 'tags'>('status');
+  const [filterCategory, setFilterCategory] = useState<FilterTab>('status');
   const [filterStatus, setFilterStatus] = useState<string>('all-except-archived');
   const [filterAutorefill, setFilterAutorefill] = useState<string>('all');
   const [filterPayment, setFilterPayment] = useState<string>('all');
   const [filterSort, setFilterSort] = useState<string>('by-date');
+  const [filterByCategory, setFilterByCategory] = useState<string>('');
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterTagsCategory, setFilterTagsCategory] = useState<string>('');
 
   // Temporary filter states for dropdown
-  const [tempFilterCategory, setTempFilterCategory] = useState<'status' | 'autorefill' | 'payment' | 'sort' | 'tags'>('status');
+  const [tempFilterCategory, setTempFilterCategory] = useState<FilterTab>('status');
   const [tempFilterStatus, setTempFilterStatus] = useState<string>('all-except-archived');
   const [tempFilterAutorefill, setTempFilterAutorefill] = useState<string>('all');
   const [tempFilterPayment, setTempFilterPayment] = useState<string>('all');
   const [tempFilterSort, setTempFilterSort] = useState<string>('by-date');
+  const [tempFilterByCategory, setTempFilterByCategory] = useState<string>('');
   const [tempTags, setTempTags] = useState<string[]>([]);
   const [tempTagsSearch, setTempTagsSearch] = useState<string>('');
   const [tempTagsCategory, setTempTagsCategory] = useState<string>('');
   const [failedFilterIds, setFailedFilterIds] = useState<number[] | null>(null);
+
+  // Вкладки списка: Кампании | Товары
+  const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
+  // Поиск: по названию товара, названию кампании, артикулу товара, ID кампании
+  const [searchQuery, setSearchQuery] = useState('');
+  // Раскрытые строки товаров (вкладка Товары)
+  const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
+  // Дропдаун тегов: открыт для productId
+  const [openTagProductId, setOpenTagProductId] = useState<string | null>(null);
+  const tagDropdownAnchorRef = useRef<HTMLElement | null>(null);
+  // Локальные теги и цвета тегов по товарам (редактирование в дропдауне)
+  const [productTagsOverride, setProductTagsOverride] = useState<Record<string, string[]>>({});
+  const [tagColorByTagName, setTagColorByTagName] = useState<Record<string, number>>({});
+  // Включение/выключение кампании на вкладке «Товары» (id кампании в дереве → 'active' | 'paused')
+  const [productCampaignStatusOverride, setProductCampaignStatusOverride] = useState<Record<string, 'active' | 'paused'>>({});
+
+  const getProductTags = useCallback((product: { id: string; tags: string[] }) =>
+    productTagsOverride[product.id] ?? product.tags, [productTagsOverride]);
+
+  const productInitialTags = useMemo(() =>
+    Object.fromEntries(MOCK_PRODUCTS_TREE.map(p => [p.id, p.tags])),
+    []);
+
+  /** Теги кампании: с учётом переопределений; если кампания на несколько товаров (productIds) — объединение тегов */
+  const getCampaignProductTags = useCallback((c: DisplayCampaign): string[] => {
+    if (c.productIds?.length) {
+      const merged = c.productIds.flatMap(pid =>
+        productTagsOverride[pid] ?? productInitialTags[pid] ?? []
+      );
+      return [...new Set(merged)];
+    }
+    if (c.productId && productTagsOverride[c.productId] !== undefined)
+      return productTagsOverride[c.productId];
+    return c.productTags ?? [];
+  }, [productTagsOverride, productInitialTags]);
+
+  /** Теги, уже добавленные на страницу (для фильтра «По тегам») */
+  const availableTags = useMemo(() => {
+    const set = new Set<string>();
+    allCampaigns.forEach(c => getCampaignProductTags(c).forEach(tag => set.add(tag)));
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [allCampaigns, getCampaignProductTags]);
+
+  const toggleProductExpanded = (id: string) => {
+    setExpandedProductIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   // Initialize temporary states when dropdown opens
   useEffect(() => {
@@ -1488,7 +2026,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       setTempTagsSearch('');
       setTempTagsCategory(filterTagsCategory);
     }
-  }, [isFilterDropdownOpen, filterCategory, filterStatus, filterAutorefill, filterPayment, filterSort, filterTags, filterTagsCategory]);
+  }, [isFilterDropdownOpen, filterCategory, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory]);
 
   const handleApplyFilters = () => {
     setFilterCategory(tempFilterCategory);
@@ -1496,6 +2034,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setFilterAutorefill(tempFilterAutorefill);
     setFilterPayment(tempFilterPayment);
     setFilterSort(tempFilterSort);
+    setFilterByCategory(tempFilterByCategory);
     setFilterTags(tempTags);
     setFilterTagsCategory(tempTagsCategory);
     setIsFilterDropdownOpen(false);
@@ -1508,6 +2047,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setTempFilterAutorefill(filterAutorefill);
     setTempFilterPayment(filterPayment);
     setTempFilterSort(filterSort);
+    setTempFilterByCategory(filterByCategory);
     setTempTags(filterTags);
     setTempTagsSearch('');
     setTempTagsCategory(filterTagsCategory);
@@ -1547,18 +2087,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter(c => c.type === filterPayment);
     }
 
-    // Filter by tags
+    // Filter by tags (теги товара с учётом переопределений)
     if (filterTags.length > 0) {
       filtered = filtered.filter(c => {
-        if (!c.campaignTags || c.campaignTags.length === 0) return false;
-        return filterTags.some(tag => c.campaignTags.includes(tag));
+        const tags = c.productId && productTagsOverride[c.productId] !== undefined ? productTagsOverride[c.productId] : (c.productTags ?? []);
+        if (!tags.length) return false;
+        return filterTags.some(tag => tags.includes(tag));
       });
     }
 
-    // Filter by tags category
-    if (filterTagsCategory && filterTagsCategory !== '') {
-      // This would filter by category if needed - for now we'll skip this as categories are not in DisplayCampaign
-      // Can be implemented later if category field is added
+    // Filter by category (вкладка «Категория» в фильтре)
+    if (filterByCategory && filterByCategory !== '') {
+      filtered = filtered.filter(c => c.category === filterByCategory);
     }
 
     // Filter by failed IDs (from edit result block)
@@ -1570,16 +2110,61 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     // Sort campaigns
     if (filterSort === 'by-name') {
       filtered.sort((a, b) => a.name.localeCompare(b.name));
+    } else if (filterSort === 'by-category') {
+      filtered.sort((a, b) => (a.category || '').localeCompare(b.category || ''));
     } else {
-      // По умолчанию: первые две позиции — кейсы «лимит работает» (id 1) и «лимит исчерпан» (id 2)
+      // По умолчанию (by-date): первые две позиции — кейсы «лимит работает» (id 1) и «лимит исчерпан» (id 2)
       const case1 = filtered.find(c => c.id === '1');
       const case2 = filtered.find(c => c.id === '2');
       const rest = filtered.filter(c => c.id !== '1' && c.id !== '2');
       filtered = [...(case1 ? [case1] : []), ...(case2 ? [case2] : []), ...rest];
     }
 
+    // Поиск на вкладке «Кампании»: только по названию кампании и ID кампании
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((c) => (c.name && c.name.toLowerCase().includes(q)) || String(c.campaignId).toLowerCase().includes(q));
+    }
+
     return filtered;
-  }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterTags, filterTagsCategory, failedFilterIds]);
+  }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory, failedFilterIds, productTagsOverride, searchQuery]);
+
+  /** Товары, отфильтрованные по тем же правилам, что и кампании (на вкладке «Товары» показываем товар, если есть хотя бы одна подходящая кампания) */
+  const filteredProducts = useMemo(() => {
+    return MOCK_PRODUCTS_TREE.filter((product) => {
+      if (product.campaigns.length === 0) {
+        if (filterStatus === 'all-except-archived' && !filterByCategory && filterTags.length === 0 && filterAutorefill === 'all' && filterPayment === 'all') return true;
+        return false;
+      }
+      const productTagsResolved = getProductTags(product);
+      const hasMatchingCampaign = product.campaigns.some((camp) => {
+        const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
+        if (filterStatus !== 'all-except-archived') {
+          if (filterStatus === 'ready-to-launch' && effectiveStatus !== 'draft') return false;
+          if (filterStatus === 'active' && effectiveStatus !== 'active') return false;
+          if (filterStatus === 'paused' && effectiveStatus !== 'paused') return false;
+          if (filterStatus === 'archived' && effectiveStatus !== 'error') return false;
+        } else if (effectiveStatus === 'error') return false;
+        if (filterAutorefill !== 'all' && (filterAutorefill === 'enabled') !== camp.autoRefill) return false;
+        if (filterPayment !== 'all' && camp.type !== filterPayment) return false;
+        if (filterTags.length > 0 && !filterTags.some((t) => productTagsResolved.includes(t))) return false;
+        return true;
+      });
+      if (!hasMatchingCampaign) return false;
+      if (filterByCategory && filterByCategory !== '' && product.category !== filterByCategory) return false;
+      return true;
+    });
+  }, [filterStatus, filterAutorefill, filterPayment, filterTags, filterByCategory, productCampaignStatusOverride, getProductTags]);
+
+  // Поиск по товарам: по названию товара, артикулу, артикулу WB, артикулу продавца, названию кампании, ID кампании
+  const filteredProductsBySearch = useMemo(() => {
+    if (!searchQuery.trim()) return filteredProducts;
+    const q = searchQuery.trim().toLowerCase();
+    return filteredProducts.filter((product) => {
+      if ((product.name && product.name.toLowerCase().includes(q)) || (product.article && product.article.toLowerCase().includes(q)) || (product.articleWb && product.articleWb.toLowerCase().includes(q)) || (product.articleSeller && product.articleSeller.toLowerCase().includes(q))) return true;
+      return product.campaigns.some((camp) => (camp.name && camp.name.toLowerCase().includes(q)) || String(camp.campaignId).toLowerCase().includes(q));
+    });
+  }, [filteredProducts, searchQuery]);
 
   const paginatedCampaigns = campaigns.slice(
     (currentPage - 1) * CAMPAIGNS_PAGE_SIZE,
@@ -1622,7 +2207,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   };
 
   return (
-    <div className="animate-in fade-in duration-300">
+    <div className="animate-in fade-in duration-300 w-full max-w-[1600px] mx-auto">
       {isLaunching && <CompactLaunchLoader total={launchTotal} />}
       {!isLaunching && launchResult && (
           <ResultBlock
@@ -1663,35 +2248,73 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           aboveOverlay
         />
       )}
-      
-      <div>
-          {/* Toolbar */}
-          <div className="flex items-center gap-2 mb-6">
-              <CampaignDropdown onNavigateToCreation={onNavigateToCreation} onOpenSingleCampaign={onOpenSingleCampaign} />
-              <ExcelActionsDropdown 
-                  onOpenUpload={onOpenUploadEditsModal}
-                  onOpenHistory={onOpenHistoryModal}
-                  showUploadHint={showUploadHint}
-                  onDismissUploadHint={onDismissUploadHint}
+
+      {/* Шапка как в макете Figma: одна строка, отступы и стили из макета */}
+      <div className="flex flex-col gap-1 mb-6">
+        <div className="flex items-center gap-3 w-full">
+          {/* Левая часть: вкладки (24px) + кнопка и поиск (12px) — по макету */}
+          <div className="flex flex-1 gap-6 items-center min-w-0">
+            {/* Вкладки: border-b-2, h-44, шрифт 18px, отступ между вкладками 24px */}
+            <div className="flex gap-6 border-b-2 border-[#f0f0f3] h-11 items-end shrink-0">
+              <button
+                onClick={() => setListTab('campaigns')}
+                className="flex flex-col items-center pb-0.5 -mb-0.5"
+              >
+                <span className={`text-lg leading-6 whitespace-nowrap ${listTab === 'campaigns' ? 'text-black font-medium' : 'text-[#767386]'}`}>
+                  Кампании
+                </span>
+                <div className={`h-0.5 w-full rounded-full mt-1 ${listTab === 'campaigns' ? 'bg-[#9a41fe]' : 'bg-transparent'}`} />
+              </button>
+              <button
+                onClick={() => setListTab('products')}
+                className="flex flex-col items-center pb-0.5 -mb-0.5"
+              >
+                <span className={`text-lg leading-6 whitespace-nowrap ${listTab === 'products' ? 'text-black font-medium' : 'text-[#767386]'}`}>
+                  Товары
+                </span>
+                <div className={`h-0.5 w-full rounded-full mt-1 ${listTab === 'products' ? 'bg-[#9a41fe]' : 'bg-transparent'}`} />
+              </button>
+            </div>
+            {/* Кнопка «Создать кампанию» со стрелкой вниз и дропдауном: одна / много */}
+            <CreateCampaignDropdown onNavigateToCreation={onNavigateToCreation} onOpenSingleCampaign={onOpenSingleCampaign} />
+            {/* Бургер-меню (Excel) — тёмно-серый, сразу после кнопки «Создать кампанию» */}
+            {listTab === 'campaigns' && (
+              <ExcelActionsDropdown
+                onOpenUpload={onOpenUploadEditsModal}
+                onOpenHistory={onOpenHistoryModal}
+                showUploadHint={showUploadHint}
+                onDismissUploadHint={onDismissUploadHint}
               />
-              <div className="relative flex-grow ml-2">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input 
-                  type="text" 
-                  placeholder="поиск по ID, артикуту и названию"
-                  className="w-full pl-11 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
-              />
+            )}
+            <div className="flex flex-1 gap-3 items-center min-w-0">
+              <div className="relative flex-1 min-w-0 max-w-[600px] h-11">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#767386] shrink-0 pointer-events-none" aria-hidden />
+                <input
+                  type="text"
+                  placeholder="Поиск"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full h-full pl-10 pr-3 py-0 bg-white text-base leading-5 text-black placeholder:text-[#767386] rounded-lg border border-[#e3e4ea] focus:outline-none focus:ring-1 focus:ring-[#9a41fe] focus:border-[#9a41fe] transition"
+                />
               </div>
-              <DateFilter defaultLabel="Период статистики" />
-              <DateFilter defaultLabel="Дата создания" />
-              <div className="relative">
-                <button 
-                  onClick={() => setIsFilterDropdownOpen(prev => !prev)} 
-                  className="flex items-center gap-2 bg-white border border-gray-200 text-gray-700 font-medium px-4 py-2.5 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <Filter className="w-5 h-5 text-gray-500" />
-                  <span>Фильтр</span>
-                </button>
+            </div>
+          </div>
+          {/* Правая часть: дата, фильтр, настройки — gap-12px, кнопки rounded-[10px] */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 px-4 py-3 rounded-[10px] bg-white border border-[#f0f0f3] text-base leading-5 text-black">
+              <Calendar className="w-5 h-5 text-[#767386] shrink-0" aria-hidden />
+              <span>09.11.23 - 09.12.23</span>
+            </div>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsFilterDropdownOpen(prev => !prev)}
+                className="flex items-center gap-1.5 px-4 py-3 rounded-[10px] bg-white border border-[#f0f0f3] text-base leading-5 text-black hover:bg-gray-50 transition-colors"
+              >
+                <Filter className="w-5 h-5 shrink-0" aria-hidden />
+                <span>Фильтр</span>
+              </button>
+              {(listTab === 'campaigns' || listTab === 'products') && (
                 <FilterDropdown
                   isOpen={isFilterDropdownOpen}
                   onClose={handleCancelFilters}
@@ -1706,6 +2329,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   onPaymentChange={setFilterPayment}
                   sort={filterSort}
                   onSortChange={setFilterSort}
+                  filterByCategory={filterByCategory}
+                  onFilterByCategoryChange={setFilterByCategory}
                   tempCategory={tempFilterCategory}
                   onTempCategoryChange={setTempFilterCategory}
                   tempStatus={tempFilterStatus}
@@ -1716,19 +2341,35 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   onTempPaymentChange={setTempFilterPayment}
                   tempSort={tempFilterSort}
                   onTempSortChange={setTempFilterSort}
+                  tempFilterByCategory={tempFilterByCategory}
+                  onTempFilterByCategoryChange={setTempFilterByCategory}
                   tempTags={tempTags}
                   onTempTagsChange={setTempTags}
                   tempTagsSearch={tempTagsSearch}
                   onTempTagsSearchChange={setTempTagsSearch}
                   tempTagsCategory={tempTagsCategory}
                   onTempTagsCategoryChange={setTempTagsCategory}
+                  availableTags={availableTags}
                 />
-              </div>
+              )}
+            </div>
+            <button
+              type="button"
+              className="flex items-center justify-center p-3 rounded-[10px] bg-[rgba(74,74,89,0.08)] hover:bg-[rgba(74,74,89,0.12)] transition-colors"
+              title="Настройки"
+              aria-label="Настройки"
+            >
+              <Settings className="w-5 h-5 text-gray-700" aria-hidden />
+            </button>
           </div>
+        </div>
+      </div>
 
-          <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+      {listTab === 'campaigns' && (
+      <div className="w-full max-w-[1600px]">
+          <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
           <div className="overflow-x-auto">
-              <table className="w-full text-sm">
+              <table className="w-full text-sm min-w-[1600px]">
                   <thead className="bg-gray-50 text-gray-500 font-medium">
                       <tr>
                           <th className="p-4 w-12">
@@ -1746,6 +2387,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             </th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Дневной лимит <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Показы <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">CTR <HelpCircle className="w-4 h-4" /></div></th>
@@ -1799,15 +2441,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                                   </div>
                                               ))}
                                           </div>
-                                          {c.campaignTags && c.campaignTags.length > 0 && (
-                                              <div className="flex items-center gap-1.5 text-xs text-gray-600 mt-1.5 flex-wrap">
-                                                  {c.campaignTags.map((tag, idx) => (
-                                                      <span key={idx} className="px-2 py-0.5 bg-gray-100 text-gray-700 rounded-md">
-                                                          #{tag}
-                                                      </span>
-                                                  ))}
-                                              </div>
-                                          )}
                                       </div>
                                   </div>
                               </td>
@@ -1845,36 +2478,25 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                           <Plus className="w-4 h-4 text-purple-600" />
                                       </button>
                                   </div>
-                                  {c.type === 'CPC' && c.dailyLimit != null && (
-                                      <>
-                                          <DailyLimitTooltip
-                                              dailyLimit={c.dailyLimit}
-                                              dailyLimitExhausted={c.dailyLimitExhausted}
-                                              onClick={() => {
-                                                  setSelectedCampaignForRefill(c);
-                                                  setIsDailyLimitModalOpen(true);
-                                              }}
-                                          />
-                                          {c.autoRefill && (
-                                              <div className="flex items-center gap-1 text-xs mt-1 text-green-600">
-                                                  <CheckCircle className="w-3.5 h-3.5" />
-                                      Автопополнение
-                                  </div>
-                                          )}
-                                      </>
-                                  )}
-                                  {(!c.type || c.type !== 'CPC' || !c.dailyLimit) && c.autoRefill && (
+                                  {c.autoRefill && (
                                       <div className="flex items-center gap-1 text-xs mt-1 text-green-600">
                                           <CheckCircle className="w-3.5 h-3.5" />
                                           Автопополнение
                                       </div>
                                   )}
                               </td>
-                              <td className="p-4">{formatCurrency(c.spend)}</td>
-                              <td className="p-4">{formatNumber(c.impressions)}</td>
-                              <td className="p-4">{formatPercentage(c.ctr)}</td>
-                              <td className="p-4">{formatNumber(c.orders)}</td>
-                              <td className="p-4">{formatPercentage(c.spendShare)}</td>
+                              <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                                  <DailyLimitCell
+                                      dailyLimit={c.dailyLimit ?? null}
+                                      dailyLimitExhausted={c.dailyLimitExhausted}
+                                      onClick={c.type === 'CPC' ? () => { setSelectedCampaignForRefill(c); setIsDailyLimitModalOpen(true); } : undefined}
+                                  />
+                              </td>
+                              <td className="p-4 font-semibold text-gray-900">{formatCurrency(c.spend)}</td>
+                              <td className="p-4 font-semibold text-gray-900">{formatNumber(c.impressions)}</td>
+                              <td className="p-4 font-semibold text-gray-900">{formatPercentage(c.ctr)}</td>
+                              <td className="p-4 font-semibold text-gray-900">{formatNumber(c.orders)}</td>
+                              <td className="p-4 font-semibold text-gray-900">{formatPercentage(c.spendShare)}</td>
                           </tr>
                       ))}
                   </tbody>
@@ -1888,6 +2510,185 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           />
           </div>
       </div>
+      )}
+
+      {listTab === 'products' && (
+        <>
+          <div className="w-full max-w-[1600px] bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[1600px]">
+                <thead className="bg-gray-50 text-gray-500 font-medium">
+                  <tr>
+                    <th className="p-4 text-left font-medium min-w-[280px]">Товар</th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">Дневной лимит <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">Показы <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">CTR <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">Заказы <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                    <th className="p-4 text-left font-medium">
+                      <span className="inline-flex items-center gap-1">Доля затрат <HelpCircle className="w-4 h-4 text-gray-400" /></span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {filteredProductsBySearch.map((product) => (
+                    <React.Fragment key={product.id}>
+                      {/* Строка товара */}
+                      <tr className="hover:bg-gray-50/80 transition-colors">
+                        <td className="p-4 align-top">
+                          <div className="flex items-start gap-3">
+                            <button type="button" onClick={() => toggleProductExpanded(product.id)} className="shrink-0 mt-0.5 text-gray-400 hover:text-gray-600">
+                              {expandedProductIds.has(product.id) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
+                            </button>
+                            <img src={product.image} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium text-gray-900">{product.name}</p>
+                              <p className="text-xs text-gray-500 mt-1">Артикул WB: {product.articleWb} · Артикул продавца: {product.articleSeller}</p>
+                              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap" ref={openTagProductId === product.id && getProductTags(product).length > 0 ? tagDropdownAnchorRef : undefined}>
+                                {getProductTags(product).length > 0 ? (
+                                  <ProductTagsDisplay
+                                    tags={getProductTags(product)}
+                                    tagColorByTagName={tagColorByTagName}
+                                    onClick={() => setOpenTagProductId(openTagProductId === product.id ? null : product.id)}
+                                  />
+                                ) : (
+                                  <button
+                                    ref={openTagProductId === product.id ? tagDropdownAnchorRef : undefined}
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setOpenTagProductId(openTagProductId === product.id ? null : product.id); }}
+                                    className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
+                                    title="Добавить теги"
+                                    aria-label="Теги"
+                                  >
+                                    <Plus className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          {openTagProductId === product.id && (
+                            <TagDropdown
+                              anchorRef={tagDropdownAnchorRef}
+                              tags={getProductTags(product)}
+                              tagColorByTagName={tagColorByTagName}
+                              onClose={() => setOpenTagProductId(null)}
+                              onSave={(newTags, newColors) => {
+                                setProductTagsOverride(prev => ({ ...prev, [product.id]: newTags }));
+                                setTagColorByTagName(prev => ({ ...prev, ...newColors }));
+                              }}
+                            />
+                          )}
+                        </td>
+                        <td className="p-4 align-top"></td>
+                        <td className="p-4 align-top"></td>
+                        <td className="p-4 align-top"></td>
+                        <td className="p-4 align-top font-semibold text-gray-900">
+                          {product.agg ? `${formatForDisplay(product.agg.spend)} ₽` : 'Н/Д'}
+                        </td>
+                        <td className="p-4 align-top font-semibold text-gray-900">
+                          {product.agg ? formatForDisplay(product.agg.impressions) : 'Н/Д'}
+                        </td>
+                        <td className="p-4 align-top font-semibold text-gray-900">
+                          {product.agg ? `${product.agg.ctr}%` : 'Н/Д'}
+                        </td>
+                        <td className="p-4 align-top font-semibold text-gray-900">
+                          {product.agg ? formatForDisplay(product.agg.orders) : 'Н/Д'}
+                        </td>
+                        <td className="p-4 align-top font-semibold text-gray-900">
+                          {product.agg ? `${product.agg.spendShare}%` : 'Н/Д'}
+                        </td>
+                      </tr>
+                      {/* Вложенные строки кампаний — вид как на вкладке «Кампании» */}
+                      {expandedProductIds.has(product.id) && product.campaigns.map((camp) => {
+                        const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
+                        const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
+                        return (
+                        <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                          <td className="p-4 pl-14">
+                            <div className="flex items-center gap-3">
+                              <ToggleSwitch
+                                checked={effectiveStatus === 'active'}
+                                onChange={(checked) => setProductCampaignStatusOverride(prev => ({ ...prev, [camp.id]: checked ? 'active' : 'paused' }))}
+                                disabled={camp.status === 'draft' || camp.status === 'error'}
+                              />
+                              <img src={product.image} alt="" className="w-10 h-10 rounded-md shrink-0 object-cover" />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-gray-800 truncate" title={camp.name}>{camp.name}</p>
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
+                                  <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
+                                  <span>ID {camp.campaignId}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="font-semibold text-gray-900">{camp.type}</div>
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
+                              {camp.typeDetails && <span>{camp.typeDetails}</span>}
+                              <span className="p-1 bg-gray-100 rounded">{camp.type === 'CPC' ? <Search className="w-4 h-4 text-gray-400" /> : <ThumbsUp className="w-4 h-4 text-gray-400" />}</span>
+                            </div>
+                          </td>
+                          <td className="p-4">
+                            <div className="font-semibold text-gray-900">{formatForDisplay(camp.remainingBudget)} ₽</div>
+                            {camp.autoRefill && (
+                              <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
+                                <CheckCircle className="w-3.5 h-3.5" /> Автопополнение
+                              </div>
+                            )}
+                          </td>
+                          <td className="p-4">
+                            <DailyLimitCell
+                              dailyLimit={camp.dailyLimit ?? null}
+                              dailyLimitExhausted={camp.dailyLimitExhausted}
+                            />
+                          </td>
+                          <td className="p-4 font-semibold text-gray-900">{formatCurrency(camp.spend)}</td>
+                          <td className="p-4 font-semibold text-gray-900">{formatForDisplay(camp.impressions)}</td>
+                          <td className="p-4 font-semibold text-gray-900">{camp.ctr}%</td>
+                          <td className="p-4 font-semibold text-gray-900">{formatForDisplay(camp.orders)}</td>
+                          <td className="p-4 font-semibold text-gray-900">{camp.spendShare}%</td>
+                        </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+              <span className="text-sm text-gray-500">Показать записей</span>
+              <div className="flex items-center gap-1">
+                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">‹</button>
+                <button className="px-2.5 py-1.5 text-sm bg-purple-600 text-white rounded font-medium">1</button>
+                <span className="px-1 text-gray-400">...</span>
+                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">5</button>
+                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">6</button>
+                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">7</button>
+                <span className="px-1 text-gray-400">...</span>
+                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">134</button>
+                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">›</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
       {isBudgetRefillModalOpen && selectedCampaignForRefill && (
         <BudgetRefillModal
           isOpen={isBudgetRefillModalOpen}

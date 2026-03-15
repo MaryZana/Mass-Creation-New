@@ -121,7 +121,7 @@ const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-gray-50 flex items-center justify-center z-[200]">
+    <div className="fixed inset-0 bg-[#F6F6F9] flex items-center justify-center z-[200]">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
         <div className="flex items-center gap-2 justify-center mb-8">
           <span className="text-3xl font-bold text-gray-400">WB</span>
@@ -189,66 +189,62 @@ const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
 const Header = ({ onNavigateToList }: { onNavigateToList: () => void }) => (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="flex items-center justify-between px-6 h-14 bg-white">
-            <div className="flex items-center gap-8">
-                <div className="flex items-center gap-2">
-                    <span className="text-2xl font-bold text-gray-400">WB</span>
-                    <span className="text-xl text-gray-300">|</span>
-                    <span className="text-lg font-medium text-gray-800">Продвижение</span>
-                </div>
-                <button className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors">
-                    Продвижение
+            {/* Логотип wb + продвижение с дропдауном */}
+            <div className="flex items-center gap-6">
+                <button type="button" className="flex items-center gap-1.5 text-black hover:opacity-90 transition-opacity">
+                    <span className="text-xl font-bold text-[#9a41fe]">wb</span>
+                    <span className="text-lg font-medium text-black">продвижение</span>
+                    <ChevronDown className="w-4 h-4 text-gray-500" />
                 </button>
-                <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600 font-medium">
-                    <a href="#" className="hover:text-purple-600">Медиа</a>
-                    <a href="#" className="hover:text-purple-600">Наружная реклама</a>
-                    <a href="#" className="hover:text-purple-600">Мой магазин</a>
-                    <a href="#" className="hover:text-purple-600">Внешний трафик</a>
+                {/* Основная навигация: Кампании (активная — светлый фон), Статистика, Финансы, Мои бонусы */}
+                <nav className="flex items-center gap-1 text-sm font-medium">
+                    <NavLink
+                      to="/campaigns"
+                      onClick={() => onNavigateToList()}
+                      className={({ isActive }) =>
+                        `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
+                      }
+                    >
+                      Кампании
+                    </NavLink>
+                    <NavLink
+                      to="/stats"
+                      className={({ isActive }) =>
+                        `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
+                      }
+                    >
+                      Статистика
+                    </NavLink>
+                    <NavLink
+                      to="/finance"
+                      className={({ isActive }) =>
+                        `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
+                      }
+                    >
+                      Финансы
+                    </NavLink>
+                    <NavLink
+                      to="/campaigns"
+                      className="px-4 py-2 rounded-lg text-black hover:bg-gray-50 transition-colors"
+                    >
+                      Мои бонусы
+                    </NavLink>
                 </nav>
             </div>
-            <div className="flex items-center gap-6">
-                <div className="relative">
-                    <Bell className="w-6 h-6 text-gray-600" />
-                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">99+</span>
-                </div>
-                <HelpCircle className="w-6 h-6 text-gray-600" />
-                <div className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer">
-                    <span>МЕГАПОЛИС...</span>
-                    <ChevronDown className="w-4 h-4" />
-                </div>
-            </div>
-        </div>
-        <div className="px-6 h-12 flex items-center justify-between border-t border-gray-100 bg-white">
-            <div className="flex items-center gap-8 text-sm font-medium">
-                <NavLink
-                  to="/campaigns"
-                  onClick={() => {
-                    onNavigateToList();
-                  }}
-                  className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent"
-                >
-                  Кампании
-                </NavLink>
-                <NavLink
-                  to="/stats"
-                  className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent"
-                >
-                  Статистика
-                </NavLink>
-                <NavLink
-                  to="/finance"
-                  className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent"
-                >
-                  Финансы
-                </NavLink>
-                <a href="#" className="flex items-center gap-1 text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">
-                    Новости <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">99+</span>
+            {/* Справа: Помощь (бейдж 3), Новости (бейдж 2), компания с дропдауном */}
+            <div className="flex items-center gap-6 text-sm font-medium text-black">
+                <a href="#" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+                    Помощь
+                    <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">3</span>
                 </a>
-                <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Помощь</a>
-                <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Мои бонусы</a>
-            </div>
-            <div className="flex items-center gap-2 text-gray-800 font-semibold">
-                <Wallet className="w-5 h-5 text-gray-400" />
-                <span>{UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽</span>
+                <a href="#" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+                    Новости
+                    <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">2</span>
+                </a>
+                <button type="button" className="flex items-center gap-1.5 text-black hover:opacity-80 transition-opacity max-w-[220px] truncate">
+                    <span className="truncate">Общество с ограничен...</span>
+                    <ChevronDown className="w-4 h-4 shrink-0 text-gray-500" />
+                </button>
             </div>
         </div>
     </header>
@@ -2619,14 +2615,14 @@ export default function App() {
 
   if (appState === 'list') {
     return (
-      <div className="min-h-screen bg-[#F6F69] font-sans text-gray-900 relative">
+      <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 relative">
         <Header onNavigateToList={() => handleNavigationAttempt(handleNavigateToList)} />
         <Routes>
           <Route
             path="/campaigns"
             element={
               <CampaignsPage>
-                <main className="max-w-[1392px] mx-auto px-6 py-8">
+                <main className="max-w-[1600px] mx-auto px-6 py-8">
                   <SuccessPage
                     isLaunching={isLaunching}
                     launchTotal={totalAllValidCount}
@@ -2834,7 +2830,7 @@ export default function App() {
     );
   }
 
-  return ( <div className="min-h-screen bg-[#F6F69] font-sans text-gray-900 pb-40 relative">
+  return ( <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-40 relative">
     <Header onNavigateToList={() => handleNavigationAttempt(handleNavigateToList)} />
     <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
     <UndoToast campaign={lastDeleted?.campaign} onUndo={handleUndoDelete} />
@@ -2928,7 +2924,7 @@ export default function App() {
   <ConfirmationModal isOpen={isConfirmLaunchWithFiltersOpen} onClose={() => setIsConfirmLaunchWithFiltersOpen(false)} onConfirm={() => { setIsConfirmLaunchWithFiltersOpen(false); if (editingGroupId) setIsConfirmLaunchOpen(true); else performLaunch(); }} title="Запуск кампаний с активным фильтром" confirmText={`Запустить все ${totalAllValidCount}`} confirmColor="purple" cancelText="Отмена" children={ <p> Применены фильтры для просмотра, но будут запущены <b>все {totalAllValidCount} {getPlural(totalAllValidCount, 'готовая кампания', 'готовые кампании', 'готовых кампаний')}</b>. Вы уверены, что хотите продолжить? </p> } />
   <ConfirmationModal isOpen={isLaunchSummaryModalOpen} onClose={() => setIsLaunchSummaryModalOpen(false)} onConfirm={handleProceedToLaunch} title="Всё готово к запуску" confirmText={`Запустить ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`} confirmColor="purple" cancelText="Отменить" children={ <div className="space-y-3 text-left"> <p className="text-gray-800"> <b>{launchPreview.successfulCount} {getPlural(launchPreview.successfulCount, 'кампания', 'кампании', 'кампаний')}</b> запустятся. </p> <p className="text-gray-800">К списанию с Единого счета: <b>{launchPreview.amountToDebit.toLocaleString('ru-RU')} ₽</b></p> {globalTotals.bonus > 0 && <p className="text-gray-800">Будет оплачено бонусами: <b>{globalTotals.bonus.toLocaleString('ru-RU')} B</b></p>} {launchPreview.readyToLaunchCount > 0 && <p className="text-orange-600">Остальные <b>{launchPreview.readyToLaunchCount}</b> будут созданы в статусе «Готово к запуску».</p>} <p className="text-xs text-gray-500 pt-2"> Кампании можно остановить в любой момент и оставшиеся деньги вернуть на счет. </p> </div> } />
   
-  <main className="max-w-[1392px] mx-auto px-6 py-8">
+  <main className="max-w-[1600px] mx-auto px-6 py-8">
         {showQuickSave && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] transition-all duration-300 ease-out">
             <div className="flex items-center gap-3 bg-black/90 text-white text-sm font-semibold px-6 py-3 rounded-full shadow-2xl min-w-[180px] justify-center">
@@ -3485,7 +3481,7 @@ export default function App() {
 
     {totalAllValidCount > 0 && selectedCampaignIds.length === 0 && ( 
     <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-sm border-t border-gray-200"> 
-    <div className="max-w-[1392px] mx-auto px-6 py-4 flex justify-between items-center"> 
+    <div className="max-w-[1600px] mx-auto px-6 py-4 flex justify-between items-center"> 
     <div>
       <h3 className="font-bold text-gray-800">
         Общий итог за {totalAllValidCount} {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}

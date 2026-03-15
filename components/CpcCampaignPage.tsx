@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Checkbox } from 'antd';
-import { Wallet, HelpCircle, X, RefreshCw, ChevronDown, Clock, SingleAccountIcon, Plus, Settings, Bell } from './Icons';
+import { Wallet, HelpCircle, X, RefreshCw, ChevronDown, Clock, SingleAccountIcon, Plus, Settings, Bell, CheckCircle } from './Icons';
 
 const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
@@ -15,6 +15,11 @@ const formatForDisplay = (num: number | string | undefined | null): string => {
   const numValue = typeof num === 'string' ? parseDisplayValue(num) : num;
   if (isNaN(numValue) || numValue === null || numValue === undefined) return '0';
   return numValue.toLocaleString('ru-RU', { useGrouping: true });
+};
+
+const formatCurrency = (num: number | null | undefined): string => {
+  if (num === null || num === undefined) return 'Н/Д';
+  return `${num.toLocaleString('ru-RU')} ₽`;
 };
 
 const parseDisplayValue = (str: string): number => {
@@ -221,7 +226,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
         </div>
       </header>
 
-      <main className="max-w-[1392px] mx-auto px-6 py-8">
+      <main className="max-w-[1600px] mx-auto px-6 py-8">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{name}</h1>
@@ -245,33 +250,37 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-            <div className="flex items-start gap-6">
-              <div className="flex-1">
-                <p className="text-sm text-gray-800 mb-3">Остаток бюджета</p>
-                <div className="flex items-center gap-2">
+            <p className="text-sm text-gray-800 mb-3">Остаток бюджета</p>
+                <div className="relative inline-flex items-center group">
                   <button
+                    type="button"
                     onClick={() => {
                       setWasDailyLimitToggledOn(false);
                       setIsBudgetRefillModalOpen(true);
                     }}
-                    className="text-2xl font-bold text-gray-900 hover:text-purple-600 transition-colors cursor-pointer"
+                    className="font-semibold text-blue-600 hover:text-purple-600 transition-colors cursor-pointer"
                   >
-                    {formatForDisplay(campaignBudget)} ₽
+                    {formatCurrency(campaignBudget)}
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setWasDailyLimitToggledOn(false);
                       setIsBudgetRefillModalOpen(true);
                     }}
-                    className="w-8 h-8 flex items-center justify-center bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                    className="ml-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-4 h-4 text-purple-600" />
                   </button>
                 </div>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-4 flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <ToggleSwitch checked={isAutoRefillEnabled} onChange={(checked) => {
+                {isAutoRefillEnabled && (
+                  <div className="flex items-center gap-1 text-xs mt-1 text-green-600">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Автопополнение
+                  </div>
+                )}
+              <div className="flex items-center gap-2 mt-3 flex-wrap">
+                <ToggleSwitch checked={isAutoRefillEnabled} onChange={(checked) => {
                     if (checked) {
                       setWasAutoRefillToggledOn(true);
                       setIsAutoRefillModalOpen(true);
@@ -302,19 +311,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
                       <Settings className="w-4 h-4 text-gray-600" />
                     </button>
                   </p>
-                </div>
                 {isAutoRefillEnabled && (
-                  <p className="text-xs text-gray-400 mb-3">
+                  <p className="text-xs text-gray-400 mt-2">
                     Если бюджет меньше {formatForDisplay(campaignBudget)} ₽, пополняем на {formatForDisplay(campaignBudget)} ₽ не чаще 1 раза в день
                   </p>
                 )}
                 {!isAutoRefillEnabled && (
-                  <p className="text-xs text-gray-400 mb-3">
+                  <p className="text-xs text-gray-400 mt-2">
                     Включите автопополнение, чтобы кампания не останавливалась
                   </p>
                 )}
               </div>
-            </div>
           </div>
           <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center justify-between mb-3">

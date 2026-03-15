@@ -795,10 +795,10 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
   };
 
   return (
-    <div className="min-h-screen bg-[#F6F69] font-sans text-gray-900 pb-40 relative">
+    <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-40 relative">
       <Header onNavigateToList={onNavigateToList} />
       
-      <main className="max-w-[1392px] mx-auto px-6 py-8">
+      <main className="max-w-[1600px] mx-auto px-6 py-8">
 
         <div className="bg-white rounded-2xl shadow-sm px-6 pb-6 pt-0 space-y-4">
           {/* Tabs */}
@@ -1530,7 +1530,7 @@ export const MassEditPage: React.FC<MassEditPageProps> = ({ onNavigateToList, on
       {/* Footer with apply button */}
       {flowStep === 'editing' && (
         <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-sm border-t border-gray-200">
-          <div className="max-w-[1392px] mx-auto px-6 py-4 flex justify-end items-center">
+          <div className="max-w-[1600px] mx-auto px-6 py-4 flex justify-end items-center">
             <button
               onClick={handleApplyClick}
               className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg"
