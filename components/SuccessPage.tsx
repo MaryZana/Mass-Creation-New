@@ -238,6 +238,13 @@ type ProductRow = {
   agg?: { spend: number; impressions: number; ctr: number; orders: number; spendShare: number; changeSpend?: number; changeImpressions?: number; changeCtr?: number; changeOrders?: number; changeShare?: number };
 };
 
+const MAX_TAGS_PER_PRODUCT = 15;
+const MAX_TAG_LENGTH = 15;
+
+function normalizeTagName(tag: string): string {
+  return tag.trim().slice(0, MAX_TAG_LENGTH);
+}
+
 /** Строит списки кампаний и дерево товаров из единого источника (PRODUCTS_SOURCE). Связь товар ↔ кампании консистентна. */
 function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; productTree: ProductRow[] } {
   let campaignId = 1400000;
@@ -308,7 +315,7 @@ function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; product
         campaignId: cid,
         tags: tagToDisplay(spec.tag),
         campaignTags: spec.campaignTags,
-        productTags: p.tags,
+        productTags: (p.tags ?? []).map(normalizeTagName),
         productId: p.id,
         type: spec.type,
         typeDetails: spec.typeDetails,
@@ -349,7 +356,7 @@ function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; product
       articleSeller: p.articleSeller ?? String((Number(p.article) || 0) + 5000000),
       category: p.category,
       campaignCount: p.campaigns.length,
-      tags: p.tags,
+      tags: (p.tags ?? []).map(normalizeTagName),
       campaigns: productCampaigns,
       agg,
     });
@@ -364,8 +371,6 @@ const { campaigns: MOCK_CAMPAIGNS, productTree: MOCK_PRODUCTS_TREE } = buildCamp
 const TAG_DOT_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-rose-500', 'bg-cyan-500'];
 /** Пастельные фоны для чипов ярлыков в дропдауне */
 const TAG_PASTEL_BG = ['bg-green-100', 'bg-amber-100', 'bg-blue-100', 'bg-purple-100', 'bg-rose-100', 'bg-cyan-100'];
-const MAX_TAGS_PER_PRODUCT = 15;
-const MAX_TAG_LENGTH = 15;
 
 /** Глобальная карта цветов для всех ярлыков, которые уже есть у товаров */
 const INITIAL_TAG_COLORS: Record<string, number> = (() => {
@@ -2156,21 +2161,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [tagError, setTagError] = useState<string | null>(null);
   const [filterPromoTagsOnly, setFilterPromoTagsOnly] = useState(false);
   const [tempFilterPromoTagsOnly, setTempFilterPromoTagsOnly] = useState(false);
-  const [showTagsOnboarding, setShowTagsOnboarding] = useState(false);
 
-  // Онбординг по ярлыкам: показываем один раз при первом заходе на страницу
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    try {
-      const stored = window.localStorage.getItem('wb-tags-onboarding-shown');
-      if (!stored) {
-        setShowTagsOnboarding(true);
-        window.localStorage.setItem('wb-tags-onboarding-shown', '1');
-      }
-    } catch {
-      // ignore storage errors
-    }
-  }, []);
+  // Тень у левой закреплённой части таблиц при горизонтальном скролле
+  const [hasCampaignsScrollShadow, setHasCampaignsScrollShadow] = useState(false);
+  const [hasProductsScrollShadow, setHasProductsScrollShadow] = useState(false);
 
   // Вкладки списка: Кампании | Товары
   const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
@@ -2191,7 +2185,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const getProductTags = useCallback((product: { id: string; tags: string[] }) => {
     const base = productTagsOverride[product.id] ?? product.tags;
-    return base.filter(t => t && !deletedTags.includes(t));
+    return base
+      .map(normalizeTagName)
+      .filter(t => t && !deletedTags.includes(t));
   }, [productTagsOverride, deletedTags]);
 
   const productInitialTags = useMemo(() =>
@@ -2202,13 +2198,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const getCampaignProductTags = useCallback((c: DisplayCampaign): string[] => {
     if (c.productIds?.length) {
       const merged = c.productIds.flatMap(pid =>
-        (productTagsOverride[pid] ?? productInitialTags[pid] ?? []).filter(t => t && !deletedTags.includes(t))
+        (productTagsOverride[pid] ?? productInitialTags[pid] ?? [])
+          .map(normalizeTagName)
+          .filter(t => t && !deletedTags.includes(t))
       );
       return [...new Set(merged)];
     }
     if (c.productId && productTagsOverride[c.productId] !== undefined)
-      return (productTagsOverride[c.productId] ?? []).filter(t => t && !deletedTags.includes(t));
-    return (c.productTags ?? []).filter(t => t && !deletedTags.includes(t));
+      return (productTagsOverride[c.productId] ?? [])
+        .map(normalizeTagName)
+        .filter(t => t && !deletedTags.includes(t));
+    return (c.productTags ?? [])
+      .map(normalizeTagName)
+      .filter(t => t && !deletedTags.includes(t));
   }, [productTagsOverride, productInitialTags, deletedTags]);
 
   // Сколько раз каждый ярлык используется в кампаниях (с учётом переопределений ярлыков по товарам)
@@ -2229,8 +2231,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     const set = new Set<string>();
     allCampaigns.forEach(c =>
       getCampaignProductTags(c).forEach(tag => {
-        if (!tag) return;
-        const normalized = tag.trim();
+        const normalized = normalizeTagName(tag);
         if (!normalized) return;
         set.add(normalized);
       })
@@ -2618,44 +2619,32 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         </div>
       </div>
 
-      {/* Онбординг по ярлыкам: один раз при первом заходе, тултип над первым тегом на вкладке «Товары» */}
-      {showTagsOnboarding && listTab === 'products' && (
-        <div className="relative mb-2">
-          <div className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-gray-900 text-white text-sm shadow-xl">
-            <div className="flex-1">
-              <p className="font-medium mb-1">Появились ярлыки товаров</p>
-              <p className="text-xs text-gray-200">
-                Ярлыки с портала продавца подтянутся сюда автоматически. Новые ярлыки,
-                которые вы создадите здесь, появятся на портале в списке товаров.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowTagsOnboarding(false)}
-              className="ml-2 text-gray-300 hover:text-white text-xs font-medium"
-            >
-              Закрыть
-            </button>
-          </div>
-        </div>
-      )}
-
       {listTab === 'campaigns' && (
       <div className="w-full max-w-[1600px]">
           <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-          <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[1600px]">
+          <div
+            className="relative overflow-x-auto"
+            onScroll={(e) => {
+              const target = e.currentTarget;
+              setHasCampaignsScrollShadow(target.scrollLeft > 0);
+            }}
+          >
+              {/* Тень между закреплёнными колонками и прокручиваемыми данными */}
+              {hasCampaignsScrollShadow && (
+                <div className="pointer-events-none absolute inset-y-0 left-[100px] w-4 bg-gradient-to-r from-black/10 to-transparent z-10" />
+              )}
+              <table className="relative w-full text-sm min-w-[1600px]">
                   <thead className="bg-gray-50 text-gray-500 font-medium">
                       <tr>
-                          <th className="p-4 w-12">
+                          <th className="sticky left-0 z-20 p-4 w-12 bg-gray-50">
                             <Checkbox
                               checked={isAllOnPageSelected}
                               onChange={(e) => handleSelectAll(e.target.checked)}
                               className="w-4 h-4 text-purple-600"
                             />
                           </th>
-                          <th className="p-4 w-10"></th>
-                          <th className="p-4 text-left font-medium min-w-[300px]">
+                          <th className="sticky left-[52px] z-20 p-4 w-10 bg-gray-50"></th>
+                          <th className="sticky left-[100px] z-20 p-4 text-left font-medium min-w-[300px] bg-gray-50">
                                 <div className="flex items-center gap-1">
                                     Товар/Кампания <ArrowUp className="w-4 h-4" />
                                 </div>
@@ -2688,21 +2677,21 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             }}
                             className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'} ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}
                           >
-                              <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                      <td className="sticky left-0 z-10 p-4 bg-white" onClick={(e) => e.stopPropagation()}>
                                 <Checkbox
                                   checked={selectedCampaigns.includes(c.id)}
                                   onChange={(e) => handleSelectSingle(c.id, e.target.checked)}
                                   className="w-4 h-4 text-purple-600"
                                 />
                               </td>
-                              <td className="p-4" onClick={(e) => e.stopPropagation()}>
+                              <td className="sticky left-[52px] z-10 p-4 bg-white" onClick={(e) => e.stopPropagation()}>
                                   <ToggleSwitch
                                       checked={c.status === 'active'}
                                       onChange={(isChecked) => handleStatusToggle(c.id, isChecked)}
                                       disabled={c.status === 'draft' || c.status === 'error'}
                                   />
                               </td>
-                              <td className="p-4">
+                              <td className="sticky left-[100px] z-10 p-4 bg-white">
                                   <div className="flex items-center gap-3">
                                       <img src={c.image} alt={c.name} className="w-10 h-10 rounded-md shrink-0"/>
                                       <div>
@@ -2791,33 +2780,46 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       {listTab === 'products' && (
         <>
           <div className="w-full max-w-[1600px] bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[1600px]">
+            <div
+              className="relative overflow-x-auto"
+              onScroll={(e) => {
+                const target = e.currentTarget;
+                setHasProductsScrollShadow(target.scrollLeft > 0);
+              }}
+            >
+              {/* Тень справа от закреплённого столбца товара */}
+              {hasProductsScrollShadow && (
+                <div className="pointer-events-none absolute inset-y-0 left-[280px] w-4 bg-gradient-to-r from-black/10 to-transparent z-10" />
+              )}
+              <table className="relative w-full text-sm min-w-[1600px]">
                 <thead className="bg-gray-50 text-gray-500 font-medium">
                   <tr>
-                    <th className="p-4 text-left font-medium min-w-[280px]">Товар</th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="sticky left-0 z-20 p-4 text-left font-medium w-[444px] min-w-[444px] bg-gray-50">Товар</th>
+                    <th className="p-4 text-left font-medium w-[160px]">
                       <span className="inline-flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="p-4 text-left font-medium w-[180px]">
                       <span className="inline-flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="p-4 text-left font-medium w-[180px]">
                       <span className="inline-flex items-center gap-1">Дневной лимит <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="p-4 text-left font-medium w-[220px] min-w-[220px] max-w-[240px]">
+                      Ярлыки
+                    </th>
+                    <th className="p-4 text-left font-medium w-[140px]">
                       <span className="inline-flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="p-4 text-left font-medium w-[140px]">
                       <span className="inline-flex items-center gap-1">Показы <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="p-4 text-left font-medium w-[100px]">
                       <span className="inline-flex items-center gap-1">CTR <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="p-4 text-left font-medium w-[120px]">
                       <span className="inline-flex items-center gap-1">Заказы <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
-                    <th className="p-4 text-left font-medium">
+                    <th className="p-4 text-left font-medium w-[140px]">
                       <span className="inline-flex items-center gap-1">Доля затрат <HelpCircle className="w-4 h-4 text-gray-400" /></span>
                     </th>
                   </tr>
@@ -2827,36 +2829,48 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     <React.Fragment key={product.id}>
                       {/* Строка товара */}
                       <tr className="hover:bg-gray-50/80 transition-colors">
-                        <td className="p-4 align-top">
+                        <td className="sticky left-0 z-10 p-4 align-top bg-white w-[444px] min-w-[444px]">
                           <div className="flex items-start gap-3">
                             <button type="button" onClick={() => toggleProductExpanded(product.id)} className="shrink-0 mt-0.5 text-gray-400 hover:text-gray-600">
                               {expandedProductIds.has(product.id) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
                             </button>
                             <img src={product.image} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                            <div className="flex-1 min-w-0">
+                              <div className="flex-1 min-w-0 max-w-[280px]">
                               <p className="font-medium text-gray-900">{product.name}</p>
                               <p className="text-xs text-gray-500 mt-1">Артикул WB: {product.articleWb} · Артикул продавца: {product.articleSeller}</p>
-                              <div className="flex items-center gap-1.5 mt-1.5 flex-wrap" ref={openTagProductId === product.id && getProductTags(product).length > 0 ? tagDropdownAnchorRef : undefined}>
-                                {getProductTags(product).length > 0 ? (
-                                  <ProductTagsDisplay
-                                    tags={getProductTags(product)}
-                                    tagColorByTagName={tagColorByTagName}
-                                    onClick={() => setOpenTagProductId(openTagProductId === product.id ? null : product.id)}
-                                  />
-                                ) : (
-                                  <button
-                                    ref={openTagProductId === product.id ? tagDropdownAnchorRef : undefined}
-                                    type="button"
-                                    onClick={(e) => { e.stopPropagation(); setOpenTagProductId(openTagProductId === product.id ? null : product.id); }}
-                                    className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
-                                    title="Добавить ярлыки"
-                                    aria-label="Ярлыки"
-                                  >
-                                    <Plus className="w-2.5 h-2.5" />
-                                  </button>
-                                )}
-                              </div>
                             </div>
+                          </div>
+                        </td>
+                        {/* Тип кампании (агрегировано по товару — сейчас пусто) */}
+                        <td className="p-4 align-top w-[160px]"></td>
+                        {/* Остаток бюджета (агрегировано по товару — сейчас в колонке "Затраты" ниже) */}
+                        <td className="p-4 align-top w-[180px]"></td>
+                        {/* Дневной лимит (агрегировано по товару — пока Н/Д) */}
+                        <td className="p-4 align-top w-[180px]"></td>
+                        {/* Колонка с ярлыками товара — помещается тег (до 15 символов) и "+1" */}
+                        <td className="p-4 align-top w-[220px] min-w-[220px] max-w-[240px]">
+                          <div
+                            className="flex items-center gap-1.5 mt-1.5 flex-wrap"
+                            ref={openTagProductId === product.id && getProductTags(product).length > 0 ? tagDropdownAnchorRef : undefined}
+                          >
+                            {getProductTags(product).length > 0 ? (
+                              <ProductTagsDisplay
+                                tags={getProductTags(product)}
+                                tagColorByTagName={tagColorByTagName}
+                                onClick={() => setOpenTagProductId(openTagProductId === product.id ? null : product.id)}
+                              />
+                            ) : (
+                              <button
+                                ref={openTagProductId === product.id ? tagDropdownAnchorRef : undefined}
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setOpenTagProductId(openTagProductId === product.id ? null : product.id); }}
+                                className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
+                                title="Добавить ярлыки"
+                                aria-label="Ярлыки"
+                              >
+                                <Plus className="w-2.5 h-2.5" />
+                              </button>
+                            )}
                           </div>
                           {openTagProductId === product.id && (
                             <TagDropdown
@@ -2889,22 +2903,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             />
                           )}
                         </td>
-                        <td className="p-4 align-top"></td>
-                        <td className="p-4 align-top"></td>
-                        <td className="p-4 align-top"></td>
-                        <td className="p-4 align-top font-semibold text-gray-900">
+                        <td className="p-4 align-top font-semibold text-gray-900 w-[140px]">
                           {product.agg ? `${formatForDisplay(product.agg.spend)} ₽` : 'Н/Д'}
                         </td>
-                        <td className="p-4 align-top font-semibold text-gray-900">
+                        <td className="p-4 align-top font-semibold text-gray-900 w-[140px]">
                           {product.agg ? formatForDisplay(product.agg.impressions) : 'Н/Д'}
                         </td>
-                        <td className="p-4 align-top font-semibold text-gray-900">
+                        <td className="p-4 align-top font-semibold text-gray-900 w-[100px]">
                           {product.agg ? `${product.agg.ctr}%` : 'Н/Д'}
                         </td>
-                        <td className="p-4 align-top font-semibold text-gray-900">
+                        <td className="p-4 align-top font-semibold text-gray-900 w-[120px]">
                           {product.agg ? formatForDisplay(product.agg.orders) : 'Н/Д'}
                         </td>
-                        <td className="p-4 align-top font-semibold text-gray-900">
+                        <td className="p-4 align-top font-semibold text-gray-900 w-[140px]">
                           {product.agg ? `${product.agg.spendShare}%` : 'Н/Д'}
                         </td>
                       </tr>
@@ -2913,53 +2924,66 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         return (
-                        <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
-                          <td className="p-4 pl-14">
-                            <div className="flex items-center gap-3">
-                              <ToggleSwitch
-                                checked={effectiveStatus === 'active'}
-                                onChange={(checked) => setProductCampaignStatusOverride(prev => ({ ...prev, [camp.id]: checked ? 'active' : 'paused' }))}
-                                disabled={camp.status === 'draft' || camp.status === 'error'}
-                              />
-                              <img src={product.image} alt="" className="w-10 h-10 rounded-md shrink-0 object-cover" />
-                              <div className="min-w-0 flex-1">
-                                <p className="font-medium text-gray-800 truncate" title={camp.name}>{camp.name}</p>
-                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
-                                  <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
-                                  <span>ID {camp.campaignId}</span>
+                          <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                            {/* Товар / кампания */}
+                            <td className="sticky left-0 z-10 p-4 pl-14 bg-gray-50 w-[444px] min-w-[444px]">
+                              <div className="flex items-center gap-3">
+                                <ToggleSwitch
+                                  checked={effectiveStatus === 'active'}
+                                  onChange={(checked) => setProductCampaignStatusOverride(prev => ({ ...prev, [camp.id]: checked ? 'active' : 'paused' }))}
+                                  disabled={camp.status === 'draft' || camp.status === 'error'}
+                                />
+                                <img src={product.image} alt="" className="w-10 h-10 rounded-md shrink-0 object-cover" />
+                                <div className="min-w-0 flex-1 max-w-[280px]">
+                                  <p className="font-medium text-gray-800 truncate" title={camp.name}>{camp.name}</p>
+                                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
+                                    <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
+                                    <span>ID {camp.campaignId}</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="font-semibold text-gray-900">{camp.type}</div>
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
-                              {camp.typeDetails && <span>{camp.typeDetails}</span>}
-                              <span className="p-1 bg-gray-100 rounded">{camp.type === 'CPC' ? <Search className="w-4 h-4 text-gray-400" /> : <ThumbsUp className="w-4 h-4 text-gray-400" />}</span>
-                            </div>
-                          </td>
-                          <td className="p-4">
-                            <div className="font-semibold text-gray-900">{formatForDisplay(camp.remainingBudget)} ₽</div>
-                            {camp.autoRefill && (
-                              <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                                <CheckCircle className="w-3.5 h-3.5" /> Автопополнение
+                            </td>
+                            {/* Тип кампании */}
+                            <td className="p-4 w-[160px]">
+                              <div className="font-semibold text-gray-900">{camp.type}</div>
+                              <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
+                                {camp.typeDetails && <span>{camp.typeDetails}</span>}
+                                <span className="p-1 bg-gray-100 rounded">
+                                  {camp.type === 'CPC' ? (
+                                    <Search className="w-4 h-4 text-gray-400" />
+                                  ) : (
+                                    <ThumbsUp className="w-4 h-4 text-gray-400" />
+                                  )}
+                                </span>
                               </div>
-                            )}
-                          </td>
-                          <td className="p-4" onClick={(e) => e.stopPropagation()}>
-                            <DailyLimitCell
-                              dailyLimit={camp.dailyLimit ?? null}
-                              dailyLimitExhausted={camp.dailyLimitExhausted}
-                              isCpc={camp.type === 'CPC'}
-                              onClick={camp.type === 'CPC' ? () => { setSelectedCampaignForRefill(camp); setIsDailyLimitModalOpen(true); } : undefined}
-                            />
-                          </td>
-                          <td className="p-4 font-semibold text-gray-900">{formatCurrency(camp.spend)}</td>
-                          <td className="p-4 font-semibold text-gray-900">{formatForDisplay(camp.impressions)}</td>
-                          <td className="p-4 font-semibold text-gray-900">{camp.ctr}%</td>
-                          <td className="p-4 font-semibold text-gray-900">{formatForDisplay(camp.orders)}</td>
-                          <td className="p-4 font-semibold text-gray-900">{camp.spendShare}%</td>
-                        </tr>
+                            </td>
+                            {/* Остаток бюджета */}
+                            <td className="p-4 w-[180px]">
+                              <div className="font-semibold text-gray-900">{formatForDisplay(camp.remainingBudget)} ₽</div>
+                              {camp.autoRefill && (
+                                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
+                                  <CheckCircle className="w-3.5 h-3.5" /> Автопополнение
+                                </div>
+                              )}
+                            </td>
+                            {/* Дневной лимит */}
+                            <td className="p-4 w-[180px]" onClick={(e) => e.stopPropagation()}>
+                              <DailyLimitCell
+                                dailyLimit={camp.dailyLimit ?? null}
+                                dailyLimitExhausted={camp.dailyLimitExhausted}
+                                isCpc={camp.type === 'CPC'}
+                                onClick={camp.type === 'CPC' ? () => { setSelectedCampaignForRefill(camp); setIsDailyLimitModalOpen(true); } : undefined}
+                              />
+                            </td>
+                            {/* Пустая колонка "Ярлыки" для строк кампаний */}
+                            <td className="p-4 w-[220px]" />
+                            {/* Затраты и метрики */}
+                            <td className="p-4 font-semibold text-gray-900 w-[140px]">{formatCurrency(camp.spend)}</td>
+                            <td className="p-4 font-semibold text-gray-900 w-[140px]">{formatForDisplay(camp.impressions)}</td>
+                            <td className="p-4 font-semibold text-gray-900 w-[100px]">{camp.ctr}%</td>
+                            <td className="p-4 font-semibold text-gray-900 w-[120px]">{formatForDisplay(camp.orders)}</td>
+                            <td className="p-4 font-semibold text-gray-900 w-[140px]">{camp.spendShare}%</td>
+                          </tr>
                         );
                       })}
                     </React.Fragment>
