@@ -360,14 +360,30 @@ function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; product
 
 const { campaigns: MOCK_CAMPAIGNS, productTree: MOCK_PRODUCTS_TREE } = buildCampaignsAndProductTree();
 
-/** Цвета точек для тегов (назначаются автоматически по индексу) */
+/** Цвета точек для ярлыков (назначаются автоматически по индексу) */
 const TAG_DOT_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-rose-500', 'bg-cyan-500'];
-/** Пастельные фоны для чипов тегов в дропдауне */
+/** Пастельные фоны для чипов ярлыков в дропдауне */
 const TAG_PASTEL_BG = ['bg-green-100', 'bg-amber-100', 'bg-blue-100', 'bg-purple-100', 'bg-rose-100', 'bg-cyan-100'];
 const MAX_TAGS_PER_PRODUCT = 15;
-const MAX_TAG_LENGTH = 12;
+const MAX_TAG_LENGTH = 15;
 
-/** Теги товара: один тег + «+N» при наличии ещё. Серый лейбл, цветная точка. Клик по тегам открывает дропдаун. */
+/** Глобальная карта цветов для всех ярлыков, которые уже есть у товаров */
+const INITIAL_TAG_COLORS: Record<string, number> = (() => {
+  const colors: Record<string, number> = {};
+  let i = 0;
+  for (const p of MOCK_PRODUCTS_TREE) {
+    for (const t of p.tags) {
+      if (!t) continue;
+      if (colors[t] === undefined) {
+        colors[t] = i % TAG_PASTEL_BG.length;
+        i++;
+      }
+    }
+  }
+  return colors;
+})();
+
+/** Ярлыки товара: один ярлык + «+N» при наличии ещё. Серый лейбл, цветная точка. Клик по ярлыкам открывает дропдаун. */
 const ProductTagsDisplay: React.FC<{
   tags: string[];
   tagColorByTagName?: Record<string, number>;
@@ -410,15 +426,19 @@ const ProductTagsDisplay: React.FC<{
   return <div className="flex items-center gap-1.5">{content}</div>;
 };
 
-/** Дропдаун добавления и редактирования тегов товара */
+/** Дропдаун добавления и редактирования ярлыков товара */
 const TagDropdown: React.FC<{
   anchorRef: React.RefObject<HTMLElement | null>;
   tags: string[];
   tagColorByTagName: Record<string, number>;
+  tagUsageCountByName: Record<string, number>;
+  onTagError?: (reason: 'max-per-product') => void;
   onClose: () => void;
   onSave: (tags: string[], tagColors: Record<string, number>) => void;
-}> = ({ anchorRef, tags, tagColorByTagName, onClose, onSave }) => {
+}> = ({ anchorRef, tags, tagColorByTagName, tagUsageCountByName, onTagError, onClose, onSave }) => {
+  // localTags — ярлыки, назначенные текущему товару
   const [localTags, setLocalTags] = useState<string[]>(() => [...tags]);
+  // localColors хранит цвета для всех заведённых ярлыков (по имени ярлыка)
   const [localColors, setLocalColors] = useState<Record<string, number>>(() => ({ ...tagColorByTagName }));
   const [inputValue, setInputValue] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -426,6 +446,10 @@ const TagDropdown: React.FC<{
   const [editingColorIndex, setEditingColorIndex] = useState(0);
   const [openKebabIndex, setOpenKebabIndex] = useState<number | null>(null);
   const [kebabPosition, setKebabPosition] = useState({ top: 0, left: 0 });
+  const [tagToDelete, setTagToDelete] = useState<string | null>(null);
+  const [hasShownOnboarding, setHasShownOnboarding] = useState(false);
+  const [hoveredTagForTooltip, setHoveredTagForTooltip] = useState<string | null>(null);
+  const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const submenuRef = useRef<HTMLDivElement>(null);
 
@@ -433,28 +457,50 @@ const TagDropdown: React.FC<{
 
   const handleAddTag = () => {
     const name = inputValue.trim().slice(0, MAX_TAG_LENGTH);
-    if (!name || localTags.length >= MAX_TAGS_PER_PRODUCT) return;
-    if (localTags.includes(name)) {
+    if (!name) return;
+    if (localTags.length >= MAX_TAGS_PER_PRODUCT) {
+      onTagError?.('max-per-product');
+      return;
+    }
+
+    // Если такой ярлык уже существует глобально — просто привязываем его к товару
+    if (localColors[name] !== undefined) {
+      if (!localTags.includes(name)) {
+        setLocalTags(prev => [...prev, name]);
+      }
       setInputValue('');
       return;
     }
-    const newTags = [...localTags, name];
-    const colorIndex = newTags.length % TAG_PASTEL_BG.length;
-    setLocalTags(newTags);
+
+    // Новый ярлык: создаём цвет, добавляем в список ярлыков товара и в глобальную карту цветов
+    const colorIndex = Object.keys(localColors).length % TAG_PASTEL_BG.length;
+    setLocalTags(prev => [...prev, name]);
     setLocalColors(prev => ({ ...prev, [name]: colorIndex }));
     setInputValue('');
   };
 
+  // Убрать ярлык только у текущего товара (оставить в общем списке)
+  const handleUnassignTag = (tag: string) => {
+    setLocalTags(prev => prev.filter((t) => t !== tag));
+  };
+
   const handleDeleteTag = (index: number) => {
-    const tag = localTags[index];
-    setLocalTags(prev => prev.filter((_, i) => i !== index));
+    // Полное удаление ярлыка: из общего списка и из этого товара (после подтверждения)
+    const allTags = Object.keys(localColors);
+    const tag = allTags[index];
+    setTagToDelete(tag);
+    setOpenKebabIndex(null);
+  };
+
+  const confirmDeleteTag = (tag: string) => {
+    setLocalTags(prev => prev.filter((t) => t !== tag));
     setLocalColors(prev => {
       const next = { ...prev };
       delete next[tag];
       return next;
     });
-    setOpenKebabIndex(null);
     setEditingIndex(null);
+    setTagToDelete(null);
   };
 
   const startEdit = (index: number) => {
@@ -483,14 +529,18 @@ const TagDropdown: React.FC<{
   };
 
   const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [isPositioned, setIsPositioned] = useState(false);
 
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as Node;
-    if (
-      panelRef.current && !panelRef.current.contains(target) &&
-      anchorRef.current && !anchorRef.current.contains(target) &&
-      submenuRef.current && !submenuRef.current.contains(target)
-    ) {
+    const panel = panelRef.current;
+    const submenu = submenuRef.current;
+
+    // Клик по любому месту страницы, кроме самого дропдауна и его подменю, закрывает дропдаун
+    const clickedInsidePanel = panel && panel.contains(target);
+    const clickedInsideSubmenu = submenu && submenu.contains(target);
+
+    if (!clickedInsidePanel && !clickedInsideSubmenu) {
       setOpenKebabIndex(null);
       onSave(localTags, localColors);
       onClose();
@@ -507,30 +557,54 @@ const TagDropdown: React.FC<{
     if (!el) return;
     const rect = el.getBoundingClientRect();
     setPosition({ top: rect.bottom + 4, left: rect.left });
+    setIsPositioned(true);
   }, []);
 
-  const dropdownStyle = { position: 'fixed' as const, top: position.top, left: position.left, zIndex: 50 };
+  const dropdownStyle = { position: 'fixed' as const, top: position.top, left: position.left, zIndex: 50, visibility: isPositioned ? 'visible' as const : 'hidden' as const };
+
+  const allTags = Object.keys(localColors);
 
   return (
-    <div ref={panelRef} className="bg-white rounded-xl border border-gray-200 shadow-lg py-4 px-4 min-w-[280px] max-w-[320px]" style={dropdownStyle}>
-      {/* Поле: выберите ярлык или создайте новый */}
+    <div ref={panelRef} className="bg-white rounded-xl border border-gray-200 shadow-lg py-4 px-4 min-w-[320px] max-w-[360px]" style={dropdownStyle}>
+      {/* Выбранные ярлыки этого товара + инпут для нового (вид как в списке товаров: серая плашка + цветная точка) */}
       <div className="mb-3">
-        <input
-          type="text"
-          value={inputValue}
-          maxLength={MAX_TAG_LENGTH}
-          onChange={(e) => setInputValue(e.target.value.slice(0, MAX_TAG_LENGTH))}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
-          placeholder="Название тега (до 12 символов)"
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-        />
+        <div className="w-full min-h-[40px] px-2 py-1.5 border border-gray-200 rounded-lg flex items-center flex-wrap gap-1.5 bg-white">
+          {localTags.map((tag, idx) => (
+            <span
+              key={tag + idx}
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 text-xs text-gray-700"
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[getColorIndex(tag, idx) % TAG_DOT_COLORS.length]}`}
+              />
+              <span className="truncate max-w-[140px]">{tag}</span>
+              <button
+                type="button"
+                onClick={() => handleUnassignTag(tag)}
+                className="ml-0.5 text-gray-500 hover:text-gray-700"
+                aria-label="Убрать ярлык из товара"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+          <input
+            type="text"
+            value={inputValue}
+            maxLength={MAX_TAG_LENGTH}
+            onChange={(e) => setInputValue(e.target.value.slice(0, MAX_TAG_LENGTH))}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
+            placeholder={localTags.length === 0 ? 'Название ярлыка (до 15 символов)' : ''}
+            className="flex-1 min-w-[80px] px-1 py-0.5 text-sm border-none focus:outline-none focus:ring-0 placeholder:text-gray-400"
+          />
+        </div>
         <div className="flex items-center justify-between mt-1.5">
           <span className="text-xs text-gray-500">Выберите ярлык или создайте новый</span>
           <span className="text-xs text-gray-500">{localTags.length}/{MAX_TAGS_PER_PRODUCT}</span>
         </div>
       </div>
 
-      {/* Режим редактирования одного тега */}
+      {/* Режим редактирования одного ярлыка */}
       {editingIndex !== null ? (
         <div className="border-t border-gray-100 pt-3 mt-3 space-y-3">
           <input
@@ -539,7 +613,7 @@ const TagDropdown: React.FC<{
             maxLength={MAX_TAG_LENGTH}
             onChange={(e) => setEditingName(e.target.value.slice(0, MAX_TAG_LENGTH))}
             className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="Название тега (до 12 символов)"
+            placeholder="Название ярлыка (до 15 символов)"
             autoFocus
           />
           <div className="flex items-center gap-2">
@@ -567,13 +641,45 @@ const TagDropdown: React.FC<{
         </div>
       ) : (
         <>
-          {/* Список тегов: троеточие открывает второй дропдаун поверх основного */}
+          {/* Список всех заведённых ярлыков: вид как в списке товаров (серая плашка + цветная точка), троеточие открывает второй дропдаун поверх основного */}
           <div className="space-y-2 max-h-64 overflow-y-auto">
-            {localTags.map((tag, idx) => (
+            {allTags.map((tag, idx) => (
               <div key={idx} className="flex items-center justify-between gap-2 group">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-sm text-gray-900 min-w-0 flex-1 truncate ${TAG_PASTEL_BG[getColorIndex(tag, idx)]}`}>
-                  {tag.trim() === '' ? <Plus className="w-4 h-4 text-gray-500 shrink-0" /> : <span className="truncate">{tag}</span>}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (localTags.includes(tag)) return;
+                    if (localTags.length >= MAX_TAGS_PER_PRODUCT) return;
+                    setLocalTags(prev => [...prev, tag]);
+                  }}
+                  onMouseEnter={() => {
+                    if (hoverTimeoutRef.current) {
+                      clearTimeout(hoverTimeoutRef.current);
+                    }
+                    hoverTimeoutRef.current = setTimeout(() => {
+                      setHoveredTagForTooltip(tag);
+                    }, 2000);
+                  }}
+                  onMouseLeave={() => {
+                    if (hoverTimeoutRef.current) {
+                      clearTimeout(hoverTimeoutRef.current);
+                      hoverTimeoutRef.current = null;
+                    }
+                    setHoveredTagForTooltip(null);
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 text-sm text-gray-700 min-w-0 flex-1 truncate text-left ${localTags.includes(tag) ? 'opacity-60 cursor-default' : 'hover:bg-gray-200'}`}
+                >
+                  {tag.trim() === '' ? (
+                    <Plus className="w-4 h-4 text-gray-500 shrink-0" />
+                  ) : (
+                    <>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[getColorIndex(tag, idx) % TAG_DOT_COLORS.length]}`}
+                      />
+                      <span className="truncate">{tag}</span>
+                    </>
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={(e) => {
@@ -610,6 +716,53 @@ const TagDropdown: React.FC<{
               >
                 <Trash2 className="w-4 h-4 shrink-0" /> Удалить
               </button>
+            </div>,
+            document.body
+          )}
+
+          {/* Тултип по наведению на ярлык: через 2 секунды, чёрный фон, количество товаров */}
+          {hoveredTagForTooltip && typeof document !== 'undefined' && ReactDOM.createPortal(
+            <div className="fixed z-[110] bottom-8 right-8 max-w-xs px-3 py-2 rounded-md bg-black text-white text-xs shadow-lg">
+              Ярлык «{hoveredTagForTooltip}» используется в{' '}
+              <span className="font-semibold">
+                {tagUsageCountByName[hoveredTagForTooltip] ?? 0}
+              </span>{' '}
+              товарах.
+            </div>,
+            document.body
+          )}
+
+          {/* Модальное окно подтверждения полного удаления ярлыка из системы */}
+          {tagToDelete && typeof document !== 'undefined' && ReactDOM.createPortal(
+            <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40">
+              <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-5">
+                <h3 className="text-base font-semibold text-gray-900 mb-2">Удалить ярлык?</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Ярлык «{tagToDelete}» будет удалён во всех товарах, где он используется.
+                  {' '}
+                  Сейчас он применяется в{' '}
+                  <span className="font-semibold">
+                    {tagUsageCountByName[tagToDelete] ?? 0}
+                  </span>{' '}
+                  кампаниях.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTagToDelete(null)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => confirmDeleteTag(tagToDelete)}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-lg hover:bg-red-700"
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </div>
             </div>,
             document.body
           )}
@@ -689,8 +842,10 @@ const DailyLimitTooltip: React.FC<{
 const DailyLimitCell: React.FC<{
   dailyLimit: number | null;
   dailyLimitExhausted?: boolean;
+  /** true только для кампаний CPC — только для них можно настраивать лимит */
+  isCpc?: boolean;
   onClick?: () => void;
-}> = ({ dailyLimit, dailyLimitExhausted, onClick }) => {
+}> = ({ dailyLimit, dailyLimitExhausted, isCpc = true, onClick }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const hideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const exhausted = !!dailyLimitExhausted;
@@ -707,20 +862,28 @@ const DailyLimitCell: React.FC<{
   };
   useEffect(() => () => { clearHideTimeout(); }, []);
 
-  const tooltipText = dailyLimit != null && exhausted
+  const tooltipText = isCpc && dailyLimit != null && exhausted
     ? `Лимит в ${formatForDisplay(dailyLimit)} ₽ на сегодня израсходован. Показы остановлены до завтра. Если хотите возобновить показы сейчас увеличьте лимит`
     : '';
+
+  // Для кампаний CPM всегда показываем прочерк
+  if (!isCpc) {
+    return <span className="text-gray-400">—</span>;
+  }
 
   const content =
     dailyLimit != null ? (
       <div className="space-y-1">
         <span className="font-medium">{formatForDisplay(dailyLimit)} ₽</span>
         <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div className="h-full bg-purple-600 rounded-full" style={{ width: exhausted ? '100%' : '60%' }} />
+          <div
+            className={`h-full rounded-full ${exhausted ? 'bg-red-500' : 'bg-purple-600'}`}
+            style={{ width: exhausted ? '100%' : '60%' }}
+          />
         </div>
       </div>
     ) : (
-      <span className="text-gray-400">Н/Д</span>
+      <span className="text-sm font-medium text-blue-600">Настроить</span>
     );
 
   if (onClick != null) {
@@ -1120,15 +1283,17 @@ const BudgetRefillModal: React.FC<{
 };
 
 const StatusBadge = ({ status, text }: { status: DisplayCampaign['status'], text: string }) => {
-    const baseClasses = 'px-2 py-0.5 text-xs font-medium rounded-full';
-    const styles = {
-        active: 'bg-green-100 text-green-700',
-        paused: 'bg-yellow-100 text-yellow-700',
-        draft: 'bg-gray-200 text-gray-600',
-        error: 'bg-red-100 text-red-700',
-    };
-    return <span className={`${baseClasses} ${styles[status]}`}>{text}</span>;
-}
+  // Цветные плашки статуса: закругления как у ярлыков (rounded-md)
+  const baseClasses = 'px-2.5 py-0.5 text-xs font-medium rounded-md';
+  const styles: Record<DisplayCampaign['status'], string> = {
+    active: 'bg-green-100 text-green-700',
+    paused: 'bg-yellow-100 text-yellow-700',
+    draft: 'bg-gray-200 text-gray-600',
+    error: 'bg-red-100 text-red-700',
+  };
+
+  return <span className={`${baseClasses} ${styles[status]}`}>{text}</span>;
+};
 
 const ResultBlock = ({ successCount, errorCount, onClear }: { successCount: number, errorCount: number, failedCampaigns: CampaignRecord[], onClear: () => void }) => {
     return (
@@ -1486,6 +1651,8 @@ const FilterDropdown = ({
   tempTags, onTempTagsChange,
   tempTagsSearch, onTempTagsSearchChange,
   tempTagsCategory, onTempTagsCategoryChange,
+  tempFilterPromoTagsOnly,
+  onTempFilterPromoTagsOnlyChange,
   availableTags,
 }: {
   isOpen: boolean;
@@ -1521,6 +1688,8 @@ const FilterDropdown = ({
   onTempTagsSearchChange: (search: string) => void;
   tempTagsCategory: string;
   onTempTagsCategoryChange: (category: string) => void;
+  tempFilterPromoTagsOnly: boolean;
+  onTempFilterPromoTagsOnlyChange: (value: boolean) => void;
   availableTags: string[];
 }) => {
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -1605,7 +1774,7 @@ const FilterDropdown = ({
                   : 'text-gray-700 hover:bg-gray-100'
               }`}
             >
-              По тегам
+              Ярлыки
             </button>
           </div>
         </div>
@@ -1795,7 +1964,7 @@ const FilterDropdown = ({
 
           {tempCategory === 'tags' && (
             <>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">По тегам</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">По ярлыкам</h3>
               
               {/* Search for tags */}
               <div className="mb-6">
@@ -1803,7 +1972,7 @@ const FilterDropdown = ({
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                   <input 
                     type="text" 
-                    placeholder="Поиск тегов"
+                    placeholder="Поиск ярлыков"
                     value={tempTagsSearch}
                     onChange={(e) => onTempTagsSearchChange(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none transition"
@@ -1811,16 +1980,23 @@ const FilterDropdown = ({
                 </div>
               </div>
 
-              {/* Tags list — только теги, уже добавленные на страницу */}
+          {/* Tags list — только ярлыки, уже добавленные на страницу */}
               <div className="mb-6">
-                <h4 className="text-sm font-semibold text-gray-700 mb-3">Теги</h4>
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Ярлыки</h4>
+            <label className="flex items-center gap-2 mb-3 cursor-pointer select-none">
+              <Checkbox
+                checked={tempFilterPromoTagsOnly}
+                onChange={(e) => onTempFilterPromoTagsOnlyChange(e.target.checked)}
+              />
+              <span className="text-sm text-gray-700">Показывать только ярлыки продвижения</span>
+            </label>
                 {availableTags.length === 0 ? (
-                  <p className="text-sm text-gray-500">Нет тегов на странице</p>
+                  <p className="text-sm text-gray-500">Нет ярлыков на странице</p>
                 ) : (
                 <div className="flex flex-wrap gap-2">
-                  {availableTags.filter(tag => 
-                    tag.toLowerCase().includes(tempTagsSearch.toLowerCase())
-                  ).map(tag => (
+                  {availableTags
+                    .filter(tag => tag && tag.toLowerCase().includes(tempTagsSearch.toLowerCase()))
+                    .map(tag => (
                     <label 
                       key={tag}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
@@ -1962,6 +2138,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [tempTagsSearch, setTempTagsSearch] = useState<string>('');
   const [tempTagsCategory, setTempTagsCategory] = useState<string>('');
   const [failedFilterIds, setFailedFilterIds] = useState<number[] | null>(null);
+  const [tagError, setTagError] = useState<string | null>(null);
+  const [filterPromoTagsOnly, setFilterPromoTagsOnly] = useState(false);
+  const [tempFilterPromoTagsOnly, setTempFilterPromoTagsOnly] = useState(false);
+  const [showTagsOnboarding, setShowTagsOnboarding] = useState(false);
+
+  // Онбординг по ярлыкам: показываем один раз при первом заходе на страницу
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const stored = window.localStorage.getItem('wb-tags-onboarding-shown');
+      if (!stored) {
+        setShowTagsOnboarding(true);
+        window.localStorage.setItem('wb-tags-onboarding-shown', '1');
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
 
   // Вкладки списка: Кампании | Товары
   const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
@@ -1974,7 +2168,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const tagDropdownAnchorRef = useRef<HTMLElement | null>(null);
   // Локальные теги и цвета тегов по товарам (редактирование в дропдауне)
   const [productTagsOverride, setProductTagsOverride] = useState<Record<string, string[]>>({});
-  const [tagColorByTagName, setTagColorByTagName] = useState<Record<string, number>>({});
+  const [tagColorByTagName, setTagColorByTagName] = useState<Record<string, number>>(() => INITIAL_TAG_COLORS);
   // Включение/выключение кампании на вкладке «Товары» (id кампании в дереве → 'active' | 'paused')
   const [productCampaignStatusOverride, setProductCampaignStatusOverride] = useState<Record<string, 'active' | 'paused'>>({});
 
@@ -1985,7 +2179,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     Object.fromEntries(MOCK_PRODUCTS_TREE.map(p => [p.id, p.tags])),
     []);
 
-  /** Теги кампании: с учётом переопределений; если кампания на несколько товаров (productIds) — объединение тегов */
+  /** Ярлыки кампании: с учётом переопределений; если кампания на несколько товаров (productIds) — объединение ярлыков */
   const getCampaignProductTags = useCallback((c: DisplayCampaign): string[] => {
     if (c.productIds?.length) {
       const merged = c.productIds.flatMap(pid =>
@@ -1998,10 +2192,30 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     return c.productTags ?? [];
   }, [productTagsOverride, productInitialTags]);
 
-  /** Теги, уже добавленные на страницу (для фильтра «По тегам») */
+  // Сколько раз каждый ярлык используется в кампаниях (с учётом переопределений ярлыков по товарам)
+  const tagUsageCountByName = useMemo(() => {
+    const usage: Record<string, number> = {};
+    for (const camp of MOCK_CAMPAIGNS) {
+      const tags = getCampaignProductTags(camp);
+      for (const t of tags) {
+        if (!t) continue;
+        usage[t] = (usage[t] ?? 0) + 1;
+      }
+    }
+    return usage;
+  }, [getCampaignProductTags]);
+
+  /** Ярлыки, уже добавленные на страницу (для фильтра «По ярлыкам») */
   const availableTags = useMemo(() => {
     const set = new Set<string>();
-    allCampaigns.forEach(c => getCampaignProductTags(c).forEach(tag => set.add(tag)));
+    allCampaigns.forEach(c =>
+      getCampaignProductTags(c).forEach(tag => {
+        if (!tag) return;
+        const normalized = tag.trim();
+        if (!normalized) return;
+        set.add(normalized);
+      })
+    );
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [allCampaigns, getCampaignProductTags]);
 
@@ -2025,8 +2239,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       setTempTags(filterTags);
       setTempTagsSearch('');
       setTempTagsCategory(filterTagsCategory);
+      setTempFilterPromoTagsOnly(filterPromoTagsOnly);
     }
-  }, [isFilterDropdownOpen, filterCategory, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory]);
+  }, [isFilterDropdownOpen, filterCategory, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory, filterPromoTagsOnly]);
 
   const handleApplyFilters = () => {
     setFilterCategory(tempFilterCategory);
@@ -2037,6 +2252,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setFilterByCategory(tempFilterByCategory);
     setFilterTags(tempTags);
     setFilterTagsCategory(tempTagsCategory);
+    setFilterPromoTagsOnly(tempFilterPromoTagsOnly);
     setIsFilterDropdownOpen(false);
   };
 
@@ -2051,6 +2267,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setTempTags(filterTags);
     setTempTagsSearch('');
     setTempTagsCategory(filterTagsCategory);
+    setTempFilterPromoTagsOnly(filterPromoTagsOnly);
     setIsFilterDropdownOpen(false);
   };
 
@@ -2087,13 +2304,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter(c => c.type === filterPayment);
     }
 
-    // Filter by tags (теги товара с учётом переопределений)
+    // Filter by tags (ярлыки товара с учётом переопределений)
     if (filterTags.length > 0) {
       filtered = filtered.filter(c => {
-        const tags = c.productId && productTagsOverride[c.productId] !== undefined ? productTagsOverride[c.productId] : (c.productTags ?? []);
+        const tags = getCampaignProductTags(c);
         if (!tags.length) return false;
         return filterTags.some(tag => tags.includes(tag));
       });
+    }
+
+    // Дополнительный фильтр: показывать только теги продвижения (кампании, у которых есть ярлыки)
+    if (filterPromoTagsOnly) {
+      filtered = filtered.filter(c => getCampaignProductTags(c).length > 0);
     }
 
     // Filter by category (вкладка «Категория» в фильтре)
@@ -2127,7 +2349,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     }
 
     return filtered;
-  }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory, failedFilterIds, productTagsOverride, searchQuery]);
+  }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory, filterPromoTagsOnly, failedFilterIds, productTagsOverride, searchQuery]);
 
   /** Товары, отфильтрованные по тем же правилам, что и кампании (на вкладке «Товары» показываем товар, если есть хотя бы одна подходящая кампания) */
   const filteredProducts = useMemo(() => {
@@ -2152,9 +2374,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       });
       if (!hasMatchingCampaign) return false;
       if (filterByCategory && filterByCategory !== '' && product.category !== filterByCategory) return false;
+      if (filterPromoTagsOnly && productTagsResolved.length === 0) return false;
       return true;
     });
-  }, [filterStatus, filterAutorefill, filterPayment, filterTags, filterByCategory, productCampaignStatusOverride, getProductTags]);
+  }, [filterStatus, filterAutorefill, filterPayment, filterTags, filterByCategory, filterPromoTagsOnly, productCampaignStatusOverride, getProductTags]);
 
   // Поиск по товарам: по названию товара, артикулу, артикулу WB, артикулу продавца, названию кампании, ID кампании
   const filteredProductsBySearch = useMemo(() => {
@@ -2249,6 +2472,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         />
       )}
 
+      {tagError && (
+        <Toast
+          show={!!tagError}
+          message={tagError}
+          onClose={() => setTagError(null)}
+          isError
+          durationMs={2000}
+          aboveOverlay
+        />
+      )}
+
       {/* Шапка как в макете Figma: одна строка, отступы и стили из макета */}
       <div className="flex flex-col gap-1 mb-6">
         <div className="flex items-center gap-3 w-full">
@@ -2277,15 +2511,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
             {/* Кнопка «Создать кампанию» со стрелкой вниз и дропдауном: одна / много */}
             <CreateCampaignDropdown onNavigateToCreation={onNavigateToCreation} onOpenSingleCampaign={onOpenSingleCampaign} />
-            {/* Бургер-меню (Excel) — тёмно-серый, сразу после кнопки «Создать кампанию» */}
-            {listTab === 'campaigns' && (
-              <ExcelActionsDropdown
-                onOpenUpload={onOpenUploadEditsModal}
-                onOpenHistory={onOpenHistoryModal}
-                showUploadHint={showUploadHint}
-                onDismissUploadHint={onDismissUploadHint}
-              />
-            )}
+            {/* Бургер-меню (Excel) — отображаем и на вкладке «Кампании», и на вкладке «Товары» */}
+            <ExcelActionsDropdown
+              onOpenUpload={onOpenUploadEditsModal}
+              onOpenHistory={onOpenHistoryModal}
+              showUploadHint={showUploadHint}
+              onDismissUploadHint={onDismissUploadHint}
+            />
             <div className="flex flex-1 gap-3 items-center min-w-0">
               <div className="relative flex-1 min-w-0 max-w-[600px] h-11">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-[#767386] shrink-0 pointer-events-none" aria-hidden />
@@ -2349,6 +2581,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   onTempTagsSearchChange={setTempTagsSearch}
                   tempTagsCategory={tempTagsCategory}
                   onTempTagsCategoryChange={setTempTagsCategory}
+                  tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                  onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
                   availableTags={availableTags}
                 />
               )}
@@ -2364,6 +2598,28 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Онбординг по ярлыкам: один раз при первом заходе, тултип над первым тегом на вкладке «Товары» */}
+      {showTagsOnboarding && listTab === 'products' && (
+        <div className="relative mb-2">
+          <div className="inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-gray-900 text-white text-sm shadow-xl">
+            <div className="flex-1">
+              <p className="font-medium mb-1">Появились ярлыки товаров</p>
+              <p className="text-xs text-gray-200">
+                Ярлыки с портала продавца подтянутся сюда автоматически. Новые ярлыки,
+                которые вы создадите здесь, появятся на портале в списке товаров.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowTagsOnboarding(false)}
+              className="ml-2 text-gray-300 hover:text-white text-xs font-medium"
+            >
+              Закрыть
+            </button>
+          </div>
+        </div>
+      )}
 
       {listTab === 'campaigns' && (
       <div className="w-full max-w-[1600px]">
@@ -2489,6 +2745,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   <DailyLimitCell
                                       dailyLimit={c.dailyLimit ?? null}
                                       dailyLimitExhausted={c.dailyLimitExhausted}
+                                      isCpc={c.type === 'CPC'}
                                       onClick={c.type === 'CPC' ? () => { setSelectedCampaignForRefill(c); setIsDailyLimitModalOpen(true); } : undefined}
                                   />
                               </td>
@@ -2573,8 +2830,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                     type="button"
                                     onClick={(e) => { e.stopPropagation(); setOpenTagProductId(openTagProductId === product.id ? null : product.id); }}
                                     className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
-                                    title="Добавить теги"
-                                    aria-label="Теги"
+                                    title="Добавить ярлыки"
+                                    aria-label="Ярлыки"
                                   >
                                     <Plus className="w-2.5 h-2.5" />
                                   </button>
@@ -2587,6 +2844,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               anchorRef={tagDropdownAnchorRef}
                               tags={getProductTags(product)}
                               tagColorByTagName={tagColorByTagName}
+                              tagUsageCountByName={tagUsageCountByName}
+                              onTagError={(reason) => {
+                                if (reason === 'max-per-product') {
+                                  setTagError('Нельзя добавить больше 15 ярлыков к одному товару.');
+                                }
+                              }}
                               onClose={() => setOpenTagProductId(null)}
                               onSave={(newTags, newColors) => {
                                 setProductTagsOverride(prev => ({ ...prev, [product.id]: newTags }));
@@ -2652,10 +2915,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </div>
                             )}
                           </td>
-                          <td className="p-4">
+                          <td className="p-4" onClick={(e) => e.stopPropagation()}>
                             <DailyLimitCell
                               dailyLimit={camp.dailyLimit ?? null}
                               dailyLimitExhausted={camp.dailyLimitExhausted}
+                              isCpc={camp.type === 'CPC'}
+                              onClick={camp.type === 'CPC' ? () => { setSelectedCampaignForRefill(camp); setIsDailyLimitModalOpen(true); } : undefined}
                             />
                           </td>
                           <td className="p-4 font-semibold text-gray-900">{formatCurrency(camp.spend)}</td>
