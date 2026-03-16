@@ -432,10 +432,12 @@ const TagDropdown: React.FC<{
   tags: string[];
   tagColorByTagName: Record<string, number>;
   tagUsageCountByName: Record<string, number>;
+  deletedTags: string[];
+  onDeleteTagGlobally?: (tag: string) => void;
   onTagError?: (reason: 'max-per-product') => void;
   onClose: () => void;
   onSave: (tags: string[], tagColors: Record<string, number>) => void;
-}> = ({ anchorRef, tags, tagColorByTagName, tagUsageCountByName, onTagError, onClose, onSave }) => {
+}> = ({ anchorRef, tags, tagColorByTagName, tagUsageCountByName, deletedTags, onDeleteTagGlobally, onTagError, onClose, onSave }) => {
   // localTags — ярлыки, назначенные текущему товару
   const [localTags, setLocalTags] = useState<string[]>(() => [...tags]);
   // localColors хранит цвета для всех заведённых ярлыков (по имени ярлыка)
@@ -484,15 +486,16 @@ const TagDropdown: React.FC<{
     setLocalTags(prev => prev.filter((t) => t !== tag));
   };
 
-  const handleDeleteTag = (index: number) => {
+  const handleDeleteTag = (tagName: string) => {
     // Полное удаление ярлыка: из общего списка и из этого товара (после подтверждения)
-    const allTags = Object.keys(localColors);
-    const tag = allTags[index];
-    setTagToDelete(tag);
+    setTagToDelete(tagName);
     setOpenKebabIndex(null);
   };
 
   const confirmDeleteTag = (tag: string) => {
+    // Сообщаем наверх, что ярлык нужно удалить глобально (из всех товаров и фильтров)
+    onDeleteTagGlobally?.(tag);
+
     setLocalTags(prev => prev.filter((t) => t !== tag));
     setLocalColors(prev => {
       const next = { ...prev };
@@ -532,6 +535,9 @@ const TagDropdown: React.FC<{
   const [isPositioned, setIsPositioned] = useState(false);
 
   const handleClickOutside = (e: MouseEvent) => {
+    // Пока открыто модальное окно подтверждения удаления ярлыка – не закрываем дропдаун по клику снаружи
+    if (tagToDelete) return;
+
     const target = e.target as Node;
     const panel = panelRef.current;
     const submenu = submenuRef.current;
@@ -550,7 +556,7 @@ const TagDropdown: React.FC<{
   useEffect(() => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [localTags, localColors]);
+  }, [localTags, localColors, tagToDelete]);
 
   useEffect(() => {
     const el = anchorRef.current;
@@ -562,7 +568,7 @@ const TagDropdown: React.FC<{
 
   const dropdownStyle = { position: 'fixed' as const, top: position.top, left: position.left, zIndex: 50, visibility: isPositioned ? 'visible' as const : 'hidden' as const };
 
-  const allTags = Object.keys(localColors);
+  const allTags = Object.keys(localColors).filter(tag => !deletedTags.includes(tag));
 
   return (
     <div ref={panelRef} className="bg-white rounded-xl border border-gray-200 shadow-lg py-4 px-4 min-w-[320px] max-w-[360px]" style={dropdownStyle}>
@@ -630,7 +636,16 @@ const TagDropdown: React.FC<{
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <button type="button" onClick={() => handleDeleteTag(editingIndex)} className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg">
+            <button
+              type="button"
+              onClick={() => {
+                if (editingIndex === null) return;
+                const tagName = localTags[editingIndex];
+                if (!tagName) return;
+                handleDeleteTag(tagName);
+              }}
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
+            >
               <Trash2 className="w-4 h-4 shrink-0" />
               Удалить
             </button>
@@ -644,7 +659,7 @@ const TagDropdown: React.FC<{
           {/* Список всех заведённых ярлыков: вид как в списке товаров (серая плашка + цветная точка), троеточие открывает второй дропдаун поверх основного */}
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {allTags.map((tag, idx) => (
-              <div key={idx} className="flex items-center justify-between gap-2 group">
+              <div key={tag + idx} className="flex items-center justify-between gap-2 group">
                 <button
                   type="button"
                   onClick={() => {
@@ -711,7 +726,7 @@ const TagDropdown: React.FC<{
               </button>
               <button
                 type="button"
-                onClick={() => handleDeleteTag(openKebabIndex)}
+                onClick={() => handleDeleteTag(allTags[openKebabIndex])}
                 className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50 rounded-none last:rounded-b-lg"
               >
                 <Trash2 className="w-4 h-4 shrink-0" /> Удалить
@@ -2169,11 +2184,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   // Локальные теги и цвета тегов по товарам (редактирование в дропдауне)
   const [productTagsOverride, setProductTagsOverride] = useState<Record<string, string[]>>({});
   const [tagColorByTagName, setTagColorByTagName] = useState<Record<string, number>>(() => INITIAL_TAG_COLORS);
+  // Глобально удалённые ярлыки (например, через «Удалить» в дропдауне) — скрываем их везде
+  const [deletedTags, setDeletedTags] = useState<string[]>([]);
   // Включение/выключение кампании на вкладке «Товары» (id кампании в дереве → 'active' | 'paused')
   const [productCampaignStatusOverride, setProductCampaignStatusOverride] = useState<Record<string, 'active' | 'paused'>>({});
 
-  const getProductTags = useCallback((product: { id: string; tags: string[] }) =>
-    productTagsOverride[product.id] ?? product.tags, [productTagsOverride]);
+  const getProductTags = useCallback((product: { id: string; tags: string[] }) => {
+    const base = productTagsOverride[product.id] ?? product.tags;
+    return base.filter(t => t && !deletedTags.includes(t));
+  }, [productTagsOverride, deletedTags]);
 
   const productInitialTags = useMemo(() =>
     Object.fromEntries(MOCK_PRODUCTS_TREE.map(p => [p.id, p.tags])),
@@ -2183,14 +2202,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const getCampaignProductTags = useCallback((c: DisplayCampaign): string[] => {
     if (c.productIds?.length) {
       const merged = c.productIds.flatMap(pid =>
-        productTagsOverride[pid] ?? productInitialTags[pid] ?? []
+        (productTagsOverride[pid] ?? productInitialTags[pid] ?? []).filter(t => t && !deletedTags.includes(t))
       );
       return [...new Set(merged)];
     }
     if (c.productId && productTagsOverride[c.productId] !== undefined)
-      return productTagsOverride[c.productId];
-    return c.productTags ?? [];
-  }, [productTagsOverride, productInitialTags]);
+      return (productTagsOverride[c.productId] ?? []).filter(t => t && !deletedTags.includes(t));
+    return (c.productTags ?? []).filter(t => t && !deletedTags.includes(t));
+  }, [productTagsOverride, productInitialTags, deletedTags]);
 
   // Сколько раз каждый ярлык используется в кампаниях (с учётом переопределений ярлыков по товарам)
   const tagUsageCountByName = useMemo(() => {
@@ -2845,10 +2864,22 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               tags={getProductTags(product)}
                               tagColorByTagName={tagColorByTagName}
                               tagUsageCountByName={tagUsageCountByName}
+                              deletedTags={deletedTags}
                               onTagError={(reason) => {
                                 if (reason === 'max-per-product') {
                                   setTagError('Нельзя добавить больше 15 ярлыков к одному товару.');
                                 }
+                              }}
+                              onDeleteTagGlobally={(tagName) => {
+                                // Удаляем ярлык из цветов
+                                setTagColorByTagName(prev => {
+                                  const next = { ...prev };
+                                  delete next[tagName];
+                                  return next;
+                                });
+
+                                // Помечаем ярлык как глобально удалённый (скрываем в товарах, кампаниях и фильтрах)
+                                setDeletedTags(prev => prev.includes(tagName) ? prev : [...prev, tagName]);
                               }}
                               onClose={() => setOpenTagProductId(null)}
                               onSave={(newTags, newColors) => {
