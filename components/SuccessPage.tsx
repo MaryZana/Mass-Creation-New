@@ -1646,7 +1646,7 @@ const CreateCampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: 
                 <ChevronDown className={`w-5 h-5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-[200] py-1 animate-in fade-in zoom-in-95 duration-100">
                     <button type="button" onClick={() => { onOpenSingleCampaign?.(); setIsOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
                         Создать одну кампанию
                     </button>
@@ -1721,7 +1721,7 @@ const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory, showUploadHint = fa
                 </div>
             )}
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border z-20 py-1 animate-in fade-in zoom-in-95 duration-100">
+                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border z-[200] py-1 animate-in fade-in zoom-in-95 duration-100">
                     <a href="#" onClick={(e) => { e.preventDefault(); onOpenUpload(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">Загрузить Excel</a>
                     <a href="#" onClick={(e) => { e.preventDefault(); onOpenHistory(); setIsOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">История изменений</a>
                 </div>
