@@ -439,28 +439,28 @@ const TagDropdown: React.FC<{
   tagUsageCountByName: Record<string, number>;
   deletedTags: string[];
   onDeleteTagGlobally?: (tag: string) => void;
+  onRestoreTagGlobally?: (tag: string) => void;
   onTagError?: (reason: 'max-per-product') => void;
   onClose: () => void;
   onSave: (tags: string[], tagColors: Record<string, number>) => void;
-}> = ({ anchorRef, tags, tagColorByTagName, tagUsageCountByName, deletedTags, onDeleteTagGlobally, onTagError, onClose, onSave }) => {
+}> = ({ anchorRef, tags, tagColorByTagName, tagUsageCountByName, deletedTags, onDeleteTagGlobally, onRestoreTagGlobally, onTagError, onClose, onSave }) => {
   // localTags — ярлыки, назначенные текущему товару
   const [localTags, setLocalTags] = useState<string[]>(() => [...tags]);
   // localColors хранит цвета для всех заведённых ярлыков (по имени ярлыка)
   const [localColors, setLocalColors] = useState<Record<string, number>>(() => ({ ...tagColorByTagName }));
   const [inputValue, setInputValue] = useState('');
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [editingName, setEditingName] = useState('');
-  const [editingColorIndex, setEditingColorIndex] = useState(0);
-  const [openKebabIndex, setOpenKebabIndex] = useState<number | null>(null);
+  const [settingsTag, setSettingsTag] = useState<string | null>(null);
+  const [settingsOriginalTag, setSettingsOriginalTag] = useState<string | null>(null);
+  const [settingsName, setSettingsName] = useState('');
+  const [settingsColorIndex, setSettingsColorIndex] = useState(0);
   const [kebabPosition, setKebabPosition] = useState({ top: 0, left: 0 });
   const [tagToDelete, setTagToDelete] = useState<string | null>(null);
-  const [hasShownOnboarding, setHasShownOnboarding] = useState(false);
   const [hoveredTagForTooltip, setHoveredTagForTooltip] = useState<string | null>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const submenuRef = useRef<HTMLDivElement>(null);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
-  const getColorIndex = (tag: string, index: number) => localColors[tag] ?? (index % TAG_PASTEL_BG.length);
+  const getColorIndex = (tag: string) => localColors[tag] ?? 0;
 
   const handleAddTag = () => {
     const name = inputValue.trim().slice(0, MAX_TAG_LENGTH);
@@ -472,6 +472,8 @@ const TagDropdown: React.FC<{
 
     // Если такой ярлык уже существует глобально — просто привязываем его к товару
     if (localColors[name] !== undefined) {
+      // Если ярлык ранее был удалён глобально — "восстанавливаем" его при повторном добавлении
+      onRestoreTagGlobally?.(name);
       if (!localTags.includes(name)) {
         setLocalTags(prev => [...prev, name]);
       }
@@ -480,6 +482,7 @@ const TagDropdown: React.FC<{
     }
 
     // Новый ярлык: создаём цвет, добавляем в список ярлыков товара и в глобальную карту цветов
+    onRestoreTagGlobally?.(name);
     const colorIndex = Object.keys(localColors).length % TAG_PASTEL_BG.length;
     setLocalTags(prev => [...prev, name]);
     setLocalColors(prev => ({ ...prev, [name]: colorIndex }));
@@ -494,7 +497,7 @@ const TagDropdown: React.FC<{
   const handleDeleteTag = (tagName: string) => {
     // Полное удаление ярлыка: из общего списка и из этого товара (после подтверждения)
     setTagToDelete(tagName);
-    setOpenKebabIndex(null);
+    setSettingsTag(null);
   };
 
   const confirmDeleteTag = (tag: string) => {
@@ -507,33 +510,27 @@ const TagDropdown: React.FC<{
       delete next[tag];
       return next;
     });
-    setEditingIndex(null);
+    setSettingsTag(null);
     setTagToDelete(null);
   };
+  
+  const applySettings = () => {
+    if (!settingsTag) return;
+    const oldName = settingsOriginalTag ?? settingsTag;
+    const nextName = settingsName.trim().slice(0, MAX_TAG_LENGTH);
+    if (!nextName) return;
 
-  const startEdit = (index: number) => {
-    setEditingIndex(index);
-    setEditingName(localTags[index]);
-    setEditingColorIndex(getColorIndex(localTags[index], index));
-    setOpenKebabIndex(null);
-  };
+    onRestoreTagGlobally?.(nextName);
 
-  const saveEdit = () => {
-    if (editingIndex === null) return;
-    const newName = editingName.trim().slice(0, MAX_TAG_LENGTH);
-    const oldName = localTags[editingIndex];
-    if (newName) {
-      const newTags = [...localTags];
-      newTags[editingIndex] = newName;
-      setLocalTags(newTags);
-      setLocalColors(prev => {
-        const next = { ...prev };
-        if (oldName !== newName) delete next[oldName];
-        next[newName] = editingColorIndex;
-        return next;
-      });
-    }
-    setEditingIndex(null);
+    setLocalTags(prev => prev.map(t => (t === oldName ? nextName : t)));
+    setLocalColors(prev => {
+      const next = { ...prev };
+      if (oldName !== nextName) delete next[oldName];
+      next[nextName] = settingsColorIndex;
+      return next;
+    });
+    setSettingsTag(nextName);
+    setSettingsOriginalTag(nextName);
   };
 
   const [position, setPosition] = useState({ top: 0, left: 0 });
@@ -545,14 +542,14 @@ const TagDropdown: React.FC<{
 
     const target = e.target as Node;
     const panel = panelRef.current;
-    const submenu = submenuRef.current;
+    const settings = settingsRef.current;
 
     // Клик по любому месту страницы, кроме самого дропдауна и его подменю, закрывает дропдаун
     const clickedInsidePanel = panel && panel.contains(target);
-    const clickedInsideSubmenu = submenu && submenu.contains(target);
+    const clickedInsideSettings = settings && settings.contains(target);
 
-    if (!clickedInsidePanel && !clickedInsideSubmenu) {
-      setOpenKebabIndex(null);
+    if (!clickedInsidePanel && !clickedInsideSettings) {
+      setSettingsTag(null);
       onSave(localTags, localColors);
       onClose();
     }
@@ -562,6 +559,11 @@ const TagDropdown: React.FC<{
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [localTags, localColors, tagToDelete]);
+
+  // Мгновенно применяем изменения ярлыков к товару (чтобы колонка "Ярлыки" обновлялась сразу)
+  useEffect(() => {
+    onSave(localTags, localColors);
+  }, [localTags, localColors, onSave]);
 
   useEffect(() => {
     const el = anchorRef.current;
@@ -573,172 +575,221 @@ const TagDropdown: React.FC<{
 
   const dropdownStyle = { position: 'fixed' as const, top: position.top, left: position.left, zIndex: 50, visibility: isPositioned ? 'visible' as const : 'hidden' as const };
 
-  const allTags = Object.keys(localColors).filter(tag => !deletedTags.includes(tag));
+  const allTagsMeta = useMemo(() => {
+    // Убираем дубли в списке "Все": нормализуем (trim + обрезка до 15) и дедуплим без учёта регистра
+    const map = new Map<string, { tag: string; colorIndex: number }>();
+    for (const [rawTag, colorIndex] of Object.entries(localColors)) {
+      if (!rawTag) continue;
+      if (deletedTags.includes(rawTag)) continue;
+      const tag = normalizeTagName(rawTag);
+      if (!tag) continue;
+      const key = tag.toLowerCase();
+      if (!map.has(key)) map.set(key, { tag, colorIndex });
+    }
+    const list = [...map.values()].sort((a, b) => a.tag.localeCompare(b.tag));
+    const colorByTag: Record<string, number> = {};
+    list.forEach(i => { colorByTag[i.tag] = i.colorIndex; });
+    return { list: list.map(i => i.tag), colorByTag };
+  }, [localColors, deletedTags]);
+
+  const allTags = allTagsMeta.list;
+  const query = normalizeTagName(inputValue);
+  const foundTags = query ? allTags.filter(t => t.toLowerCase().includes(query.toLowerCase())) : [];
+  const canCreate = !!query && allTagsMeta.colorByTag[query] === undefined && localColors[query] === undefined;
+  const isAtLimit = localTags.length >= MAX_TAGS_PER_PRODUCT;
 
   return (
-    <div ref={panelRef} className="bg-white rounded-xl border border-gray-200 shadow-lg py-4 px-4 min-w-[320px] max-w-[360px]" style={dropdownStyle}>
-      {/* Выбранные ярлыки этого товара + инпут для нового (вид как в списке товаров: серая плашка + цветная точка) */}
+    <div ref={panelRef} className="bg-white rounded-xl border border-gray-200 shadow-lg py-4 px-4 w-[320px]" style={dropdownStyle}>
+      {/* Поле "создать или найти" */}
       <div className="mb-3">
-        <div className="w-full min-h-[40px] px-2 py-1.5 border border-gray-200 rounded-lg flex items-center flex-wrap gap-1.5 bg-white">
-          {localTags.map((tag, idx) => (
-            <span
-              key={tag + idx}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 text-xs text-gray-700"
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[getColorIndex(tag, idx) % TAG_DOT_COLORS.length]}`}
-              />
-              <span className="truncate max-w-[140px]">{tag}</span>
-              <button
-                type="button"
-                onClick={() => handleUnassignTag(tag)}
-                className="ml-0.5 text-gray-500 hover:text-gray-700"
-                aria-label="Убрать ярлык из товара"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
+        <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-white">
           <input
             type="text"
             value={inputValue}
             maxLength={MAX_TAG_LENGTH}
             onChange={(e) => setInputValue(e.target.value.slice(0, MAX_TAG_LENGTH))}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddTag(); } }}
-            placeholder={localTags.length === 0 ? 'Название ярлыка (до 15 символов)' : ''}
-            className="flex-1 min-w-[80px] px-1 py-0.5 text-sm border-none focus:outline-none focus:ring-0 placeholder:text-gray-400"
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              if (query && localColors[query] !== undefined) {
+                onRestoreTagGlobally?.(query);
+                if (!localTags.includes(query) && !isAtLimit) setLocalTags(prev => [...prev, query]);
+                setInputValue('');
+                return;
+              }
+              handleAddTag();
+            }}
+            placeholder="Создать или найти ярлык"
+            className="w-full text-sm border-none focus:outline-none focus:ring-0 placeholder:text-gray-400"
           />
         </div>
-        <div className="flex items-center justify-between mt-1.5">
-          <span className="text-xs text-gray-500">Выберите ярлык или создайте новый</span>
-          <span className="text-xs text-gray-500">{localTags.length}/{MAX_TAGS_PER_PRODUCT}</span>
+
+        {/* Выбранные ярлыки + счётчик */}
+        <div className="mt-2 flex items-start justify-between gap-2">
+          <div className="flex flex-wrap gap-1.5 min-w-0">
+            {localTags.map((tag, idx) => (
+              <span key={tag + idx} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-gray-100 text-xs text-gray-700">
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[((settingsOriginalTag && tag === settingsOriginalTag) ? settingsColorIndex : getColorIndex(tag)) % TAG_DOT_COLORS.length]}`}
+                />
+                <span className="truncate max-w-[140px]">
+                  {(settingsOriginalTag && tag === settingsOriginalTag && settingsName.trim()) ? settingsName.trim() : tag}
+                </span>
+                <button type="button" onClick={() => handleUnassignTag(tag)} className="ml-0.5 text-gray-500 hover:text-gray-700" aria-label="Убрать ярлык из товара">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Режим редактирования одного ярлыка */}
-      {editingIndex !== null ? (
-        <div className="border-t border-gray-100 pt-3 mt-3 space-y-3">
-          <input
-            type="text"
-            value={editingName}
-            maxLength={MAX_TAG_LENGTH}
-            onChange={(e) => setEditingName(e.target.value.slice(0, MAX_TAG_LENGTH))}
-            className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
-            placeholder="Название ярлыка (до 15 символов)"
-            autoFocus
-          />
-          <div className="flex items-center gap-2">
-            {TAG_PASTEL_BG.map((bg, i) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setEditingColorIndex(i)}
-                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${bg} ${editingColorIndex === i ? 'border-gray-800 ring-2 ring-offset-1 ring-purple-400' : 'border-gray-200'}`}
-                title={`Цвет ${i + 1}`}
-              >
-                {editingColorIndex === i && <Check className="w-3.5 h-3.5 text-gray-800" />}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (editingIndex === null) return;
-                const tagName = localTags[editingIndex];
-                if (!tagName) return;
-                handleDeleteTag(tagName);
-              }}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg"
-            >
-              <Trash2 className="w-4 h-4 shrink-0" />
-              Удалить
-            </button>
-            <button type="button" onClick={saveEdit} className="ml-auto px-4 py-2 text-sm font-medium bg-purple-600 text-white rounded-lg hover:bg-purple-700">
-              Готово
-            </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {/* Список всех заведённых ярлыков: вид как в списке товаров (серая плашка + цветная точка), троеточие открывает второй дропдаун поверх основного */}
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {allTags.map((tag, idx) => (
-              <div key={tag + idx} className="flex items-center justify-between gap-2 group">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (localTags.includes(tag)) return;
-                    if (localTags.length >= MAX_TAGS_PER_PRODUCT) return;
-                    setLocalTags(prev => [...prev, tag]);
-                  }}
-                  onMouseEnter={() => {
-                    if (hoverTimeoutRef.current) {
-                      clearTimeout(hoverTimeoutRef.current);
-                    }
-                    hoverTimeoutRef.current = setTimeout(() => {
-                      setHoveredTagForTooltip(tag);
-                    }, 2000);
-                  }}
-                  onMouseLeave={() => {
-                    if (hoverTimeoutRef.current) {
-                      clearTimeout(hoverTimeoutRef.current);
-                      hoverTimeoutRef.current = null;
-                    }
-                    setHoveredTagForTooltip(null);
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-gray-100 text-sm text-gray-700 min-w-0 flex-1 truncate text-left ${localTags.includes(tag) ? 'opacity-60 cursor-default' : 'hover:bg-gray-200'}`}
-                >
-                  {tag.trim() === '' ? (
-                    <Plus className="w-4 h-4 text-gray-500 shrink-0" />
-                  ) : (
-                    <>
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[getColorIndex(tag, idx) % TAG_DOT_COLORS.length]}`}
-                      />
-                      <span className="truncate">{tag}</span>
-                    </>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    setKebabPosition({ top: rect.bottom + 4, left: Math.max(8, rect.right - 140) });
-                    setOpenKebabIndex(openKebabIndex === idx ? null : idx);
-                  }}
-                  className="p-1.5 rounded-md hover:bg-gray-200 text-gray-600 hover:text-gray-900 shrink-0"
-                  aria-label="Ещё"
-                >
-                  <MoreVertical className="w-4 h-4" />
-                </button>
+      {/* Секции списка */}
+      <div className="space-y-3">
+        {!query ? (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-gray-900">Все</span>
+              <span className="text-xs text-gray-400">{localTags.length} из {MAX_TAGS_PER_PRODUCT}</span>
+            </div>
+            {allTags.length === 0 ? (
+              <div className="text-sm text-gray-600 font-medium py-2">Ярлыков нет</div>
+            ) : (
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {allTags.map((tag, idx) => (
+                  <div key={tag + idx} className="group flex items-center justify-between gap-1.5 px-1.5 py-0.5 rounded-lg hover:bg-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (localTags.includes(tag)) {
+                          setLocalTags(prev => prev.filter(t => t !== tag));
+                          return;
+                        }
+                        if (isAtLimit) return;
+                        onRestoreTagGlobally?.(tag);
+                        setLocalTags(prev => [...prev, tag]);
+                      }}
+                      onMouseEnter={() => {
+                        if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
+                        hoverTimeoutRef.current = setTimeout(() => setHoveredTagForTooltip(tag), 2000);
+                      }}
+                      onMouseLeave={() => {
+                        if (hoverTimeoutRef.current) {
+                          clearTimeout(hoverTimeoutRef.current);
+                          hoverTimeoutRef.current = null;
+                        }
+                        setHoveredTagForTooltip(null);
+                      }}
+                      className="flex items-center min-w-0 flex-1 text-left bg-transparent"
+                    >
+                      <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-gray-100 group-hover:bg-gray-100">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[((settingsOriginalTag && tag === settingsOriginalTag) ? settingsColorIndex : (allTagsMeta.colorByTag[tag] ?? getColorIndex(tag))) % TAG_DOT_COLORS.length]}`}
+                        />
+                        <span className="truncate text-xs text-gray-700">
+                          {(settingsOriginalTag && tag === settingsOriginalTag && settingsName.trim()) ? settingsName.trim() : tag}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setKebabPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right + 8) });
+                        setSettingsTag(tag);
+                        setSettingsOriginalTag(tag);
+                        setSettingsName(tag);
+                        setSettingsColorIndex(allTagsMeta.colorByTag[tag] ?? getColorIndex(tag));
+                      }}
+                      className="p-1.5 rounded-lg text-gray-600 hover:text-gray-900 shrink-0"
+                      aria-label="Настройки ярлыка"
+                    >
+                      <MoreVertical className="w-5 h-5 rotate-90" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {/* Второй дропдаун (Редактировать / Удалить) поверх основного — через portal */}
-          {openKebabIndex !== null && typeof document !== 'undefined' && ReactDOM.createPortal(
-            <div
-              ref={submenuRef}
-              className="fixed py-1.5 bg-white border border-gray-200 rounded-lg shadow-xl z-[100] min-w-[140px]"
-              style={{ top: kebabPosition.top, left: kebabPosition.left }}
-            >
-              <button
-                type="button"
-                onClick={() => startEdit(openKebabIndex)}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-gray-900 hover:bg-gray-100 rounded-none first:rounded-t-lg"
-              >
-                <Edit2 className="w-4 h-4 text-gray-600 shrink-0" /> Редактировать
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteTag(allTags[openKebabIndex])}
-                className="w-full flex items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-red-600 hover:bg-red-50 rounded-none last:rounded-b-lg"
-              >
-                <Trash2 className="w-4 h-4 shrink-0" /> Удалить
-              </button>
-            </div>,
-            document.body
-          )}
+            )}
+          </>
+        ) : (
+          <>
+            <div className="text-xs font-semibold text-gray-900">Найдено</div>
+            <div className="space-y-1 max-h-44 overflow-y-auto">
+              {foundTags.length === 0 ? (
+                <div className="text-sm text-gray-500 py-1">Нет совпадений</div>
+              ) : (
+                foundTags.map((tag, idx) => (
+                  <div key={tag + idx} className="group flex items-center justify-between gap-1.5 px-1.5 py-0.5 rounded-lg hover:bg-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (localTags.includes(tag)) {
+                          setLocalTags(prev => prev.filter(t => t !== tag));
+                          return;
+                        }
+                        if (isAtLimit) return;
+                        onRestoreTagGlobally?.(tag);
+                        setLocalTags(prev => [...prev, tag]);
+                      }}
+                      className="flex items-center min-w-0 flex-1 text-left bg-transparent"
+                    >
+                      <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-gray-100 group-hover:bg-gray-100">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[((settingsOriginalTag && tag === settingsOriginalTag) ? settingsColorIndex : (allTagsMeta.colorByTag[tag] ?? getColorIndex(tag))) % TAG_DOT_COLORS.length]}`}
+                        />
+                        <span className="truncate text-xs text-gray-700">
+                          {(settingsOriginalTag && tag === settingsOriginalTag && settingsName.trim()) ? settingsName.trim() : tag}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setKebabPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right + 8) });
+                        setSettingsTag(tag);
+                        setSettingsOriginalTag(tag);
+                        setSettingsName(tag);
+                        setSettingsColorIndex(allTagsMeta.colorByTag[tag] ?? getColorIndex(tag));
+                      }}
+                      className="p-1.5 rounded-lg text-gray-600 hover:text-gray-900 shrink-0"
+                      aria-label="Настройки ярлыка"
+                    >
+                      <MoreVertical className="w-5 h-5 rotate-90" />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-gray-100">
+              <div className="text-xs font-semibold text-gray-900 mb-1">Создать</div>
+              {canCreate ? (
+                <>
+                  {isAtLimit ? (
+                    <div className="text-xs text-gray-500">
+                      Лимит на создание новых ярлыков исчерпан, удалите существующий.
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleAddTag()}
+                      className="w-full flex items-center gap-2 px-2 py-0.5 rounded-md bg-gray-100 hover:bg-gray-200 text-left"
+                    >
+                      <span className="text-xs text-gray-700 truncate flex-1">{query}</span>
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-500">
+                        <Plus className="w-4 h-4" /> 
+                      </span>
+                    </button>
+                  )}
+                </>
+              ) : (
+                <div className="text-xs text-gray-500">—</div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
 
           {/* Тултип по наведению на ярлык: через 2 секунды, чёрный фон, количество товаров */}
           {hoveredTagForTooltip && typeof document !== 'undefined' && ReactDOM.createPortal(
@@ -748,6 +799,62 @@ const TagDropdown: React.FC<{
                 {tagUsageCountByName[hoveredTagForTooltip] ?? 0}
               </span>{' '}
               товарах.
+            </div>,
+            document.body
+          )}
+
+          {/* Поповер настроек ярлыка */}
+          {settingsTag && typeof document !== 'undefined' && ReactDOM.createPortal(
+            <div
+              ref={settingsRef}
+              className="fixed bg-white border border-gray-200 rounded-xl shadow-xl z-[110] w-[320px] p-4"
+              style={{ top: kebabPosition.top, left: kebabPosition.left }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="text"
+                  value={settingsName}
+                  maxLength={MAX_TAG_LENGTH}
+                  onChange={(e) => setSettingsName(e.target.value.slice(0, MAX_TAG_LENGTH))}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      applySettings();
+                    }
+                  }}
+                  onBlur={() => applySettings()}
+                  className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <button type="button" onClick={() => setSettingsTag(null)} className="p-2 rounded-lg hover:bg-gray-100" aria-label="Закрыть">
+                  <X className="w-4 h-4 text-gray-500" />
+                </button>
+              </div>
+              <div className="text-xs font-semibold text-gray-900 mb-2">Цвета</div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {TAG_PASTEL_BG.map((bg, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => {
+                      setSettingsColorIndex(i);
+                      // сразу применяем цвет к текущему имени
+                      if (!settingsTag) return;
+                      setLocalColors(prev => ({ ...prev, [settingsTag]: i }));
+                    }}
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${bg} ${settingsColorIndex === i ? 'border-gray-800 ring-2 ring-offset-1 ring-purple-400' : 'border-gray-200'}`}
+                    title={`Цвет ${i + 1}`}
+                  >
+                    {settingsColorIndex === i && <Check className="w-3.5 h-3.5 text-gray-800" />}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDeleteTag(settingsTag)}
+                className="flex items-center gap-2 text-sm font-medium text-red-600 hover:text-red-700"
+              >
+                <Trash2 className="w-4 h-4" /> Удалить
+              </button>
             </div>,
             document.body
           )}
@@ -786,8 +893,6 @@ const TagDropdown: React.FC<{
             </div>,
             document.body
           )}
-        </>
-      )}
     </div>
   );
 };
@@ -2879,6 +2984,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               tagColorByTagName={tagColorByTagName}
                               tagUsageCountByName={tagUsageCountByName}
                               deletedTags={deletedTags}
+                              onRestoreTagGlobally={(tagName) => {
+                                setDeletedTags(prev => prev.filter(t => t !== tagName));
+                              }}
                               onTagError={(reason) => {
                                 if (reason === 'max-per-product') {
                                   setTagError('Нельзя добавить больше 15 ярлыков к одному товару.');
@@ -2898,7 +3006,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               onClose={() => setOpenTagProductId(null)}
                               onSave={(newTags, newColors) => {
                                 setProductTagsOverride(prev => ({ ...prev, [product.id]: newTags }));
-                                setTagColorByTagName(prev => ({ ...prev, ...newColors }));
+                                // Важно: при переименовании ярлыка старый ключ должен исчезнуть.
+                                // Поэтому не мерджим, а заменяем целиком карту цветов ярлыков.
+                                setTagColorByTagName(() => newColors);
                               }}
                             />
                           )}
