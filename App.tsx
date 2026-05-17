@@ -14,9 +14,12 @@ import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 import { CpcCampaignPage } from './components/CpcCampaignPage';
 import { MassEditPage } from './components/MassEditPage';
 import { SingleCampaignPage } from './components/SingleCampaignPage';
+import { AppHeader } from './components/AppHeader';
+import { useProfile } from './components/ProfileContext';
 import CampaignsPage from './pages/CampaignsPage';
 import StatsPage from './pages/StatsPage';
 import FinancePage from './pages/FinancePage';
+import BonusesPage from './pages/BonusesPage';
 import { isStatsExperimentEnabled } from './flags';
 
 // Плейсхолдеры изображений для пустого состояния страницы массового создания
@@ -185,70 +188,6 @@ const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
     </div>
   );
 };
-
-const Header = ({ onNavigateToList }: { onNavigateToList: () => void }) => (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="flex items-center justify-between px-6 h-14 bg-white">
-            {/* Логотип wb + продвижение с дропдауном */}
-            <div className="flex items-center gap-6">
-                <button type="button" className="flex items-center gap-1.5 text-black hover:opacity-90 transition-opacity">
-                    <span className="text-xl font-bold text-[#9a41fe]">wb</span>
-                    <span className="text-lg font-medium text-black">продвижение</span>
-                    <ChevronDown className="w-4 h-4 text-gray-500" />
-                </button>
-                {/* Основная навигация: Кампании (активная — светлый фон), Статистика, Финансы, Мои бонусы */}
-                <nav className="flex items-center gap-1 text-sm font-medium">
-                    <NavLink
-                      to="/campaigns"
-                      onClick={() => onNavigateToList()}
-                      className={({ isActive }) =>
-                        `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
-                      }
-                    >
-                      Кампании
-                    </NavLink>
-                    <NavLink
-                      to="/stats"
-                      className={({ isActive }) =>
-                        `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
-                      }
-                    >
-                      Статистика
-                    </NavLink>
-                    <NavLink
-                      to="/finance"
-                      className={({ isActive }) =>
-                        `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
-                      }
-                    >
-                      Финансы
-                    </NavLink>
-                    <NavLink
-                      to="/campaigns"
-                      className="px-4 py-2 rounded-lg text-black hover:bg-gray-50 transition-colors"
-                    >
-                      Мои бонусы
-                    </NavLink>
-                </nav>
-            </div>
-            {/* Справа: Помощь (бейдж 3), Новости (бейдж 2), компания с дропдауном */}
-            <div className="flex items-center gap-6 text-sm font-medium text-black">
-                <a href="#" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-                    Помощь
-                    <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">3</span>
-                </a>
-                <a href="#" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-                    Новости
-                    <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">2</span>
-                </a>
-                <button type="button" className="flex items-center gap-1.5 text-black hover:opacity-80 transition-opacity max-w-[220px] truncate">
-                    <span className="truncate">Общество с ограничен...</span>
-                    <ChevronDown className="w-4 h-4 shrink-0 text-gray-500" />
-                </button>
-            </div>
-        </div>
-    </header>
-);
 
 const Toast = ({ show, message, onClose }: { show: boolean, message: string, onClose: () => void }) => { useEffect(() => { if (show) { const timer = setTimeout(onClose, 3000); return () => clearTimeout(timer); } }, [show, onClose]); if (!show) return null; return ( <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-lg shadow-xl z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300"> <CheckCircle className="w-5 h-5 text-green-400" /> <span className="font-medium">{message}</span> </div> ); };
 
@@ -1875,6 +1814,12 @@ const DownloadNotification = ({ count }: { count: number }) => (
 
 
 export default function App() {
+  const {
+    profileId,
+    pendingReferralCreationNav,
+    consumeReferralCreationNav,
+    dismissReferralInviteCreationBanner,
+  } = useProfile();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [appState, setAppState] = useState<'creation' | 'list' | 'editing' | 'single-campaign'>('list');
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
@@ -1944,6 +1889,18 @@ export default function App() {
   const handleNavigateToList = () => setAppState('list');
   const handleNavigateToCreation = () => setAppState('creation');
   const handleNavigateToEditing = () => setAppState('editing');
+
+  useEffect(() => {
+    if (!pendingReferralCreationNav || profileId !== '2') return;
+    consumeReferralCreationNav();
+    setAppState('single-campaign');
+  }, [pendingReferralCreationNav, profileId, consumeReferralCreationNav]);
+
+  useEffect(() => {
+    if (appState !== 'single-campaign' && !pendingReferralCreationNav) {
+      dismissReferralInviteCreationBanner();
+    }
+  }, [appState, pendingReferralCreationNav, dismissReferralInviteCreationBanner]);
 
   const handleNavigationAttempt = (action: () => void) => {
     const hasUnsavedChanges = appState === 'creation' && templateGroups.length > 0;
@@ -2616,7 +2573,7 @@ export default function App() {
   if (appState === 'list') {
     return (
       <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 relative">
-        <Header onNavigateToList={() => handleNavigationAttempt(handleNavigateToList)} />
+        <AppHeader onNavigate={() => handleNavigationAttempt(handleNavigateToList)} />
         <Routes>
           <Route
             path="/campaigns"
@@ -2787,6 +2744,7 @@ export default function App() {
           />
           <Route path="/stats" element={<StatsPage />} />
           <Route path="/finance" element={<FinancePage />} />
+          <Route path="/bonuses" element={<BonusesPage />} />
           <Route path="/" element={<Navigate to="/campaigns" replace />} />
         </Routes>
       </div>
@@ -2831,7 +2789,7 @@ export default function App() {
   }
 
   return ( <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-40 relative">
-    <Header onNavigateToList={() => handleNavigationAttempt(handleNavigateToList)} />
+    <AppHeader onNavigate={() => handleNavigationAttempt(handleNavigateToList)} />
     <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
     <UndoToast campaign={lastDeleted?.campaign} onUndo={handleUndoDelete} />
     <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onSubmit={handleAddItemSubmit} onTemplateDownload={handleTemplateDownload} initialConfig={globalConfig} showToast={setShowToast} setToastMessage={setToastMessage} /> 

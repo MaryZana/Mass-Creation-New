@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import 'antd/dist/reset.css';
 import App from './App';
+import { ProfileProvider } from './components/ProfileContext';
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,7 +15,9 @@ const root = ReactDOM.createRoot(rootElement);
 root.render(
   <React.StrictMode>
     <BrowserRouter>
-      <App />
+      <ProfileProvider>
+        <App />
+      </ProfileProvider>
     </BrowserRouter>
   </React.StrictMode>
 );

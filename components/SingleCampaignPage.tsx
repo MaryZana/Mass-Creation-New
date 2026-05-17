@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Wallet, HelpCircle, X, ChevronDown, Plus, Bell } from './Icons';
 import { ProductMultiSelect } from './ProductMultiSelect';
+import { AppHeader } from './AppHeader';
+import { ReferralInviteCreationBanner } from './ReferralInviteCreationBanner';
+import { useProfile } from './ProfileContext';
 
 const UNIFIED_BALANCE = 105350;
 
@@ -17,55 +20,7 @@ interface SingleCampaignPageProps {
   onBack: () => void;
 }
 
-const Header = ({ onNavigateToList }: { onNavigateToList: () => void }) => (
-  <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-    <div className="flex items-center justify-between px-6 h-14 bg-white">
-      <div className="flex items-center gap-8">
-        <div className="flex items-center gap-2">
-          <span className="text-2xl font-bold text-gray-400">WB</span>
-          <span className="text-xl text-gray-300">|</span>
-          <span className="text-lg font-medium text-gray-800">Продвижение</span>
-        </div>
-        <button className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-purple-200 transition-colors">
-          Продвижение
-        </button>
-        <nav className="hidden md:flex items-center gap-6 text-sm text-gray-600 font-medium">
-          <a href="#" className="hover:text-purple-600">Медиа</a>
-          <a href="#" className="hover:text-purple-600">Наружная реклама</a>
-          <a href="#" className="hover:text-purple-600">Мой магазин</a>
-          <a href="#" className="hover:text-purple-600">Внешний трафик</a>
-        </nav>
-      </div>
-      <div className="flex items-center gap-6">
-        <div className="relative">
-          <Bell className="w-6 h-6 text-gray-600" />
-          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-white">99+</span>
-        </div>
-        <HelpCircle className="w-6 h-6 text-gray-600" />
-        <div className="flex items-center gap-2 text-gray-700 font-medium cursor-pointer">
-          <span>МЕГАПОЛИС...</span>
-          <ChevronDown className="w-4 h-4" />
-        </div>
-      </div>
-    </div>
-    <div className="px-6 h-12 flex items-center justify-between border-t border-gray-100 bg-white">
-      <div className="flex items-center gap-8 text-sm font-medium">
-        <a href="#" onClick={(e) => { e.preventDefault(); onNavigateToList(); }} className="text-purple-600 hover:text-purple-700 py-3 border-b-2 border-purple-600">Кампании</a>
-        <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Статистика</a>
-        <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Финансы</a>
-        <a href="#" className="flex items-center gap-1 text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">
-          Новости <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full">99+</span>
-        </a>
-        <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Помощь</a>
-        <a href="#" className="text-gray-500 hover:text-gray-900 py-3 border-b-2 border-transparent">Мои бонусы</a>
-      </div>
-      <div className="flex items-center gap-2 text-gray-800 font-semibold">
-        <Wallet className="w-5 h-5 text-gray-400" />
-        <span>{UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽</span>
-      </div>
-    </div>
-  </header>
-);
+// Шапка приложения вынесена в общий компонент `AppHeader`.
 
 const Toast = ({ show, message, onClose }: { show: boolean, message: string, onClose: () => void }) => {
   useEffect(() => {
@@ -106,9 +61,16 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
 );
 
 export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }) => {
+  const { profileId, showReferralInviteCreationBanner } = useProfile();
   const [campaignName, setCampaignName] = useState('Кампания от 26.12.2024');
   const [paymentModel, setPaymentModel] = useState<'CPM' | 'CPC'>('CPM');
   const [budget, setBudget] = useState('3000');
+
+  useEffect(() => {
+    if (profileId === '2' && showReferralInviteCreationBanner) {
+      setBudget('2000');
+    }
+  }, [profileId, showReferralInviteCreationBanner]);
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
   const [bidType, setBidType] = useState<'unified' | 'manual'>('unified');
   const [unifiedBid, setUnifiedBid] = useState('500');
@@ -171,9 +133,14 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
 
   return (
     <div className="min-h-screen bg-[#F7F7FA] font-sans text-gray-900" style={{ background: '#F7F7FA' }}>
-      <Header onNavigateToList={onBack} />
+      <AppHeader onNavigate={onBack} />
       
       <main className={`flex flex-col items-center px-6 py-8 gap-6 ${products.length > 0 ? 'pb-24' : ''}`}>
+        {profileId === '2' && showReferralInviteCreationBanner && (
+          <div className="w-full max-w-[1200px]">
+            <ReferralInviteCreationBanner />
+          </div>
+        )}
         {/* Управление кампанией */}
         <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col gap-6">

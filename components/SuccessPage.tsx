@@ -28,7 +28,14 @@ import {
     Check
 } from './Icons';
 import { CampaignRecord } from '../types';
-import { PRODUCTS_SOURCE, CATEGORIES, type CampaignSpec } from './SuccessPageTestData';
+import {
+  PRODUCTS_SOURCE,
+  PRODUCTS_SOURCE_PROFILE_2,
+  CATEGORIES,
+  type CampaignSpec,
+  type ProductSource,
+} from './SuccessPageTestData';
+import { useProfile, type ProfileId } from './ProfileContext';
 
 // --- Constants ---
 const TOTAL_PROMO_BONUS = 226660517;
@@ -36,6 +43,16 @@ const BONUS_PACKAGES = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
   { id: 'p2', amount: 17133120, maxPercent: 99, expiry: '27.03.26', displayBurn: '168.3k' },
 ];
+
+// --- Banner (Figma: "Баннер" node-id 53:22668) ---
+const PRODUCTS_PROMO_BANNER = {
+  backgroundImg: 'https://www.figma.com/api/mcp/asset/8cf71de5-9bd9-4cc6-bf8c-ff6d6f2e65d3',
+  imageYoutube: 'https://www.figma.com/api/mcp/asset/925a8051-c81f-408c-a642-1c0d2ebfa9ac',
+  imageMarketingFold: 'https://www.figma.com/api/mcp/asset/36924ccf-5961-4003-b15a-b0efa538fb04',
+  imageEllipse: 'https://www.figma.com/api/mcp/asset/94c99742-95a9-495f-a2ca-024371f3990f',
+  imageRenderBg: 'https://www.figma.com/api/mcp/asset/99b8bcfd-9a2f-42fc-ac9a-6b71b7802da1',
+  closeIcon: 'https://www.figma.com/api/mcp/asset/f64d6b12-fd4b-440c-a39d-1b5d48583f77',
+} as const;
 
 // --- Helpers ---
 const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
@@ -245,8 +262,8 @@ function normalizeTagName(tag: string): string {
   return tag.trim().slice(0, MAX_TAG_LENGTH);
 }
 
-/** Строит списки кампаний и дерево товаров из единого источника (PRODUCTS_SOURCE). Связь товар ↔ кампании консистентна. */
-function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; productTree: ProductRow[] } {
+/** Строит списки кампаний и дерево товаров из источника товаров. Связь товар ↔ кампании консистентна. */
+function buildCampaignsAndProductTree(sources: ProductSource[]): { campaigns: DisplayCampaign[]; productTree: ProductRow[] } {
   let campaignId = 1400000;
   const campaigns: DisplayCampaign[] = [];
   const productTree: ProductRow[] = [];
@@ -258,7 +275,7 @@ function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; product
     return [{ text: 'Нарушение +1', icon: <AlertTriangle className="w-3 h-3 text-red-600" />, type: 'error' as const }];
   };
 
-  for (const p of PRODUCTS_SOURCE) {
+  for (const p of sources) {
     const articleWb = p.articleWb ?? p.article;
     const articleSeller = p.articleSeller ?? String((Number(p.article) || 0) + 5000000);
     const productCampaigns: ProductCampaign[] = [];
@@ -365,7 +382,53 @@ function buildCampaignsAndProductTree(): { campaigns: DisplayCampaign[]; product
   return { campaigns, productTree };
 }
 
-const { campaigns: MOCK_CAMPAIGNS, productTree: MOCK_PRODUCTS_TREE } = buildCampaignsAndProductTree();
+const PROFILE_1_LIST = buildCampaignsAndProductTree(PRODUCTS_SOURCE);
+const PROFILE_2_LIST = buildCampaignsAndProductTree(PRODUCTS_SOURCE_PROFILE_2);
+
+export function getProfileListData(profileId: ProfileId) {
+  return profileId === '2' ? PROFILE_2_LIST : PROFILE_1_LIST;
+}
+
+const { campaigns: MOCK_CAMPAIGNS, productTree: MOCK_PRODUCTS_TREE } = PROFILE_1_LIST;
+
+// Предсобранная CPC-кампания (вставка в таблицу «Кампании»)
+const PREBUILT_CPC_CAMPAIGN_ID = 'prebuilt-cpc';
+const PREBUILT_CPC_CAMPAIGN_CAMPAIGN_ID = 999999;
+const PREBUILT_CPC_CAMPAIGN_BASE =
+  MOCK_CAMPAIGNS.find((c) => c.type === 'CPC') ?? MOCK_CAMPAIGNS[0];
+
+const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
+  ...(PREBUILT_CPC_CAMPAIGN_BASE as DisplayCampaign),
+  id: PREBUILT_CPC_CAMPAIGN_ID,
+  campaignId: PREBUILT_CPC_CAMPAIGN_CAMPAIGN_ID,
+  status: 'paused',
+  statusText: 'приостановлена',
+  // На скрине в этой строке рядом с бюджетом стоит подарок и сумма 5000 ₽
+  remainingBudget: 5000,
+  budget: 5000,
+  autoRefill: true,
+  autoRefillStatus: 'ok',
+  // В скрине по метрикам — нет данных
+  spend: null,
+  impressions: null,
+  ctr: null,
+  orders: null,
+  spendShare: null,
+  // Без бейджей/ошибок в этой вставной кампании
+  tags: [],
+  campaignTags: [],
+  // Чтоб в «Дневном лимите» не показывать прогресс
+  dailyLimit: null,
+  dailyLimitExhausted: false,
+  // Подменим заголовок под «предсобранную» логику
+  name: 'Футболка хлопок мягкая приятная / CPC-кампания за 0 ₽',
+};
+
+function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
+  const { campaigns } = getProfileListData(profileId);
+  if (profileId === '2') return campaigns;
+  return [PREBUILT_CPC_CAMPAIGN, ...campaigns];
+}
 
 /** Цвета точек для ярлыков (назначаются автоматически по индексу) */
 const TAG_DOT_COLORS = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-rose-500', 'bg-cyan-500'];
@@ -513,7 +576,7 @@ const TagDropdown: React.FC<{
     setSettingsTag(null);
     setTagToDelete(null);
   };
-  
+
   const applySettings = () => {
     if (!settingsTag) return;
     const oldName = settingsOriginalTag ?? settingsTag;
@@ -523,12 +586,12 @@ const TagDropdown: React.FC<{
     onRestoreTagGlobally?.(nextName);
 
     setLocalTags(prev => prev.map(t => (t === oldName ? nextName : t)));
-    setLocalColors(prev => {
-      const next = { ...prev };
+      setLocalColors(prev => {
+        const next = { ...prev };
       if (oldName !== nextName) delete next[oldName];
       next[nextName] = settingsColorIndex;
-      return next;
-    });
+        return next;
+      });
     setSettingsTag(nextName);
     setSettingsOriginalTag(nextName);
   };
@@ -622,7 +685,7 @@ const TagDropdown: React.FC<{
             placeholder="Создать или найти ярлык"
             className="w-full text-sm border-none focus:outline-none focus:ring-0 placeholder:text-gray-400"
           />
-        </div>
+      </div>
 
         {/* Выбранные ярлыки + счётчик */}
         <div className="mt-2 flex items-start justify-between gap-2">
@@ -637,12 +700,12 @@ const TagDropdown: React.FC<{
                 </span>
                 <button type="button" onClick={() => handleUnassignTag(tag)} className="ml-0.5 text-gray-500 hover:text-gray-700" aria-label="Убрать ярлык из товара">
                   <X className="w-3 h-3" />
-                </button>
+              </button>
               </span>
             ))}
           </div>
+          </div>
         </div>
-      </div>
 
       {/* Секции списка */}
       <div className="space-y-3">
@@ -656,45 +719,45 @@ const TagDropdown: React.FC<{
               <div className="text-sm text-gray-600 font-medium py-2">Ярлыков нет</div>
             ) : (
               <div className="space-y-1 max-h-64 overflow-y-auto">
-                {allTags.map((tag, idx) => (
+            {allTags.map((tag, idx) => (
                   <div key={tag + idx} className="group flex items-center justify-between gap-1.5 px-1.5 py-0.5 rounded-lg hover:bg-gray-100">
-                    <button
-                      type="button"
-                      onClick={() => {
+                <button
+                  type="button"
+                  onClick={() => {
                         if (localTags.includes(tag)) {
                           setLocalTags(prev => prev.filter(t => t !== tag));
                           return;
                         }
                         if (isAtLimit) return;
                         onRestoreTagGlobally?.(tag);
-                        setLocalTags(prev => [...prev, tag]);
-                      }}
-                      onMouseEnter={() => {
+                    setLocalTags(prev => [...prev, tag]);
+                  }}
+                  onMouseEnter={() => {
                         if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
                         hoverTimeoutRef.current = setTimeout(() => setHoveredTagForTooltip(tag), 2000);
-                      }}
-                      onMouseLeave={() => {
-                        if (hoverTimeoutRef.current) {
-                          clearTimeout(hoverTimeoutRef.current);
-                          hoverTimeoutRef.current = null;
-                        }
-                        setHoveredTagForTooltip(null);
-                      }}
+                  }}
+                  onMouseLeave={() => {
+                    if (hoverTimeoutRef.current) {
+                      clearTimeout(hoverTimeoutRef.current);
+                      hoverTimeoutRef.current = null;
+                    }
+                    setHoveredTagForTooltip(null);
+                  }}
                       className="flex items-center min-w-0 flex-1 text-left bg-transparent"
-                    >
+                >
                       <span className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-gray-100 group-hover:bg-gray-100">
-                        <span
+                      <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${TAG_DOT_COLORS[((settingsOriginalTag && tag === settingsOriginalTag) ? settingsColorIndex : (allTagsMeta.colorByTag[tag] ?? getColorIndex(tag))) % TAG_DOT_COLORS.length]}`}
                         />
                         <span className="truncate text-xs text-gray-700">
                           {(settingsOriginalTag && tag === settingsOriginalTag && settingsName.trim()) ? settingsName.trim() : tag}
                         </span>
                       </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                         setKebabPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right + 8) });
                         setSettingsTag(tag);
                         setSettingsOriginalTag(tag);
@@ -705,10 +768,10 @@ const TagDropdown: React.FC<{
                       aria-label="Настройки ярлыка"
                     >
                       <MoreVertical className="w-5 h-5 rotate-90" />
-                    </button>
-                  </div>
-                ))}
+                </button>
               </div>
+            ))}
+          </div>
             )}
           </>
         ) : (
@@ -742,8 +805,8 @@ const TagDropdown: React.FC<{
                         </span>
                       </span>
                     </button>
-                    <button
-                      type="button"
+              <button
+                type="button"
                       onClick={(e) => {
                         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                         setKebabPosition({ top: rect.bottom + 6, left: Math.max(8, rect.right + 8) });
@@ -756,7 +819,7 @@ const TagDropdown: React.FC<{
                       aria-label="Настройки ярлыка"
                     >
                       <MoreVertical className="w-5 h-5 rotate-90" />
-                    </button>
+              </button>
                   </div>
                 ))
               )}
@@ -771,16 +834,16 @@ const TagDropdown: React.FC<{
                       Лимит на создание новых ярлыков исчерпан, удалите существующий.
                     </div>
                   ) : (
-                    <button
-                      type="button"
+              <button
+                type="button"
                       onClick={() => handleAddTag()}
                       className="w-full flex items-center gap-2 px-2 py-0.5 rounded-md bg-gray-100 hover:bg-gray-200 text-left"
-                    >
+              >
                       <span className="text-xs text-gray-700 truncate flex-1">{query}</span>
                       <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                         <Plus className="w-4 h-4" /> 
                       </span>
-                    </button>
+              </button>
                   )}
                 </>
               ) : (
@@ -892,7 +955,7 @@ const TagDropdown: React.FC<{
               </div>
             </div>,
             document.body
-          )}
+      )}
     </div>
   );
 };
@@ -2210,7 +2273,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onOpenSingleCampaign,
     onRegisterUpdateFn,
 }) => {
-  const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(MOCK_CAMPAIGNS);
+  const { profileId } = useProfile();
+  const profileList = useMemo(() => getProfileListData(profileId), [profileId]);
+  const profileProductTree = profileList.productTree;
+  const profileCampaigns = profileList.campaigns;
+
+  const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(() => buildAllCampaignsForProfile('1'));
 
   // Handle campaign data updates from edit page
   const handleUpdateCampaignData = useCallback((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => {
@@ -2271,6 +2339,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [hasCampaignsScrollShadow, setHasCampaignsScrollShadow] = useState(false);
   const [hasProductsScrollShadow, setHasProductsScrollShadow] = useState(false);
 
+  const [isProductsPromoModalOpen, setIsProductsPromoModalOpen] = useState(false);
+
   // Вкладки списка: Кампании | Товары
   const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
   // Поиск: по названию товара, названию кампании, артикулу товара, ID кампании
@@ -2288,6 +2358,21 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   // Включение/выключение кампании на вкладке «Товары» (id кампании в дереве → 'active' | 'paused')
   const [productCampaignStatusOverride, setProductCampaignStatusOverride] = useState<Record<string, 'active' | 'paused'>>({});
 
+  const isFirstProfileMount = useRef(true);
+  useEffect(() => {
+    if (isFirstProfileMount.current) {
+      isFirstProfileMount.current = false;
+      return;
+    }
+    setAllCampaigns(buildAllCampaignsForProfile(profileId));
+    setCurrentPage(1);
+    onSelectionChange([]);
+    setExpandedProductIds(new Set());
+    setProductTagsOverride({});
+    setProductCampaignStatusOverride({});
+    setSearchQuery('');
+  }, [profileId, onSelectionChange]);
+
   const getProductTags = useCallback((product: { id: string; tags: string[] }) => {
     const base = productTagsOverride[product.id] ?? product.tags;
     return base
@@ -2295,9 +2380,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       .filter(t => t && !deletedTags.includes(t));
   }, [productTagsOverride, deletedTags]);
 
-  const productInitialTags = useMemo(() =>
-    Object.fromEntries(MOCK_PRODUCTS_TREE.map(p => [p.id, p.tags])),
-    []);
+  const productInitialTags = useMemo(
+    () => Object.fromEntries(profileProductTree.map((p) => [p.id, p.tags])),
+    [profileProductTree],
+  );
 
   /** Ярлыки кампании: с учётом переопределений; если кампания на несколько товаров (productIds) — объединение ярлыков */
   const getCampaignProductTags = useCallback((c: DisplayCampaign): string[] => {
@@ -2321,7 +2407,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   // Сколько раз каждый ярлык используется в кампаниях (с учётом переопределений ярлыков по товарам)
   const tagUsageCountByName = useMemo(() => {
     const usage: Record<string, number> = {};
-    for (const camp of MOCK_CAMPAIGNS) {
+    for (const camp of profileCampaigns) {
       const tags = getCampaignProductTags(camp);
       for (const t of tags) {
         if (!t) continue;
@@ -2329,7 +2415,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       }
     }
     return usage;
-  }, [getCampaignProductTags]);
+  }, [profileCampaigns, getCampaignProductTags]);
 
   /** Ярлыки, уже добавленные на страницу (для фильтра «По ярлыкам») */
   const availableTags = useMemo(() => {
@@ -2473,12 +2559,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter((c) => (c.name && c.name.toLowerCase().includes(q)) || String(c.campaignId).toLowerCase().includes(q));
     }
 
+    // Всегда добавляем предсобранную кампанию первой (если она есть в текущем массиве)
+    const prebuilt = allCampaigns.find((c) => c.id === PREBUILT_CPC_CAMPAIGN_ID);
+    if (prebuilt) {
+      filtered = [prebuilt, ...filtered.filter((c) => c.id !== PREBUILT_CPC_CAMPAIGN_ID)];
+    }
+
     return filtered;
   }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory, filterPromoTagsOnly, failedFilterIds, productTagsOverride, searchQuery]);
 
   /** Товары, отфильтрованные по тем же правилам, что и кампании (на вкладке «Товары» показываем товар, если есть хотя бы одна подходящая кампания) */
   const filteredProducts = useMemo(() => {
-    return MOCK_PRODUCTS_TREE.filter((product) => {
+    return profileProductTree.filter((product) => {
       if (product.campaigns.length === 0) {
         if (filterStatus === 'all-except-archived' && !filterByCategory && filterTags.length === 0 && filterAutorefill === 'all' && filterPayment === 'all') return true;
         return false;
@@ -2502,7 +2594,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       if (filterPromoTagsOnly && productTagsResolved.length === 0) return false;
       return true;
     });
-  }, [filterStatus, filterAutorefill, filterPayment, filterTags, filterByCategory, filterPromoTagsOnly, productCampaignStatusOverride, getProductTags]);
+  }, [
+    profileProductTree,
+    filterStatus,
+    filterAutorefill,
+    filterPayment,
+    filterTags,
+    filterByCategory,
+    filterPromoTagsOnly,
+    productCampaignStatusOverride,
+    getProductTags,
+  ]);
 
   // Поиск по товарам: по названию товара, артикулу, артикулу WB, артикулу продавца, названию кампании, ID кампании
   const filteredProductsBySearch = useMemo(() => {
@@ -2727,6 +2829,140 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       {listTab === 'campaigns' && (
       <div className="w-full max-w-[1600px]">
           <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          {isProductsPromoModalOpen && (
+            <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">
+              <div className="relative bg-white w-[740px] h-[406px] max-w-[92vw] rounded-2xl shadow-2xl overflow-hidden">
+                <button
+                  type="button"
+                  aria-label="Закрыть"
+                  className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                  onClick={() => setIsProductsPromoModalOpen(false)}
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="px-8 pt-10 pb-6 h-full flex flex-col">
+                  <div className="text-[22px] font-bold text-gray-900">Запустите CPC кампанию</div>
+
+                  <div className="mt-5 bg-gray-50 rounded-xl p-5 flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-full bg-purple-600/10 flex items-center justify-center shrink-0">
+                      {/* Упрощенная иконка подарка */}
+                      <svg
+                        className="w-5 h-5 text-purple-700"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M2 7h20v5H2V7Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M12 7v15"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M12 7H9.2a2.3 2.3 0 1 1 0-4.6C10.9 2.4 12 4.2 12 7Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M12 7h2.8a2.3 2.3 0 1 0 0-4.6C13.1 2.4 12 4.2 12 7Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                    <div className="flex flex-col">
+                      <div className="text-sm font-semibold text-gray-900 leading-5">
+                        Бюджет кампании пополним на 5 000 ₽ промобонусами
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">Деньги с единого счета не спишутся</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex-1 overflow-hidden">
+                    <div className="grid grid-cols-[1.6fr_0.8fr_0.8fr] gap-x-4 items-center text-xs text-gray-500">
+                      <div className="font-medium text-gray-900">Товары, которые будут продаваться</div>
+                      <div className="flex items-center gap-2 justify-end">
+                        Конкурентная ставка
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 text-[10px] text-gray-500">
+                          ?
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 justify-end">
+                        Ставка за 1 клик
+                        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 text-[10px] text-gray-500">
+                          ?
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-[1.6fr_0.8fr_0.8fr] gap-x-4 items-center">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <img
+                          src={profileProductTree[1]?.image ?? profileProductTree[0]?.image}
+                          alt=""
+                          className="w-14 h-14 rounded-md object-cover shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="text-xs font-medium text-gray-700 truncate">
+                            ТОРТОР • 160747184
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">Футболка хлопок мягкая приятная</div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 justify-end">
+                        <div className="w-7 h-7 rounded-full bg-white border border-green-200 flex items-center justify-center">
+                          <Check className="w-4 h-4 text-green-500" />
+                        </div>
+                        <input
+                          readOnly
+                          value="10"
+                          className="w-[56px] text-center text-xs border border-gray-200 rounded-lg px-2 py-2 outline-none bg-white"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-2 justify-end">
+                        <div className="w-[44px] text-right text-xs text-gray-900">10 ₽</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-3 mt-2">
+                    <button
+                      type="button"
+                      className="px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+                      onClick={() => setIsProductsPromoModalOpen(false)}
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      className="px-6 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-sm font-semibold text-white"
+                      onClick={() => setIsProductsPromoModalOpen(false)}
+                    >
+                      Запустить за промобонусы
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           <div
             className="relative overflow-x-auto"
             onScroll={(e) => {
@@ -2862,11 +3098,21 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       onClick={c.type === 'CPC' ? () => { setSelectedCampaignForRefill(c); setIsDailyLimitModalOpen(true); } : undefined}
                                   />
                               </td>
-                              <td className="p-4 font-semibold text-gray-900">{formatCurrency(c.spend)}</td>
-                              <td className="p-4 font-semibold text-gray-900">{formatNumber(c.impressions)}</td>
-                              <td className="p-4 font-semibold text-gray-900">{formatPercentage(c.ctr)}</td>
-                              <td className="p-4 font-semibold text-gray-900">{formatNumber(c.orders)}</td>
-                              <td className="p-4 font-semibold text-gray-900">{formatPercentage(c.spendShare)}</td>
+                              <td className="p-4 font-semibold text-gray-900">
+                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatCurrency(c.spend)}
+                              </td>
+                              <td className="p-4 font-semibold text-gray-900">
+                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatNumber(c.impressions)}
+                              </td>
+                              <td className="p-4 font-semibold text-gray-900">
+                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatPercentage(c.ctr)}
+                              </td>
+                              <td className="p-4 font-semibold text-gray-900">
+                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatNumber(c.orders)}
+                              </td>
+                              <td className="p-4 font-semibold text-gray-900">
+                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatPercentage(c.spendShare)}
+                              </td>
                           </tr>
                       ))}
                   </tbody>
@@ -2885,6 +3131,144 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       {listTab === 'products' && (
         <>
           <div className="w-full max-w-[1600px] bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+            {isProductsPromoModalOpen && (
+              <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">
+                <div className="relative bg-white w-[740px] h-[406px] max-w-[92vw] rounded-2xl shadow-2xl overflow-hidden">
+                  <button
+                    type="button"
+                    aria-label="Закрыть"
+                    className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                    onClick={() => setIsProductsPromoModalOpen(false)}
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+
+                  <div className="px-8 pt-10 pb-6 h-full flex flex-col">
+                    <div className="text-[22px] font-bold text-gray-900">Запустите CPC кампанию</div>
+
+                    {/* Инфо-карта с подарком */}
+                    <div className="mt-5 bg-gray-50 rounded-xl p-5 flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-full bg-purple-600/10 flex items-center justify-center shrink-0">
+                      {/* Упрощенная иконка подарка */}
+                      <svg
+                        className="w-5 h-5 text-purple-700"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                        aria-hidden="true"
+                      >
+                        <path
+                          d="M20 12v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-8"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M2 7h20v5H2V7Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M12 7v15"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M12 7H9.2a2.3 2.3 0 1 1 0-4.6C10.9 2.4 12 4.2 12 7Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                        <path
+                          d="M12 7h2.8a2.3 2.3 0 1 0 0-4.6C13.1 2.4 12 4.2 12 7Z"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      </div>
+                      <div className="flex flex-col">
+                        <div className="text-sm font-semibold text-gray-900 leading-5">
+                          Бюджет кампании пополним на 5 000 ₽ промобонусами
+                        </div>
+                        <div className="text-xs text-gray-500 mt-1">Деньги с единого счета не спишутся</div>
+                      </div>
+                    </div>
+
+                    {/* Таблица-превью товаров */}
+                    <div className="mt-6 flex-1 overflow-hidden">
+                      <div className="grid grid-cols-[1.6fr_0.8fr_0.8fr] gap-x-4 items-center text-xs text-gray-500">
+                        <div className="font-medium text-gray-900">Товары, которые будут продаваться</div>
+                        <div className="flex items-center gap-2 justify-end">
+                          Конкурентная ставка
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 text-[10px] text-gray-500">
+                            ?
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 justify-end">
+                          Ставка за 1 клик
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-gray-300 text-[10px] text-gray-500">
+                            ?
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-[1.6fr_0.8fr_0.8fr] gap-x-4 items-center">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <img
+                            src={profileProductTree[1]?.image ?? profileProductTree[0]?.image}
+                            alt=""
+                            className="w-14 h-14 rounded-md object-cover shrink-0"
+                          />
+                          <div className="min-w-0">
+                          <div className="text-xs font-medium text-gray-700 truncate">
+                            ТОРТОР • 160747184
+                          </div>
+                          <div className="text-xs text-gray-500 truncate">Футболка хлопок мягкая приятная</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 justify-end">
+                        <div className="w-7 h-7 rounded-full bg-white border border-green-200 flex items-center justify-center">
+                          <Check className="w-4 h-4 text-green-500" />
+                          </div>
+                          <input
+                            readOnly
+                            value="10"
+                          className="w-[56px] text-center text-xs border border-gray-200 rounded-lg px-2 py-2 outline-none bg-white"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 justify-end">
+                          <div className="w-[44px] text-right text-xs text-gray-900">10 ₽</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div className="flex items-center justify-end gap-3 mt-2">
+                      <button
+                        type="button"
+                        className="px-6 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 text-sm font-medium text-gray-700"
+                        onClick={() => setIsProductsPromoModalOpen(false)}
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        type="button"
+                        className="px-6 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-sm font-semibold text-white"
+                        onClick={() => setIsProductsPromoModalOpen(false)}
+                      >
+                        Запустить за промобонусы
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div
               className="relative overflow-x-auto"
               onScroll={(e) => {
@@ -2958,24 +3342,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             className="flex items-center gap-1.5 mt-1.5 flex-wrap"
                             ref={openTagProductId === product.id && getProductTags(product).length > 0 ? tagDropdownAnchorRef : undefined}
                           >
-                            {getProductTags(product).length > 0 ? (
-                              <ProductTagsDisplay
-                                tags={getProductTags(product)}
-                                tagColorByTagName={tagColorByTagName}
-                                onClick={() => setOpenTagProductId(openTagProductId === product.id ? null : product.id)}
-                              />
-                            ) : (
-                              <button
-                                ref={openTagProductId === product.id ? tagDropdownAnchorRef : undefined}
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); setOpenTagProductId(openTagProductId === product.id ? null : product.id); }}
-                                className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
-                                title="Добавить ярлыки"
-                                aria-label="Ярлыки"
-                              >
-                                <Plus className="w-2.5 h-2.5" />
-                              </button>
-                            )}
+                                {getProductTags(product).length > 0 ? (
+                                  <ProductTagsDisplay
+                                    tags={getProductTags(product)}
+                                    tagColorByTagName={tagColorByTagName}
+                                    onClick={() => setOpenTagProductId(openTagProductId === product.id ? null : product.id)}
+                                  />
+                                ) : (
+                                  <button
+                                    ref={openTagProductId === product.id ? tagDropdownAnchorRef : undefined}
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); setOpenTagProductId(openTagProductId === product.id ? null : product.id); }}
+                                    className="inline-flex items-center justify-center px-2 py-0.5 rounded-md bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-700 transition-colors"
+                                    title="Добавить ярлыки"
+                                    aria-label="Ярлыки"
+                                  >
+                                    <Plus className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
                           </div>
                           {openTagProductId === product.id && (
                             <TagDropdown
@@ -3034,30 +3418,30 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         return (
-                          <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                        <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
                             {/* Товар / кампания */}
                             <td className="sticky left-0 z-10 p-4 pl-14 bg-gray-50 w-[444px] min-w-[444px]">
-                              <div className="flex items-center gap-3">
-                                <ToggleSwitch
-                                  checked={effectiveStatus === 'active'}
-                                  onChange={(checked) => setProductCampaignStatusOverride(prev => ({ ...prev, [camp.id]: checked ? 'active' : 'paused' }))}
-                                  disabled={camp.status === 'draft' || camp.status === 'error'}
-                                />
-                                <img src={product.image} alt="" className="w-10 h-10 rounded-md shrink-0 object-cover" />
+                            <div className="flex items-center gap-3">
+                              <ToggleSwitch
+                                checked={effectiveStatus === 'active'}
+                                onChange={(checked) => setProductCampaignStatusOverride(prev => ({ ...prev, [camp.id]: checked ? 'active' : 'paused' }))}
+                                disabled={camp.status === 'draft' || camp.status === 'error'}
+                              />
+                              <img src={product.image} alt="" className="w-10 h-10 rounded-md shrink-0 object-cover" />
                                 <div className="min-w-0 flex-1 max-w-[280px]">
-                                  <p className="font-medium text-gray-800 truncate" title={camp.name}>{camp.name}</p>
-                                  <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
-                                    <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
-                                    <span>ID {camp.campaignId}</span>
-                                  </div>
+                                <p className="font-medium text-gray-800 truncate" title={camp.name}>{camp.name}</p>
+                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
+                                  <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
+                                  <span>ID {camp.campaignId}</span>
                                 </div>
                               </div>
-                            </td>
+                            </div>
+                          </td>
                             {/* Тип кампании */}
                             <td className="p-4 w-[160px]">
-                              <div className="font-semibold text-gray-900">{camp.type}</div>
-                              <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
-                                {camp.typeDetails && <span>{camp.typeDetails}</span>}
+                            <div className="font-semibold text-gray-900">{camp.type}</div>
+                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
+                              {camp.typeDetails && <span>{camp.typeDetails}</span>}
                                 <span className="p-1 bg-gray-100 rounded">
                                   {camp.type === 'CPC' ? (
                                     <Search className="w-4 h-4 text-gray-400" />
@@ -3065,26 +3449,26 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                     <ThumbsUp className="w-4 h-4 text-gray-400" />
                                   )}
                                 </span>
-                              </div>
-                            </td>
+                            </div>
+                          </td>
                             {/* Остаток бюджета */}
                             <td className="p-4 w-[180px]">
-                              <div className="font-semibold text-gray-900">{formatForDisplay(camp.remainingBudget)} ₽</div>
-                              {camp.autoRefill && (
-                                <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                                  <CheckCircle className="w-3.5 h-3.5" /> Автопополнение
-                                </div>
-                              )}
-                            </td>
+                            <div className="font-semibold text-gray-900">{formatForDisplay(camp.remainingBudget)} ₽</div>
+                            {camp.autoRefill && (
+                              <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
+                                <CheckCircle className="w-3.5 h-3.5" /> Автопополнение
+                              </div>
+                            )}
+                          </td>
                             {/* Дневной лимит */}
                             <td className="p-4 w-[180px]" onClick={(e) => e.stopPropagation()}>
-                              <DailyLimitCell
-                                dailyLimit={camp.dailyLimit ?? null}
-                                dailyLimitExhausted={camp.dailyLimitExhausted}
-                                isCpc={camp.type === 'CPC'}
-                                onClick={camp.type === 'CPC' ? () => { setSelectedCampaignForRefill(camp); setIsDailyLimitModalOpen(true); } : undefined}
-                              />
-                            </td>
+                            <DailyLimitCell
+                              dailyLimit={camp.dailyLimit ?? null}
+                              dailyLimitExhausted={camp.dailyLimitExhausted}
+                              isCpc={camp.type === 'CPC'}
+                              onClick={camp.type === 'CPC' ? () => { setSelectedCampaignForRefill(camp); setIsDailyLimitModalOpen(true); } : undefined}
+                            />
+                          </td>
                             {/* Пустая колонка "Ярлыки" для строк кампаний */}
                             <td className="p-4 w-[220px]" />
                             {/* Затраты и метрики */}
@@ -3093,7 +3477,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             <td className="p-4 font-semibold text-gray-900 w-[100px]">{camp.ctr}%</td>
                             <td className="p-4 font-semibold text-gray-900 w-[120px]">{formatForDisplay(camp.orders)}</td>
                             <td className="p-4 font-semibold text-gray-900 w-[140px]">{camp.spendShare}%</td>
-                          </tr>
+                        </tr>
                         );
                       })}
                     </React.Fragment>
