@@ -5,6 +5,43 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Mass Ad Campaign Manager</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        safelist: [
+          'sm:grid-cols-2',
+          'sm:grid-cols-3',
+          'xl:grid-cols-4',
+          'sm:w-auto',
+          'sm:self-start',
+          'gap-px',
+          'h-full',
+          'min-h-0',
+          'flex-1',
+          'shrink-0',
+          'leading-none',
+          'leading-tight',
+          'leading-snug',
+          'tracking-tight',
+          'tabular-nums',
+          'line-clamp-2',
+          'text-emerald-600',
+          'text-emerald-700',
+          'text-amber-600',
+          'bg-emerald-50',
+          'border-emerald-100',
+          'bg-violet-50/50',
+          'border-violet-100',
+          'bg-[#9a41fe]',
+          'hover:bg-[#8840e5]',
+          'shadow-[#9a41fe]/25',
+          'max-w-[480px]',
+          'z-[110]',
+          'z-[120]',
+          'ring-1',
+          'ring-black/[0.03]',
+        ],
+      };
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
       html, body {
@@ -114,6 +151,85 @@
       }
       .hide-arrows {
         -moz-appearance: textfield;
+      }
+
+      /* Bonus repeat block: CDN may miss classes from bundled JS on Vercel */
+      .campaign-repeat-performance__grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        gap: 1rem;
+        padding: 1rem;
+        align-items: stretch;
+      }
+      @media (min-width: 640px) {
+        .campaign-repeat-performance__grid--cols-3 {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+      }
+      .campaign-repeat-performance__success-row {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem 1.25rem 1.25rem;
+      }
+      .campaign-repeat-performance__success-cta {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      @media (min-width: 768px) {
+        .campaign-repeat-performance__success-row {
+          flex-direction: row;
+          align-items: stretch;
+          gap: 1rem;
+        }
+        .campaign-repeat-performance__success-cta {
+          flex: 1 1 30%;
+          max-width: 30%;
+          min-width: 0;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+          gap: 12px;
+          padding: 0.25rem 0.5rem 0.25rem 0;
+        }
+        .campaign-repeat-performance__success-metrics {
+          flex: 1 1 70%;
+          min-width: 0;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 1rem;
+          align-items: stretch;
+        }
+      }
+      .campaign-repeat-performance__card {
+        display: flex;
+        height: 100%;
+        min-height: 100%;
+        flex-direction: column;
+        border: 1px solid #e5e7eb;
+        border-radius: 1rem;
+        background: #fff;
+        padding: 0.75rem 1rem;
+      }
+      .campaign-repeat-performance__card-body {
+        display: flex;
+        min-height: 0;
+        flex: 1 1 auto;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .ranking-factors-panel {
+        animation: ranking-panel-slide-in 0.3s ease-out;
+      }
+      @keyframes ranking-panel-slide-in {
+        from {
+          transform: translateX(100%);
+        }
+        to {
+          transform: translateX(0);
+        }
       }
     </style>
   <script type="importmap">
