@@ -1937,7 +1937,6 @@ function ReadyToRepeatWidget({
                 </div>
                 <div className="hidden min-w-[140px] shrink-0 sm:block">
                   <p className="text-sm text-gray-900">
-                    Принесла{' '}
                     <span className="font-semibold text-emerald-600">+{item.orders}</span> заказов
                   </p>
                   <p className="mt-0.5 text-xs text-[#767386]">За {item.days} дней</p>
