@@ -20,7 +20,6 @@ import CampaignsPage from './pages/CampaignsPage';
 import StatsPage from './pages/StatsPage';
 import FinancePage from './pages/FinancePage';
 import BonusesPage from './pages/BonusesPage';
-import { isStatsExperimentEnabled } from './flags';
 
 // Плейсхолдеры изображений для пустого состояния страницы массового создания
 const EMPTY_STATE_IMG_1 = 'https://www.figma.com/api/mcp/asset/82a3fb19-ac63-4dd6-9093-3c176a7b5469';
@@ -1819,6 +1818,8 @@ export default function App() {
     pendingReferralCreationNav,
     consumeReferralCreationNav,
     dismissReferralInviteCreationBanner,
+    pendingSingleCampaignNav,
+    consumeSingleCampaignNav,
   } = useProfile();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [appState, setAppState] = useState<'creation' | 'list' | 'editing' | 'single-campaign'>('list');
@@ -1897,10 +1898,16 @@ export default function App() {
   }, [pendingReferralCreationNav, profileId, consumeReferralCreationNav]);
 
   useEffect(() => {
-    if (appState !== 'single-campaign' && !pendingReferralCreationNav) {
+    if (!pendingSingleCampaignNav) return;
+    consumeSingleCampaignNav();
+    setAppState('single-campaign');
+  }, [pendingSingleCampaignNav, consumeSingleCampaignNav]);
+
+  useEffect(() => {
+    if (appState !== 'single-campaign' && !pendingReferralCreationNav && !pendingSingleCampaignNav) {
       dismissReferralInviteCreationBanner();
     }
-  }, [appState, pendingReferralCreationNav, dismissReferralInviteCreationBanner]);
+  }, [appState, pendingReferralCreationNav, pendingSingleCampaignNav, dismissReferralInviteCreationBanner]);
 
   const handleNavigationAttempt = (action: () => void) => {
     const hasUnsavedChanges = appState === 'creation' && templateGroups.length > 0;
@@ -2572,14 +2579,14 @@ export default function App() {
 
   if (appState === 'list') {
     return (
-      <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 relative">
+      <div className="min-h-screen bg-[#EEF1F5] font-sans text-gray-900 relative">
         <AppHeader onNavigate={() => handleNavigationAttempt(handleNavigateToList)} />
         <Routes>
           <Route
             path="/campaigns"
             element={
               <CampaignsPage>
-                <main className="max-w-[1600px] mx-auto px-6 py-8">
+                <main className="mx-auto min-h-[calc(100vh-3.5rem)] max-w-[1600px] bg-[#EEF1F5] px-7 py-10">
                   <SuccessPage
                     isLaunching={isLaunching}
                     launchTotal={totalAllValidCount}

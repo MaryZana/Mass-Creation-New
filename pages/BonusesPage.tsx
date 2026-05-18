@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom';
 import { ArrowUp, Calendar, ChevronDown, ChevronRight, Check } from '../components/Icons';
 import { useProfile } from '../components/ProfileContext';
-
 const REFERRAL_PROMO_BASE = 'https://seller.wildberries.ru/promotion/referral';
 const REFERRAL_CODE_PREFIX = '038';
 
@@ -14,7 +13,7 @@ type TrafficSource = {
 };
 
 const DEFAULT_TRAFFIC_SOURCES: TrafficSource[] = [
-  { id: 'src-direct', label: 'Любой источник', slug: 'direct', code: '038UYTK' },
+  { id: 'src-direct', label: 'Основной', slug: 'direct', code: '038UYTK' },
   { id: 'src-youtube', label: 'YouTube', slug: 'youtube', code: '038YT01' },
   { id: 'src-telegram', label: 'Telegram', slug: 'telegram', code: '038TG01' },
   { id: 'src-vk', label: 'VK', slug: 'vk', code: '038VK01' },
@@ -23,7 +22,7 @@ const DEFAULT_TRAFFIC_SOURCES: TrafficSource[] = [
 const DEFAULT_TRAFFIC_SOURCE_IDS = new Set(DEFAULT_TRAFFIC_SOURCES.map((s) => s.id));
 
 function withCanonicalTrafficLabels(list: TrafficSource[]): TrafficSource[] {
-  return list.map((s) => (s.id === 'src-direct' ? { ...s, label: 'Любой источник' } : s));
+  return list.map((s) => (s.id === 'src-direct' ? { ...s, label: 'Основной' } : s));
 }
 
 function isCustomTrafficSource(source: TrafficSource): boolean {
@@ -87,12 +86,66 @@ function parseBonusesTab(value: string | null): TabId {
   return 'tasks';
 }
 
-const FAQ_ITEMS = [
-  'Что нужно делать вам?',
-  'Что нужно делать селлеру, которого вы пригласили',
-  'Что произойдет, если я не потрачу бонусы в течение 30 календарных дней?',
-  'Могу ли я вывести бонусы в денежном эквиваленте?',
+const REFERRAL_FAQ_ITEMS = [
+  {
+    question: 'Я приглашаю',
+    answer:
+      'Делитесь реферальной ссылкой или кодом. Когда приглашённый селлер запустит кампанию и потратит бюджет, вы получите бонусы на счёт.',
+  },
+  {
+    question: 'Меня приглашают',
+    answer:
+      'Перейдите по приглашению, введите код в задании, пополните и запустите кампанию на 2 000 ₽. После траты всего бюджета начислим 3 000 ₽ промобонусов.',
+  },
 ] as const;
+
+function ReferralHowItWorksSection() {
+  const [faqOpen, setFaqOpen] = useState<number | null>(null);
+
+  return (
+    <section
+      id="referral-faq"
+      className="scroll-mt-6 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8"
+    >
+      <h2 className="mb-4 text-xl font-bold text-gray-900">Как это работает?</h2>
+      <ul className="divide-y divide-gray-100 overflow-hidden rounded-xl border border-gray-100 bg-gray-50/50">
+        {REFERRAL_FAQ_ITEMS.map((item, i) => {
+          const open = faqOpen === i;
+          return (
+            <li key={item.question}>
+              <button
+                type="button"
+                onClick={() => setFaqOpen(open ? null : i)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50/80"
+              >
+                <span className="pr-2">{item.question}</span>
+                <ChevronDown
+                  className={`h-5 w-5 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+                  aria-hidden
+                />
+              </button>
+              {open && (
+                <div className="border-t border-gray-100 bg-white px-4 py-3 text-sm leading-relaxed text-gray-600">
+                  {item.answer}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-gray-600">Остались вопросы?</p>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center self-start rounded-xl bg-gray-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-900 sm:self-auto"
+        >
+          Написать
+        </button>
+      </div>
+    </section>
+  );
+}
+
 
 type RowConfig = {
   tone: 'done' | 'progress';
@@ -149,7 +202,7 @@ type InviteeDateSort = 'asc' | 'desc';
 
 const INVITEE_FILTER_TABS: { id: InviteeListFilter; label: string }[] = [
   { id: 'all', label: 'Все' },
-  { id: 'spending', label: 'Тратят' },
+  { id: 'spending', label: 'В процессе' },
   { id: 'completed', label: 'Выполнили' },
 ];
 
@@ -295,93 +348,104 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function ReferralBonusStepMarker({ step }: { step: 1 | 2 | 3 }) {
-  return (
-    <span
-      className="absolute left-0 top-0 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#9a41fe] text-[11px] font-bold leading-none text-white ring-2 ring-white"
-      aria-hidden
-    >
-      {step}
-    </span>
-  );
-}
 
-function ReferralLinkBonusBlock() {
-  const { profileId, beginReferralCreationFlow } = useProfile();
+function ReferralSellerPromotionCard() {
+  const { beginReferralCreationFlow } = useProfile();
   const [referralInput, setReferralInput] = useState('');
-  const [applied, setApplied] = useState(false);
+  const [codeApplied, setCodeApplied] = useState(false);
 
-  const handleApply = () => {
-    const value = referralInput.trim();
-    if (!value) return;
-    if (profileId === '2') {
-      beginReferralCreationFlow();
-      return;
-    }
-    setApplied(true);
+  const handleApplyCode = () => {
+    if (!referralInput.trim()) return;
+    setCodeApplied(true);
+    beginReferralCreationFlow();
   };
 
+  const steps = [
+    {
+      key: 'code',
+      title: 'Примените реферальную ссылку или код',
+      done: codeApplied,
+    },
+    {
+      key: 'launch',
+      title: 'Запустите кампанию с бюджетом 2 000 ₽',
+      done: false,
+    },
+    {
+      key: 'bonus',
+      title: 'Получите 3 000 ₽ после траты бюджета кампании',
+      done: false,
+    },
+  ] as const;
+
   return (
-    <section
-      className="rounded-xl border border-gray-100 bg-white p-3 sm:p-4 shadow-sm"
-      aria-labelledby="referral-bonus-steps-title"
-    >
-      <h2 id="referral-bonus-steps-title" className="text-base font-bold leading-snug text-gray-900 sm:text-lg">
-        Используйте реферальную ссылку и получите 3&nbsp;000&nbsp;₽ бонусами
-      </h2>
-
-      <ol className="relative mt-3 space-y-4">
-        <div
-          className="pointer-events-none absolute left-[11px] top-3 bottom-3 w-px bg-violet-200"
-          aria-hidden
-        />
-
-        <li className="relative pl-8">
-          <ReferralBonusStepMarker step={1} />
-          <p className="text-xs text-gray-600">Ссылка или код приглашения</p>
-          <div className="mt-1.5 flex overflow-hidden rounded-lg border border-gray-200 bg-white focus-within:border-violet-300 focus-within:ring-1 focus-within:ring-violet-100">
-            <input
-              type="text"
-              value={referralInput}
-              onChange={(e) => {
-                setReferralInput(e.target.value);
-                setApplied(false);
-              }}
-              onKeyDown={(e) => e.key === 'Enter' && handleApply()}
-              placeholder="Вставьте ссылку или код"
-              className="min-w-0 flex-1 border-0 bg-transparent px-2.5 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0"
-              aria-label="Реферальная ссылка или код"
-            />
-            <button
-              type="button"
-              onClick={handleApply}
-              disabled={!referralInput.trim()}
-              className="shrink-0 m-1 rounded-md bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-900 transition-colors hover:bg-violet-200 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Применить
-            </button>
+    <article className="rounded-[20px] border border-gray-100/90 bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)] sm:p-7">
+      <div className="flex flex-col gap-6 sm:flex-row sm:gap-6">
+        <div className="flex h-[104px] w-[104px] shrink-0 items-center justify-center rounded-2xl bg-[#f3efff] px-3 text-center text-sm font-semibold leading-snug text-[#7c3aed]">
+          до 3&nbsp;000&nbsp;₽
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="space-y-2">
+            <span className="inline-flex rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-900">
+              Новое
+            </span>
+            <h3 className="max-w-xl text-lg font-bold leading-snug text-gray-900">
+              Бонус за запуск по реферальной ссылке
+            </h3>
+            <p className="max-w-xl text-sm text-gray-600">
+              Задание для селлера: активируйте приглашение и запустите продвижение с минимальным бюджетом.
+            </p>
           </div>
-          {applied && (
-            <p className="mt-1 text-[11px] font-medium text-emerald-600">Код принят</p>
-          )}
-        </li>
 
-        <li className="relative pl-8">
-          <ReferralBonusStepMarker step={2} />
-          <p className="text-xs leading-snug text-gray-800 sm:text-sm">
-            Запустите кампанию с бюджетом <span className="font-bold text-gray-900">2&nbsp;000&nbsp;₽</span>
-          </p>
-        </li>
-
-        <li className="relative pl-8">
-          <ReferralBonusStepMarker step={3} />
-          <p className="text-xs leading-snug text-gray-600 sm:text-sm">
-            <span className="font-semibold text-emerald-600">3&nbsp;000&nbsp;₽</span> начислим, когда потратите весь
-            бюджет этой кампании — на следующий запуск
-          </p>
-        </li>
-      </ol>
-    </section>
+          <ul className="mt-6 max-w-xl divide-y divide-gray-100">
+            {steps.map((step, index) => (
+              <li key={step.key} className={index === 0 ? 'pb-4' : 'py-4'}>
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold leading-none ${
+                      step.done ? 'bg-[#9a41fe] text-white' : 'bg-[#f3efff] text-[#7c3aed]'
+                    }`}
+                    aria-hidden
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <p className="text-sm font-medium text-gray-900">{step.title}</p>
+                    {step.key === 'code' && (
+                      <div className="mt-3 flex overflow-hidden rounded-lg border border-gray-200 bg-white focus-within:border-violet-300 focus-within:ring-1 focus-within:ring-violet-100">
+                        <input
+                          type="text"
+                          value={referralInput}
+                          onChange={(e) => {
+                            setReferralInput(e.target.value);
+                            setCodeApplied(false);
+                          }}
+                          onKeyDown={(e) => e.key === 'Enter' && handleApplyCode()}
+                          placeholder="Вставьте ссылку или код"
+                          className="min-w-0 flex-1 border-0 bg-transparent px-2.5 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0"
+                          aria-label="Реферальная ссылка или код"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleApplyCode}
+                          disabled={!referralInput.trim()}
+                          className="m-1 shrink-0 rounded-md bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-900 transition-colors hover:bg-violet-200 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Применить
+                        </button>
+                      </div>
+                    )}
+                    {step.key === 'code' && codeApplied && (
+                      <p className="mt-2 text-xs font-medium text-emerald-600">Код принят</p>
+                    )}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -394,6 +458,7 @@ function ReferralInvitePanel() {
   );
   const [activeSourceId, setActiveSourceId] = useState(DEFAULT_TRAFFIC_SOURCES[0].id);
   const [newSourceLabel, setNewSourceLabel] = useState('');
+  const [addTagFormOpen, setAddTagFormOpen] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeSource = useMemo(
@@ -410,9 +475,6 @@ function ReferralInvitePanel() {
         : buildReferralLinkForSource(DEFAULT_TRAFFIC_SOURCES[0]),
     [activeSource],
   );
-
-  const linkPreview =
-    activeReferralLink.length > 32 ? `${activeReferralLink.slice(0, 29)}...` : activeReferralLink;
 
   const showToast = useCallback((msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -447,6 +509,7 @@ function ReferralInvitePanel() {
     setSources((prev) => withCanonicalTrafficLabels([...prev, created]));
     setActiveSourceId(created.id);
     setNewSourceLabel('');
+    setAddTagFormOpen(false);
     showToast('Метка добавлена');
   }, [newSourceLabel, sources, showToast]);
 
@@ -493,7 +556,13 @@ function ReferralInvitePanel() {
 
   const openSourceSettings = useCallback((focus: 'link' | 'code' | 'qr') => {
     setSettingsFocus(focus);
+    setAddTagFormOpen(false);
     setSourceSettingsOpen(true);
+  }, []);
+
+  const closeSourceSettings = useCallback(() => {
+    setAddTagFormOpen(false);
+    setSourceSettingsOpen(false);
   }, []);
 
   const renderSourceChips = (chipTone: 'onPurple' | 'onWhite') => {
@@ -565,52 +634,38 @@ function ReferralInvitePanel() {
             Пригласите продавца в продвижение
           </h2>
           <p className="text-xs leading-snug text-white/90 sm:text-sm">
-            Он получит промобонус на второй запуск, а вы промобонус, когда он начнёт продвигаться.
+            Пригласить можно селлера, который не продвигался больше 6 месяцев. Он получит промобонус на второй
+            запуск, а вы промобонус, когда он начнёт продвигаться.
           </p>
         </div>
 
-        <div className="grid w-full shrink-0 grid-cols-3 items-stretch gap-2 sm:w-auto sm:max-w-[280px]">
+        <div className="grid w-full shrink-0 grid-cols-3 items-stretch gap-2 sm:w-auto sm:max-w-[300px]">
           <button
             type="button"
-            className="flex min-w-0 flex-col rounded-xl bg-white p-2 text-left shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-            aria-label={`Настройка ссылки, источник ${activeSource?.label ?? ''}`}
+            className="flex min-h-[4.5rem] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-gray-200/90 bg-white px-2 py-2.5 text-center shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+            aria-label={`Скопировать ссылку, источник ${activeSource?.label ?? ''}`}
             onClick={() => openSourceSettings('link')}
           >
-            <div className="flex items-center justify-between gap-1">
-              <span className="text-[11px] font-semibold text-gray-900">Ссылка</span>
-              <LinkChainIcon className="h-3.5 w-3.5 shrink-0 text-[#9a41fe]" />
-            </div>
-            <p
-              className="mt-1 text-[9px] leading-tight text-gray-400 line-clamp-2 break-all"
-              title={activeReferralLink}
-            >
-              {linkPreview}
-            </p>
+            <LinkChainIcon className="h-4 w-4 shrink-0 text-[#9a41fe]" />
+            <span className="text-[10px] font-semibold leading-snug text-gray-900">Скопировать ссылку</span>
           </button>
           <button
             type="button"
-            className="flex min-w-0 flex-col rounded-xl bg-white p-2 text-left shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-            aria-label="Настройка кода приглашения"
+            className="flex min-h-[4.5rem] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-gray-200/90 bg-white px-2 py-2.5 text-center shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+            aria-label="Скопировать код приглашения"
             onClick={() => openSourceSettings('code')}
           >
-            <div className="flex items-center justify-between gap-1">
-              <span className="text-[11px] font-semibold text-gray-900">Код</span>
-              <HashIcon className="h-3.5 w-3.5 shrink-0 text-[#9a41fe]" />
-            </div>
-            <p className="mt-2 text-xs font-bold tracking-wide text-gray-900 tabular-nums leading-none">
-              {activeReferralCode}
-            </p>
+            <HashIcon className="h-4 w-4 shrink-0 text-[#9a41fe]" />
+            <span className="text-[10px] font-semibold leading-snug text-gray-900">Скопировать код</span>
           </button>
           <button
             type="button"
-            className="flex min-w-0 flex-col rounded-xl bg-white p-2 text-left shadow-sm transition-transform hover:scale-[1.02] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
-            aria-label={`Настройка QR, источник ${activeSource?.label ?? ''}`}
+            className="flex min-h-[4.5rem] min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-gray-200/90 bg-white px-2 py-2.5 text-center shadow-sm transition-colors hover:border-gray-300 hover:bg-gray-50 active:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+            aria-label={`Показать QR, источник ${activeSource?.label ?? ''}`}
             onClick={() => openSourceSettings('qr')}
           >
-            <span className="text-[11px] font-semibold text-gray-900">QR</span>
-            <div className="mt-1 flex justify-end">
-              <QrPlaceholder className="h-9 w-9 rounded-sm" dotColor="#9a41fe" />
-            </div>
+            <QrPlaceholder className="h-7 w-7 shrink-0 rounded-sm" dotColor="#9a41fe" />
+            <span className="text-[10px] font-semibold leading-snug text-gray-900">Показать QR</span>
           </button>
         </div>
       </div>
@@ -630,7 +685,7 @@ function ReferralInvitePanel() {
           role="dialog"
           aria-modal="true"
           aria-label="Настройка ссылки"
-          onClick={() => setSourceSettingsOpen(false)}
+          onClick={closeSourceSettings}
         >
           <div
             className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl"
@@ -640,34 +695,11 @@ function ReferralInvitePanel() {
               type="button"
               className="absolute right-2 top-2 rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
               aria-label="Закрыть"
-              onClick={() => setSourceSettingsOpen(false)}
+              onClick={closeSourceSettings}
             >
               <span className="text-lg leading-none">×</span>
             </button>
             <h3 className="pr-10 text-base font-bold text-gray-900">Настройка ссылки</h3>
-            <div className="mt-4 flex flex-wrap gap-1.5">{renderSourceChips('onWhite')}</div>
-            <form
-              className="mt-2 flex flex-wrap gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                addTrafficSource();
-              }}
-            >
-              <input
-                type="text"
-                value={newSourceLabel}
-                onChange={(e) => setNewSourceLabel(e.target.value)}
-                placeholder="Новая метка, например TikTok"
-                className="min-w-[12rem] flex-1 rounded-xl border border-gray-200 px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
-              />
-              <button
-                type="submit"
-                disabled={!newSourceLabel.trim()}
-                className="shrink-0 rounded-xl bg-[#9a41fe] px-3 py-2 text-xs font-semibold text-white hover:bg-[#8840e5] disabled:opacity-40"
-              >
-                Добавить метку
-              </button>
-            </form>
 
             <div className="mt-4 flex rounded-xl bg-gray-100 p-1" role="tablist">
               {(
@@ -695,31 +727,35 @@ function ReferralInvitePanel() {
             </div>
 
             {settingsFocus === 'link' && (
-              <div className="mt-4 space-y-3">
-                <p className="break-all rounded-xl bg-gray-50 px-3 py-2 text-xs text-gray-700">{activeReferralLink}</p>
+              <div className="mt-4 flex items-start gap-2 rounded-xl bg-gray-50 px-3 py-3.5">
+                <p className="min-w-0 flex-1 break-all text-sm leading-snug text-gray-900 sm:text-base">
+                  {activeReferralLink}
+                </p>
                 <button
                   type="button"
                   onClick={() =>
                     copyAndToast(activeReferralLink, `Ссылка «${activeSource?.label ?? ''}» скопирована`)
                   }
-                  className="w-full rounded-xl bg-[#9a41fe] py-2.5 text-sm font-semibold text-white hover:bg-[#8840e5]"
+                  className="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-200/80 hover:text-gray-900"
+                  aria-label="Копировать ссылку"
                 >
-                  Копировать ссылку
+                  <CopyIcon className="h-5 w-5" />
                 </button>
               </div>
             )}
 
             {settingsFocus === 'code' && (
-              <div className="mt-4 space-y-3">
-                <p className="rounded-xl bg-gray-50 px-3 py-3 text-center text-lg font-bold tracking-wide text-gray-900 tabular-nums">
+              <div className="mt-4 flex items-center gap-2 rounded-xl bg-gray-50 px-3 py-3.5">
+                <p className="min-w-0 flex-1 text-center text-xl font-bold tracking-wide text-gray-900 tabular-nums sm:text-2xl">
                   {activeReferralCode}
                 </p>
                 <button
                   type="button"
                   onClick={() => copyAndToast(activeReferralCode, 'Код скопирован')}
-                  className="w-full rounded-xl bg-[#9a41fe] py-2.5 text-sm font-semibold text-white hover:bg-[#8840e5]"
+                  className="shrink-0 rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-200/80 hover:text-gray-900"
+                  aria-label="Копировать код"
                 >
-                  Копировать код
+                  <CopyIcon className="h-5 w-5" />
                 </button>
               </div>
             )}
@@ -745,14 +781,44 @@ function ReferralInvitePanel() {
                     Скачать PNG
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => copyAndToast(activeReferralLink, 'Ссылка скопирована')}
-                  className="w-full rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50"
-                >
-                  Копировать ссылку из QR
-                </button>
               </div>
+            )}
+
+            {addTagFormOpen ? (
+              <>
+                <div className="mt-3 flex flex-wrap gap-1.5">{renderSourceChips('onWhite')}</div>
+                <form
+                  className="mt-2 flex flex-wrap gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addTrafficSource();
+                }}
+              >
+                <input
+                  type="text"
+                  value={newSourceLabel}
+                  onChange={(e) => setNewSourceLabel(e.target.value)}
+                  placeholder="Новая метка, например TikTok"
+                  className="min-w-[12rem] flex-1 rounded-xl border border-gray-200 px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={!newSourceLabel.trim()}
+                  className="shrink-0 rounded-xl bg-[#9a41fe] px-3 py-2 text-xs font-semibold text-white hover:bg-[#8840e5] disabled:opacity-40"
+                >
+                  Добавить
+                </button>
+              </form>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddTagFormOpen(true)}
+                className="mt-3 rounded-lg bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200"
+              >
+                добавить метку
+              </button>
             )}
           </div>
         </div>
@@ -1108,54 +1174,50 @@ const BonusesPage: React.FC = () => {
 
   const bonusTabs = useMemo(
     () =>
-      profileId === '2'
-        ? ([
-            { id: 'tasks' as const, label: 'Задания', isNew: false },
-            { id: 'history' as const, label: 'История бонусов', isNew: false },
-          ] as const)
-        : ([
-            { id: 'tasks' as const, label: 'Задания', isNew: false },
-            { id: 'history' as const, label: 'История бонусов', isNew: false },
-            { id: 'referral' as const, label: 'Реферальная программа', isNew: true },
-          ] as const),
+      [
+        { id: 'tasks' as const, label: 'Задания', isNew: false },
+        { id: 'history' as const, label: 'История бонусов', isNew: false },
+        { id: 'referral' as const, label: 'Реферальная программа', isNew: true },
+      ] as const,
     [profileId],
   );
 
   useEffect(() => {
     const raw = searchParams.get('tab');
-    const allowed = profileId === '2' ? (['tasks', 'history'] as const) : (['tasks', 'history', 'referral'] as const);
+    const allowed = ['tasks', 'history', 'referral'] as const;
     if (!raw || !(allowed as readonly string[]).includes(raw)) {
       setSearchParams({ tab: 'tasks' }, { replace: true });
-      return;
     }
-    if (profileId === '2' && raw === 'referral') {
-      setSearchParams({ tab: 'tasks' }, { replace: true });
-    }
-  }, [searchParams, setSearchParams, profileId]);
-  const [faqOpen, setFaqOpen] = useState<number | null>(null);
+  }, [searchParams, setSearchParams]);
   const [pastPromotionsOn, setPastPromotionsOn] = useState(false);
   const [availableOpen, setAvailableOpen] = useState(true);
   const [invitePage, setInvitePage] = useState(1);
   const [invitePageSize, setInvitePageSize] = useState(10);
   const [inviteListFilter, setInviteListFilter] = useState<InviteeListFilter>('all');
   const [inviteDateSort, setInviteDateSort] = useState<InviteeDateSort>('desc');
-
   const promoTotal = 250_000;
   const promoSplitPrimary = 150_000;
   const promoSplitSecondary = 100_000;
 
+  const profileInvitees = useMemo(
+    () => (profileId === '2' ? [] : MOCK_INVITEES),
+    [profileId],
+  );
+
+  const referralEarnedBonus = profileId === '2' ? 0 : 10_000;
+
   const filteredInvitees = useMemo(() => {
-    const filtered = filterInvitees(MOCK_INVITEES, inviteListFilter);
+    const filtered = filterInvitees(profileInvitees, inviteListFilter);
     return sortInviteesByDate(filtered, inviteDateSort);
-  }, [inviteListFilter, inviteDateSort]);
+  }, [profileInvitees, inviteListFilter, inviteDateSort]);
 
   const inviteFilterCounts = useMemo(
     () => ({
-      all: MOCK_INVITEES.length,
-      spending: MOCK_INVITEES.filter(isInviteeSpending).length,
-      completed: MOCK_INVITEES.filter(isInviteeCompleted).length,
+      all: profileInvitees.length,
+      spending: profileInvitees.filter(isInviteeSpending).length,
+      completed: profileInvitees.filter(isInviteeCompleted).length,
     }),
-    [],
+    [profileInvitees],
   );
 
   const inviteTotalPages = Math.max(1, Math.ceil(filteredInvitees.length / invitePageSize));
@@ -1179,35 +1241,35 @@ const BonusesPage: React.FC = () => {
       <main className={`max-w-[897px] mx-auto px-6 py-8 ${tab === 'tasks' ? 'pb-32' : 'pb-10'}`}>
         {/* Сводка промобонусов — Dribbble-style */}
         <section
-          className="rounded-[28px] bg-white px-6 py-8 sm:px-10 sm:py-10 border border-gray-100/90"
+          className="rounded-[28px] border border-gray-100/90 bg-white px-4 py-4 sm:px-6 sm:py-5"
           style={{ boxShadow: '0 10px 40px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.03)' }}
         >
-          <div className="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-14">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between lg:gap-6">
             <div className="shrink-0 lg:max-w-[min(100%,380px)]">
-              <p className="text-[2.5rem] sm:text-5xl lg:text-[3.25rem] font-bold text-gray-950 tabular-nums tracking-[-0.02em] leading-none">
+              <p className="text-[1.875rem] font-bold leading-none tracking-[-0.02em] text-gray-950 tabular-nums sm:text-3xl lg:text-[2.25rem]">
                 {formatNum(promoTotal)}
               </p>
-              <p className="mt-3 text-base font-medium text-[#6e6e73] tracking-tight">Промобонусы</p>
-              <p className="mt-5 inline-flex rounded-full bg-[#F2F2F7] px-3.5 py-2 text-xs font-semibold text-[#3a3a3c] tracking-wide">
+              <p className="mt-1 text-sm font-medium tracking-tight text-[#6e6e73]">Промобонусы</p>
+              <p className="mt-2 inline-flex rounded-full bg-[#F2F2F7] px-2.5 py-1 text-[11px] font-semibold tracking-wide text-[#3a3a3c]">
                 1 промобонус = 1 ₽
               </p>
             </div>
 
-            <div className="grid flex-1 grid-cols-1 gap-4 sm:grid-cols-2 lg:max-w-[520px] lg:min-w-0 w-full">
-              <div className="rounded-2xl border border-[#f0f0f0] bg-white px-5 py-5 sm:px-6 sm:py-6 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
-                <p className="text-2xl font-bold text-gray-950 tabular-nums tracking-tight">{formatNum(promoSplitPrimary)}</p>
-                <p className="mt-3 text-sm leading-snug text-[#6e6e73]">Оплата до 99% от суммы</p>
-                <p className="mt-5 text-sm font-semibold text-[#FF6B6B] leading-snug">
+            <div className="grid w-full flex-1 grid-cols-1 gap-2 sm:grid-cols-2 lg:max-w-[520px] lg:min-w-0">
+              <div className="rounded-xl border border-[#f0f0f0] bg-white px-3.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] sm:px-4 sm:py-3">
+                <p className="text-lg font-bold tracking-tight text-gray-950 tabular-nums sm:text-xl">{formatNum(promoSplitPrimary)}</p>
+                <p className="mt-1 text-xs leading-snug text-[#6e6e73] sm:text-sm">Оплата до 99% от суммы</p>
+                <p className="mt-2 text-xs font-semibold leading-snug text-[#FF6B6B] sm:text-sm">
                   <span className="mr-1" aria-hidden>
                     🔥
                   </span>
                   300 сгорят 31.06.25
                 </p>
               </div>
-              <div className="rounded-2xl border border-[#f0f0f0] bg-white px-5 py-5 sm:px-6 sm:py-6 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
-                <p className="text-2xl font-bold text-gray-950 tabular-nums tracking-tight">{formatNum(promoSplitSecondary)}</p>
-                <p className="mt-3 text-sm leading-snug text-[#6e6e73]">Оплата до 50% от суммы</p>
-                <p className="mt-5 text-sm font-semibold text-[#FF6B6B] leading-snug">
+              <div className="rounded-xl border border-[#f0f0f0] bg-white px-3.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] sm:px-4 sm:py-3">
+                <p className="text-lg font-bold tracking-tight text-gray-950 tabular-nums sm:text-xl">{formatNum(promoSplitSecondary)}</p>
+                <p className="mt-1 text-xs leading-snug text-[#6e6e73] sm:text-sm">Оплата до 50% от суммы</p>
+                <p className="mt-2 text-xs font-semibold leading-snug text-[#FF6B6B] sm:text-sm">
                   <span className="mr-1" aria-hidden>
                     🔥
                   </span>
@@ -1226,7 +1288,9 @@ const BonusesPage: React.FC = () => {
               type="button"
               onClick={() => setTab(id)}
               className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium transition-colors ${
-                tab === id ? 'bg-gray-800 text-white' : 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                tab === id
+                  ? 'bg-gray-800 text-white'
+                  : 'bg-[#E2E5EB] text-gray-800 hover:bg-[#D4D8E0]'
               }`}
             >
               <span>{label}</span>
@@ -1245,11 +1309,6 @@ const BonusesPage: React.FC = () => {
 
         {tab === 'tasks' && (
           <div className="mt-8">
-            {profileId === '2' && (
-              <div className="mb-4">
-                <ReferralLinkBonusBlock />
-              </div>
-            )}
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
               <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Персональные акции</h2>
               <label className="flex items-center gap-3 cursor-pointer select-none sm:shrink-0">
@@ -1280,6 +1339,7 @@ const BonusesPage: React.FC = () => {
 
               {availableOpen && (
                 <div className="mt-5 space-y-5">
+                  {profileId === '2' && <ReferralSellerPromotionCard />}
                   {/* Карточка 1 — один прогресс */}
                   <article className="rounded-[20px] bg-white border border-gray-100/90 p-6 sm:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
                     <div className="flex flex-col gap-6 sm:flex-row sm:gap-6">
@@ -1376,7 +1436,7 @@ const BonusesPage: React.FC = () => {
           </div>
         )}
 
-        {tab === 'referral' && profileId !== '2' && (
+        {tab === 'referral' && (
           <div className="mt-6 space-y-6">
             <ReferralInvitePanel />
 
@@ -1388,18 +1448,18 @@ const BonusesPage: React.FC = () => {
                 <div className="rounded-xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
                   <p className="text-[11px] font-medium text-gray-500">Заработали баллов</p>
                   <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900">
-                    {formatNum(10_000)} <span className="text-sm font-semibold text-gray-500">₽</span>
+                    {formatNum(referralEarnedBonus)} <span className="text-sm font-semibold text-gray-500">₽</span>
                   </p>
                 </div>
                 <div className="rounded-xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
                   <p className="text-[11px] font-medium text-gray-500">Приглашённых</p>
                   <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900">
-                    {formatNum(MOCK_INVITEES.length)}
+                    {formatNum(profileInvitees.length)}
                   </p>
                 </div>
               </div>
 
-              {MOCK_INVITEES.length === 0 ? (
+              {profileInvitees.length === 0 ? (
                 <p className="mt-4 text-sm text-gray-500">Пока никого нет в списке приглашённых.</p>
               ) : (
                 <>
@@ -1457,44 +1517,7 @@ const BonusesPage: React.FC = () => {
               )}
             </section>
 
-            {/* FAQ */}
-            <section id="referral-faq" className="rounded-2xl bg-white p-6 sm:p-8 shadow-sm border border-gray-100 scroll-mt-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-4">Как это работает?</h2>
-              <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100 overflow-hidden bg-gray-50/50">
-                {FAQ_ITEMS.map((question, i) => {
-                  const open = faqOpen === i;
-                  return (
-                    <li key={question}>
-                      <button
-                        type="button"
-                        onClick={() => setFaqOpen(open ? null : i)}
-                        className="flex w-full items-center justify-between gap-3 px-4 py-4 text-left text-sm font-medium text-gray-900 hover:bg-gray-50/80 transition-colors"
-                      >
-                        <span className="pr-2">{question}</span>
-                        <ChevronDown
-                          className={`w-5 h-5 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
-                          aria-hidden
-                        />
-                      </button>
-                      {open && (
-                        <div className="border-t border-gray-100 bg-white px-4 py-3 text-sm text-gray-600">
-                          Подробная информация появится здесь после публикации справочного текста.
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-              <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <p className="text-sm text-gray-600">Остались вопросы?</p>
-                <button
-                  type="button"
-                  className="inline-flex items-center justify-center rounded-xl bg-gray-800 hover:bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors self-start sm:self-auto"
-                >
-                  Написать
-                </button>
-              </div>
-            </section>
+            <ReferralHowItWorksSection />
           </div>
         )}
 
@@ -1504,7 +1527,9 @@ const BonusesPage: React.FC = () => {
       {tab === 'tasks' && (
         <div className="fixed bottom-6 left-1/2 z-40 w-full max-w-[897px] -translate-x-1/2 px-6 pointer-events-none">
           <div className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
-            <p className="text-sm text-gray-800 font-medium">Доступно 2 новых задания</p>
+            <p className="text-sm text-gray-800 font-medium">
+              Доступно {profileId === '2' ? 3 : 2} новых задания
+            </p>
             <button
               type="button"
               className="shrink-0 rounded-xl bg-[#9a41fe] hover:bg-[#8840e5] px-4 py-2 text-sm font-semibold text-white transition-colors"
@@ -1518,22 +1543,36 @@ const BonusesPage: React.FC = () => {
   );
 };
 
-function InviteeTableTaskCell({ row }: { row: RowConfig }) {
+function InviteeTableTaskBlock({ row }: { row: RowConfig }) {
   const done = row.tone === 'done';
   return (
-    <td className="px-3 py-2.5 align-top">
-      <div className="flex flex-col gap-0.5">
-        <span
-          className={`inline-flex w-fit items-center gap-1 text-xs font-medium ${
-            done ? 'text-emerald-700' : 'text-gray-500'
-          }`}
-        >
-          {done ? <Check className="h-3.5 w-3.5 shrink-0" aria-hidden /> : <LockIcon className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />}
-          {row.subtitle}
-        </span>
-        <span className={`text-xs font-semibold tabular-nums ${done ? 'text-[#9a41fe]' : 'text-gray-400'}`}>
-          {row.reward}
-        </span>
+    <div className="flex min-w-0 items-start gap-1 leading-tight">
+      {done ? (
+        <Check className="mt-px h-2.5 w-2.5 shrink-0 text-emerald-600" aria-hidden />
+      ) : (
+        <LockIcon className="mt-px h-2.5 w-2.5 shrink-0 text-gray-400 opacity-70" aria-hidden />
+      )}
+      <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-gray-800" title={row.title}>
+        {row.title}
+      </span>
+      <span className={`shrink-0 text-[10px] font-medium ${done ? 'text-emerald-700' : 'text-gray-500'}`}>
+        {row.subtitle}
+      </span>
+      <span
+        className={`shrink-0 text-[10px] font-semibold tabular-nums ${done ? 'text-[#9a41fe]' : 'text-gray-400'}`}
+      >
+        {row.reward.endsWith('₽') ? row.reward : `${row.reward} ₽`}
+      </span>
+    </div>
+  );
+}
+
+function InviteeTableTasksCell({ spendRow, retentionRow }: { spendRow: RowConfig; retentionRow: RowConfig }) {
+  return (
+    <td className="max-w-[min(100%,320px)] align-top px-3 py-2.5">
+      <div className="flex flex-col items-stretch gap-1">
+        <InviteeTableTaskBlock row={spendRow} />
+        <InviteeTableTaskBlock row={retentionRow} />
       </div>
     </td>
   );
@@ -1550,13 +1589,12 @@ function InviteeTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[820px] border-collapse text-left text-sm">
+      <table className="w-full min-w-[640px] border-collapse text-left text-sm">
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50/90">
             <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">ID приглашённого</th>
             <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">Источник</th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">Потратил 1 000 ₽ на продвижение</th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">Продвигался 3 месяца</th>
+            <th className="max-w-[min(100%,320px)] px-3 py-2.5 text-xs font-semibold text-gray-600">Задания</th>
             <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap">
               <button
                 type="button"
@@ -1590,8 +1628,7 @@ function InviteeTable({
                 <td className="px-3 py-2.5 align-top text-xs text-gray-600">
                   {inv.trafficSourceLabel}
                 </td>
-                <InviteeTableTaskCell row={spendRow} />
-                <InviteeTableTaskCell row={retentionRow} />
+                <InviteeTableTasksCell spendRow={spendRow} retentionRow={retentionRow} />
                 <td className="px-3 py-2.5 align-top text-xs text-gray-600 whitespace-nowrap tabular-nums">
                   {invitedDateOnly(inv.invitedDaysAgo)}
                 </td>
@@ -1601,6 +1638,25 @@ function InviteeTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function CopyIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
   );
 }
 

@@ -1,61 +1,15 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { NavLink } from 'react-router-dom';
 import { Check, ChevronDown } from './Icons';
 import { PROFILES, useProfile, type ProfileId } from './ProfileContext';
-
-const TASKS_REFERRAL_LINK = 'https://seller.wildberries.ru/promotion/referral?code=038UYTK';
-const TASKS_REFERRAL_DISPLAY = 'https://www.wildberries.ru/promo...';
 
 function truncateCompany(name: string, max = 22): string {
   if (name.length <= max) return name;
   return `${name.slice(0, max - 1)}…`;
 }
 
-function CopyIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      className={className}
-      aria-hidden
-    >
-      <rect x="9" y="9" width="13" height="13" rx="2" />
-      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-    </svg>
-  );
-}
-
-async function copyReferralLink(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand('copy');
-    document.body.removeChild(ta);
-  }
-}
-
 export function AppHeader({ onNavigate }: { onNavigate: () => void }) {
   const { profileId, setProfileId, activeProfile } = useProfile();
-
-  const copyTasksReferral = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      void copyReferralLink(TASKS_REFERRAL_LINK);
-    },
-    [],
-  );
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -122,6 +76,10 @@ export function AppHeader({ onNavigate }: { onNavigate: () => void }) {
                         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#34c759]" aria-hidden />
                       </div>
                       <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">1</p>
+                      <p className="mt-1 text-[11px] leading-snug text-emerald-700">
+                        Можете заработать еще{' '}
+                        <span className="text-xs font-bold tabular-nums text-[#9a41fe]">12&nbsp;400&nbsp;₽</span>
+                      </p>
                     </NavLink>
                     <NavLink
                       to="/bonuses?tab=tasks"
@@ -132,24 +90,13 @@ export function AppHeader({ onNavigate }: { onNavigate: () => void }) {
                       <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">3</p>
                     </NavLink>
                   </div>
-                  {profileId !== '2' && (
-                  <div className="mt-2 flex items-center gap-2 rounded-xl bg-[#f3efff] px-3 py-2.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-gray-900">Реферальная ссылка</p>
-                      <p className="mt-0.5 truncate text-xs text-gray-500" title={TASKS_REFERRAL_LINK}>
-                        {TASKS_REFERRAL_DISPLAY}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={copyTasksReferral}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#9a41fe] transition-colors hover:bg-white/60"
-                      aria-label="Скопировать реферальную ссылку"
-                    >
-                      <CopyIcon className="h-5 w-5" />
-                    </button>
-                  </div>
-                  )}
+                  <NavLink
+                    to="/bonuses?tab=referral"
+                    onClick={onNavigate}
+                    className="mt-2 block rounded-xl bg-[#f3efff] px-3 py-2.5 text-left transition-colors hover:bg-[#ebe4ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
+                  >
+                    <p className="text-sm font-semibold text-gray-900">Реферальная программа</p>
+                  </NavLink>
                 </div>
               </div>
             </div>

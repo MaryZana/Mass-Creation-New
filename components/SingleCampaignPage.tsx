@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Wallet, HelpCircle, X, ChevronDown, Plus, Bell } from './Icons';
 import { ProductMultiSelect } from './ProductMultiSelect';
 import { AppHeader } from './AppHeader';
@@ -60,8 +60,18 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
   </button>
 );
 
+type CampaignProductRow = {
+  nmId: number;
+  productName: string;
+  imageUrl: string;
+  category: string;
+  cpcCompatible?: boolean;
+};
+
 export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }) => {
-  const { profileId, showReferralInviteCreationBanner } = useProfile();
+  const { profileId, showReferralInviteCreationBanner, singleCampaignSeed, clearSingleCampaignSeed } =
+    useProfile();
+  const repeatSeedAppliedRef = useRef(false);
   const [campaignName, setCampaignName] = useState('Кампания от 26.12.2024');
   const [paymentModel, setPaymentModel] = useState<'CPM' | 'CPC'>('CPM');
   const [budget, setBudget] = useState('3000');
@@ -80,8 +90,18 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
   const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
-  const [products, setProducts] = useState<Array<{ nmId: number; productName: string; imageUrl: string; category: string; cpcCompatible?: boolean }>>([]);
+  const [products, setProducts] = useState<CampaignProductRow[]>([]);
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!singleCampaignSeed || repeatSeedAppliedRef.current) return;
+    repeatSeedAppliedRef.current = true;
+    setProducts([singleCampaignSeed.product]);
+    if (singleCampaignSeed.campaignName) {
+      setCampaignName(singleCampaignSeed.campaignName);
+    }
+    clearSingleCampaignSeed();
+  }, [singleCampaignSeed, clearSingleCampaignSeed]);
 
   const formatForDisplay = (num: string | number): string => {
     if (typeof num === 'string') {

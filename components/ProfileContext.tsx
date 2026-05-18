@@ -2,6 +2,20 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 export type ProfileId = '1' | '2';
 
+/** Товар, подставляемый на странице создания одной кампании после «Повторить». */
+export type SingleCampaignSeedProduct = {
+  nmId: number;
+  productName: string;
+  imageUrl: string;
+  category: string;
+  cpcCompatible?: boolean;
+};
+
+export type RepeatLaunchPreset = {
+  product: SingleCampaignSeedProduct;
+  campaignName?: string;
+};
+
 export const PROFILES = [
   { id: '1' as const, label: 'Профиль 1', company: 'ООО «Первый»' },
   { id: '2' as const, label: 'Профиль 2', company: 'ООО «Второй»' },
@@ -16,6 +30,11 @@ type ProfileContextValue = {
   beginReferralCreationFlow: () => void;
   consumeReferralCreationNav: () => void;
   dismissReferralInviteCreationBanner: () => void;
+  pendingSingleCampaignNav: boolean;
+  singleCampaignSeed: RepeatLaunchPreset | null;
+  beginRepeatLaunchFlow: (preset: RepeatLaunchPreset) => void;
+  consumeSingleCampaignNav: () => void;
+  clearSingleCampaignSeed: () => void;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -24,6 +43,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [profileId, setProfileId] = useState<ProfileId>('1');
   const [showReferralInviteCreationBanner, setShowReferralInviteCreationBanner] = useState(false);
   const [pendingReferralCreationNav, setPendingReferralCreationNav] = useState(false);
+  const [pendingSingleCampaignNav, setPendingSingleCampaignNav] = useState(false);
+  const [singleCampaignSeed, setSingleCampaignSeed] = useState<RepeatLaunchPreset | null>(null);
 
   const beginReferralCreationFlow = useCallback(() => {
     setShowReferralInviteCreationBanner(true);
@@ -36,6 +57,19 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
   const dismissReferralInviteCreationBanner = useCallback(() => {
     setShowReferralInviteCreationBanner(false);
+  }, []);
+
+  const beginRepeatLaunchFlow = useCallback((preset: RepeatLaunchPreset) => {
+    setSingleCampaignSeed(preset);
+    setPendingSingleCampaignNav(true);
+  }, []);
+
+  const consumeSingleCampaignNav = useCallback(() => {
+    setPendingSingleCampaignNav(false);
+  }, []);
+
+  const clearSingleCampaignSeed = useCallback(() => {
+    setSingleCampaignSeed(null);
   }, []);
 
   useEffect(() => {
@@ -56,14 +90,24 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       beginReferralCreationFlow,
       consumeReferralCreationNav,
       dismissReferralInviteCreationBanner,
+      pendingSingleCampaignNav,
+      singleCampaignSeed,
+      beginRepeatLaunchFlow,
+      consumeSingleCampaignNav,
+      clearSingleCampaignSeed,
     };
   }, [
     profileId,
     showReferralInviteCreationBanner,
     pendingReferralCreationNav,
+    pendingSingleCampaignNav,
+    singleCampaignSeed,
     beginReferralCreationFlow,
     consumeReferralCreationNav,
     dismissReferralInviteCreationBanner,
+    beginRepeatLaunchFlow,
+    consumeSingleCampaignNav,
+    clearSingleCampaignSeed,
   ]);
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
