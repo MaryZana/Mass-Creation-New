@@ -15,7 +15,7 @@ import { CpcCampaignPage } from './components/CpcCampaignPage';
 import { MassEditPage } from './components/MassEditPage';
 import { SingleCampaignPage } from './components/SingleCampaignPage';
 import { AppHeader } from './components/AppHeader';
-import { useProfile } from './components/ProfileContext';
+import { useProfile, type RepeatLaunchPreset } from './components/ProfileContext';
 import CampaignsPage from './pages/CampaignsPage';
 import StatsPage from './pages/StatsPage';
 import FinancePage from './pages/FinancePage';
@@ -1878,7 +1878,16 @@ export default function App() {
   const [isFromExcelModal, setIsFromExcelModal] = useState(false);
   const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{ id: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null; dailyLimitExhausted?: boolean } | null>(null);
+  const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{
+    id: number;
+    name: string;
+    remainingBudget: number | null;
+    dailyLimit: number | null;
+    scheduledDailyLimit: number | null;
+    dailyLimitExhausted?: boolean;
+    fromReadyToRepeat?: boolean;
+    repeatLaunchPreset?: RepeatLaunchPreset;
+  } | null>(null);
   const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) | null>(null);
 
 
@@ -2586,7 +2595,7 @@ export default function App() {
             path="/campaigns"
             element={
               <CampaignsPage>
-                <main className="mx-auto min-h-[calc(100vh-3.5rem)] max-w-[1600px] bg-[#EEF1F5] px-7 py-10">
+                <main className="mx-auto min-h-[calc(100vh-3.5rem)] max-w-[1600px] bg-[#EEF1F5] px-7 pt-4 pb-10">
                   <SuccessPage
                     isLaunching={isLaunching}
                     launchTotal={totalAllValidCount}
@@ -2605,8 +2614,26 @@ export default function App() {
                     onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
                     showUploadHint={showUploadHint}
                     onDismissUploadHint={() => setShowUploadHint(false)}
-                    onOpenCpcCampaign={({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, dailyLimitExhausted }) => {
-                      setSelectedCpcCampaign({ id: campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, dailyLimitExhausted });
+                    onOpenCpcCampaign={({
+                      campaignId,
+                      name,
+                      remainingBudget,
+                      dailyLimit,
+                      scheduledDailyLimit,
+                      dailyLimitExhausted,
+                      fromReadyToRepeat,
+                      repeatLaunchPreset,
+                    }) => {
+                      setSelectedCpcCampaign({
+                        id: campaignId,
+                        name,
+                        remainingBudget,
+                        dailyLimit,
+                        scheduledDailyLimit,
+                        dailyLimitExhausted,
+                        fromReadyToRepeat,
+                        repeatLaunchPreset,
+                      });
                       setAppState('cpc-detail' as any);
                     }}
                     onUpdateCampaignData={(campaignId, data) => {
@@ -2767,6 +2794,8 @@ export default function App() {
         dailyLimit={selectedCpcCampaign.dailyLimit}
         scheduledDailyLimit={selectedCpcCampaign.scheduledDailyLimit}
         dailyLimitExhausted={selectedCpcCampaign.dailyLimitExhausted}
+        fromReadyToRepeat={selectedCpcCampaign.fromReadyToRepeat}
+        repeatLaunchPreset={selectedCpcCampaign.repeatLaunchPreset}
         onBack={() => {
           // Update campaign data in SuccessPage before going back
           if (selectedCpcCampaign) {

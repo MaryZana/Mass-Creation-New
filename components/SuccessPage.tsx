@@ -41,6 +41,10 @@ import {
   type RepeatLaunchPreset,
   type SingleCampaignSeedProduct,
 } from './ProfileContext';
+import {
+  BonusCampaignNotificationStack,
+  type BonusCampaignNotification,
+} from './BonusCampaignRepeatBanner';
 
 // --- Constants ---
 const TOTAL_PROMO_BONUS = 226660517;
@@ -180,7 +184,16 @@ interface SuccessPageProps {
   onOpenHistoryModal: () => void;
   showUploadHint?: boolean;
   onDismissUploadHint?: () => void;
-  onOpenCpcCampaign: (payload: { campaignId: number; name: string; remainingBudget: number | null; dailyLimit: number | null; scheduledDailyLimit: number | null; dailyLimitExhausted?: boolean }) => void;
+  onOpenCpcCampaign: (payload: {
+    campaignId: number;
+    name: string;
+    remainingBudget: number | null;
+    dailyLimit: number | null;
+    scheduledDailyLimit: number | null;
+    dailyLimitExhausted?: boolean;
+    fromReadyToRepeat?: boolean;
+    repeatLaunchPreset?: RepeatLaunchPreset;
+  }) => void;
   onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void;
   onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) => void;
   onOpenSingleCampaign?: () => void;
@@ -219,6 +232,8 @@ interface DisplayCampaign {
   ctr: number | null;
   orders: number | null;
   spendShare: number | null;
+  /** Вторая строка в списке: кампания за бонусы, открывается как из «Готовы к повтору» */
+  isBonusCampaign?: boolean;
 }
 
 const formatNumber = (num: number | null | undefined): string => {
@@ -431,8 +446,32 @@ const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
 
 function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
   const { campaigns } = getProfileListData(profileId);
-  if (profileId === '2') return campaigns;
-  return [PREBUILT_CPC_CAMPAIGN, ...campaigns];
+  const list = profileId === '2' ? [...campaigns] : [PREBUILT_CPC_CAMPAIGN, ...campaigns];
+  return list.map((c, index) => (index === 1 ? { ...c, isBonusCampaign: true } : c));
+}
+
+function findProductSourceForProfile(productId: string | undefined, profileId: ProfileId): ProductSource | undefined {
+  if (!productId) return undefined;
+  const sources = profileId === '2' ? PRODUCTS_SOURCE_PROFILE_2 : PRODUCTS_SOURCE;
+  return sources.find((p) => p.id === productId);
+}
+
+function buildRepeatPresetForDisplayCampaign(c: DisplayCampaign, profileId: ProfileId): RepeatLaunchPreset {
+  const dateLabel = '26.12.2024';
+  const source = findProductSourceForProfile(c.productId, profileId);
+  if (source) {
+    return buildRepeatLaunchPreset(source, dateLabel, c.image);
+  }
+  return {
+    product: {
+      nmId: c.campaignId,
+      productName: c.name,
+      imageUrl: c.image,
+      category: c.category ?? 'Футболки',
+      cpcCompatible: c.type === 'CPC',
+    },
+    campaignName: `Кампания от ${dateLabel}`,
+  };
 }
 
 /** Цвета точек для ярлыков (назначаются автоматически по индексу) */
@@ -1705,9 +1744,18 @@ const DateFilter = ({ defaultLabel, variant = 'default' }: { defaultLabel: strin
   );
 }
 
-type ReadyToRepeatBadge =
-  | { type: 'count'; value: string }
-  | { type: 'moon' };
+type ReadyToRepeatBadge = { type: 'count'; value: string };
+
+type ReadyToRepeatCpcDetail = {
+  campaignId: number;
+  name: string;
+  remainingBudget: number | null;
+  dailyLimit: number | null;
+  scheduledDailyLimit: number | null;
+  dailyLimitExhausted?: boolean;
+  fromReadyToRepeat?: boolean;
+  repeatLaunchPreset?: RepeatLaunchPreset;
+};
 
 type ReadyToRepeatItem = {
   id: string;
@@ -1717,6 +1765,7 @@ type ReadyToRepeatItem = {
   orders: number;
   days: number;
   badge?: ReadyToRepeatBadge;
+  cpcDetail?: ReadyToRepeatCpcDetail;
   launchPreset: RepeatLaunchPreset;
 };
 
@@ -1758,8 +1807,6 @@ const CLOTHING_STACK_PREVIEW_IMAGES: [string, string, string] = [
   'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=96&h=96&fit=crop&q=80',
 ];
 
-const CLOTHING_STACK_IMAGE_FALLBACK = CLOTHING_STACK_PREVIEW_IMAGES[1];
-
 function isPlaceholderProductImage(url: string): boolean {
   return /placehold\.co/i.test(url);
 }
@@ -1781,183 +1828,42 @@ function pickClothingStackImages(
   ];
 }
 
-function ReadyToRepeatStackThumbImage({ src, className }: { src: string; className: string }) {
-  const [resolvedSrc, setResolvedSrc] = useState(src);
-  useEffect(() => {
-    setResolvedSrc(src);
-  }, [src]);
-  return (
-    <img
-      src={resolvedSrc}
-      alt=""
-      className={className}
-      onError={() => {
-        if (resolvedSrc !== CLOTHING_STACK_IMAGE_FALLBACK) {
-          setResolvedSrc(CLOTHING_STACK_IMAGE_FALLBACK);
-        }
-      }}
-    />
-  );
-}
+function buildBonusNotificationQueue(
+  products: ProductSource[],
+  stackImages: [string, string, string],
+): BonusCampaignNotification[] {
+  const clothingCategories = new Set(['Платья', 'Футболки', 'Кроссовки', 'Сумки']);
+  const clothingProducts = products.filter((p) => clothingCategories.has(p.category));
+  const pickProduct = (index: number) =>
+    clothingProducts[index] ?? clothingProducts[0] ?? products[0] ?? PRODUCTS_SOURCE[0];
+  const dateLabel = '26.12.2024';
 
-function ReadyToRepeatStackThumb({
-  images,
-  className = '',
-}: {
-  images: [string, string, string];
-  className?: string;
-}) {
-  const offsets = ['left-0 z-10', 'left-[11px] z-20', 'left-[22px] z-30'] as const;
-  const imageFrameClass =
-    'absolute top-0 h-10 w-7 rounded-lg object-cover ring-[3px] ring-white';
-  return (
-    <div className={`relative h-10 w-[50px] shrink-0 ${className}`} aria-hidden>
-      {images.map((src, index) => (
-        <ReadyToRepeatStackThumbImage
-          key={`${src}-${index}`}
-          src={src}
-          className={`${imageFrameClass} ${offsets[index]}`}
-        />
-      ))}
-      <span className="absolute right-0 top-0 z-40 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />
-    </div>
-  );
-}
-
-function ReadyToRepeatThumbBadge({ badge }: { badge?: ReadyToRepeatBadge }) {
-  if (!badge) return null;
-  return (
-    <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-gray-900/85 px-1 text-[10px] font-semibold text-white">
-      {badge.type === 'count' ? (
-        badge.value
-      ) : (
-        <span className="text-[11px] leading-none" aria-hidden>
-          ☾
-        </span>
-      )}
-    </span>
-  );
-}
-
-function ReadyToRepeatWidget({
-  stackImages,
-  campaignCount,
-  items,
-  onRepeat,
-  onOpenCampaign,
-}: {
-  stackImages: [string, string, string];
-  campaignCount: number;
-  items: ReadyToRepeatItem[];
-  onRepeat: (item: ReadyToRepeatItem) => void;
-  onOpenCampaign: (item: ReadyToRepeatItem) => void;
-}) {
-  const [panelOpen, setPanelOpen] = useState(false);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const openPanel = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    setPanelOpen(true);
+  const pickImage = (index: number, product: ProductSource) => {
+    if (product.image && !isPlaceholderProductImage(product.image)) return product.image;
+    const fromStack = stackImages[index % stackImages.length];
+    if (fromStack && !isPlaceholderProductImage(fromStack)) return fromStack;
+    return CLOTHING_STACK_PREVIEW_IMAGES[index % CLOTHING_STACK_PREVIEW_IMAGES.length];
   };
 
-  const scheduleClose = () => {
-    closeTimerRef.current = setTimeout(() => setPanelOpen(false), 150);
-  };
+  const rows: Array<Pick<BonusCampaignNotification, 'views' | 'orders'>> = [
+    { views: 14230, orders: 14 },
+    { views: 9230, orders: 9 },
+    { views: 5180, orders: 5 },
+    { views: 2410, orders: 2 },
+  ];
 
-  const countLabel = `${campaignCount} ${getPlural(campaignCount, 'кампания', 'кампании', 'кампаний')}`;
-
-  return (
-    <div
-      className="relative h-16 w-full lg:w-[min(100%,280px)] lg:shrink-0"
-      onMouseEnter={openPanel}
-      onMouseLeave={scheduleClose}
-    >
-      <button
-        type="button"
-        className="flex h-16 w-full items-stretch gap-3 rounded-[12px] bg-white pl-3 pr-3.5 text-left shadow-sm transition-colors hover:bg-gray-50"
-        aria-expanded={panelOpen}
-        aria-haspopup="dialog"
-      >
-        <ReadyToRepeatStackThumb images={stackImages} className="self-center" />
-        <div className={`min-w-0 flex-1 ${LIST_HEADER_COMPACT_STAT}`}>
-          <p className={LIST_HEADER_STAT_LABEL_CLASS}>Готовы к повтору</p>
-          <p className="m-0 flex items-center gap-1 text-sm font-semibold leading-4 text-gray-900">
-            {countLabel}
-            <ChevronDown className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${panelOpen ? 'rotate-180' : ''}`} aria-hidden />
-          </p>
-        </div>
-      </button>
-
-      {panelOpen && (
-        <div
-          role="dialog"
-          aria-label="Готовы к повтору"
-          className="absolute right-0 top-full z-[250] mt-2 w-[min(calc(100vw-3rem),520px)] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_12px_40px_rgba(0,0,0,0.12)]"
-          onMouseEnter={openPanel}
-          onMouseLeave={scheduleClose}
-        >
-          <div className="border-b border-gray-100 px-5 py-4">
-            <div className="flex items-start gap-2">
-              <Zap className="mt-0.5 h-5 w-5 shrink-0 text-[#9a41fe]" aria-hidden />
-              <div>
-                <p className="text-base font-bold text-gray-900">Готовы к повтору</p>
-                <p className="mt-1 text-sm leading-snug text-[#767386]">
-                  Кампании, которые можно запустить, повторить или усилить
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <ul className="divide-y divide-gray-100">
-            {items.map((item) => (
-              <li key={item.id} className="flex items-center gap-4 px-5 py-4">
-                <div className="relative shrink-0">
-                  <img src={item.image} alt="" className="h-14 w-14 rounded-lg object-cover" />
-                  <ReadyToRepeatThumbBadge badge={item.badge} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenCampaign(item);
-                      setPanelOpen(false);
-                    }}
-                    className="rounded-sm text-left text-sm text-[#767386] transition-colors hover:text-[#9a41fe] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
-                  >
-                    Кампания от {item.dateLabel}
-                  </button>
-                  {item.isNew && (
-                    <span className="mt-1 inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                      Новая
-                    </span>
-                  )}
-                </div>
-                <div className="hidden min-w-[140px] shrink-0 sm:block">
-                  <p className="text-sm text-gray-900">
-                    <span className="font-semibold text-emerald-600">+{item.orders}</span> заказов
-                  </p>
-                  <p className="mt-0.5 text-xs text-[#767386]">За {item.days} дней</p>
-                </div>
-                <button
-                  type="button"
-                  className="shrink-0 rounded-lg bg-[#f3e8ff] px-4 py-2 text-sm font-semibold text-[#7c3aed] hover:bg-[#ede9fe] transition-colors"
-                  onClick={() => {
-                    onRepeat(item);
-                    setPanelOpen(false);
-                  }}
-                >
-                  Повторить
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
+  return rows.map((row, index) => {
+    const product = pickProduct(index);
+    const imageUrl = pickImage(index, product);
+    const launchPreset = buildRepeatLaunchPreset(product, dateLabel, imageUrl);
+    return {
+      id: `bonus-notify-${index + 1}`,
+      imageUrl,
+      views: row.views,
+      orders: row.orders,
+      launchPreset,
+    };
+  });
 }
 
 const CreateCampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: { onNavigateToCreation: () => void; onOpenSingleCampaign?: () => void }) => {
@@ -2577,7 +2483,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     const [img0, img1, img2] = readyToRepeatStackImages;
     const dateLabel = '26.12.2024';
 
-    const rows: Array<Omit<ReadyToRepeatItem, 'launchPreset'>> = [
+    const cpcPool = buildAllCampaignsForProfile(profileId).filter((c) => c.type === 'CPC');
+
+    const rows: Array<Omit<ReadyToRepeatItem, 'launchPreset' | 'cpcDetail'>> = [
       {
         id: 'repeat-1',
         image: img0,
@@ -2594,7 +2502,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         isNew: true,
         orders: 234,
         days: 11,
-        badge: { type: 'moon' },
       },
       {
         id: 'repeat-3',
@@ -2608,12 +2515,48 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
     return rows.map((row, index) => {
       const product = pickProduct(index);
+      const cpc = cpcPool.length > 0 ? cpcPool[index % cpcPool.length] : undefined;
       return {
         ...row,
         launchPreset: buildRepeatLaunchPreset(product, row.dateLabel, row.image),
+        ...(cpc
+          ? {
+              cpcDetail: {
+                campaignId: cpc.campaignId,
+                name: `Кампания от ${row.dateLabel}`,
+                remainingBudget: cpc.remainingBudget,
+                dailyLimit: cpc.dailyLimit,
+                scheduledDailyLimit: cpc.scheduledDailyLimit,
+                dailyLimitExhausted: cpc.dailyLimitExhausted,
+                fromReadyToRepeat: true,
+                repeatLaunchPreset: buildRepeatLaunchPreset(product, row.dateLabel, row.image),
+              },
+            }
+          : {}),
       };
     });
-  }, [readyToRepeatStackImages, profileProductTree]);
+  }, [readyToRepeatStackImages, profileProductTree, profileId]);
+
+  const initialBonusNotifications = useMemo(
+    () => buildBonusNotificationQueue(profileProductTree, readyToRepeatStackImages),
+    [profileProductTree, readyToRepeatStackImages],
+  );
+
+  const [bonusNotificationQueue, setBonusNotificationQueue] = useState<BonusCampaignNotification[]>(
+    [],
+  );
+
+  useEffect(() => {
+    if (initialBonusNotifications.length === 0) {
+      setBonusNotificationQueue([]);
+      return;
+    }
+    setBonusNotificationQueue((prev) => {
+      if (prev.length === 0) return initialBonusNotifications;
+      if (prev.every((item) => item.launchPreset)) return prev;
+      return initialBonusNotifications;
+    });
+  }, [initialBonusNotifications]);
 
   const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(() => buildAllCampaignsForProfile('1'));
 
@@ -2957,7 +2900,50 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     (currentPage - 1) * CAMPAIGNS_PAGE_SIZE,
     currentPage * CAMPAIGNS_PAGE_SIZE
   );
-  
+
+  const openListCpcCampaign = useCallback(
+    (c: DisplayCampaign) => {
+      const payload = {
+        campaignId: c.campaignId,
+        name: c.name,
+        remainingBudget: c.remainingBudget,
+        dailyLimit: c.dailyLimit ?? null,
+        scheduledDailyLimit: c.scheduledDailyLimit ?? null,
+        dailyLimitExhausted: c.dailyLimitExhausted,
+      };
+      if (c.isBonusCampaign) {
+        onOpenCpcCampaign({
+          ...payload,
+          fromReadyToRepeat: true,
+          repeatLaunchPreset: buildRepeatPresetForDisplayCampaign(c, profileId),
+        });
+        return;
+      }
+      onOpenCpcCampaign(payload);
+    },
+    [onOpenCpcCampaign, profileId],
+  );
+
+  const openBonusNotificationCampaign = useCallback(
+    (item: BonusCampaignNotification) => {
+      const cpcPool = buildAllCampaignsForProfile(profileId).filter((c) => c.type === 'CPC');
+      const bonusCampaign = cpcPool.find((c) => c.isBonusCampaign) ?? cpcPool[0];
+      if (!bonusCampaign) return;
+
+      onOpenCpcCampaign({
+        campaignId: bonusCampaign.campaignId,
+        name: bonusCampaign.name,
+        remainingBudget: bonusCampaign.remainingBudget,
+        dailyLimit: bonusCampaign.dailyLimit ?? null,
+        scheduledDailyLimit: bonusCampaign.scheduledDailyLimit ?? null,
+        dailyLimitExhausted: bonusCampaign.dailyLimitExhausted,
+        fromReadyToRepeat: true,
+        repeatLaunchPreset: item.launchPreset,
+      });
+    },
+    [onOpenCpcCampaign, profileId],
+  );
+
   const paginatedIds = paginatedCampaigns.map(c => c.id);
   const isAllOnPageSelected = paginatedIds.length > 0 && paginatedIds.every(id => selectedCampaigns.includes(id));
 
@@ -3208,14 +3194,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </div>
             </div>
 
-
-            <ReadyToRepeatWidget
-              stackImages={readyToRepeatStackImages}
-              campaignCount={readyToRepeatItems.length}
-              items={readyToRepeatItems}
-              onRepeat={(item) => beginRepeatLaunchFlow(item.launchPreset)}
-              onOpenCampaign={(item) => beginRepeatLaunchFlow(item.launchPreset)}
-            />
+            {profileId !== '2' && bonusNotificationQueue.length > 0 && (
+              <BonusCampaignNotificationStack
+                items={bonusNotificationQueue}
+                onDismissItem={(id) =>
+                  setBonusNotificationQueue((queue) => queue.filter((item) => item.id !== id))
+                }
+                onRepeatItem={(item) => {
+                  beginRepeatLaunchFlow(item.launchPreset);
+                }}
+                onOpenItemDetail={openBonusNotificationCampaign}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -3400,14 +3390,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             key={c.id}
                             onClick={(e) => {
                               if (c.type === 'CPC' && !(e.target as HTMLElement).closest('button')) {
-                                onOpenCpcCampaign({ 
-                                  campaignId: c.campaignId, 
-                                  name: c.name,
-                                  remainingBudget: c.remainingBudget,
-                                  dailyLimit: c.dailyLimit,
-                                  scheduledDailyLimit: c.scheduledDailyLimit,
-                                  dailyLimitExhausted: c.dailyLimitExhausted
-                                });
+                                openListCpcCampaign(c);
                               }
                             }}
                             className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'} ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}

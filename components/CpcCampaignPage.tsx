@@ -1,7 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Checkbox } from 'antd';
-import { Wallet, HelpCircle, X, RefreshCw, ChevronDown, Clock, SingleAccountIcon, Plus, Settings, Bell, CheckCircle } from './Icons';
+import {
+  Wallet,
+  HelpCircle,
+  X,
+  RefreshCw,
+  ChevronDown,
+  Clock,
+  SingleAccountIcon,
+  Plus,
+  Settings,
+  Bell,
+  CheckCircle,
+  Calendar,
+} from './Icons';
 import { AppHeader } from './AppHeader';
+import { CampaignRepeatPerformanceBlock } from './CampaignRepeatPerformanceBlock';
+import { SimilarDemandProductsBlock } from './SimilarDemandProductsBlock';
+import { useProfile, type RepeatLaunchPreset } from './ProfileContext';
 
 const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
@@ -35,6 +51,8 @@ interface CpcCampaignPageProps {
   scheduledDailyLimit: number | null;
   /** true = дневной лимит израсходован, показы остановлены до завтра */
   dailyLimitExhausted?: boolean;
+  fromReadyToRepeat?: boolean;
+  repeatLaunchPreset?: RepeatLaunchPreset;
   onBack: () => void;
   onUpdateData?: (data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void;
 }
@@ -106,7 +124,78 @@ const DailyLimitInfoTooltip: React.FC = () => {
   );
 };
 
-export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, name, remainingBudget, dailyLimit, scheduledDailyLimit, dailyLimitExhausted, onBack, onUpdateData }) => {
+type StatTrendDirection = 'up' | 'down';
+
+function StatTrendBadge({
+  value,
+  direction,
+  positiveIsGood = true,
+}: {
+  value: string;
+  direction: StatTrendDirection;
+  positiveIsGood?: boolean;
+}) {
+  const favorable = direction === 'up' ? positiveIsGood : !positiveIsGood;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums ${
+        favorable ? 'text-emerald-600' : 'text-red-500'
+      }`}
+    >
+      <span aria-hidden>{direction === 'up' ? '▲' : '▼'}</span>
+      {value}
+    </span>
+  );
+}
+
+function StatPrimaryMetric({
+  value,
+  trend,
+}: {
+  value: string;
+  trend: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
+}) {
+  return (
+    <div className="mb-4 flex flex-wrap items-baseline gap-2">
+      <p className="text-2xl font-bold tabular-nums tracking-tight text-gray-900">{value}</p>
+      <StatTrendBadge {...trend} />
+    </div>
+  );
+}
+
+function StatSecondaryMetric({
+  label,
+  value,
+  trend,
+}: {
+  label: string;
+  value: string;
+  trend: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-xs text-gray-500">{label}</p>
+      <p className="mt-1 flex flex-wrap items-baseline gap-1.5 text-sm font-semibold tabular-nums text-gray-900">
+        <span>{value}</span>
+        <StatTrendBadge {...trend} />
+      </p>
+    </div>
+  );
+}
+
+export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
+  campaignId,
+  name,
+  remainingBudget,
+  dailyLimit,
+  scheduledDailyLimit,
+  dailyLimitExhausted,
+  fromReadyToRepeat,
+  repeatLaunchPreset,
+  onBack,
+  onUpdateData,
+}) => {
+  const { beginRepeatLaunchFlow, profileId } = useProfile();
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(dailyLimit !== null && dailyLimit !== undefined);
   const [dailyLimitValue, setDailyLimitValue] = useState(dailyLimit ? String(dailyLimit) : '');
@@ -130,6 +219,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
   const [savedDailyLimit, setSavedDailyLimit] = useState(dailyLimit ? String(dailyLimit) : '');
   const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
   const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
+  const [isStatsChartEnabled, setIsStatsChartEnabled] = useState(false);
 
   // Sync with props when they change
   useEffect(() => {
@@ -177,6 +267,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
     }
   }, [isFirstVisit, isDailyLimitTooltipVisible]);
 
+  const isCardWorkBonusScenario = fromReadyToRepeat && profileId === '2';
+
   return (
     <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-10">
       <AppHeader onNavigate={onBack} />
@@ -189,6 +281,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
               <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
                 Активна
               </span>
+              {fromReadyToRepeat && (
+                <span className="px-2 py-0.5 rounded-full bg-[#f3e8ff] text-[#9a41fe] text-xs font-medium">
+                  Кампания за бонусы
+                </span>
+              )}
               <span>CPC</span>
               <span>ID {campaignId}</span>
             </div>
@@ -414,59 +511,127 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
           </div>
         </div>
 
+        {fromReadyToRepeat && (
+          <CampaignRepeatPerformanceBlock
+            profileId={profileId}
+            rankingProduct={
+              repeatLaunchPreset
+                ? {
+                    name: repeatLaunchPreset.product.productName,
+                    imageUrl: repeatLaunchPreset.product.imageUrl,
+                    meta: `${repeatLaunchPreset.product.category} • ${repeatLaunchPreset.product.nmId}`,
+                  }
+                : undefined
+            }
+            onRepeatCampaign={() => {
+              if (repeatLaunchPreset) {
+                beginRepeatLaunchFlow(repeatLaunchPreset);
+              }
+            }}
+          />
+        )}
+
         <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-            <h2 className="text-lg font-bold text-gray-900">Статистика</h2>
-            <div className="flex items-center gap-3 text-sm text-gray-600">
-              <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
+            <div className="flex flex-wrap items-center gap-4">
+              <h2 className="text-lg font-bold text-gray-900">Статистика</h2>
+              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                <ToggleSwitch checked={isStatsChartEnabled} onChange={setIsStatsChartEnabled} />
                 <span>График</span>
+              </label>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 rounded-lg border border-gray-200 bg-white hover:bg-gray-50"
+              >
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <span className="tabular-nums">15.04.25—21.04.25</span>
               </button>
-              <button className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white hover:bg-gray-50">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 rounded-lg border border-gray-200 bg-white hover:bg-gray-50"
+              >
+                <span className="text-gray-500" aria-hidden>
+                  📊
+                </span>
                 Полная статистика
               </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="border border-gray-200 rounded-2xl px-5 py-4">
-              <p className="text-base font-semibold text-gray-900 mb-2">Показы</p>
-              <p className="text-lg font-bold text-gray-900 mb-4">Нет данных</p>
-              <div className="border-t border-gray-100 pt-3 text-sm text-gray-500">
-                <p className="font-medium text-xs text-gray-500 mb-1">CPM</p>
-                <p className="text-sm text-gray-400">Нет данных</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
+              <p className="text-base font-semibold text-gray-900 mb-1">Показы</p>
+              <StatPrimaryMetric value="29 231" trend={{ value: '3,4%', direction: 'up' }} />
+              <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
+                <StatSecondaryMetric label="CPM" value="175 ₽" trend={{ value: '1,0%', direction: 'up' }} />
+                <StatSecondaryMetric
+                  label="Позиция в поиске"
+                  value="2"
+                  trend={{ value: '123', direction: 'up' }}
+                />
               </div>
             </div>
 
-            <div className="border border-gray-200 rounded-2xl px-5 py-4">
-              <p className="text-base font-semibold text-gray-900 mb-2">Клики</p>
-              <p className="text-lg font-bold text-gray-900 mb-4">Нет данных</p>
-              <div className="border-t border-gray-100 pt-3 text-sm text-gray-500 space-y-1">
-                <p className="text-xs text-gray-500">CTR</p>
-                <p className="text-sm text-gray-400">Нет данных</p>
-                <p className="text-xs text-gray-500 mt-2">CPC</p>
-                <p className="text-sm text-gray-400">Нет данных</p>
+            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
+              <p className="text-base font-semibold text-gray-900 mb-1">Клики</p>
+              <StatPrimaryMetric value="83" trend={{ value: '12,1%', direction: 'up' }} />
+              <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
+                <StatSecondaryMetric
+                  label="CTR"
+                  value="0,28%"
+                  trend={{ value: '0,03%', direction: 'down', positiveIsGood: false }}
+                />
+                <StatSecondaryMetric label="CPC" value="61 ₽" trend={{ value: '6,1%', direction: 'up' }} />
               </div>
             </div>
 
-            <div className="border border-gray-200 rounded-2xl px-5 py-4">
-              <p className="text-base font-semibold text-gray-900 mb-2">Заказы</p>
-              <p className="text-lg font-bold text-gray-900 mb-4">Нет данных</p>
-              <div className="border-t border-gray-100 pt-3 text-sm text-gray-500 space-y-1">
-                <p className="text-xs text-gray-500">CR</p>
-                <p className="text-sm text-gray-400">Нет данных</p>
-                <p className="text-xs text-gray-500 mt-2">CPO</p>
-                <p className="text-sm text-gray-400">Нет данных</p>
-              </div>
+            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
+              <p className="text-base font-semibold text-gray-900 mb-1">Заказы</p>
+              {isCardWorkBonusScenario ? (
+                <>
+                  <StatPrimaryMetric
+                    value="0"
+                    trend={{ value: '0%', direction: 'down', positiveIsGood: false }}
+                  />
+                  <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
+                    <StatSecondaryMetric
+                      label="CR"
+                      value="0%"
+                      trend={{ value: '0%', direction: 'down', positiveIsGood: false }}
+                    />
+                    <StatSecondaryMetric label="CPO" value="—" trend={{ value: '0%', direction: 'down' }} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <StatPrimaryMetric value="19" trend={{ value: '18,8%', direction: 'up' }} />
+                  <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
+                    <StatSecondaryMetric label="CR" value="22,9%" trend={{ value: '1,4%', direction: 'up' }} />
+                    <StatSecondaryMetric label="CPO" value="269 ₽" trend={{ value: '8,4%', direction: 'up' }} />
+                  </div>
+                </>
+              )}
             </div>
 
-            <div className="border border-gray-200 rounded-2xl px-5 py-4">
-              <p className="text-base font-semibold text-gray-900 mb-2">Доля затрат</p>
-              <p className="text-lg font-bold text-gray-900 mb-4">Нет данных</p>
-              <div className="border-t border-gray-100 pt-3 text-sm text-gray-500 space-y-1">
-                <p className="text-xs text-gray-500">Сумма заказов</p>
-                <p className="text-sm text-gray-400">Нет данных</p>
-                <p className="text-xs text-gray-500 mt-2">Расход</p>
-                <p className="text-sm text-gray-400">Нет данных</p>
+            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
+              <p className="text-base font-semibold text-gray-900 mb-1">Доля затрат</p>
+              <StatPrimaryMetric
+                value="50,6%"
+                trend={{ value: '0,3%', direction: 'down', positiveIsGood: true }}
+              />
+              <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
+                <StatSecondaryMetric
+                  label="Сумма заказов"
+                  value={isCardWorkBonusScenario ? '0 ₽' : '196 000 ₽'}
+                  trend={
+                    isCardWorkBonusScenario
+                      ? { value: '0%', direction: 'down', positiveIsGood: false }
+                      : { value: '5,8%', direction: 'up' }
+                  }
+                />
+                <StatSecondaryMetric label="Расход" value="5 115 ₽" trend={{ value: '5,3%', direction: 'up' }} />
               </div>
             </div>
           </div>
@@ -485,9 +650,14 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
             <h2 className="text-lg font-bold text-gray-900">Ставки по товарам</h2>
             <div className="flex flex-wrap items-center gap-3">
-              <button className="px-3 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900">
-                Добавить товары
-              </button>
+              {!fromReadyToRepeat && (
+                <button
+                  type="button"
+                  className="px-3 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900"
+                >
+                  Добавить товары
+                </button>
+              )}
               <input
                 type="text"
                 placeholder="Поиск по товарам"
@@ -529,6 +699,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({ campaignId, na
             </table>
           </div>
         </section>
+
+        {fromReadyToRepeat && (
+          <SimilarDemandProductsBlock
+            onAddToLaunch={() => {
+              if (repeatLaunchPreset) {
+                beginRepeatLaunchFlow(repeatLaunchPreset);
+              }
+            }}
+          />
+        )}
       </main>
 
       {/* Auto Refill Modal */}
