@@ -278,6 +278,15 @@ function formatNum(n: number): string {
   return n.toLocaleString('ru-RU', { useGrouping: true });
 }
 
+function parseInviteeRewardAmount(reward: string): number {
+  const digits = reward.replace(/\D/g, '');
+  return digits ? Number(digits) : 0;
+}
+
+function accruedBonusForRow(row: RowConfig): number {
+  return row.tone === 'done' ? parseInviteeRewardAmount(row.reward) : 0;
+}
+
 const REFERRAL_QR_DOT = '#9a41fe';
 const QR_GRID = 25;
 
@@ -1575,36 +1584,64 @@ const BonusesPage: React.FC = () => {
   );
 };
 
-function InviteeTableTaskBlock({ row }: { row: RowConfig }) {
-  const done = row.tone === 'done';
+function InviteeTableBonusLine({ row }: { row: RowConfig }) {
+  const amount = accruedBonusForRow(row);
+  if (amount <= 0) return null;
   return (
-    <div className="flex min-w-0 items-start gap-1 leading-tight">
-      {done ? (
-        <Check className="mt-px h-2.5 w-2.5 shrink-0 text-emerald-600" aria-hidden />
-      ) : (
-        <LockIcon className="mt-px h-2.5 w-2.5 shrink-0 text-gray-400 opacity-70" aria-hidden />
-      )}
-      <span className="min-w-0 flex-1 truncate text-[10px] font-medium text-gray-800" title={row.title}>
-        {row.title}
-      </span>
-      <span className={`shrink-0 text-[10px] font-medium ${done ? 'text-emerald-700' : 'text-gray-500'}`}>
-        {row.subtitle}
-      </span>
-      <span
-        className={`shrink-0 text-[10px] font-semibold tabular-nums ${done ? 'text-[#9a41fe]' : 'text-gray-400'}`}
-      >
-        {row.reward.endsWith('₽') ? row.reward : `${row.reward} ₽`}
-      </span>
-    </div>
+    <p className="text-sm font-semibold tabular-nums leading-tight text-[#9a41fe]">
+      + {formatNum(amount)} ₽
+    </p>
+  );
+}
+
+function InviteeTableBonusesCell({ spendRow, retentionRow }: { spendRow: RowConfig; retentionRow: RowConfig }) {
+  return (
+    <td className="align-middle px-3 py-2.5 whitespace-nowrap">
+      <div className="flex flex-col justify-center gap-1">
+        <InviteeTableBonusLine row={spendRow} />
+        <InviteeTableBonusLine row={retentionRow} />
+      </div>
+    </td>
+  );
+}
+
+function inviteeTaskRewardRubles(row: RowConfig): string {
+  return `${formatNum(parseInviteeRewardAmount(row.reward))} ₽`;
+}
+
+function InviteeTableTaskTooltipLine({ row }: { row: RowConfig }) {
+  return (
+    <p className="text-[11px] leading-snug text-gray-900">
+      {row.title}{' '}
+      <span className="font-semibold tabular-nums text-gray-600">({inviteeTaskRewardRubles(row)})</span>
+    </p>
   );
 }
 
 function InviteeTableTasksCell({ spendRow, retentionRow }: { spendRow: RowConfig; retentionRow: RowConfig }) {
+  const doneCount = [spendRow, retentionRow].filter((row) => row.tone === 'done').length;
+  const progressLabel = `${doneCount}/2`;
+  const progressBadgeClass =
+    doneCount === 0
+      ? 'bg-gray-100 text-gray-600 ring-gray-200/80'
+      : 'bg-emerald-50 text-emerald-700 ring-emerald-200/80';
   return (
-    <td className="max-w-[min(100%,320px)] align-top px-3 py-2.5">
-      <div className="flex flex-col items-stretch gap-1">
-        <InviteeTableTaskBlock row={spendRow} />
-        <InviteeTableTaskBlock row={retentionRow} />
+    <td className="align-middle px-3 py-2.5 whitespace-nowrap">
+      <div className="group/tasks relative inline-flex max-w-full items-center">
+        <span
+          className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ${progressBadgeClass}`}
+        >
+          {progressLabel}
+        </span>
+        <div
+          role="tooltip"
+          className="pointer-events-none invisible absolute left-0 top-full z-20 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-opacity group-hover/tasks:visible group-hover/tasks:opacity-100 group-focus-within/tasks:visible group-focus-within/tasks:opacity-100"
+        >
+          <InviteeTableTaskTooltipLine row={spendRow} />
+          <div className="mt-2">
+            <InviteeTableTaskTooltipLine row={retentionRow} />
+          </div>
+        </div>
       </div>
     </td>
   );
@@ -1621,12 +1658,13 @@ function InviteeTable({
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+      <table className="w-full min-w-[720px] border-collapse text-left text-base">
         <thead>
           <tr className="border-b border-gray-100 bg-gray-50/90">
             <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">ID приглашённого</th>
             <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">Источник</th>
-            <th className="max-w-[min(100%,320px)] px-3 py-2.5 text-xs font-semibold text-gray-600">Задания</th>
+            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap">Задания</th>
+            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap">Начислены бонусы</th>
             <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap">
               <button
                 type="button"
@@ -1654,14 +1692,15 @@ function InviteeTable({
             if (!spendRow || !retentionRow) return null;
             return (
               <tr key={inv.id} className="transition-colors hover:bg-gray-50/70">
-                <td className="px-3 py-2.5 align-top">
+                <td className="px-3 py-2.5 align-middle text-sm">
                   <p className="font-medium text-gray-900 tabular-nums">{inv.inviteId}</p>
                 </td>
-                <td className="px-3 py-2.5 align-top text-xs text-gray-600">
+                <td className="px-3 py-2.5 align-middle text-sm text-gray-600">
                   {inv.trafficSourceLabel}
                 </td>
                 <InviteeTableTasksCell spendRow={spendRow} retentionRow={retentionRow} />
-                <td className="px-3 py-2.5 align-top text-xs text-gray-600 whitespace-nowrap tabular-nums">
+                <InviteeTableBonusesCell spendRow={spendRow} retentionRow={retentionRow} />
+                <td className="px-3 py-2.5 align-middle text-sm text-gray-600 whitespace-nowrap tabular-nums">
                   {invitedDateOnly(inv.invitedDaysAgo)}
                 </td>
               </tr>
@@ -1708,15 +1747,6 @@ function LinkChainIcon({ className }: { className?: string }) {
     <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-    </svg>
-  );
-}
-
-function LockIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
   );
 }

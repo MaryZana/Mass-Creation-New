@@ -8,8 +8,32 @@ function truncateCompany(name: string, max = 22): string {
   return `${name.slice(0, max - 1)}…`;
 }
 
-export function AppHeader({ onNavigate }: { onNavigate: () => void }) {
+function formatBonusAmount(n: number): string {
+  return new Intl.NumberFormat('ru-RU').format(n);
+}
+
+const PROMO_BONUS_TOTAL_BY_PROFILE: Record<ProfileId, number> = {
+  '1': 250_000,
+  '2': 250_000,
+};
+
+const TASKS_DROPDOWN_NEW_COUNT: Record<ProfileId, number> = {
+  '1': 1,
+  '2': 3,
+};
+
+const TASKS_DROPDOWN_EARN_MORE = 12_400;
+
+export function AppHeader({
+  onNavigate,
+  onLaunchPromotion,
+}: {
+  onNavigate: () => void;
+  onLaunchPromotion?: () => void;
+}) {
   const { profileId, setProfileId, activeProfile } = useProfile();
+  const promoBonusTotal = PROMO_BONUS_TOTAL_BY_PROFILE[profileId];
+  const newTasksCount = TASKS_DROPDOWN_NEW_COUNT[profileId];
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -62,40 +86,80 @@ export function AppHeader({ onNavigate }: { onNavigate: () => void }) {
 
               <div className="invisible absolute left-0 top-full z-[60] pt-1.5 opacity-0 transition-all group-hover/tasks:visible group-hover/tasks:opacity-100 group-focus-within/tasks:visible group-focus-within/tasks:opacity-100">
                 <div
-                  className="w-[272px] rounded-2xl border border-gray-100 bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
+                  className="w-[320px] max-w-[calc(100vw-3rem)] rounded-xl border border-gray-100 bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
                   onClick={(e: React.MouseEvent) => e.stopPropagation()}
                 >
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-gray-100 bg-[#fafafa] px-3 py-2.5">
                     <NavLink
                       to="/bonuses?tab=tasks"
                       onClick={onNavigate}
-                      className="rounded-xl bg-[#f5f5f7] px-3 py-2.5 text-left transition-colors hover:bg-[#ebebef] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
+                      className="inline-block text-[11px] leading-snug text-gray-500 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40 rounded-sm"
                     >
-                      <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                      Промобонусы на счёте
+                    </NavLink>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <NavLink
+                        to="/bonuses?tab=tasks"
+                        onClick={onNavigate}
+                        className="min-w-0 shrink rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
+                      >
+                        <p className="text-lg font-bold leading-tight tabular-nums tracking-tight text-gray-900">
+                          {formatBonusAmount(promoBonusTotal)}
+                          <span className="ml-0.5 text-sm font-semibold text-gray-600">₽</span>
+                        </p>
+                      </NavLink>
+                      {onLaunchPromotion ? (
+                        <button
+                          type="button"
+                          onClick={onLaunchPromotion}
+                          className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] font-medium leading-snug text-gray-700 transition-colors hover:bg-gray-200"
+                        >
+                          Потратить на продвижение
+                        </button>
+                      ) : (
+                        <NavLink
+                          to="/campaigns"
+                          onClick={onNavigate}
+                          className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-gray-200 bg-gray-100 px-2 py-0.5 text-[10px] font-medium leading-snug text-gray-700 transition-colors hover:bg-gray-200"
+                        >
+                          Потратить на продвижение
+                        </NavLink>
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5">
+                    <NavLink
+                      to="/bonuses?tab=tasks"
+                      onClick={onNavigate}
+                      className="flex min-w-0 flex-col gap-1 rounded-lg bg-[#f5f5f7] px-2 py-1.5 text-left transition-colors hover:bg-[#ebebef] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
+                    >
+                      <div className="flex items-center gap-1 text-[10px] font-medium leading-none text-gray-500">
                         <span>Новые</span>
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#34c759]" aria-hidden />
+                        <span className="h-1 w-1 shrink-0 rounded-full bg-[#34c759]" aria-hidden />
                       </div>
-                      <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">1</p>
-                      <p className="mt-1 text-[11px] leading-snug text-emerald-700">
-                        Можете заработать еще{' '}
-                        <span className="text-xs font-bold tabular-nums text-[#9a41fe]">12&nbsp;400&nbsp;₽</span>
+                      <p className="text-base font-bold leading-none tabular-nums text-gray-900">{newTasksCount}</p>
+                      <p className="text-[10px] leading-tight text-gray-500">
+                        Ещё{' '}
+                        <span className="font-semibold tabular-nums text-[#9a41fe]">
+                          +{formatBonusAmount(TASKS_DROPDOWN_EARN_MORE)} ₽
+                        </span>
                       </p>
                     </NavLink>
                     <NavLink
                       to="/bonuses?tab=tasks"
                       onClick={onNavigate}
-                      className="rounded-xl bg-[#f5f5f7] px-3 py-2.5 text-left transition-colors hover:bg-[#ebebef] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
+                      className="flex min-w-0 flex-col gap-1 rounded-lg bg-[#f5f5f7] px-2 py-1.5 text-left transition-colors hover:bg-[#ebebef] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
                     >
-                      <p className="text-xs text-gray-500">Выполняете</p>
-                      <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">3</p>
+                      <p className="text-[10px] font-medium leading-none text-gray-500">Выполняете</p>
+                      <p className="text-base font-bold leading-none tabular-nums text-gray-900">3</p>
                     </NavLink>
                   </div>
                   <NavLink
                     to="/bonuses?tab=referral"
                     onClick={onNavigate}
-                    className="mt-2 block rounded-xl bg-[#f3efff] px-3 py-2.5 text-left transition-colors hover:bg-[#ebe4ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
+                    className="mt-2 block rounded-lg bg-[#f3efff] px-3 py-2 text-left transition-colors hover:bg-[#ebe4ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9a41fe]/40"
                   >
-                    <p className="text-sm font-semibold text-gray-900">Реферальная программа</p>
+                    <p className="text-sm font-semibold leading-snug text-gray-900">Реферальная программа</p>
                   </NavLink>
                 </div>
               </div>

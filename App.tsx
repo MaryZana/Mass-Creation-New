@@ -2589,7 +2589,12 @@ export default function App() {
   if (appState === 'list') {
     return (
       <div className="min-h-screen bg-[#EEF1F5] font-sans text-gray-900 relative">
-        <AppHeader onNavigate={() => handleNavigationAttempt(handleNavigateToList)} />
+        <AppHeader
+          onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
+          onLaunchPromotion={() =>
+            handleNavigationAttempt(() => setAppState('single-campaign'))
+          }
+        />
         <Routes>
           <Route
             path="/campaigns"
@@ -2825,7 +2830,10 @@ export default function App() {
   }
 
   return ( <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-40 relative">
-    <AppHeader onNavigate={() => handleNavigationAttempt(handleNavigateToList)} />
+    <AppHeader
+      onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
+      onLaunchPromotion={() => handleNavigationAttempt(() => setAppState('single-campaign'))}
+    />
     <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
     <UndoToast campaign={lastDeleted?.campaign} onUndo={handleUndoDelete} />
     <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onSubmit={handleAddItemSubmit} onTemplateDownload={handleTemplateDownload} initialConfig={globalConfig} showToast={setShowToast} setToastMessage={setToastMessage} /> 
