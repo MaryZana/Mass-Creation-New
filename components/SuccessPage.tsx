@@ -45,6 +45,8 @@ import {
   BonusCampaignNotificationStack,
   type BonusCampaignNotification,
 } from './BonusCampaignRepeatBanner';
+import { ReferralCodeCampaignListBanner } from './ReferralCodeCampaignListBanner';
+import { ReferralCampaignCreatedNotice } from './ReferralCampaignCreatedNotice';
 
 // --- Constants ---
 const TOTAL_PROMO_BONUS = 226660517;
@@ -2465,7 +2467,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onOpenSingleCampaign,
     onRegisterUpdateFn,
 }) => {
-  const { profileId, beginRepeatLaunchFlow } = useProfile();
+  const {
+    profileId,
+    beginRepeatLaunchFlow,
+    showReferralCampaignCreatedNotice,
+    dismissReferralCampaignCreatedNotice,
+    referralCodeAppliedFromCreation,
+  } = useProfile();
   const profileList = useMemo(() => getProfileListData(profileId), [profileId]);
   const profileProductTree = profileList.productTree;
   const profileCampaigns = profileList.campaigns;
@@ -3011,6 +3019,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
       {isApplyingEdits && <ApplyingChangesBlock onOpenReview={onOpenReview} onCancel={onCancelEdits} />}
 
+      {profileId === '2' && showReferralCampaignCreatedNotice && (
+        <ReferralCampaignCreatedNotice onDismiss={dismissReferralCampaignCreatedNotice} />
+      )}
+
       {limitShortfallNotification && (
         <Toast
           show={!!limitShortfallNotification}
@@ -3212,6 +3224,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
       {listTab === 'campaigns' && (
       <div className="w-full max-w-[1600px]">
+          {profileId === '2' && !referralCodeAppliedFromCreation && (
+            <ReferralCodeCampaignListBanner />
+          )}
           <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
           {isProductsPromoModalOpen && (
             <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">

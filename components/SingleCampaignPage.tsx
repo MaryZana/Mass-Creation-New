@@ -69,8 +69,13 @@ type CampaignProductRow = {
 };
 
 export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }) => {
-  const { profileId, showReferralInviteCreationBanner, singleCampaignSeed, clearSingleCampaignSeed } =
-    useProfile();
+  const {
+    profileId,
+    showReferralInviteCreationBanner,
+    singleCampaignSeed,
+    clearSingleCampaignSeed,
+    notifyReferralCampaignCreatedFromCreation,
+  } = useProfile();
   const repeatSeedAppliedRef = useRef(false);
   const [campaignName, setCampaignName] = useState('Кампания от 26.12.2024');
   const [paymentModel, setPaymentModel] = useState<'CPM' | 'CPC'>('CPM');
@@ -92,6 +97,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
   const [toastMessage, setToastMessage] = useState('');
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
 
   useEffect(() => {
     if (!singleCampaignSeed || repeatSeedAppliedRef.current) return;
@@ -633,7 +639,20 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
       {/* Fixed footer with launch button */}
       {products.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50 p-4">
-          <div className="max-w-[1200px] mx-auto flex justify-end">
+          <div className="max-w-[1200px] mx-auto flex flex-wrap items-center justify-end gap-3">
+            {profileId === '2' && (
+              <label className="flex items-center gap-2">
+                <span className="text-xs font-medium text-gray-600 whitespace-nowrap">Реферальный код</span>
+                <input
+                  type="text"
+                  value={referralCode}
+                  onChange={(e) => setReferralCode(e.target.value)}
+                  placeholder="038…"
+                  className="w-[7.5rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:border-violet-300 focus:outline-none focus:ring-1 focus:ring-violet-100 sm:w-32"
+                  aria-label="Реферальный код"
+                />
+              </label>
+            )}
             <button
               disabled={paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget)}
               className={`px-6 py-3 text-base font-bold rounded-lg transition-colors ${
@@ -646,7 +665,9 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                 const hasBudgetError = paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget);
                 
                 if (!hasBudgetError) {
-                  // Переходим на главную страницу
+                  if (profileId === '2' && referralCode.trim()) {
+                    notifyReferralCampaignCreatedFromCreation();
+                  }
                   onBack();
                 }
               }}

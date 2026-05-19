@@ -35,6 +35,10 @@ type ProfileContextValue = {
   beginRepeatLaunchFlow: (preset: RepeatLaunchPreset) => void;
   consumeSingleCampaignNav: () => void;
   clearSingleCampaignSeed: () => void;
+  showReferralCampaignCreatedNotice: boolean;
+  referralCodeAppliedFromCreation: boolean;
+  notifyReferralCampaignCreatedFromCreation: () => void;
+  dismissReferralCampaignCreatedNotice: () => void;
 };
 
 const ProfileContext = createContext<ProfileContextValue | null>(null);
@@ -45,6 +49,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [pendingReferralCreationNav, setPendingReferralCreationNav] = useState(false);
   const [pendingSingleCampaignNav, setPendingSingleCampaignNav] = useState(false);
   const [singleCampaignSeed, setSingleCampaignSeed] = useState<RepeatLaunchPreset | null>(null);
+  const [showReferralCampaignCreatedNotice, setShowReferralCampaignCreatedNotice] = useState(false);
+  const [referralCodeAppliedFromCreation, setReferralCodeAppliedFromCreation] = useState(false);
 
   const beginReferralCreationFlow = useCallback(() => {
     setShowReferralInviteCreationBanner(true);
@@ -72,10 +78,21 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setSingleCampaignSeed(null);
   }, []);
 
+  const notifyReferralCampaignCreatedFromCreation = useCallback(() => {
+    setReferralCodeAppliedFromCreation(true);
+    setShowReferralCampaignCreatedNotice(true);
+  }, []);
+
+  const dismissReferralCampaignCreatedNotice = useCallback(() => {
+    setShowReferralCampaignCreatedNotice(false);
+  }, []);
+
   useEffect(() => {
     if (profileId !== '2') {
       setShowReferralInviteCreationBanner(false);
       setPendingReferralCreationNav(false);
+      setShowReferralCampaignCreatedNotice(false);
+      setReferralCodeAppliedFromCreation(false);
     }
   }, [profileId]);
 
@@ -95,6 +112,10 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       beginRepeatLaunchFlow,
       consumeSingleCampaignNav,
       clearSingleCampaignSeed,
+      showReferralCampaignCreatedNotice,
+      referralCodeAppliedFromCreation,
+      notifyReferralCampaignCreatedFromCreation,
+      dismissReferralCampaignCreatedNotice,
     };
   }, [
     profileId,
@@ -102,12 +123,16 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     pendingReferralCreationNav,
     pendingSingleCampaignNav,
     singleCampaignSeed,
+    showReferralCampaignCreatedNotice,
+    referralCodeAppliedFromCreation,
     beginReferralCreationFlow,
     consumeReferralCreationNav,
     dismissReferralInviteCreationBanner,
     beginRepeatLaunchFlow,
     consumeSingleCampaignNav,
     clearSingleCampaignSeed,
+    notifyReferralCampaignCreatedFromCreation,
+    dismissReferralCampaignCreatedNotice,
   ]);
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>;
