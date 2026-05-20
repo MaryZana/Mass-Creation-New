@@ -9,6 +9,7 @@ import { getMockProductsForCategory, validateUploadedFile } from './services/gem
 import { MultiSelect } from './components/MultiSelect';
 import { ProductMultiSelect } from './components/ProductMultiSelect';
 import { SuccessPage } from './components/SuccessPage';
+import { GROWING_DEMAND_PRODUCTS } from './components/BonusCampaignRepeatBanner';
 import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 import { CpcCampaignPage } from './components/CpcCampaignPage';
@@ -1900,6 +1901,70 @@ export default function App() {
   const handleNavigateToCreation = () => setAppState('creation');
   const handleNavigateToEditing = () => setAppState('editing');
 
+  const buildGrowingDemandMassCreationCampaigns = useCallback((): CampaignRecord[] => {
+    const currentDate = new Date().toLocaleDateString('ru-RU');
+    const seenNmIds = new Set<number>();
+
+    return GROWING_DEMAND_PRODUCTS.filter((p) => {
+      const nmId = Number(p.id);
+      if (Number.isNaN(nmId) || seenNmIds.has(nmId)) return false;
+      seenNmIds.add(nmId);
+      return true;
+    }).map((p, index) => {
+      const nmId = Number(p.id);
+      return {
+        id: `growing-demand-v5-${p.id}-${index}`,
+        nmId,
+        productName: p.name,
+        campaignName: `${p.name} CPC ${currentDate}`,
+        imageUrl: p.image,
+        category: 'Товары',
+        budget: 3000,
+        autoReplenishment: false,
+        fundingSource: 'Единый счёт' as const,
+        status: CampaignStatus.VALID,
+        usePromoBonuses: true,
+        source: 'Рекомендации: хорошая конверсия',
+        cpcCompatible: true,
+        bonusAmount: 0,
+        searchBid: 30,
+        recommendationsBid: 30,
+      };
+    });
+  }, []);
+
+  const handleNavigateToCreationWithGrowingDemand = useCallback(() => {
+    const config: Pick<CampaignConfig, 'paymentModel' | 'bidType'> = {
+      paymentModel: PaymentModel.CPC,
+      bidType: BidType.UNIFIED,
+    };
+    const items = buildGrowingDemandMassCreationCampaigns();
+    const label = getTemplateGroupLabel(config);
+    const groupId = `group-${config.paymentModel}-${config.bidType}`;
+
+    setGlobalConfig((prev) => ({
+      ...prev,
+      paymentModel: config.paymentModel,
+      bidType: config.bidType,
+    }));
+    setTemplateGroups([
+      {
+        id: groupId,
+        config,
+        campaigns: items,
+        duplicateNmIds: new Set(),
+        correctedNmIds: new Set(),
+        currentPage: 1,
+        sourceFiles: new Set(['Рекомендации: хорошая конверсия']),
+      },
+    ]);
+    setToastMessage(
+      `Открыто массовое создание: ${items.length} ${getPlural(items.length, 'товар', 'товара', 'товаров')} в группе «${label}»`,
+    );
+    setShowToast(true);
+    setAppState('creation');
+  }, [buildGrowingDemandMassCreationCampaigns]);
+
   useEffect(() => {
     if (!pendingReferralCreationNav || profileId !== '2') return;
     consumeReferralCreationNav();
@@ -2608,6 +2673,9 @@ export default function App() {
                     failedCampaigns={failedCampaigns}
                     onClearLaunchResult={() => setCreationResult(null)}
                     onNavigateToCreation={() => handleNavigationAttempt(handleNavigateToCreation)}
+                    onNavigateToCreationWithGrowingDemand={() =>
+                      handleNavigationAttempt(handleNavigateToCreationWithGrowingDemand)
+                    }
                     onOpenUploadEditsModal={() => setIsUploadEditsModalOpen(true)}
                     selectedCampaigns={selectedListedCampaignIds}
                     onSelectionChange={setSelectedListedCampaignIds}

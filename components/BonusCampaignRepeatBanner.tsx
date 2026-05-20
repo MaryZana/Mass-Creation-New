@@ -14,7 +14,7 @@ const HEIGHT_STEP_PX = 6;
 const OPACITY_STEP = 0.32;
 const DISMISS_MS = 320;
 
-export type BonusNotificationCardVariant = 1 | 2 | 3 | 4;
+export type BonusNotificationCardVariant = 1 | 2 | 3 | 4 | 5;
 
 export type BonusCampaignNotification = {
   id: string;
@@ -185,7 +185,8 @@ function notificationCardSurfaceClass(variant: BonusNotificationCardVariant): st
 
 const INSIGHTS_LABEL_CLASS = 'm-0 block text-[11px] leading-[11px] text-[#767386]';
 
-const GROWING_DEMAND_PRODUCTS = [
+/** Товары для массового создания из карточки варианта 5 «Конверсия выше конкурентов» */
+export const GROWING_DEMAND_PRODUCTS = [
   {
     id: '312883517',
     name: 'Рюкзак школьный',
@@ -242,11 +243,11 @@ const GROWING_DEMAND_PRODUCTS = [
   },
 ] as const;
 
-/** Превью в колонке «Растущий спрос» (рюкзак, платье, кроссовки), 28×38 */
+/** Превью в колонке «Растущий спрос» (рюкзак, платье, светлое платье), 28×38 */
 const GROWING_DEMAND_INSIGHTS_STACK_IMAGES = [
   'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=56&h=76&fit=crop&q=80',
   'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=56&h=76&fit=crop&q=80',
-  'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=56&h=76&fit=crop&q=80',
+  'https://images.unsplash.com/photo-1595777457583-95e059d58199?w=56&h=76&fit=crop&q=80',
 ] as const;
 
 const GROWING_DEMAND_INSIGHTS_STACK_FALLBACKS = [
@@ -254,6 +255,15 @@ const GROWING_DEMAND_INSIGHTS_STACK_FALLBACKS = [
   'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=56&h=76&fit=crop&q=80',
   'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=56&h=76&fit=crop&q=80',
 ] as const;
+
+/** Имена кампаний для массового пополнения из карточки варианта 5 */
+export const LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES = [
+  'Кампания 123',
+  'Кампания 234',
+  'Кампания 456',
+] as const;
+
+export const LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT = LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES.length;
 
 const BONUSES_WORKED_CAMPAIGNS = [
   {
@@ -286,7 +296,15 @@ function formatInsightNum(n: number): string {
   return n.toLocaleString('ru-RU').replace(/\u00A0/g, ' ');
 }
 
-function InsightsStackImage({ src, index }: { src: string; index: number }) {
+function InsightsStackImage({
+  src,
+  index,
+  ringClassName = 'ring-white',
+}: {
+  src: string;
+  index: number;
+  ringClassName?: string;
+}) {
   const [resolvedSrc, setResolvedSrc] = useState(src);
   useEffect(() => {
     setResolvedSrc(src);
@@ -296,7 +314,7 @@ function InsightsStackImage({ src, index }: { src: string; index: number }) {
     <img
       src={resolvedSrc}
       alt=""
-      className={`relative h-[38px] w-7 shrink-0 rounded-[6px] object-cover bg-gray-100 ring-2 ring-white ${
+      className={`relative h-[38px] w-7 shrink-0 rounded-[6px] object-cover bg-gray-100 ring-2 ${ringClassName} ${
         index > 0 ? '-ml-1.5' : ''
       }`}
       style={{ zIndex: index + 1 }}
@@ -309,7 +327,13 @@ function InsightsStackImage({ src, index }: { src: string; index: number }) {
   );
 }
 
-function InsightsThumbnailStack({ imageUrls }: { imageUrls: readonly string[] }) {
+function InsightsThumbnailStack({
+  imageUrls,
+  ringClassName = 'ring-white',
+}: {
+  imageUrls: readonly string[];
+  ringClassName?: string;
+}) {
   const urls = imageUrls.slice(0, 3);
   if (urls.length === 0) return null;
 
@@ -319,7 +343,12 @@ function InsightsThumbnailStack({ imageUrls }: { imageUrls: readonly string[] })
       aria-hidden
     >
       {urls.map((src, index) => (
-        <InsightsStackImage key={`${src}-${index}`} src={src} index={index} />
+        <InsightsStackImage
+          key={`${src}-${index}`}
+          src={src}
+          index={index}
+          ringClassName={ringClassName}
+        />
       ))}
     </div>
   );
@@ -333,6 +362,34 @@ function ShowsMiniChart() {
     </div>
   );
 }
+
+function OrdersGrowthChartIcon() {
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden>
+      <span className="flex h-5 w-4 items-end justify-center gap-px">
+        <span className="w-0.5 rounded-sm bg-emerald-300" style={{ height: '42%' }} />
+        <span className="w-0.5 rounded-sm bg-emerald-500" style={{ height: '68%' }} />
+        <span className="w-0.5 rounded-sm bg-emerald-600" style={{ height: '100%' }} />
+      </span>
+    </span>
+  );
+}
+
+const BONUSES_INSIGHT_STACK_IMAGES = BONUSES_WORKED_CAMPAIGNS.map((c) => c.image);
+
+const VARIANT5_INSIGHT_CTA_CLASS =
+  'shrink-0 whitespace-nowrap rounded-lg bg-[#f3e8ff] px-4 py-2.5 text-[13px] font-semibold leading-none text-[#7c3aed] transition-colors hover:bg-[#ede9fe]';
+
+const VARIANT5_INSIGHT_CARD_SHELL_CLASS =
+  'relative flex h-26 min-w-0 flex-1 flex-col justify-between overflow-visible rounded-[12px] bg-white px-3 pt-3 pb-3 shadow-sm';
+
+const VARIANT5_INSIGHT_ACTION_BAR_CLASS =
+  'flex min-w-0 w-full items-center gap-2 rounded-lg bg-[#f5f5f7] px-2 py-1.5';
+
+const VARIANT5_STAT_COL = 'flex h-full flex-col justify-center gap-[6px]';
+const VARIANT5_STAT_LABEL = 'm-0 block text-[11px] leading-[11px] text-[#767386]';
+const VARIANT5_STAT_VALUE =
+  'm-0 text-[22px] font-bold leading-none tabular-nums tracking-tight text-gray-900';
 
 function ConversionBagIcon({ className }: { className?: string }) {
   return (
@@ -1144,6 +1201,145 @@ export function ListHeaderVariant4Panel({
             </React.Fragment>
         ))}
       </HorizontalDragScrollRow>
+    </div>
+  );
+}
+
+function Variant5BudgetInsightCard({ onRefillBudget }: { onRefillBudget?: () => void }) {
+  return (
+    <div className={`group/v5budget ${VARIANT5_INSIGHT_CARD_SHELL_CLASS}`}>
+      <div className="flex items-center gap-2">
+        <OrdersGrowthChartIcon />
+        <p className="m-0 text-[13px] font-normal leading-snug text-[#767386]">
+          Заказы растут, пополните кампании
+        </p>
+      </div>
+      <div className={VARIANT5_INSIGHT_ACTION_BAR_CLASS}>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent p-0 text-left transition-colors hover:bg-[#ececef]/80"
+        >
+          <InsightsThumbnailStack
+            imageUrls={BONUSES_INSIGHT_STACK_IMAGES}
+            ringClassName="ring-[#f5f5f7]"
+          />
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <span className="flex items-center gap-1">
+              <span className="whitespace-nowrap text-sm font-bold leading-tight text-gray-900">
+                3 кампании
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+            </span>
+            <span className="whitespace-nowrap text-[11px] font-medium leading-none text-emerald-600">
+              + 12 заказов
+            </span>
+          </div>
+        </button>
+        <button type="button" onClick={onRefillBudget} className={VARIANT5_INSIGHT_CTA_CLASS}>
+          Пополнить бюджет
+        </button>
+      </div>
+      <div className="pointer-events-none invisible absolute left-0 top-[calc(100%-6px)] z-[80] w-full pt-3 opacity-0 transition-all duration-200 group-hover/v5budget:pointer-events-auto group-hover/v5budget:visible group-hover/v5budget:opacity-100 group-focus-within/v5budget:pointer-events-auto group-focus-within/v5budget:visible group-focus-within/v5budget:opacity-100">
+        <BonusesWorkedDropdownPanel />
+      </div>
+    </div>
+  );
+}
+
+function Variant5ConversionInsightCard({ onPromote }: { onPromote?: () => void }) {
+  return (
+    <div className={`group/v5conv ${VARIANT5_INSIGHT_CARD_SHELL_CLASS}`}>
+      <div className="flex items-center gap-2">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center text-[#9a41fe]">
+          <ConversionBagIcon className="h-5 w-5" />
+        </span>
+        <p className="m-0 text-[13px] font-normal leading-snug text-[#767386]">
+          Конверсия выше конкурентов
+        </p>
+      </div>
+      <div className={VARIANT5_INSIGHT_ACTION_BAR_CLASS}>
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent p-0 text-left transition-colors hover:bg-[#ececef]/80"
+        >
+          <InsightsThumbnailStack
+            imageUrls={GROWING_DEMAND_INSIGHTS_STACK_IMAGES}
+            ringClassName="ring-[#f5f5f7]"
+          />
+          <span className="flex items-center gap-1">
+            <span className="whitespace-nowrap text-sm font-bold leading-tight text-gray-900">
+              6 товаров
+            </span>
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+          </span>
+        </button>
+        <button type="button" onClick={onPromote} className={VARIANT5_INSIGHT_CTA_CLASS}>
+          Продвигать
+        </button>
+      </div>
+      <div className="pointer-events-none invisible absolute right-0 top-[calc(100%-6px)] z-[80] pt-3 opacity-0 transition-all duration-200 group-hover/v5conv:pointer-events-auto group-hover/v5conv:visible group-hover/v5conv:opacity-100 group-focus-within/v5conv:pointer-events-auto group-focus-within/v5conv:visible group-focus-within/v5conv:opacity-100">
+        <GrowingDemandDropdownPanel />
+      </div>
+    </div>
+  );
+}
+
+/** Вариант 5: три карточки в ряд — KPI, пополнение бюджета, продвижение (как в макете списка). */
+export function ListHeaderVariant5Strip({
+  showInsightCards = true,
+  onRefillBudget,
+  onPromote,
+}: {
+  showInsightCards?: boolean;
+  onRefillBudget?: () => void;
+  onPromote?: () => void;
+}) {
+  return (
+    <div className="flex h-26 w-full min-w-0 items-stretch gap-3 overflow-visible">
+      <div
+        className="flex min-w-0 flex-1 items-stretch overflow-hidden rounded-[12px] bg-white px-5 shadow-sm"
+        role="region"
+        aria-label="Сводка по кабинету"
+      >
+        <div className="flex w-full flex-1 items-stretch justify-start gap-6 sm:gap-8">
+          <div className={`shrink-0 ${VARIANT5_STAT_COL}`}>
+            <p className={VARIANT5_STAT_LABEL}>Доля затрат</p>
+            <div className="m-0 flex items-baseline gap-2 leading-none">
+              <p className={VARIANT5_STAT_VALUE}>9,7 %</p>
+              <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+                <ArrowUp className="h-2.5 w-2.5 rotate-180" aria-hidden />
+                5.8%
+              </p>
+            </div>
+          </div>
+          <div className={`shrink-0 ${VARIANT5_STAT_COL}`}>
+            <p className={VARIANT5_STAT_LABEL}>Сумма заказов</p>
+            <div className="m-0 flex items-baseline gap-2 leading-none">
+              <p className={VARIANT5_STAT_VALUE}>196 000 ₽</p>
+              <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+                <ArrowUp className="h-2.5 w-2.5" aria-hidden />
+                1.9%
+              </p>
+            </div>
+          </div>
+          <div className={`shrink-0 ${VARIANT5_STAT_COL}`}>
+            <p className={VARIANT5_STAT_LABEL}>Заказы</p>
+            <div className="m-0 flex items-baseline gap-2 leading-none">
+              <p className={VARIANT5_STAT_VALUE}>127</p>
+              <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+                <ArrowUp className="h-2.5 w-2.5" aria-hidden />
+                12.6%
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      {showInsightCards ? (
+        <>
+          <Variant5BudgetInsightCard onRefillBudget={onRefillBudget} />
+          <Variant5ConversionInsightCard onPromote={onPromote} />
+        </>
+      ) : null}
     </div>
   );
 }

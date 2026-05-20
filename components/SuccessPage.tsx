@@ -48,6 +48,9 @@ import {
   ListHeaderVariant3Panel,
   ListHeaderVariant3StatCard,
   ListHeaderVariant4Panel,
+  ListHeaderVariant5Strip,
+  LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT,
+  LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES,
   type BonusCampaignNotification,
 } from './BonusCampaignRepeatBanner';
 import { ReferralCodeCampaignListBanner } from './ReferralCodeCampaignListBanner';
@@ -181,6 +184,8 @@ interface SuccessPageProps {
   failedCampaigns: CampaignRecord[];
   onClearLaunchResult: () => void;
   onNavigateToCreation: () => void;
+  /** Массовое создание с товарами «хорошая конверсия» (вариант 5) */
+  onNavigateToCreationWithGrowingDemand?: () => void;
   onOpenUploadEditsModal: () => void;
   selectedCampaigns: string[];
   onSelectionChange: (ids: string[]) => void;
@@ -1338,7 +1343,9 @@ const BudgetRefillModal: React.FC<{
   onClose: () => void;
   onSave: (amount: number) => void;
   currentBudget: number;
-}> = ({ isOpen, onClose, onSave, currentBudget }) => {
+  /** >1 — массовое пополнение (одна сумма на каждую кампанию) */
+  campaignCount?: number;
+}> = ({ isOpen, onClose, onSave, currentBudget, campaignCount }) => {
   const [refillAmount, setRefillAmount] = useState('3000');
   const [useBonuses, setUseBonuses] = useState(false);
   const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
@@ -1415,18 +1422,25 @@ const BudgetRefillModal: React.FC<{
 
   if (!isOpen) return null;
 
+  const massCount = campaignCount != null && campaignCount > 1 ? campaignCount : 0;
+  const isMassRefill = massCount > 1;
+  const modalTitle = isMassRefill
+    ? `Пополнение бюджета для ${massCount} ${getPlural(massCount, 'кампании', 'кампаний', 'кампаний')}`
+    : 'Пополнение бюджета';
+  const amountLabel = isMassRefill ? 'Сумма пополнения для 1 кампании' : 'Сумма пополнения';
+
   return (
     <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6 overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-lg text-gray-900">Пополнение бюджета</h3>
+          <h3 className="font-bold text-lg text-gray-900">{modalTitle}</h3>
           <button onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
         </div>
 
         <div className="mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
           <div className="space-y-6">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Сумма пополнения</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">{amountLabel}</label>
               <div className="relative">
                 <input
                   type="text"
@@ -1440,17 +1454,26 @@ const BudgetRefillModal: React.FC<{
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
               </div>
               {budgetError && <p className="text-red-500 text-xs mt-1.5">{budgetError}</p>}
+              {isMassRefill && !budgetError ? (
+                <p className="text-xs text-gray-500 mt-2">
+                  Применится ко всем {massCount}{' '}
+                  {getPlural(massCount, 'выбранной кампании', 'выбранным кампаниям', 'выбранным кампаниям')}.
+                </p>
+              ) : null}
             </div>
 
             <div className="pt-4 border-t border-gray-100">
               <div className="flex items-center gap-2 mb-4">
                 <Checkbox
-                  id="bonus-toggle"
+                  id={isMassRefill ? 'bonus-toggle-mass' : 'bonus-toggle'}
                   checked={useBonuses}
                   onChange={e => setUseBonuses(e.target.checked)}
                   className="w-5 h-5 text-purple-600 cursor-pointer"
                 />
-                <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
+                <label
+                  htmlFor={isMassRefill ? 'bonus-toggle-mass' : 'bonus-toggle'}
+                  className="text-sm font-semibold text-gray-900 cursor-pointer"
+                >
                   Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
                 </label>
               </div>
@@ -2497,6 +2520,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     failedCampaigns, 
     onClearLaunchResult, 
     onNavigateToCreation,
+    onNavigateToCreationWithGrowingDemand,
     onOpenUploadEditsModal,
     selectedCampaigns,
     onSelectionChange,
@@ -2639,6 +2663,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const CAMPAIGNS_PAGE_SIZE = 10;
   const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
   const [selectedCampaignForRefill, setSelectedCampaignForRefill] = useState<DisplayCampaign | null>(null);
+  const [isMassBudgetRefillModalOpen, setIsMassBudgetRefillModalOpen] = useState(false);
+  const [massBudgetRefillTargetIds, setMassBudgetRefillTargetIds] = useState<string[]>([]);
   const [isDailyLimitModalOpen, setIsDailyLimitModalOpen] = useState(false);
   const [limitShortfallNotification, setLimitShortfallNotification] = useState<{ requestedLimit: number; shortfall: number } | null>(null);
 
@@ -2980,6 +3006,27 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [onOpenCpcCampaign, profileId],
   );
 
+  const resolveVariant5BonusRefillCampaigns = useCallback((): DisplayCampaign[] => {
+    const byName = allCampaigns.filter((c) =>
+      LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES.some(
+        (label) => c.name === label || c.name.includes(label),
+      ),
+    );
+    const unique = [...new Map(byName.map((c) => [c.id, c])).values()];
+    if (unique.length > 0) {
+      return unique.slice(0, LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT);
+    }
+    return allCampaigns
+      .filter((c) => c.type === 'CPC')
+      .slice(0, LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT);
+  }, [allCampaigns]);
+
+  const openVariant5MassBudgetRefill = useCallback(() => {
+    const targets = resolveVariant5BonusRefillCampaigns();
+    setMassBudgetRefillTargetIds(targets.map((c) => c.id));
+    setIsMassBudgetRefillModalOpen(true);
+  }, [resolveVariant5BonusRefillCampaigns]);
+
   const openBonusNotificationCampaign = useCallback(
     (item: BonusCampaignNotification) => {
       const cpcPool = buildAllCampaignsForProfile(profileId).filter((c) => c.type === 'CPC');
@@ -3231,12 +3278,27 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             className={
               notificationCardVariant === 3
                 ? 'flex w-full min-h-[9.75rem] items-stretch gap-3'
-                : notificationCardVariant === 4
-                  ? 'flex w-full min-h-[6.5rem] min-w-0 items-stretch gap-3 overflow-visible'
-                  : 'flex h-24 w-full items-center gap-3'
+                : notificationCardVariant === 5
+                  ? 'flex h-26 w-full min-w-0 items-stretch gap-3 overflow-visible'
+                  : notificationCardVariant === 4
+                    ? 'flex w-full min-h-[6.5rem] min-w-0 items-stretch gap-3 overflow-visible'
+                    : 'flex h-24 w-full items-center gap-3'
             }
           >
-            {notificationCardVariant === 3 ? (
+            {notificationCardVariant === 5 ? (
+              <ListHeaderVariant5Strip
+                showInsightCards={profileId !== '2'}
+                onRefillBudget={openVariant5MassBudgetRefill}
+                onPromote={() => {
+                  if (onNavigateToCreationWithGrowingDemand) {
+                    onNavigateToCreationWithGrowingDemand();
+                    return;
+                  }
+                  const item = bonusNotificationQueue[0];
+                  if (item) beginRepeatLaunchFlow(item.launchPreset);
+                }}
+              />
+            ) : notificationCardVariant === 3 ? (
               <>
                 <div className="flex min-w-0 flex-1 gap-3">
                   <ListHeaderVariant3StatCard
@@ -3312,7 +3374,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 />
               )}
 
-            {profileId !== '2' && notificationCardVariant !== 3 && notificationCardVariant !== 4 && (
+            {profileId !== '2' &&
+              notificationCardVariant !== 3 &&
+              notificationCardVariant !== 4 &&
+              notificationCardVariant !== 5 && (
               <div
                 className={`flex items-center gap-3 ${
                   notificationCardVariant === 1 ? 'ml-auto shrink-0' : 'shrink-0'
@@ -4025,6 +4090,33 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         </>
       )}
 
+      {isMassBudgetRefillModalOpen && (
+        <BudgetRefillModal
+          isOpen={isMassBudgetRefillModalOpen}
+          onClose={() => {
+            setIsMassBudgetRefillModalOpen(false);
+            setMassBudgetRefillTargetIds([]);
+          }}
+          onSave={(amount) => {
+            const targetIds = new Set(massBudgetRefillTargetIds);
+            setAllCampaigns((prev) =>
+              prev.map((c) =>
+                targetIds.has(c.id)
+                  ? { ...c, remainingBudget: (c.remainingBudget || 0) + amount }
+                  : c,
+              ),
+            );
+            setIsMassBudgetRefillModalOpen(false);
+            setMassBudgetRefillTargetIds([]);
+          }}
+          currentBudget={0}
+          campaignCount={
+            massBudgetRefillTargetIds.length > 0
+              ? massBudgetRefillTargetIds.length
+              : LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT
+          }
+        />
+      )}
       {isBudgetRefillModalOpen && selectedCampaignForRefill && (
         <BudgetRefillModal
           isOpen={isBudgetRefillModalOpen}
@@ -4084,7 +4176,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           aria-label="Вариант карточки уведомления"
         >
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-2 sm:gap-3">
-            {([1, 2, 3, 4] as const).map((v) => (
+            {([1, 2, 3, 4, 5] as const).map((v) => (
               <button
                 key={v}
                 type="button"
