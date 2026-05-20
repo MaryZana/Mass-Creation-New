@@ -1,7 +1,7 @@
 import React, { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { RepeatLaunchPreset } from './ProfileContext';
-import { ArrowUp, ChevronDown, ChevronRight, X, Zap } from './Icons';
+import { ArrowUp, ChevronDown, ChevronRight, X } from './Icons';
 
 const NOTIFICATION_PRODUCT_IMAGE_FALLBACK =
   'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=160&h=160&fit=crop&q=80';
@@ -14,7 +14,7 @@ const HEIGHT_STEP_PX = 6;
 const OPACITY_STEP = 0.32;
 const DISMISS_MS = 320;
 
-export type BonusNotificationCardVariant = 1 | 2 | 3 | 4 | 5;
+export type BonusNotificationCardVariant = 1 | 2 | 3 | 4;
 
 export type BonusCampaignNotification = {
   id: string;
@@ -176,16 +176,14 @@ function NotificationCardBody({
 
 function notificationCardSurfaceClass(variant: BonusNotificationCardVariant): string {
   switch (variant) {
-    case 3:
+    case 2:
       return 'bg-[#f5f5f7] ring-1 ring-inset ring-gray-200';
     default:
       return 'bg-white';
   }
 }
 
-const INSIGHTS_LABEL_CLASS = 'm-0 block text-[11px] leading-[11px] text-[#767386]';
-
-/** Товары для массового создания из карточки варианта 5 «Конверсия выше конкурентов» */
+/** Товары для массового создания из карточки варианта 4 «Конверсия выше конкурентов» */
 export const GROWING_DEMAND_PRODUCTS = [
   {
     id: '312883517',
@@ -256,14 +254,14 @@ const GROWING_DEMAND_INSIGHTS_STACK_FALLBACKS = [
   'https://images.unsplash.com/photo-1551028719-00167b16eac5?w=56&h=76&fit=crop&q=80',
 ] as const;
 
-/** Имена кампаний для массового пополнения из карточки варианта 5 */
-export const LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES = [
+/** Имена кампаний для массового пополнения из карточки варианта 4 */
+export const LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_NAMES = [
   'Кампания 123',
   'Кампания 234',
   'Кампания 456',
 ] as const;
 
-export const LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT = LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES.length;
+export const LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_COUNT = LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_NAMES.length;
 
 const BONUSES_WORKED_CAMPAIGNS = [
   {
@@ -654,58 +652,6 @@ function BonusesWorkedDropdownPanel() {
   );
 }
 
-function BonusesWorkedInsightsColumn() {
-  return (
-    <div className="group/bonuses relative flex h-full min-w-[8.75rem] w-auto shrink-0 items-center overflow-visible">
-      <button
-        type="button"
-        className="flex w-full min-w-0 items-center rounded-[8px] py-0 pl-2.5 pr-2 text-left hover:bg-gray-50/90 transition-colors"
-      >
-        <div className="flex min-w-0 w-full flex-col justify-center gap-[4px]">
-          <span className={`${INSIGHTS_LABEL_CLASS} whitespace-nowrap`}>Продолжите продвижение</span>
-          <span className="flex items-center gap-1">
-            <Zap className="h-3.5 w-3.5 shrink-0 text-[#9a41fe]" aria-hidden />
-            <span className="whitespace-nowrap text-sm font-bold leading-tight text-gray-900">3 кампании</span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
-          </span>
-          <span className="m-0 whitespace-nowrap text-[11px] font-medium leading-none text-emerald-600">
-            + 14 заказов
-          </span>
-        </div>
-      </button>
-      <div className="pointer-events-none invisible absolute right-0 top-[calc(100%-6px)] z-[80] pt-3 opacity-0 transition-all duration-200 group-hover/bonuses:pointer-events-auto group-hover/bonuses:visible group-hover/bonuses:opacity-100 group-focus-within/bonuses:pointer-events-auto group-focus-within/bonuses:visible group-focus-within/bonuses:opacity-100">
-        <BonusesWorkedDropdownPanel />
-      </div>
-    </div>
-  );
-}
-
-function GrowingDemandInsightsColumn() {
-  const previewImages = GROWING_DEMAND_INSIGHTS_STACK_IMAGES;
-
-  return (
-    <div className="group/growing relative flex h-full min-w-[200px] flex-1 items-center overflow-visible">
-      <button
-        type="button"
-        className="flex w-full min-w-0 items-center justify-between gap-1 rounded-[8px] px-2 py-0 text-left hover:bg-gray-50/90 transition-colors"
-      >
-        <InsightsThumbnailStack imageUrls={previewImages} />
-        <div className="flex min-w-0 flex-1 flex-col justify-center gap-[4px] pl-0.5">
-          <span className={`${INSIGHTS_LABEL_CLASS} whitespace-nowrap`}>Хорошая конверсия</span>
-          <span className="flex items-center gap-1">
-            <ArrowUp className="h-3.5 w-3.5 shrink-0 text-emerald-600" aria-hidden />
-            <span className="whitespace-nowrap text-sm font-bold leading-tight text-gray-900">6 товаров</span>
-          </span>
-        </div>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
-      </button>
-      <div className="pointer-events-none invisible absolute right-0 top-[calc(100%-6px)] z-[80] pt-3 opacity-0 transition-all duration-200 group-hover/growing:pointer-events-auto group-hover/growing:visible group-hover/growing:opacity-100 group-focus-within/growing:pointer-events-auto group-focus-within/growing:visible group-focus-within/growing:opacity-100">
-        <GrowingDemandDropdownPanel />
-      </div>
-    </div>
-  );
-}
-
 function padNotificationItems(
   items: BonusCampaignNotification[],
   count: number,
@@ -803,7 +749,7 @@ export const VARIANT3_STAT_CARD_H = '9.75rem';
 const VARIANT3_LAUNCH_PRODUCT_COUNT = 6;
 const VARIANT3_BONUS_CAMPAIGN_COUNT = 3;
 
-/** Карточка метрики в шапке (вариант 3) */
+/** Карточка метрики в шапке (вариант 2) */
 export function ListHeaderVariant3StatCard({
   label,
   value,
@@ -1284,8 +1230,8 @@ function Variant5ConversionInsightCard({ onPromote }: { onPromote?: () => void }
   );
 }
 
-/** Вариант 5: три карточки в ряд — KPI, пополнение бюджета, продвижение (как в макете списка). */
-export function ListHeaderVariant5Strip({
+/** Вариант 4: три карточки в ряд — KPI, пополнение бюджета, продвижение (как в макете списка). */
+export function ListHeaderVariant4Strip({
   showInsightCards = true,
   onRefillBudget,
   onPromote,
@@ -1340,23 +1286,6 @@ export function ListHeaderVariant5Strip({
           <Variant5ConversionInsightCard onPromote={onPromote} />
         </>
       ) : null}
-    </div>
-  );
-}
-
-/** Вариант 2: три колонки «потенциал / спрос / новинки» в шапке списка кампаний */
-export function ListHeaderInsightsStrip() {
-  return (
-    <div
-      className="flex h-24 w-max max-w-[min(100%,520px)] shrink-0 items-center overflow-visible rounded-[12px] bg-white px-3 shadow-sm"
-      role="region"
-      aria-label="Подсказки по кампаниям и товарам"
-    >
-      <div className="flex h-full items-center gap-0.5">
-        <BonusesWorkedInsightsColumn />
-        <div className="mx-1.5 h-14 w-px shrink-0 bg-gray-200" aria-hidden />
-        <GrowingDemandInsightsColumn />
-      </div>
     </div>
   );
 }

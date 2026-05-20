@@ -44,13 +44,12 @@ import {
 import {
   BonusCampaignNotificationPeekCard,
   BonusCampaignNotificationStack,
-  ListHeaderInsightsStrip,
   ListHeaderVariant3Panel,
   ListHeaderVariant3StatCard,
   ListHeaderVariant4Panel,
-  ListHeaderVariant5Strip,
-  LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT,
-  LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES,
+  ListHeaderVariant4Strip,
+  LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_COUNT,
+  LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_NAMES,
   type BonusCampaignNotification,
 } from './BonusCampaignRepeatBanner';
 import { ReferralCodeCampaignListBanner } from './ReferralCodeCampaignListBanner';
@@ -184,7 +183,7 @@ interface SuccessPageProps {
   failedCampaigns: CampaignRecord[];
   onClearLaunchResult: () => void;
   onNavigateToCreation: () => void;
-  /** Массовое создание с товарами «хорошая конверсия» (вариант 5) */
+  /** Массовое создание с товарами «хорошая конверсия» (вариант 4) */
   onNavigateToCreationWithGrowingDemand?: () => void;
   onOpenUploadEditsModal: () => void;
   selectedCampaigns: string[];
@@ -3006,26 +3005,26 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [onOpenCpcCampaign, profileId],
   );
 
-  const resolveVariant5BonusRefillCampaigns = useCallback((): DisplayCampaign[] => {
+  const resolveVariant4BonusRefillCampaigns = useCallback((): DisplayCampaign[] => {
     const byName = allCampaigns.filter((c) =>
-      LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_NAMES.some(
+      LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_NAMES.some(
         (label) => c.name === label || c.name.includes(label),
       ),
     );
     const unique = [...new Map(byName.map((c) => [c.id, c])).values()];
     if (unique.length > 0) {
-      return unique.slice(0, LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT);
+      return unique.slice(0, LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_COUNT);
     }
     return allCampaigns
       .filter((c) => c.type === 'CPC')
-      .slice(0, LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT);
+      .slice(0, LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_COUNT);
   }, [allCampaigns]);
 
-  const openVariant5MassBudgetRefill = useCallback(() => {
-    const targets = resolveVariant5BonusRefillCampaigns();
+  const openVariant4MassBudgetRefill = useCallback(() => {
+    const targets = resolveVariant4BonusRefillCampaigns();
     setMassBudgetRefillTargetIds(targets.map((c) => c.id));
     setIsMassBudgetRefillModalOpen(true);
-  }, [resolveVariant5BonusRefillCampaigns]);
+  }, [resolveVariant4BonusRefillCampaigns]);
 
   const openBonusNotificationCampaign = useCallback(
     (item: BonusCampaignNotification) => {
@@ -3276,19 +3275,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
           <div
             className={
-              notificationCardVariant === 3
+              notificationCardVariant === 2
                 ? 'flex w-full min-h-[9.75rem] items-stretch gap-3'
-                : notificationCardVariant === 5
+                : notificationCardVariant === 4
                   ? 'flex h-26 w-full min-w-0 items-stretch gap-3 overflow-visible'
-                  : notificationCardVariant === 4
+                  : notificationCardVariant === 3
                     ? 'flex w-full min-h-[6.5rem] min-w-0 items-stretch gap-3 overflow-visible'
                     : 'flex h-24 w-full items-center gap-3'
             }
           >
-            {notificationCardVariant === 5 ? (
-              <ListHeaderVariant5Strip
+            {notificationCardVariant === 4 ? (
+              <ListHeaderVariant4Strip
                 showInsightCards={profileId !== '2'}
-                onRefillBudget={openVariant5MassBudgetRefill}
+                onRefillBudget={openVariant4MassBudgetRefill}
                 onPromote={() => {
                   if (onNavigateToCreationWithGrowingDemand) {
                     onNavigateToCreationWithGrowingDemand();
@@ -3298,7 +3297,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   if (item) beginRepeatLaunchFlow(item.launchPreset);
                 }}
               />
-            ) : notificationCardVariant === 3 ? (
+            ) : notificationCardVariant === 2 ? (
               <>
                 <div className="flex min-w-0 flex-1 gap-3">
                   <ListHeaderVariant3StatCard
@@ -3320,14 +3319,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ) : (
               <div
                 className={`flex min-w-0 items-stretch overflow-hidden rounded-[12px] bg-white px-5 shadow-sm ${
-                  notificationCardVariant === 4
+                  notificationCardVariant === 3
                     ? 'min-w-0 flex-1 basis-0 grow self-stretch'
                     : 'h-24 flex-1'
                 }`}
               >
                 <div
                   className={`flex w-full flex-1 items-stretch justify-start gap-6 sm:gap-8 ${
-                    notificationCardVariant === 4 ? 'min-h-full items-center' : ''
+                    notificationCardVariant === 3 ? 'min-h-full items-center' : ''
                   }`}
                 >
                   <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
@@ -3365,7 +3364,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             )}
 
             {profileId !== '2' &&
-              notificationCardVariant === 4 &&
+              notificationCardVariant === 3 &&
               bonusNotificationQueue.length > 0 && (
                 <ListHeaderVariant4Panel
                   items={bonusNotificationQueue}
@@ -3375,16 +3374,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               )}
 
             {profileId !== '2' &&
+              notificationCardVariant !== 2 &&
               notificationCardVariant !== 3 &&
-              notificationCardVariant !== 4 &&
-              notificationCardVariant !== 5 && (
-              <div
-                className={`flex items-center gap-3 ${
-                  notificationCardVariant === 1 ? 'ml-auto shrink-0' : 'shrink-0'
-                }`}
-              >
-                {notificationCardVariant === 2 && <ListHeaderInsightsStrip />}
-                {notificationCardVariant === 1 && bonusNotificationQueue.length > 0 && (
+              notificationCardVariant !== 4 && (
+              <div className="ml-auto flex shrink-0 items-center gap-3">
+                {bonusNotificationQueue.length > 0 && (
                   <div className="flex h-24 shrink-0 items-center gap-3">
                     {showMoreViewsPromoCard && (
                       <BonusCampaignNotificationPeekCard
@@ -4113,7 +4107,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           campaignCount={
             massBudgetRefillTargetIds.length > 0
               ? massBudgetRefillTargetIds.length
-              : LIST_HEADER_V5_BONUS_REFILL_CAMPAIGN_COUNT
+              : LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_COUNT
           }
         />
       )}
@@ -4176,7 +4170,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           aria-label="Вариант карточки уведомления"
         >
           <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-2 sm:gap-3">
-            {([1, 2, 3, 4, 5] as const).map((v) => (
+            {([1, 2, 3, 4] as const).map((v) => (
               <button
                 key={v}
                 type="button"
