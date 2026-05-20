@@ -42,10 +42,16 @@ import {
   type SingleCampaignSeedProduct,
 } from './ProfileContext';
 import {
+  BonusCampaignNotificationPeekCard,
   BonusCampaignNotificationStack,
+  ListHeaderInsightsStrip,
+  ListHeaderVariant3Panel,
+  ListHeaderVariant3StatCard,
+  ListHeaderVariant4Panel,
   type BonusCampaignNotification,
 } from './BonusCampaignRepeatBanner';
 import { ReferralCodeCampaignListBanner } from './ReferralCodeCampaignListBanner';
+import type { BonusNotificationCardVariant } from './BonusCampaignRepeatBanner';
 import { ReferralCampaignCreatedNotice } from './ReferralCampaignCreatedNotice';
 
 // --- Constants ---
@@ -1802,6 +1808,8 @@ function buildRepeatLaunchPreset(
 /** Блок подпись + значение в строке шапки h-16: ровно 6px между строками, без margin у `<p>`. */
 const LIST_HEADER_COMPACT_STAT = 'flex h-full flex-col justify-center gap-[6px]';
 const LIST_HEADER_STAT_LABEL_CLASS = 'm-0 block text-[11px] leading-[11px] text-[#767386]';
+const LIST_HEADER_STAT_VALUE_CLASS =
+  'm-0 text-[22px] font-bold leading-none tabular-nums tracking-tight text-gray-900';
 
 const CLOTHING_STACK_PREVIEW_IMAGES: [string, string, string] = [
   'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=96&h=96&fit=crop&q=80',
@@ -1847,11 +1855,44 @@ function buildBonusNotificationQueue(
     return CLOTHING_STACK_PREVIEW_IMAGES[index % CLOTHING_STACK_PREVIEW_IMAGES.length];
   };
 
-  const rows: Array<Pick<BonusCampaignNotification, 'views' | 'orders'>> = [
-    { views: 14230, orders: 14 },
-    { views: 9230, orders: 9 },
-    { views: 5180, orders: 5 },
-    { views: 2410, orders: 2 },
+  const rows: Array<
+    Pick<
+      BonusCampaignNotification,
+      'views' | 'orders' | 'ctr' | 'season' | 'campaignName' | 'productDisplayName'
+    >
+  > = [
+    {
+      views: 14230,
+      orders: 14,
+      ctr: 24,
+      season: 130,
+      campaignName: 'Кампания 123',
+      productDisplayName: 'Платье 123',
+    },
+    {
+      views: 9230,
+      orders: 9,
+      ctr: 10,
+      season: 92,
+      campaignName: 'Кампания 234',
+      productDisplayName: 'Платье 234',
+    },
+    {
+      views: 5180,
+      orders: 5,
+      ctr: 35,
+      season: 145,
+      campaignName: 'Кампания 456',
+      productDisplayName: 'Платье 456',
+    },
+    {
+      views: 2410,
+      orders: 2,
+      ctr: 23,
+      season: 110,
+      campaignName: 'Кампания 123',
+      productDisplayName: 'Платье 123',
+    },
   ];
 
   return rows.map((row, index) => {
@@ -1862,7 +1903,11 @@ function buildBonusNotificationQueue(
       id: `bonus-notify-${index + 1}`,
       imageUrl,
       views: row.views,
+      ctr: row.ctr,
+      season: row.season,
       orders: row.orders,
+      campaignName: row.campaignName,
+      productDisplayName: row.productDisplayName,
       launchPreset,
     };
   });
@@ -2631,6 +2676,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   // Вкладки списка: Кампании | Товары
   const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
+  const [notificationCardVariant, setNotificationCardVariant] =
+    useState<BonusNotificationCardVariant>(1);
+  const [showMoreViewsPromoCard, setShowMoreViewsPromoCard] = useState(true);
   // Поиск: по названию товара, названию кампании, артикулу товара, ID кампании
   const [searchQuery, setSearchQuery] = useState('');
   // Раскрытые строки товаров (вкладка Товары)
@@ -2987,8 +3035,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     );
   };
 
+  const showNotificationCardVariantPicker =
+    profileId === '1' && listTab === 'campaigns';
+
   return (
-    <div className="animate-in fade-in duration-300 mx-auto w-full max-w-[1600px] min-h-full bg-[#EEF1F5]">
+    <div
+      className={`animate-in fade-in duration-300 mx-auto w-full max-w-[1600px] min-h-full bg-[#EEF1F5] ${
+        showNotificationCardVariantPicker ? 'pb-24' : ''
+      }`}
+    >
       {isLaunching && <CompactLaunchLoader total={launchTotal} />}
       {!isLaunching && launchResult && (
           <ResultBlock
@@ -3172,51 +3227,126 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           </div>
 
-          <div className="flex h-16 items-center gap-3">
-            <div className="flex h-16 min-w-0 flex-1 items-stretch gap-6 overflow-hidden rounded-[12px] bg-white px-5 shadow-sm sm:gap-8">
-              <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
-                <p className={LIST_HEADER_STAT_LABEL_CLASS}>Доля затрат</p>
-                <div className="m-0 flex items-center gap-1.5 leading-none">
-                  <p className="m-0 text-base font-bold leading-4 tabular-nums text-gray-900">9,7 %</p>
-                  <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-[11px] text-emerald-600">
-                    <ArrowUp className="h-2.5 w-2.5 rotate-180" aria-hidden />
-                    5.8%
-                  </p>
+          <div
+            className={
+              notificationCardVariant === 3
+                ? 'flex w-full min-h-[9.75rem] items-stretch gap-3'
+                : notificationCardVariant === 4
+                  ? 'flex w-full min-h-[6.5rem] min-w-0 items-stretch gap-3 overflow-visible'
+                  : 'flex h-24 w-full items-center gap-3'
+            }
+          >
+            {notificationCardVariant === 3 ? (
+              <>
+                <div className="flex min-w-0 flex-1 gap-3">
+                  <ListHeaderVariant3StatCard
+                    label="Доля затрат"
+                    value="9,7 %"
+                    trend="5.8%"
+                    trendUp={false}
+                  />
+                  <ListHeaderVariant3StatCard label="Сумма заказов" value="196 000 ₽" trend="1.9%" />
+                  <ListHeaderVariant3StatCard label="Заказы" value="127" trend="12.6%" />
+                </div>
+                {profileId !== '2' && bonusNotificationQueue.length > 0 && (
+                  <ListHeaderVariant3Panel
+                    items={bonusNotificationQueue}
+                    onOpenItem={openBonusNotificationCampaign}
+                  />
+                )}
+              </>
+            ) : (
+              <div
+                className={`flex min-w-0 items-stretch overflow-hidden rounded-[12px] bg-white px-5 shadow-sm ${
+                  notificationCardVariant === 4
+                    ? 'min-w-0 flex-1 basis-0 grow self-stretch'
+                    : 'h-24 flex-1'
+                }`}
+              >
+                <div
+                  className={`flex w-full flex-1 items-stretch justify-start gap-6 sm:gap-8 ${
+                    notificationCardVariant === 4 ? 'min-h-full items-center' : ''
+                  }`}
+                >
+                  <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
+                    <p className={LIST_HEADER_STAT_LABEL_CLASS}>Доля затрат</p>
+                    <div className="m-0 flex items-baseline gap-2 leading-none">
+                      <p className={LIST_HEADER_STAT_VALUE_CLASS}>9,7 %</p>
+                      <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+                        <ArrowUp className="h-2.5 w-2.5 rotate-180" aria-hidden />
+                        5.8%
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
+                    <p className={LIST_HEADER_STAT_LABEL_CLASS}>Сумма заказов</p>
+                    <div className="m-0 flex items-baseline gap-2 leading-none">
+                      <p className={LIST_HEADER_STAT_VALUE_CLASS}>196 000 ₽</p>
+                      <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+                        <ArrowUp className="h-2.5 w-2.5" aria-hidden />
+                        1.9%
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
+                    <p className={LIST_HEADER_STAT_LABEL_CLASS}>Заказы</p>
+                    <div className="m-0 flex items-baseline gap-2 leading-none">
+                      <p className={LIST_HEADER_STAT_VALUE_CLASS}>127</p>
+                      <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+                        <ArrowUp className="h-2.5 w-2.5" aria-hidden />
+                        12.6%
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
-                <p className={LIST_HEADER_STAT_LABEL_CLASS}>Сумма заказов</p>
-                <div className="m-0 flex items-center gap-1.5 leading-none">
-                  <p className="m-0 text-base font-bold leading-4 tabular-nums text-gray-900">196 000 ₽</p>
-                  <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-[11px] text-emerald-600">
-                    <ArrowUp className="h-2.5 w-2.5" aria-hidden />
-                    1.9%
-                  </p>
-                </div>
-              </div>
-              <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
-                <p className={LIST_HEADER_STAT_LABEL_CLASS}>Заказы</p>
-                <div className="m-0 flex items-center gap-1.5 leading-none">
-                  <p className="m-0 text-base font-bold leading-4 tabular-nums text-gray-900">127</p>
-                  <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-[11px] text-emerald-600">
-                    <ArrowUp className="h-2.5 w-2.5" aria-hidden />
-                    12.6%
-                  </p>
-                </div>
-              </div>
-            </div>
+            )}
 
-            {profileId !== '2' && bonusNotificationQueue.length > 0 && (
-              <BonusCampaignNotificationStack
-                items={bonusNotificationQueue}
-                onDismissItem={(id) =>
-                  setBonusNotificationQueue((queue) => queue.filter((item) => item.id !== id))
-                }
-                onRepeatItem={(item) => {
-                  beginRepeatLaunchFlow(item.launchPreset);
-                }}
-                onOpenItemDetail={openBonusNotificationCampaign}
-              />
+            {profileId !== '2' &&
+              notificationCardVariant === 4 &&
+              bonusNotificationQueue.length > 0 && (
+                <ListHeaderVariant4Panel
+                  items={bonusNotificationQueue}
+                  onLaunchItem={(item) => beginRepeatLaunchFlow(item.launchPreset)}
+                  onBonusItem={openBonusNotificationCampaign}
+                />
+              )}
+
+            {profileId !== '2' && notificationCardVariant !== 3 && notificationCardVariant !== 4 && (
+              <div
+                className={`flex items-center gap-3 ${
+                  notificationCardVariant === 1 ? 'ml-auto shrink-0' : 'shrink-0'
+                }`}
+              >
+                {notificationCardVariant === 2 && <ListHeaderInsightsStrip />}
+                {notificationCardVariant === 1 && bonusNotificationQueue.length > 0 && (
+                  <div className="flex h-24 shrink-0 items-center gap-3">
+                    {showMoreViewsPromoCard && (
+                      <BonusCampaignNotificationPeekCard
+                        items={bonusNotificationQueue}
+                        title="Товары с хорошей конверсией"
+                        cardVariant={1}
+                        onDismissItem={(id) =>
+                          setBonusNotificationQueue((queue) => queue.filter((item) => item.id !== id))
+                        }
+                        onRepeatItem={(item) => beginRepeatLaunchFlow(item.launchPreset)}
+                        onOpenItemDetail={openBonusNotificationCampaign}
+                      />
+                    )}
+                    <BonusCampaignNotificationStack
+                      items={bonusNotificationQueue}
+                      cardVariant={1}
+                      onDismissItem={(id) =>
+                        setBonusNotificationQueue((queue) => queue.filter((item) => item.id !== id))
+                      }
+                      onRepeatItem={(item) => {
+                        beginRepeatLaunchFlow(item.launchPreset);
+                      }}
+                      onOpenItemDetail={openBonusNotificationCampaign}
+                    />
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -3946,6 +4076,32 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
         />
       )}
+
+      {showNotificationCardVariantPicker && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[45] border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-6px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
+          role="toolbar"
+          aria-label="Вариант карточки уведомления"
+        >
+          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-2 sm:gap-3">
+            {([1, 2, 3, 4] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setNotificationCardVariant(v)}
+                className={`min-w-[7.5rem] rounded-lg px-5 py-2.5 text-sm font-medium transition-colors ${
+                  notificationCardVariant === v
+                    ? 'bg-[#9a41fe] text-white shadow-sm'
+                    : 'border border-gray-200 bg-gray-50 text-gray-800 hover:bg-gray-100'
+                }`}
+              >
+                Вариант {v}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
