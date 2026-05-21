@@ -379,7 +379,7 @@ const VARIANT5_INSIGHT_CTA_CLASS =
   'shrink-0 whitespace-nowrap rounded-lg bg-[#f3e8ff] px-4 py-2.5 text-[13px] font-semibold leading-none text-[#7c3aed] transition-colors hover:bg-[#ede9fe]';
 
 const VARIANT5_INSIGHT_CARD_BASE_CLASS =
-  'relative flex h-26 shrink-0 flex-col justify-between overflow-visible rounded-[12px] bg-white px-3 pt-3 pb-3 shadow-sm';
+  'relative flex h-26 shrink-0 flex-col justify-between overflow-visible rounded-[12px] bg-white px-3 pt-2 pb-3 shadow-sm';
 
 /** Ширина по контенту: заголовок, превью и CTA без обрезки */
 const VARIANT5_INSIGHT_BUDGET_CARD_CLASS = `${VARIANT5_INSIGHT_CARD_BASE_CLASS} w-[25rem] max-w-[min(100%,25rem)]`;
@@ -1198,7 +1198,7 @@ export function ListHeaderVariant4Panel({
 function Variant5BudgetInsightCard({ onRefillBudget }: { onRefillBudget?: () => void }) {
   return (
     <div className={`group/v5budget ${VARIANT5_INSIGHT_BUDGET_CARD_CLASS}`}>
-      <div className="flex items-center gap-2">
+      <div className="mb-2.5 flex items-center gap-2">
         <OrdersGrowthChartIcon />
         <p className="m-0 text-[13px] font-normal leading-snug text-[#767386]">
           Заказы растут, пополните кампании
@@ -1239,7 +1239,7 @@ function Variant5BudgetInsightCard({ onRefillBudget }: { onRefillBudget?: () => 
 function Variant5ConversionInsightCard({ onPromote }: { onPromote?: () => void }) {
   return (
     <div className={`group/v5conv ${VARIANT5_INSIGHT_CONVERSION_CARD_CLASS}`}>
-      <div className="flex items-center gap-2">
+      <div className="mb-2.5 flex items-center gap-2">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center text-[#9a41fe]">
           <ConversionBagIcon className="h-5 w-5" />
         </span>
