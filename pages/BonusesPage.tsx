@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowUp, Calendar, ChevronDown, ChevronRight, Check } from '../components/Icons';
 import { useProfile } from '../components/ProfileContext';
@@ -29,7 +30,20 @@ function isCustomTrafficSource(source: TrafficSource): boolean {
   return !DEFAULT_TRAFFIC_SOURCE_IDS.has(source.id);
 }
 
-const TRAFFIC_SOURCE_LABELS_FOR_MOCK = DEFAULT_TRAFFIC_SOURCES.map((s) => s.label);
+/** Примеры меток, которые селлер добавляет сам (как в настройке ссылки) */
+const CUSTOM_TRAFFIC_SOURCE_LABELS_FOR_MOCK = [
+  'TikTok',
+  'Instagram',
+  'Блог',
+  'Подкаст',
+  'Рассылка',
+  'Дзен',
+] as const;
+
+const TRAFFIC_SOURCE_LABELS_FOR_MOCK = [
+  ...DEFAULT_TRAFFIC_SOURCES.map((s) => s.label),
+  ...CUSTOM_TRAFFIC_SOURCE_LABELS_FOR_MOCK,
+];
 
 function slugifyTrafficLabel(label: string): string {
   const trimmed = label.trim().toLowerCase();
@@ -130,6 +144,89 @@ const REFERRAL_FAQ_ITEMS = [
   },
 ] as const;
 
+const TASKS_FAQ_ITEMS = [
+  {
+    question: 'Что такое бонусы?',
+    answer:
+      'Промобонусы — это бонусные рубли на продвижение товаров в кабинете продавца. Ими можно частично или полностью оплачивать открутку кампаний, где доступна оплата бонусами (1 промобонус = 1 ₽).',
+  },
+  {
+    question: 'Как я пойму, что бонусы зачислены?',
+    answer:
+      'Начисления отображаются в блоке «Промобонусы» на этой странице и во вкладке «История бонусов». После выполнения условий задания сумма обновится в доступном балансе.',
+  },
+  {
+    question: 'Когда и на что я смогу потратить начисленные промо-бонусы?',
+    answer:
+      'Потратить можно после зачисления на баланс — при запуске и ведении CPC-кампаний и других форматов, где в оплате доступны промобонусы. Срок действия бонусов указан в карточке баланса (если бонусы сгорают).',
+  },
+  {
+    question: 'Могу ли я вывести бонусы в денежном эквиваленте?',
+    answer:
+      'Нет. Промобонусы нельзя вывести на расчётный счёт или карту — они используются только на продвижение внутри кабинета.',
+  },
+  {
+    question: 'Как посмотреть сумму затрат?',
+    answer:
+      'Затраты на продвижение смотрите в отчётах по кампаниям и в статистике кампаний. Списание бонусов при оплате открутки отражается во вкладке «История бонусов».',
+  },
+  {
+    question: 'Как потратить бонусы?',
+    answer:
+      'При создании или редактировании кампании включите оплату промобонусами, если формат это поддерживает. Бонусы спишутся автоматически в пределах лимита оплаты бонусами для кампании.',
+  },
+  {
+    question:
+      'Будут ли начислены бонусы, если в прошлом периоде я продвигал свои товары только за счет бонусных средств?',
+    answer:
+      'Условия начисления зависят от правил конкретной акции или задания. Если в описании задания нет ограничения на оплату только бонусами, бонусы могут быть начислены при выполнении остальных условий. Подробности — в «Условия и завершенные акции».',
+  },
+] as const;
+
+function BonusesTasksFaqSection() {
+  const [faqOpen, setFaqOpen] = useState<number | null>(null);
+
+  return (
+    <section className="mt-8 rounded-2xl border border-gray-100 bg-white p-6 shadow-sm sm:p-8">
+      <h2 className="text-xl font-bold text-gray-900">FAQ</h2>
+      <ul className="mt-4 space-y-2">
+        {TASKS_FAQ_ITEMS.map((item, i) => {
+          const open = faqOpen === i;
+          return (
+            <li key={item.question} className="overflow-hidden rounded-xl bg-[#F2F2F7]">
+              <button
+                type="button"
+                onClick={() => setFaqOpen(open ? null : i)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3.5 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-[#E8E8ED]"
+              >
+                <span className="pr-2">{item.question}</span>
+                <ChevronDown
+                  className={`h-5 w-5 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+                  aria-hidden
+                />
+              </button>
+              {open ? (
+                <div className="border-t border-gray-200/80 bg-white px-4 py-3 text-sm leading-relaxed text-gray-600">
+                  {item.answer}
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="mt-4 flex flex-col gap-3 rounded-xl bg-[#F2F2F7] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-gray-600">Остались вопросы?</p>
+        <button
+          type="button"
+          className="inline-flex items-center justify-center self-start rounded-xl bg-[#4A4D57] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-800 sm:self-auto"
+        >
+          Написать
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function ReferralHowItWorksSection() {
   const [faqOpen, setFaqOpen] = useState<number | null>(null);
 
@@ -228,30 +325,39 @@ function buildMockInvitees(): Invitee[] {
 
 const MOCK_INVITEES = buildMockInvitees();
 
-type InviteeListFilter = 'all' | 'spending' | 'completed';
 type InviteeDateSort = 'asc' | 'desc';
 
-const INVITEE_FILTER_TABS: { id: InviteeListFilter; label: string }[] = [
-  { id: 'all', label: 'Все' },
-  { id: 'spending', label: 'В процессе' },
-  { id: 'completed', label: 'Выполнили' },
-];
-
-function isInviteeCompleted(inv: Invitee): boolean {
-  const spend = inv.rows.find((r) => r.icon === 'zap');
-  const retention = inv.rows.find((r) => r.icon === 'package');
-  return spend?.tone === 'done' && retention?.tone === 'done';
+/** В списке показываем только приглашённых с хотя бы одним выполненным заданием */
+function inviteeHasCompletedTask(inv: Invitee): boolean {
+  return inv.rows.some((row) => row.tone === 'done');
 }
 
-function isInviteeSpending(inv: Invitee): boolean {
-  if (isInviteeCompleted(inv)) return false;
-  return inv.rows.some((r) => r.tone === 'progress');
+function inviteeCompletedFirstTask(inv: Invitee): boolean {
+  const spend = inv.rows.find((row) => row.icon === 'zap');
+  return spend?.tone === 'done';
 }
 
-function filterInvitees(list: Invitee[], filter: InviteeListFilter): Invitee[] {
-  if (filter === 'all') return list;
-  if (filter === 'completed') return list.filter(isInviteeCompleted);
-  return list.filter(isInviteeSpending);
+function inviteeCompletedSecondTask(inv: Invitee): boolean {
+  const retention = inv.rows.find((row) => row.icon === 'package');
+  return retention?.tone === 'done';
+}
+
+function filterInviteesBySource(list: Invitee[], sourceLabel: string): Invitee[] {
+  if (sourceLabel === 'all') return list;
+  return list.filter((inv) => inv.trafficSourceLabel === sourceLabel);
+}
+
+function buildInviteeSourceFilterOptions(invitees: Invitee[]): string[] {
+  const labels = [...new Set(invitees.map((inv) => inv.trafficSourceLabel))];
+  labels.sort((a, b) => {
+    const ia = TRAFFIC_SOURCE_LABELS_FOR_MOCK.indexOf(a);
+    const ib = TRAFFIC_SOURCE_LABELS_FOR_MOCK.indexOf(b);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a.localeCompare(b, 'ru');
+  });
+  return labels;
 }
 
 function sortInviteesByDate(list: Invitee[], sort: InviteeDateSort): Invitee[] {
@@ -388,107 +494,6 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-
-function ReferralSellerPromotionCard() {
-  const { beginReferralCreationFlow } = useProfile();
-  const [referralInput, setReferralInput] = useState('');
-  const [codeApplied, setCodeApplied] = useState(false);
-
-  const handleApplyCode = () => {
-    if (!referralInput.trim()) return;
-    setCodeApplied(true);
-    beginReferralCreationFlow();
-  };
-
-  const steps = [
-    {
-      key: 'code',
-      title: 'Примените реферальную ссылку или код',
-      done: codeApplied,
-    },
-    {
-      key: 'launch',
-      title: 'Запустите кампанию с бюджетом 2 000 ₽',
-      done: false,
-    },
-    {
-      key: 'bonus',
-      title: 'Получите 3 000 ₽ после траты бюджета кампании',
-      done: false,
-    },
-  ] as const;
-
-  return (
-    <article className="rounded-[20px] border border-gray-100/90 bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)] sm:p-7">
-      <div className="flex flex-col gap-6 sm:flex-row sm:gap-6">
-        <div className="flex h-[104px] w-[104px] shrink-0 items-center justify-center rounded-2xl bg-[#f3efff] px-3 text-center text-sm font-semibold leading-snug text-[#7c3aed]">
-          до 3&nbsp;000&nbsp;₽
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="space-y-2">
-            <span className="inline-flex rounded-lg bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-900">
-              Новое
-            </span>
-            <h3 className="max-w-xl text-lg font-bold leading-snug text-gray-900">
-              Бонус за запуск по реферальной ссылке
-            </h3>
-            <p className="max-w-xl text-sm text-gray-600">
-              Задание для селлера: активируйте приглашение и запустите продвижение с минимальным бюджетом.
-            </p>
-          </div>
-
-          <ul className="mt-6 max-w-xl divide-y divide-gray-100">
-            {steps.map((step, index) => (
-              <li key={step.key} className={index === 0 ? 'pb-4' : 'py-4'}>
-                <div className="flex items-start gap-3">
-                  <span
-                    className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold leading-none ${
-                      step.done ? 'bg-[#9a41fe] text-white' : 'bg-[#f3efff] text-[#7c3aed]'
-                    }`}
-                    aria-hidden
-                  >
-                    {index + 1}
-                  </span>
-                  <div className="min-w-0 flex-1 pt-0.5">
-                    <p className="text-sm font-medium text-gray-900">{step.title}</p>
-                    {step.key === 'code' && (
-                      <div className="mt-3 flex overflow-hidden rounded-lg border border-gray-200 bg-white focus-within:border-violet-300 focus-within:ring-1 focus-within:ring-violet-100">
-                        <input
-                          type="text"
-                          value={referralInput}
-                          onChange={(e) => {
-                            setReferralInput(e.target.value);
-                            setCodeApplied(false);
-                          }}
-                          onKeyDown={(e) => e.key === 'Enter' && handleApplyCode()}
-                          placeholder="Вставьте ссылку или код"
-                          className="min-w-0 flex-1 border-0 bg-transparent px-2.5 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-0"
-                          aria-label="Реферальная ссылка или код"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleApplyCode}
-                          disabled={!referralInput.trim()}
-                          className="m-1 shrink-0 rounded-md bg-violet-100 px-3 py-1.5 text-xs font-semibold text-violet-900 transition-colors hover:bg-violet-200 disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          Применить
-                        </button>
-                      </div>
-                    )}
-                    {step.key === 'code' && codeApplied && (
-                      <p className="mt-2 text-xs font-medium text-emerald-600">Код принят</p>
-                    )}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-    </article>
-  );
-}
-
 function ReferralInvitePanel() {
   const [toast, setToast] = useState<string | null>(null);
   const [sourceSettingsOpen, setSourceSettingsOpen] = useState(false);
@@ -499,6 +504,8 @@ function ReferralInvitePanel() {
   const [activeSourceId, setActiveSourceId] = useState(DEFAULT_TRAFFIC_SOURCES[0].id);
   const [newSourceLabel, setNewSourceLabel] = useState('');
   const [addTagFormOpen, setAddTagFormOpen] = useState(false);
+  const [tagDeleteConfirmId, setTagDeleteConfirmId] = useState<string | null>(null);
+  const newSourceInputRef = useRef<HTMLInputElement>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeSource = useMemo(
@@ -549,8 +556,8 @@ function ReferralInvitePanel() {
     setSources((prev) => withCanonicalTrafficLabels([...prev, created]));
     setActiveSourceId(created.id);
     setNewSourceLabel('');
-    setAddTagFormOpen(false);
     showToast('Метка добавлена');
+    queueMicrotask(() => newSourceInputRef.current?.focus());
   }, [newSourceLabel, sources, showToast]);
 
   const removeTrafficSource = useCallback(
@@ -596,14 +603,54 @@ function ReferralInvitePanel() {
 
   const openSourceSettings = useCallback((focus: 'link' | 'code' | 'qr') => {
     setSettingsFocus(focus);
-    setAddTagFormOpen(false);
-    setSourceSettingsOpen(true);
+    setSourceSettingsOpen((prevOpen) => {
+      if (!prevOpen) setAddTagFormOpen(false);
+      return true;
+    });
   }, []);
 
   const closeSourceSettings = useCallback(() => {
+    setTagDeleteConfirmId(null);
     setAddTagFormOpen(false);
+    setNewSourceLabel('');
     setSourceSettingsOpen(false);
   }, []);
+
+  const requestTagDeleteConfirm = useCallback((id: string) => {
+    setTagDeleteConfirmId(id);
+  }, []);
+
+  const cancelTagDeleteConfirm = useCallback(() => {
+    setTagDeleteConfirmId(null);
+  }, []);
+
+  const confirmTagDelete = useCallback(() => {
+    if (!tagDeleteConfirmId) return;
+    removeTrafficSource(tagDeleteConfirmId);
+    setTagDeleteConfirmId(null);
+  }, [tagDeleteConfirmId, removeTrafficSource]);
+
+  const tagPendingDelete = useMemo(
+    () => (tagDeleteConfirmId ? sources.find((s) => s.id === tagDeleteConfirmId) : undefined),
+    [sources, tagDeleteConfirmId],
+  );
+
+  const handleSourceSettingsBackdropPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (addTagFormOpen || newSourceLabel.trim()) return;
+      closeSourceSettings();
+    },
+    [addTagFormOpen, newSourceLabel, closeSourceSettings],
+  );
+
+  const handleTagDeleteModalBackdropPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (e.target !== e.currentTarget) return;
+      cancelTagDeleteConfirm();
+    },
+    [cancelTagDeleteConfirm],
+  );
 
   const renderSourceChips = (chipTone: 'onPurple' | 'onWhite') => {
     const selectedClass =
@@ -647,7 +694,10 @@ function ReferralInvitePanel() {
           </button>
           <button
             type="button"
-            onClick={() => removeTrafficSource(source.id)}
+            onClick={(e) => {
+              e.stopPropagation();
+              requestTagDeleteConfirm(source.id);
+            }}
             className={`rounded-r-full py-1.5 pr-2 pl-0.5 text-sm leading-none ${
               chipTone === 'onPurple'
                 ? selected
@@ -675,7 +725,7 @@ function ReferralInvitePanel() {
           </h2>
           <ul className="space-y-1 text-xs leading-snug text-white/90 sm:text-sm">
             <li>— Пригласить можно селлера, который не продвигался больше 6 месяцев.</li>
-            <li>— Получите по 1 000 ₽, когда реферал запустит продвижение</li>
+            <li>— Получите 1 000 ₽, когда реферал запустит продвижение и потратит 1 000 ₽.</li>
             <li>— Получите 5 000 ₽, если реферал останется в продвижении на 3 месяца</li>
           </ul>
         </div>
@@ -720,16 +770,19 @@ function ReferralInvitePanel() {
         </div>
       )}
 
-      {sourceSettingsOpen && (
+      {sourceSettingsOpen &&
+        typeof document !== 'undefined' &&
+        createPortal(
         <div
           className="fixed inset-0 z-[90] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Настройка ссылки"
-          onClick={closeSourceSettings}
+          onPointerDown={handleSourceSettingsBackdropPointerDown}
         >
           <div
             className="relative max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:rounded-2xl"
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -830,27 +883,29 @@ function ReferralInvitePanel() {
                 <div className="mt-3 flex flex-wrap gap-1.5">{renderSourceChips('onWhite')}</div>
                 <form
                   className="mt-2 flex flex-wrap gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  addTrafficSource();
-                }}
-              >
-                <input
-                  type="text"
-                  value={newSourceLabel}
-                  onChange={(e) => setNewSourceLabel(e.target.value)}
-                  placeholder="Новая метка, например TikTok"
-                  className="min-w-[12rem] flex-1 rounded-xl border border-gray-200 px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  disabled={!newSourceLabel.trim()}
-                  className="shrink-0 rounded-xl bg-[#9a41fe] px-3 py-2 text-xs font-semibold text-white hover:bg-[#8840e5] disabled:opacity-40"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    addTrafficSource();
+                  }}
+                  onPointerDown={(e) => e.stopPropagation()}
                 >
-                  Добавить
-                </button>
-              </form>
+                  <input
+                    ref={newSourceInputRef}
+                    type="text"
+                    value={newSourceLabel}
+                    onChange={(e) => setNewSourceLabel(e.target.value)}
+                    placeholder="Новая метка, например TikTok"
+                    className="min-w-[12rem] flex-1 rounded-xl border border-gray-200 px-3 py-2 text-xs text-gray-900 placeholder:text-gray-400 focus:border-violet-300 focus:outline-none focus:ring-2 focus:ring-violet-100"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newSourceLabel.trim()}
+                    className="shrink-0 rounded-xl bg-[#9a41fe] px-3 py-2 text-xs font-semibold text-white hover:bg-[#8840e5] disabled:opacity-40"
+                  >
+                    Добавить
+                  </button>
+                </form>
               </>
             ) : (
               <button
@@ -862,8 +917,60 @@ function ReferralInvitePanel() {
               </button>
             )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
+
+      {tagDeleteConfirmId &&
+        tagPendingDelete &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="referral-delete-tag-title"
+            onPointerDown={handleTagDeleteModalBackdropPointerDown}
+          >
+            <div
+              className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="absolute right-2 top-2 rounded-full p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Закрыть"
+                onClick={cancelTagDeleteConfirm}
+              >
+                <span className="text-lg leading-none">×</span>
+              </button>
+              <h3 id="referral-delete-tag-title" className="pr-8 text-base font-bold text-gray-900">
+                Удалить метку «{tagPendingDelete.label}»?
+              </h3>
+              <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                Вы удалите метку, но она останется в списке приглашённых, если вы её уже использовали.
+              </p>
+              <div className="mt-5 flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={cancelTagDeleteConfirm}
+                  className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-800 hover:bg-gray-50"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmTagDelete}
+                  className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700"
+                >
+                  Удалить
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </section>
   );
 }
@@ -1180,6 +1287,47 @@ function BonusHistoryPanel() {
   );
 }
 
+function Profile2BonusTaskCard({
+  rewardLabel,
+  title,
+  progressMax,
+  progressCurrent = 0,
+}: {
+  rewardLabel: string;
+  title: string;
+  progressMax: number;
+  progressCurrent?: number;
+}) {
+  return (
+    <article className="rounded-[20px] border border-gray-100/90 bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.04)] sm:p-7">
+      <div className="flex flex-col gap-6 sm:flex-row sm:gap-6">
+        <div className="flex h-[104px] w-[104px] shrink-0 items-center justify-center rounded-2xl bg-[#F2F2F7] px-3 text-center text-sm font-semibold leading-snug text-gray-700">
+          {rewardLabel}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 space-y-2">
+              <span className="inline-flex rounded-lg bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                Выполняется, доступно до 31.12.2025
+              </span>
+              <h3 className="max-w-xl text-lg font-bold leading-snug text-gray-900">{title}</h3>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-100"
+            >
+              Подробнее
+            </button>
+          </div>
+          <div className="mt-6 max-w-xl">
+            <PromotionProgress current={progressCurrent} max={progressMax} />
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function PromotionProgress({ current, max }: { current: number; max: number }) {
   const pct = Math.min(100, Math.max(0, (current / max) * 100));
   const label = `${formatNum(current)} ₽`;
@@ -1234,32 +1382,45 @@ const BonusesPage: React.FC = () => {
   const [availableOpen, setAvailableOpen] = useState(true);
   const [invitePage, setInvitePage] = useState(1);
   const [invitePageSize, setInvitePageSize] = useState(10);
-  const [inviteListFilter, setInviteListFilter] = useState<InviteeListFilter>('all');
+  const [inviteSourceFilter, setInviteSourceFilter] = useState<string>('all');
+  const [inviteSourceFilterOpen, setInviteSourceFilterOpen] = useState(false);
+  const inviteSourceFilterRef = useRef<HTMLDivElement>(null);
   const [inviteDateSort, setInviteDateSort] = useState<InviteeDateSort>('desc');
   const promoTotal = 250_000;
   const promoSplitPrimary = 150_000;
   const promoSplitSecondary = 100_000;
 
   const profileInvitees = useMemo(
-    () => (profileId === '2' ? [] : MOCK_INVITEES),
+    () => (profileId === '2' ? [] : MOCK_INVITEES.filter(inviteeHasCompletedTask)),
     [profileId],
   );
 
   const referralEarnedBonus = profileId === '2' ? 0 : 10_000;
 
-  const filteredInvitees = useMemo(() => {
-    const filtered = filterInvitees(profileInvitees, inviteListFilter);
-    return sortInviteesByDate(filtered, inviteDateSort);
-  }, [profileInvitees, inviteListFilter, inviteDateSort]);
-
-  const inviteFilterCounts = useMemo(
-    () => ({
-      all: profileInvitees.length,
-      spending: profileInvitees.filter(isInviteeSpending).length,
-      completed: profileInvitees.filter(isInviteeCompleted).length,
-    }),
+  const referralFirstTaskCompletedCount = useMemo(
+    () => profileInvitees.filter(inviteeCompletedFirstTask).length,
     [profileInvitees],
   );
+
+  const referralSecondTaskCompletedCount = useMemo(
+    () => profileInvitees.filter(inviteeCompletedSecondTask).length,
+    [profileInvitees],
+  );
+
+  const inviteSourceFilterOptions = useMemo(
+    () => buildInviteeSourceFilterOptions(profileInvitees),
+    [profileInvitees],
+  );
+
+  const filteredInvitees = useMemo(() => {
+    const bySource = filterInviteesBySource(profileInvitees, inviteSourceFilter);
+    return sortInviteesByDate(bySource, inviteDateSort);
+  }, [profileInvitees, inviteSourceFilter, inviteDateSort]);
+
+  const inviteSourceFilterLabel =
+    inviteSourceFilter === 'all'
+      ? 'Все источники'
+      : inviteSourceFilter;
 
   const inviteTotalPages = Math.max(1, Math.ceil(filteredInvitees.length / invitePageSize));
   const safeInvitePage = Math.min(invitePage, inviteTotalPages);
@@ -1275,11 +1436,31 @@ const BonusesPage: React.FC = () => {
 
   useEffect(() => {
     setInvitePage(1);
-  }, [inviteListFilter, inviteDateSort, invitePageSize]);
+  }, [inviteSourceFilter, inviteDateSort, invitePageSize]);
+
+  useEffect(() => {
+    if (inviteSourceFilter === 'all') return;
+    const exists = inviteSourceFilterOptions.includes(inviteSourceFilter);
+    if (!exists) setInviteSourceFilter('all');
+  }, [inviteSourceFilter, inviteSourceFilterOptions]);
+
+  useEffect(() => {
+    if (!inviteSourceFilterOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (inviteSourceFilterRef.current?.contains(event.target as Node)) return;
+      setInviteSourceFilterOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [inviteSourceFilterOpen]);
 
   return (
     <>
-      <main className={`max-w-[897px] mx-auto px-6 py-8 ${tab === 'tasks' ? 'pb-32' : 'pb-10'}`}>
+      <main
+        className={`max-w-[897px] mx-auto px-6 py-8 ${
+          tab === 'tasks' && profileId !== '2' ? 'pb-32' : 'pb-10'
+        }`}
+      >
         {/* Сводка промобонусов — Dribbble-style */}
         <section
           className="rounded-[28px] border border-gray-100/90 bg-white px-4 py-4 sm:px-6 sm:py-5"
@@ -1380,7 +1561,23 @@ const BonusesPage: React.FC = () => {
 
               {availableOpen && (
                 <div className="mt-5 space-y-5">
-                  {profileId === '2' && <ReferralSellerPromotionCard />}
+                  {profileId === '2' ? (
+                    <>
+                      <Profile2BonusTaskCard
+                        rewardLabel="+ 99% промобонусов"
+                        title="Потратить 1 000 ₽ на продвижение"
+                        progressCurrent={1_000}
+                        progressMax={2_000}
+                      />
+                      <Profile2BonusTaskCard
+                        rewardLabel="+ 99% бонусов"
+                        title="Оставаться в продвижении 3 месяца"
+                        progressCurrent={150}
+                        progressMax={3_000}
+                      />
+                    </>
+                  ) : (
+                    <>
                   {/* Карточка 1 — один прогресс */}
                   <article className="rounded-[20px] bg-white border border-gray-100/90 p-6 sm:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.04)]">
                     <div className="flex flex-col gap-6 sm:flex-row sm:gap-6">
@@ -1465,6 +1662,8 @@ const BonusesPage: React.FC = () => {
                       </div>
                     </div>
                   </article>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1474,6 +1673,8 @@ const BonusesPage: React.FC = () => {
                 Условия и завершенные акции
               </button>
             </p>
+
+            <BonusesTasksFaqSection />
           </div>
         )}
 
@@ -1483,63 +1684,103 @@ const BonusesPage: React.FC = () => {
 
             {/* Вы пригласили */}
                 <section>
-                  <h2 className="text-base font-bold text-gray-900">Вы пригласили</h2>
+                  <h2 className="text-base font-bold text-gray-900">Рефералы</h2>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:max-w-md">
+                  {profileInvitees.length > 0 ? (
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:max-w-2xl">
                 <div className="rounded-xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
-                  <p className="text-[11px] font-medium text-gray-500">Заработали баллов</p>
+                  <p className="text-[11px] font-medium text-gray-500">Выполнили первое задание</p>
+                  <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900">
+                    {formatNum(referralFirstTaskCompletedCount)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
+                  <p className="text-[11px] font-medium text-gray-500">Выполнили второе задание</p>
+                  <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900">
+                    {formatNum(referralSecondTaskCompletedCount)}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
+                  <p className="text-[11px] font-medium text-gray-500">Вы заработали</p>
                   <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900">
                     {formatNum(referralEarnedBonus)} <span className="text-sm font-semibold text-gray-500">₽</span>
                   </p>
                 </div>
-                <div className="rounded-xl border border-gray-100 bg-white px-3 py-2.5 shadow-sm">
-                  <p className="text-[11px] font-medium text-gray-500">Приглашённых</p>
-                  <p className="mt-0.5 text-lg font-bold tabular-nums tracking-tight text-gray-900">
-                    {formatNum(profileInvitees.length)}
-                  </p>
-                </div>
               </div>
+                  ) : null}
 
               {profileInvitees.length === 0 ? (
-                <p className="mt-4 text-sm text-gray-500">Пока никого нет в списке приглашённых.</p>
+                <p className="mt-4 text-sm text-gray-500">Пока никто не сделал первое задание</p>
               ) : (
                 <>
-                  <div
-                    className="mt-4 inline-flex flex-wrap gap-1 rounded-xl bg-gray-100 p-1"
-                    role="tablist"
-                    aria-label="Фильтр приглашённых"
-                  >
-                    {INVITEE_FILTER_TABS.map((item) => {
-                      const active = inviteListFilter === item.id;
-                      const count = inviteFilterCounts[item.id];
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          role="tab"
-                          aria-selected={active}
-                          onClick={() => setInviteListFilter(item.id)}
-                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                            active
-                              ? 'bg-white text-gray-900 shadow-sm'
-                              : 'text-gray-600 hover:text-gray-900'
+                  <div className="mt-4 flex justify-start">
+                    <div ref={inviteSourceFilterRef} className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setInviteSourceFilterOpen((open) => !open)}
+                        className="inline-flex min-w-[12.5rem] w-full sm:w-auto items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-900 shadow-sm hover:border-gray-300"
+                        aria-expanded={inviteSourceFilterOpen}
+                        aria-haspopup="listbox"
+                      >
+                        <span className="truncate">{inviteSourceFilterLabel}</span>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                            inviteSourceFilterOpen ? 'rotate-180' : ''
                           }`}
+                        />
+                      </button>
+                      {inviteSourceFilterOpen && (
+                        <ul
+                          className="absolute left-0 top-full z-20 mt-1 max-h-64 min-w-full overflow-y-auto rounded-xl border border-gray-200 bg-white py-1 shadow-lg sm:min-w-[14rem]"
+                          role="listbox"
+                          aria-label="Источник приглашения"
                         >
-                          {item.label}
-                          <span className={`ml-1 tabular-nums ${active ? 'text-gray-500' : 'text-gray-400'}`}>
-                            {count}
-                          </span>
-                        </button>
-                      );
-                    })}
+                          <li>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={inviteSourceFilter === 'all'}
+                              className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-50"
+                              onClick={() => {
+                                setInviteSourceFilter('all');
+                                setInviteSourceFilterOpen(false);
+                              }}
+                            >
+                              Все источники
+                            </button>
+                          </li>
+                          {inviteSourceFilterOptions.map((label) => (
+                            <li key={label}>
+                              <button
+                                type="button"
+                                role="option"
+                                aria-selected={inviteSourceFilter === label}
+                                className="w-full truncate px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-50"
+                                onClick={() => {
+                                  setInviteSourceFilter(label);
+                                  setInviteSourceFilterOpen(false);
+                                }}
+                              >
+                                {label}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
                   </div>
 
                   {filteredInvitees.length === 0 ? (
-                    <p className="mt-4 text-sm text-gray-500">В этой вкладке пока никого нет.</p>
+                    <p className="mt-4 text-sm text-gray-500">
+                      {inviteSourceFilter !== 'all'
+                        ? 'По выбранному источнику никого нет.'
+                        : 'В списке пока никого нет.'}
+                    </p>
                   ) : (
-                    <div className="mt-3 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+                    <div className="mt-3 rounded-xl border border-gray-100 bg-white shadow-sm">
                       <InviteeTable
                         invitees={pagedInvitees}
+                        rowNumberOffset={(safeInvitePage - 1) * invitePageSize}
                         dateSort={inviteDateSort}
                         onToggleDateSort={() =>
                           setInviteDateSort((s) => (s === 'asc' ? 'desc' : 'asc'))
@@ -1565,11 +1806,11 @@ const BonusesPage: React.FC = () => {
         {tab === 'history' && <BonusHistoryPanel />}
       </main>
 
-      {tab === 'tasks' && (
+      {tab === 'tasks' && profileId !== '2' && (
         <div className="fixed bottom-6 left-1/2 z-40 w-full max-w-[897px] -translate-x-1/2 px-6 pointer-events-none">
           <div className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <p className="text-sm text-gray-800 font-medium">
-              Доступно {profileId === '2' ? 3 : 2} новых задания
+              Доступно 2 новых задания
             </p>
             <button
               type="button"
@@ -1611,7 +1852,7 @@ function inviteeTaskRewardRubles(row: RowConfig): string {
 
 function InviteeTableTaskTooltipLine({ row }: { row: RowConfig }) {
   return (
-    <p className="text-[11px] leading-snug text-gray-900">
+    <p className="m-0 text-[11px] leading-snug text-gray-900 break-words">
       {row.title}{' '}
       <span className="font-semibold tabular-nums text-gray-600">({inviteeTaskRewardRubles(row)})</span>
     </p>
@@ -1623,10 +1864,10 @@ function InviteeTableTasksCell({ spendRow, retentionRow }: { spendRow: RowConfig
   const progressLabel = `${doneCount}/2`;
   const progressBadgeClass =
     doneCount === 0
-      ? 'bg-gray-100 text-gray-600 ring-gray-200/80'
-      : 'bg-emerald-50 text-emerald-700 ring-emerald-200/80';
+      ? 'bg-gray-100 text-gray-500 ring-gray-200/80'
+      : 'bg-gray-100 text-gray-900 ring-gray-200/80';
   return (
-    <td className="align-middle px-3 py-2.5 whitespace-nowrap">
+    <td className="relative align-middle overflow-visible px-3 py-2.5 whitespace-nowrap">
       <div className="group/tasks relative inline-flex max-w-full items-center">
         <span
           className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ${progressBadgeClass}`}
@@ -1635,7 +1876,7 @@ function InviteeTableTasksCell({ spendRow, retentionRow }: { spendRow: RowConfig
         </span>
         <div
           role="tooltip"
-          className="pointer-events-none invisible absolute left-0 top-full z-20 mt-1.5 w-64 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-opacity group-hover/tasks:visible group-hover/tasks:opacity-100 group-focus-within/tasks:visible group-focus-within/tasks:opacity-100"
+          className="pointer-events-none invisible absolute left-0 top-full z-30 mt-1.5 w-max min-w-[14rem] max-w-[min(20rem,calc(100vw-3rem))] whitespace-normal rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-opacity group-hover/tasks:visible group-hover/tasks:opacity-100 group-focus-within/tasks:visible group-focus-within/tasks:opacity-100"
         >
           <InviteeTableTaskTooltipLine row={spendRow} />
           <div className="mt-2">
@@ -1649,23 +1890,28 @@ function InviteeTableTasksCell({ spendRow, retentionRow }: { spendRow: RowConfig
 
 function InviteeTable({
   invitees,
+  rowNumberOffset = 0,
   dateSort,
   onToggleDateSort,
 }: {
   invitees: Invitee[];
+  rowNumberOffset?: number;
   dateSort: InviteeDateSort;
   onToggleDateSort: () => void;
 }) {
+  const thStickyClass =
+    'sticky top-0 z-10 bg-gray-50 px-3 py-2.5 text-xs font-semibold text-gray-600 shadow-[inset_0_-1px_0_#f3f4f6]';
+
   return (
-    <div className="overflow-x-auto">
+    <div className="max-h-[min(70vh,640px)] overflow-auto rounded-t-xl">
       <table className="w-full min-w-[720px] border-collapse text-left text-base">
         <thead>
-          <tr className="border-b border-gray-100 bg-gray-50/90">
-            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">ID приглашённого</th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600">Источник</th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap">Задания</th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap">Начислены бонусы</th>
-            <th className="px-3 py-2.5 text-xs font-semibold text-gray-600 whitespace-nowrap">
+          <tr>
+            <th className={thStickyClass}>№</th>
+            <th className={thStickyClass}>Источник</th>
+            <th className={`${thStickyClass} whitespace-nowrap`}>Задания</th>
+            <th className={`${thStickyClass} whitespace-nowrap`}>Начислены бонусы</th>
+            <th className={`${thStickyClass} whitespace-nowrap`}>
               <button
                 type="button"
                 onClick={onToggleDateSort}
@@ -1686,14 +1932,14 @@ function InviteeTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100">
-          {invitees.map((inv) => {
+          {invitees.map((inv, index) => {
             const spendRow = inv.rows.find((r) => r.icon === 'zap');
             const retentionRow = inv.rows.find((r) => r.icon === 'package');
             if (!spendRow || !retentionRow) return null;
             return (
               <tr key={inv.id} className="transition-colors hover:bg-gray-50/70">
                 <td className="px-3 py-2.5 align-middle text-sm">
-                  <p className="font-medium text-gray-900 tabular-nums">{inv.inviteId}</p>
+                  <p className="font-medium text-gray-900 tabular-nums">{rowNumberOffset + index + 1}</p>
                 </td>
                 <td className="px-3 py-2.5 align-middle text-sm text-gray-600">
                   {inv.trafficSourceLabel}

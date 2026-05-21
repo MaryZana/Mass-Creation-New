@@ -52,7 +52,6 @@ import {
   LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_NAMES,
   type BonusCampaignNotification,
 } from './BonusCampaignRepeatBanner';
-import { ReferralCodeCampaignListBanner } from './ReferralCodeCampaignListBanner';
 import type { BonusNotificationCardVariant } from './BonusCampaignRepeatBanner';
 import { ReferralCampaignCreatedNotice } from './ReferralCampaignCreatedNotice';
 
@@ -2540,7 +2539,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     beginRepeatLaunchFlow,
     showReferralCampaignCreatedNotice,
     dismissReferralCampaignCreatedNotice,
-    referralCodeAppliedFromCreation,
   } = useProfile();
   const profileList = useMemo(() => getProfileListData(profileId), [profileId]);
   const profileProductTree = profileList.productTree;
@@ -3459,9 +3457,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
       {listTab === 'campaigns' && (
       <div className="w-full max-w-[1600px]">
-          {profileId === '2' && !referralCodeAppliedFromCreation && (
-            <ReferralCodeCampaignListBanner />
-          )}
           <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
           {isProductsPromoModalOpen && (
             <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">

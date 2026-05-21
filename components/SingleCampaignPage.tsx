@@ -647,8 +647,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                   type="text"
                   value={referralCode}
                   onChange={(e) => setReferralCode(e.target.value)}
-                  placeholder="038…"
-                  className="w-[7.5rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder:text-gray-400 focus:border-violet-300 focus:outline-none focus:ring-1 focus:ring-violet-100 sm:w-32"
+                  className="w-[7.5rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-violet-300 focus:outline-none focus:ring-1 focus:ring-violet-100 sm:w-32"
                   aria-label="Реферальный код"
                 />
               </label>
