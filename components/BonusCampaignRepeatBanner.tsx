@@ -378,11 +378,14 @@ const BONUSES_INSIGHT_STACK_IMAGES = BONUSES_WORKED_CAMPAIGNS.map((c) => c.image
 const VARIANT5_INSIGHT_CTA_CLASS =
   'shrink-0 whitespace-nowrap rounded-lg bg-[#f3e8ff] px-4 py-2.5 text-[13px] font-semibold leading-none text-[#7c3aed] transition-colors hover:bg-[#ede9fe]';
 
-const VARIANT5_INSIGHT_CARD_SHELL_CLASS =
-  'relative flex h-26 min-w-0 flex-1 flex-col justify-between overflow-visible rounded-[12px] bg-white px-3 pt-3 pb-3 shadow-sm';
+const VARIANT5_INSIGHT_CARD_BASE_CLASS =
+  'relative flex h-26 shrink-0 flex-col justify-between overflow-visible rounded-[12px] bg-white px-3 pt-3 pb-3 shadow-sm';
 
-const VARIANT5_INSIGHT_ACTION_BAR_CLASS =
-  'flex min-w-0 w-full items-center gap-2 rounded-lg bg-[#f5f5f7] px-2 py-1.5';
+/** Ширина по контенту: заголовок, превью и CTA без обрезки */
+const VARIANT5_INSIGHT_BUDGET_CARD_CLASS = `${VARIANT5_INSIGHT_CARD_BASE_CLASS} w-[25rem] max-w-[min(100%,25rem)]`;
+const VARIANT5_INSIGHT_CONVERSION_CARD_CLASS = `${VARIANT5_INSIGHT_CARD_BASE_CLASS} w-[23rem] max-w-[min(100%,23rem)]`;
+
+const VARIANT5_INSIGHT_ACTION_ROW_CLASS = 'flex min-w-0 w-full items-center gap-2';
 
 const VARIANT5_STAT_COL = 'flex h-full flex-col justify-center gap-[6px]';
 const VARIANT5_STAT_LABEL = 'm-0 block text-[11px] leading-[11px] text-[#767386]';
@@ -668,13 +671,16 @@ function Variant3ProductChip({
   chipIndex,
   chipTab,
   actionLinkLabel,
-  onOpen,
+  onOpenTitle,
+  onAction,
 }: {
   item: BonusCampaignNotification;
   chipIndex: number;
   chipTab: 'organic' | 'bonuses';
   actionLinkLabel: string;
-  onOpen?: () => void;
+  /** Вкладка «Бонусы сработали»: клик по названию кампании */
+  onOpenTitle?: () => void;
+  onAction?: () => void;
 }) {
   const ctr = VARIANT3_CHIP_CTR[chipIndex % VARIANT3_CHIP_CTR.length];
   const season = VARIANT3_CHIP_SEASON[chipIndex % VARIANT3_CHIP_SEASON.length];
@@ -683,64 +689,86 @@ function Variant3ProductChip({
   const statValueClass =
     'm-0 mt-0.5 whitespace-nowrap text-[10px] font-bold leading-none tabular-nums text-gray-900';
 
+  const titleText =
+    chipTab === 'bonuses'
+      ? item.campaignName ?? item.launchPreset.product.productName
+      : item.launchPreset.product.productName;
+
+  const titleClassName =
+    'm-0 line-clamp-2 text-[11px] font-semibold leading-[13px] text-gray-900 text-left';
+
   return (
     <article className="group flex h-auto w-[228px] shrink-0 self-center overflow-hidden rounded-[12px] bg-[#f5f5f7] p-2.5 transition-colors hover:bg-[#efeff2]">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex w-full items-start gap-2 border-0 bg-transparent p-0 text-left"
-      >
-        <img
-          src={item.imageUrl}
-          alt=""
-          className="h-10 w-10 shrink-0 rounded-[10px] object-cover bg-gray-100"
-          onError={(e) => {
-            const el = e.currentTarget;
-            if (el.src !== NOTIFICATION_PRODUCT_IMAGE_FALLBACK) {
-              el.src = NOTIFICATION_PRODUCT_IMAGE_FALLBACK;
-            }
-          }}
-        />
-        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-          <p className="m-0 line-clamp-2 text-[11px] font-semibold leading-[13px] text-gray-900">
-            {chipTab === 'bonuses'
-              ? item.campaignName ?? item.launchPreset.product.productName
-              : item.launchPreset.product.productName}
-          </p>
-          {chipTab === 'bonuses' ? (
-            <div className="grid w-full grid-cols-2 gap-x-3 leading-none">
-              <div>
-                <p className={statLabelClass}>Показы</p>
-                <p className={statValueClass}>{formatCompactNum(showsPromo)}</p>
+      <div className="flex w-full min-w-0 flex-col gap-1.5">
+        <div className="flex items-start gap-2">
+          <img
+            src={item.imageUrl}
+            alt=""
+            className="h-10 w-10 shrink-0 rounded-[10px] object-cover bg-gray-100"
+            onError={(e) => {
+              const el = e.currentTarget;
+              if (el.src !== NOTIFICATION_PRODUCT_IMAGE_FALLBACK) {
+                el.src = NOTIFICATION_PRODUCT_IMAGE_FALLBACK;
+              }
+            }}
+          />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            {onOpenTitle ? (
+              <button
+                type="button"
+                onClick={onOpenTitle}
+                className={`${titleClassName} cursor-pointer transition-colors hover:text-[#7c3aed] focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40 rounded-sm border-0 bg-transparent p-0`}
+              >
+                {titleText}
+              </button>
+            ) : (
+              <p className={titleClassName}>{titleText}</p>
+            )}
+            {chipTab === 'bonuses' ? (
+              <div className="grid w-full grid-cols-2 gap-x-3 leading-none">
+                <div>
+                  <p className={statLabelClass}>Показы</p>
+                  <p className={statValueClass}>{formatCompactNum(showsPromo)}</p>
+                </div>
+                <div>
+                  <p className={statLabelClass}>Заказы</p>
+                  <p className={statValueClass}>{formatCompactNum(item.orders)}</p>
+                </div>
               </div>
-              <div>
-                <p className={statLabelClass}>Заказы</p>
-                <p className={statValueClass}>{formatCompactNum(item.orders)}</p>
+            ) : (
+              <div className="grid w-full grid-cols-3 gap-x-2 leading-none">
+                <div>
+                  <p className={statLabelClass}>Показы</p>
+                  <p className={statValueClass}>{formatCompactNum(showsPromo)}</p>
+                </div>
+                <div>
+                  <p className={statLabelClass}>CTR</p>
+                  <p className={statValueClass}>{ctr}%</p>
+                </div>
+                <div>
+                  <p className={statLabelClass}>Сезон</p>
+                  <p className="m-0 mt-0.5 flex items-center gap-px whitespace-nowrap text-[10px] font-bold leading-none text-emerald-600 tabular-nums">
+                    <ArrowUp className="h-2 w-2 shrink-0" aria-hidden />+ {season}%
+                  </p>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="grid w-full grid-cols-3 gap-x-2 leading-none">
-              <div>
-                <p className={statLabelClass}>Показы</p>
-                <p className={statValueClass}>{formatCompactNum(showsPromo)}</p>
-              </div>
-              <div>
-                <p className={statLabelClass}>CTR</p>
-                <p className={statValueClass}>{ctr}%</p>
-              </div>
-              <div>
-                <p className={statLabelClass}>Сезон</p>
-                <p className="m-0 mt-0.5 flex items-center gap-px whitespace-nowrap text-[10px] font-bold leading-none text-emerald-600 tabular-nums">
-                  <ArrowUp className="h-2 w-2 shrink-0" aria-hidden />+ {season}%
-                </p>
-              </div>
-            </div>
-          )}
-          <span className="pt-0.5 text-[11px] font-semibold leading-none text-[#2563eb] group-hover:underline">
+            )}
+          </div>
+        </div>
+        {onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="self-start pt-0.5 text-[11px] font-semibold leading-none text-[#2563eb] transition-colors hover:text-[#7c3aed] hover:underline border-0 bg-transparent p-0"
+          >
+            {actionLinkLabel}
+          </button>
+        ) : (
+          <span className="pt-0.5 text-[11px] font-semibold leading-none text-[#2563eb]">
             {actionLinkLabel}
           </span>
-        </div>
-      </button>
+        )}
+      </div>
     </article>
   );
 }
@@ -860,13 +888,20 @@ function HorizontalDragScrollRow({
   );
 }
 
-/** Вариант 3: вкладки «Запустите продвижение» / «Бонусы сработали» и карусель карточек товаров */
+/** Вариант 2: вкладки «Хорошая конверсия» / «Бонусы сработали» и карусель карточек */
 export function ListHeaderVariant3Panel({
   items,
-  onOpenItem,
+  onPromote,
+  onRefillBudget,
+  onOpenCampaign,
 }: {
   items: BonusCampaignNotification[];
-  onOpenItem?: (item: BonusCampaignNotification) => void;
+  /** «Продвигать» на вкладке хорошей конверсии */
+  onPromote?: () => void;
+  /** «Пополнить бюджет» на вкладке бонусов */
+  onRefillBudget?: (item: BonusCampaignNotification) => void;
+  /** Клик по названию кампании на вкладке бонусов */
+  onOpenCampaign?: (item: BonusCampaignNotification) => void;
 }) {
   const [tab, setTab] = useState<'organic' | 'bonuses'>('organic');
 
@@ -923,7 +958,16 @@ export function ListHeaderVariant3Panel({
             chipIndex={index}
             chipTab={tab}
             actionLinkLabel={chipActionLabel}
-            onOpen={onOpenItem ? () => onOpenItem(item) : undefined}
+            onOpenTitle={
+              tab === 'bonuses' && onOpenCampaign ? () => onOpenCampaign(item) : undefined
+            }
+            onAction={
+              tab === 'bonuses'
+                ? onRefillBudget
+                  ? () => onRefillBudget(item)
+                  : undefined
+                : onPromote
+            }
           />
         ))}
       </HorizontalDragScrollRow>
@@ -1153,23 +1197,23 @@ export function ListHeaderVariant4Panel({
 
 function Variant5BudgetInsightCard({ onRefillBudget }: { onRefillBudget?: () => void }) {
   return (
-    <div className={`group/v5budget ${VARIANT5_INSIGHT_CARD_SHELL_CLASS}`}>
+    <div className={`group/v5budget ${VARIANT5_INSIGHT_BUDGET_CARD_CLASS}`}>
       <div className="flex items-center gap-2">
         <OrdersGrowthChartIcon />
         <p className="m-0 text-[13px] font-normal leading-snug text-[#767386]">
           Заказы растут, пополните кампании
         </p>
       </div>
-      <div className={VARIANT5_INSIGHT_ACTION_BAR_CLASS}>
+      <div className={VARIANT5_INSIGHT_ACTION_ROW_CLASS}>
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent p-0 text-left transition-colors hover:bg-[#ececef]/80"
+          className="flex min-w-0 flex-1 items-center gap-2 overflow-visible border-0 bg-transparent p-0 text-left"
         >
           <InsightsThumbnailStack
             imageUrls={BONUSES_INSIGHT_STACK_IMAGES}
-            ringClassName="ring-[#f5f5f7]"
+            ringClassName="ring-white"
           />
-          <div className="flex min-w-0 flex-col gap-0.5">
+          <div className="flex min-w-0 shrink-0 flex-col gap-0.5">
             <span className="flex items-center gap-1">
               <span className="whitespace-nowrap text-sm font-bold leading-tight text-gray-900">
                 3 кампании
@@ -1194,7 +1238,7 @@ function Variant5BudgetInsightCard({ onRefillBudget }: { onRefillBudget?: () => 
 
 function Variant5ConversionInsightCard({ onPromote }: { onPromote?: () => void }) {
   return (
-    <div className={`group/v5conv ${VARIANT5_INSIGHT_CARD_SHELL_CLASS}`}>
+    <div className={`group/v5conv ${VARIANT5_INSIGHT_CONVERSION_CARD_CLASS}`}>
       <div className="flex items-center gap-2">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center text-[#9a41fe]">
           <ConversionBagIcon className="h-5 w-5" />
@@ -1203,16 +1247,16 @@ function Variant5ConversionInsightCard({ onPromote }: { onPromote?: () => void }
           Конверсия выше конкурентов
         </p>
       </div>
-      <div className={VARIANT5_INSIGHT_ACTION_BAR_CLASS}>
+      <div className={VARIANT5_INSIGHT_ACTION_ROW_CLASS}>
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent p-0 text-left transition-colors hover:bg-[#ececef]/80"
+          className="flex min-w-0 flex-1 items-center gap-2 overflow-visible border-0 bg-transparent p-0 text-left"
         >
           <InsightsThumbnailStack
             imageUrls={GROWING_DEMAND_INSIGHTS_STACK_IMAGES}
-            ringClassName="ring-[#f5f5f7]"
+            ringClassName="ring-white"
           />
-          <span className="flex items-center gap-1">
+          <span className="flex shrink-0 items-center gap-1">
             <span className="whitespace-nowrap text-sm font-bold leading-tight text-gray-900">
               6 товаров
             </span>
