@@ -1,4 +1,12 @@
-import React, { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import type { RepeatLaunchPreset } from './ProfileContext';
 import { ArrowUp, ChevronDown, ChevronRight, X } from './Icons';
@@ -415,9 +423,13 @@ function ConversionBagIcon({ className }: { className?: string }) {
 function Variant4PromotionFitDropdown({
   item,
   kind,
+  onPromote,
+  onRefillBudget,
 }: {
   item: BonusCampaignNotification;
   kind: 'launch' | 'bonus';
+  onPromote?: () => void;
+  onRefillBudget?: () => void;
 }) {
   const showsPromo = item.views > 1000 ? item.views : 10234;
   const showsValue = `+ ${formatCompactNum(showsPromo)}`;
@@ -425,7 +437,31 @@ function Variant4PromotionFitDropdown({
     item.season >= 100 ? `${formatCompactNum(item.season)} %` : `${formatCompactNum(1092)} %`;
   const ctrValue = `${item.ctr}%`;
 
-  const rows =
+  const ordersPeriodFootnote = (
+    <p className="m-0 mt-1 text-[11px] leading-snug text-[#767386]">
+      Эффективнее прошлого периода на{' '}
+      <span className="font-semibold text-emerald-600">15%</span>
+    </p>
+  );
+
+  const showsPromoGrowthFootnote = (
+    <p className="m-0 mt-1 text-[11px] leading-snug text-[#767386]">
+      С продвижением рост{' '}
+      <span className="font-semibold text-emerald-600">+40%</span>
+    </p>
+  );
+
+  const demandPeakFootnote = (
+    <p className="m-0 mt-1 text-[11px] leading-snug text-[#767386]">Пик спроса продлится ~5 дней</p>
+  );
+
+  const rows: Array<{
+    icon: React.ReactNode;
+    label: string;
+    value: string;
+    valueClass: string;
+    footnote?: React.ReactNode;
+  }> =
     kind === 'launch'
       ? [
           {
@@ -433,10 +469,11 @@ function Variant4PromotionFitDropdown({
             label: 'Показов выше обычного',
             value: showsValue,
             valueClass: 'text-gray-900',
+            footnote: showsPromoGrowthFootnote,
           },
           {
             icon: <ArrowUp className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />,
-            label: 'Спрос выше обычного',
+            label: 'Спрос растёт',
             value: demandValue,
             valueClass: 'text-emerald-600',
           },
@@ -459,19 +496,23 @@ function Variant4PromotionFitDropdown({
             label: 'Заказы',
             value: formatCompactNum(item.orders),
             valueClass: 'text-emerald-600',
+            footnote: ordersPeriodFootnote,
           },
           {
             icon: <ConversionBagIcon className="h-5 w-5 shrink-0 text-[#9a41fe]" />,
-            label: 'CTR',
-            value: ctrValue,
-            valueClass: 'text-gray-900',
+            label: 'Принесла кампания',
+            value: `+ ${formatCompactNum(1000)} ₽`,
+            valueClass: 'text-emerald-600',
+            footnote: (
+              <p className="m-0 mt-1 text-[11px] leading-snug text-[#767386]">без учёта комиссий</p>
+            ),
           },
         ];
 
   return (
     <div className="w-[17.5rem] rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
       <h3 className="m-0 text-sm font-bold leading-snug text-gray-900">
-        {kind === 'launch' ? 'Подходит для продвижения' : 'Бонусы сработали'}
+        {kind === 'launch' ? 'Выгодный момент для продвижения' : 'Бонусы сработали'}
       </h3>
       <ul className="m-0 mt-3 flex list-none flex-col gap-3 p-0">
         {rows.map((row) => (
@@ -482,10 +523,32 @@ function Variant4PromotionFitDropdown({
               <p className={`m-0 mt-0.5 text-sm font-bold leading-tight tabular-nums ${row.valueClass}`}>
                 {row.value}
               </p>
+              {row.footnote}
             </div>
           </li>
         ))}
       </ul>
+      {kind === 'launch' ? (
+        <div className="mt-3 flex flex-col gap-2 border-t border-gray-100 pt-3">
+          {demandPeakFootnote}
+          {onPromote ? (
+            <button type="button" onClick={onPromote} className={`self-start ${VARIANT5_INSIGHT_CTA_CLASS}`}>
+              Продвигать
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {kind === 'bonus' && onRefillBudget ? (
+        <div className="mt-3 flex flex-col gap-2 border-t border-gray-100 pt-3">
+          <button
+            type="button"
+            onClick={onRefillBudget}
+            className={`self-start ${VARIANT5_INSIGHT_CTA_CLASS}`}
+          >
+            Пополнить бюджет
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -697,8 +760,66 @@ function Variant3ProductChip({
   const titleClassName =
     'm-0 line-clamp-2 text-[11px] font-semibold leading-[13px] text-gray-900 text-left';
 
+  const dropdownKind = chipTab === 'bonuses' ? 'bonus' : 'launch';
+  const anchorRef = useRef<HTMLElement>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  const syncDropdownPosition = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setDropdownPos({ top: rect.bottom, left: rect.left });
+  }, []);
+
+  const openDropdown = useCallback(() => {
+    syncDropdownPosition();
+    setDropdownOpen(true);
+  }, [syncDropdownPosition]);
+
+  const closeDropdown = useCallback(() => {
+    setDropdownOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    const onScrollOrResize = () => syncDropdownPosition();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [dropdownOpen, syncDropdownPosition]);
+
+  const dropdown =
+    dropdownOpen &&
+    typeof document !== 'undefined' &&
+    createPortal(
+      <div
+        className="fixed z-[500] pt-2"
+        style={{ top: dropdownPos.top, left: dropdownPos.left }}
+        onMouseEnter={openDropdown}
+        onMouseLeave={closeDropdown}
+      >
+        <Variant4PromotionFitDropdown
+          item={item}
+          kind={dropdownKind}
+          onPromote={chipTab === 'organic' && onAction ? onAction : undefined}
+          onRefillBudget={chipTab === 'bonuses' && onAction ? onAction : undefined}
+        />
+      </div>,
+      document.body,
+    );
+
   return (
-    <article className="group flex h-auto w-[228px] shrink-0 self-center overflow-hidden rounded-[12px] bg-[#f5f5f7] p-2.5 transition-colors hover:bg-[#efeff2]">
+    <>
+    <article
+      ref={anchorRef}
+      className="group relative flex h-auto w-[228px] shrink-0 self-center overflow-visible rounded-[12px] bg-[#f5f5f7] p-2.5 transition-colors hover:bg-[#efeff2]"
+      onMouseEnter={openDropdown}
+      onMouseLeave={closeDropdown}
+    >
       <div className="flex w-full min-w-0 flex-col gap-1.5">
         <div className="flex items-start gap-2">
           <img
@@ -716,7 +837,12 @@ function Variant3ProductChip({
             {onOpenTitle ? (
               <button
                 type="button"
-                onClick={onOpenTitle}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onOpenTitle();
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
                 className={`${titleClassName} cursor-pointer transition-colors hover:text-[#7c3aed] focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/40 rounded-sm border-0 bg-transparent p-0`}
               >
                 {titleText}
@@ -758,7 +884,11 @@ function Variant3ProductChip({
         {onAction ? (
           <button
             type="button"
-            onClick={onAction}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAction();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="self-start pt-0.5 text-[11px] font-semibold leading-none text-[#2563eb] transition-colors hover:text-[#7c3aed] hover:underline border-0 bg-transparent p-0"
           >
             {actionLinkLabel}
@@ -770,6 +900,8 @@ function Variant3ProductChip({
         )}
       </div>
     </article>
+    {dropdown}
+    </>
   );
 }
 
@@ -811,14 +943,28 @@ export function ListHeaderVariant3StatCard({
   );
 }
 
-function HorizontalDragScrollRow({
-  className,
-  children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+const VARIANT3_CAROUSEL_SCROLL_STEP_PX = 240;
+
+const HorizontalDragScrollRow = forwardRef<
+  HTMLDivElement,
+  {
+    className?: string;
+    children: React.ReactNode;
+  }
+>(function HorizontalDragScrollRow({ className, children }, forwardedRef) {
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+
+  const setScrollContainerRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      scrollRef.current = node;
+      if (typeof forwardedRef === 'function') {
+        forwardedRef(node);
+      } else if (forwardedRef) {
+        forwardedRef.current = node;
+      }
+    },
+    [forwardedRef],
+  );
   const dragRef = useRef({
     active: false,
     startX: 0,
@@ -870,7 +1016,7 @@ function HorizontalDragScrollRow({
 
   return (
     <div
-      ref={scrollRef}
+      ref={setScrollContainerRef}
       className={`touch-pan-x cursor-grab select-none active:cursor-grabbing ${className ?? ''}`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -886,24 +1032,35 @@ function HorizontalDragScrollRow({
       {children}
     </div>
   );
-}
+});
 
 /** Вариант 2: вкладки «Хорошая конверсия» / «Бонусы сработали» и карусель карточек */
 export function ListHeaderVariant3Panel({
   items,
-  onPromote,
+  onPromoteItem,
   onRefillBudget,
   onOpenCampaign,
 }: {
   items: BonusCampaignNotification[];
-  /** «Продвигать» на вкладке хорошей конверсии */
-  onPromote?: () => void;
+  /** «Продвигать» на вкладке хорошей конверсии — товар с этой карточки */
+  onPromoteItem?: (item: BonusCampaignNotification) => void;
   /** «Пополнить бюджет» на вкладке бонусов */
   onRefillBudget?: (item: BonusCampaignNotification) => void;
   /** Клик по названию кампании на вкладке бонусов */
   onOpenCampaign?: (item: BonusCampaignNotification) => void;
 }) {
   const [tab, setTab] = useState<'organic' | 'bonuses'>('organic');
+  const carouselScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollCarousel = useCallback((direction: -1 | 1) => {
+    const el = carouselScrollRef.current;
+    if (!el) return;
+    el.scrollBy({ left: direction * VARIANT3_CAROUSEL_SCROLL_STEP_PX, behavior: 'smooth' });
+  }, []);
+
+  useEffect(() => {
+    carouselScrollRef.current?.scrollTo({ left: 0, behavior: 'smooth' });
+  }, [tab]);
 
   if (items.length === 0) return null;
 
@@ -924,12 +1081,12 @@ export function ListHeaderVariant3Panel({
       role="region"
       aria-label="Рекомендации по товарам"
     >
-      <div
-        className="flex w-full shrink-0 items-center pr-4"
-        role="tablist"
-        aria-label="Разделы рекомендаций"
-      >
-        <div className="inline-flex items-center gap-0.5 rounded-lg bg-[#ececef] p-0.5">
+      <div className="flex w-full shrink-0 items-center gap-2 pr-4">
+        <div
+          className="inline-flex min-w-0 items-center gap-0.5 rounded-lg bg-[#ececef] p-0.5"
+          role="tablist"
+          aria-label="Разделы рекомендаций"
+        >
           <button
             type="button"
             role="tab"
@@ -949,8 +1106,29 @@ export function ListHeaderVariant3Panel({
             Бонусы сработали
           </button>
         </div>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => scrollCarousel(-1)}
+            className="flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-gray-500 transition-colors hover:bg-[#ececef] hover:text-gray-900"
+            aria-label="Прокрутить рекомендации назад"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollCarousel(1)}
+            className="flex h-7 w-7 items-center justify-center rounded-md border-0 bg-transparent text-gray-500 transition-colors hover:bg-[#ececef] hover:text-gray-900"
+            aria-label="Прокрутить рекомендации вперёд"
+          >
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
       </div>
-      <HorizontalDragScrollRow className="flex min-h-0 w-full min-w-0 flex-1 items-center gap-2.5 overflow-x-auto overflow-y-visible overscroll-x-contain py-1 pr-3 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <HorizontalDragScrollRow
+        ref={carouselScrollRef}
+        className="flex min-h-0 w-full min-w-0 flex-1 items-center gap-2.5 overflow-x-auto overflow-y-visible overscroll-x-contain py-1 pr-3 pl-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
         {visibleItems.map((item, index) => (
           <Variant3ProductChip
             key={`${item.id}-v3-${tab}-${index}`}
@@ -966,7 +1144,9 @@ export function ListHeaderVariant3Panel({
                 ? onRefillBudget
                   ? () => onRefillBudget(item)
                   : undefined
-                : onPromote
+                : onPromoteItem
+                  ? () => onPromoteItem(item)
+                  : undefined
             }
           />
         ))}

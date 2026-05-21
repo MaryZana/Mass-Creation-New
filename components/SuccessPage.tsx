@@ -3046,44 +3046,49 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [onOpenCpcCampaign, profileId],
   );
 
-  const resolveNotificationCampaign = useCallback(
+  const resolveVariant2BonusCampaignFromNotification = useCallback(
     (item: BonusCampaignNotification): DisplayCampaign | undefined => {
       const label = item.campaignName?.trim();
       if (!label) return undefined;
-      return allCampaigns.find((c) => c.name === label || c.name.includes(label));
+
+      const direct = allCampaigns.find((c) => c.name === label || c.name.includes(label));
+      if (direct) return direct;
+
+      const refillPool = resolveVariant4BonusRefillCampaigns();
+      const nameIndex = LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_NAMES.findIndex(
+        (n) => n === label || label.includes(n) || n.includes(label),
+      );
+      if (nameIndex >= 0 && refillPool[nameIndex]) return refillPool[nameIndex];
+
+      return refillPool[0];
     },
-    [allCampaigns],
+    [allCampaigns, resolveVariant4BonusRefillCampaigns],
   );
 
+  /** Заголовок на вкладке «Бонусы сработали» — экран бонусной кампании (ready to repeat), не обычный CPC. */
   const openVariant2BonusCampaign = useCallback(
     (item: BonusCampaignNotification) => {
-      const match = resolveNotificationCampaign(item);
-      if (match) {
-        openListCpcCampaign(match);
-        return;
-      }
       openBonusNotificationCampaign(item);
     },
-    [resolveNotificationCampaign, openListCpcCampaign, openBonusNotificationCampaign],
+    [openBonusNotificationCampaign],
   );
 
   const openVariant2BonusBudgetRefill = useCallback(
     (item: BonusCampaignNotification) => {
-      const match = resolveNotificationCampaign(item);
+      const match = resolveVariant2BonusCampaignFromNotification(item);
       if (!match) return;
       setSelectedCampaignForRefill(match);
       setIsBudgetRefillModalOpen(true);
     },
-    [resolveNotificationCampaign],
+    [resolveVariant2BonusCampaignFromNotification],
   );
 
-  const openVariant2PromoteCreation = useCallback(() => {
-    if (onNavigateToCreationWithGrowingDemand) {
-      onNavigateToCreationWithGrowingDemand();
-      return;
-    }
-    onNavigateToCreation();
-  }, [onNavigateToCreationWithGrowingDemand, onNavigateToCreation]);
+  const openVariant2PromoteItem = useCallback(
+    (item: BonusCampaignNotification) => {
+      beginRepeatLaunchFlow(item.launchPreset);
+    },
+    [beginRepeatLaunchFlow],
+  );
 
   const paginatedIds = paginatedCampaigns.map(c => c.id);
   const isAllOnPageSelected = paginatedIds.length > 0 && paginatedIds.every(id => selectedCampaigns.includes(id));
@@ -3351,7 +3356,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 {profileId !== '2' && bonusNotificationQueue.length > 0 && (
                   <ListHeaderVariant3Panel
                     items={bonusNotificationQueue}
-                    onPromote={openVariant2PromoteCreation}
+                    onPromoteItem={openVariant2PromoteItem}
                     onRefillBudget={openVariant2BonusBudgetRefill}
                     onOpenCampaign={openVariant2BonusCampaign}
                   />
