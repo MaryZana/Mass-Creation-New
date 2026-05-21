@@ -743,6 +743,25 @@ function padNotificationItems(
 const VARIANT3_CHIP_CTR = [24, 10, 35, 23, 18] as const;
 const VARIANT3_CHIP_SEASON = [130, 92, 145, 130, 110] as const;
 
+/** В карусели варианта 2 одновременно открыт только один hover-дропдаун чипа */
+let activeVariant3ChipDropdownClose: (() => void) | null = null;
+
+let dismissVariant4InsightDropdown: (() => void) | null = null;
+
+function claimVariant3ChipDropdown(close: () => void) {
+  dismissVariant4InsightDropdown?.();
+  if (activeVariant3ChipDropdownClose && activeVariant3ChipDropdownClose !== close) {
+    activeVariant3ChipDropdownClose();
+  }
+  activeVariant3ChipDropdownClose = close;
+}
+
+function releaseVariant3ChipDropdown(close: () => void) {
+  if (activeVariant3ChipDropdownClose === close) {
+    activeVariant3ChipDropdownClose = null;
+  }
+}
+
 function Variant3ProductChip({
   item,
   chipIndex,
@@ -786,47 +805,27 @@ function Variant3ProductChip({
     setDropdownPos({ top: rect.bottom, left: rect.left });
   }, []);
 
+  const forceCloseDropdown = useCallback(() => {
+    setDropdownOpen(false);
+    releaseVariant3ChipDropdown(forceCloseDropdown);
+  }, []);
+
   const openDropdown = useCallback(() => {
+    claimVariant3ChipDropdown(forceCloseDropdown);
     syncDropdownPosition();
     setDropdownOpen(true);
-  }, [syncDropdownPosition]);
-
-  const closeDropdown = useCallback(() => {
-    setDropdownOpen(false);
-  }, []);
-
-  const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleHoverEnter = useCallback(() => {
-    if (hoverCloseTimerRef.current) {
-      clearTimeout(hoverCloseTimerRef.current);
-      hoverCloseTimerRef.current = null;
-    }
-    openDropdown();
-  }, [openDropdown]);
-
-  const scheduleHoverClose = useCallback(() => {
-    if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
-    hoverCloseTimerRef.current = setTimeout(() => {
-      setDropdownOpen(false);
-      hoverCloseTimerRef.current = null;
-    }, 160);
-  }, []);
+  }, [syncDropdownPosition, forceCloseDropdown]);
 
   const runChipAction = useCallback(() => {
-    if (hoverCloseTimerRef.current) {
-      clearTimeout(hoverCloseTimerRef.current);
-      hoverCloseTimerRef.current = null;
-    }
-    setDropdownOpen(false);
+    forceCloseDropdown();
     onAction?.();
-  }, [onAction]);
+  }, [forceCloseDropdown, onAction]);
 
   useEffect(() => {
     return () => {
-      if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
+      forceCloseDropdown();
     };
-  }, []);
+  }, [forceCloseDropdown]);
 
   useEffect(() => {
     if (!dropdownOpen) return;
@@ -846,8 +845,8 @@ function Variant3ProductChip({
       <div
         className="fixed z-[500]"
         style={{ top: dropdownPos.top - 10, left: dropdownPos.left, paddingTop: 10 }}
-        onMouseEnter={handleHoverEnter}
-        onMouseLeave={scheduleHoverClose}
+        onMouseEnter={openDropdown}
+        onMouseLeave={forceCloseDropdown}
       >
         <Variant4PromotionFitDropdown
           item={item}
@@ -864,8 +863,8 @@ function Variant3ProductChip({
     <article
       ref={anchorRef}
       className="group relative flex h-auto w-[228px] shrink-0 self-center overflow-visible rounded-[12px] bg-[#f5f5f7] p-2.5 transition-colors hover:bg-[#efeff2]"
-      onMouseEnter={handleHoverEnter}
-      onMouseLeave={scheduleHoverClose}
+      onMouseEnter={openDropdown}
+      onMouseLeave={forceCloseDropdown}
     >
       <div className="flex w-full min-w-0 flex-col gap-1.5">
         <div className="flex items-start gap-2">
@@ -1423,9 +1422,28 @@ export function ListHeaderVariant4Panel({
   );
 }
 
-function Variant5BudgetInsightCard({ onRefillBudget }: { onRefillBudget?: () => void }) {
+const VARIANT5_INSIGHT_DROPDOWN_SHOW_CLASS =
+  'pointer-events-auto visible opacity-100';
+const VARIANT5_INSIGHT_DROPDOWN_HIDE_CLASS =
+  'pointer-events-none invisible opacity-0';
+
+function Variant5BudgetInsightCard({
+  onRefillBudget,
+  dropdownOpen = false,
+  onHoverStart,
+  onHoverEnd,
+}: {
+  onRefillBudget?: () => void;
+  dropdownOpen?: boolean;
+  onHoverStart?: () => void;
+  onHoverEnd?: () => void;
+}) {
   return (
-    <div className={`group/v5budget ${VARIANT5_INSIGHT_BUDGET_CARD_CLASS}`}>
+    <div
+      className={VARIANT5_INSIGHT_BUDGET_CARD_CLASS}
+      onMouseEnter={onHoverStart}
+      onMouseLeave={onHoverEnd}
+    >
       <div className="mb-2.5 flex items-center gap-2">
         <OrdersGrowthChartIcon />
         <p className="m-0 text-[13px] font-normal leading-snug text-[#767386]">
@@ -1457,16 +1475,34 @@ function Variant5BudgetInsightCard({ onRefillBudget }: { onRefillBudget?: () => 
           Пополнить бюджет
         </button>
       </div>
-      <div className="pointer-events-none invisible absolute left-0 top-[calc(100%-6px)] z-[80] w-full pt-3 opacity-0 transition-all duration-200 group-hover/v5budget:pointer-events-auto group-hover/v5budget:visible group-hover/v5budget:opacity-100 group-focus-within/v5budget:pointer-events-auto group-focus-within/v5budget:visible group-focus-within/v5budget:opacity-100">
+      <div
+        className={`absolute left-0 top-[calc(100%-6px)] z-[80] w-full pt-3 ${
+          dropdownOpen ? VARIANT5_INSIGHT_DROPDOWN_SHOW_CLASS : VARIANT5_INSIGHT_DROPDOWN_HIDE_CLASS
+        }`}
+      >
         <BonusesWorkedDropdownPanel />
       </div>
     </div>
   );
 }
 
-function Variant5ConversionInsightCard({ onPromote }: { onPromote?: () => void }) {
+function Variant5ConversionInsightCard({
+  onPromote,
+  dropdownOpen = false,
+  onHoverStart,
+  onHoverEnd,
+}: {
+  onPromote?: () => void;
+  dropdownOpen?: boolean;
+  onHoverStart?: () => void;
+  onHoverEnd?: () => void;
+}) {
   return (
-    <div className={`group/v5conv ${VARIANT5_INSIGHT_CONVERSION_CARD_CLASS}`}>
+    <div
+      className={VARIANT5_INSIGHT_CONVERSION_CARD_CLASS}
+      onMouseEnter={onHoverStart}
+      onMouseLeave={onHoverEnd}
+    >
       <div className="mb-2.5 flex items-center gap-2">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center text-[#9a41fe]">
           <ConversionBagIcon className="h-5 w-5" />
@@ -1495,7 +1531,11 @@ function Variant5ConversionInsightCard({ onPromote }: { onPromote?: () => void }
           Продвигать
         </button>
       </div>
-      <div className="pointer-events-none invisible absolute right-0 top-[calc(100%-6px)] z-[80] pt-3 opacity-0 transition-all duration-200 group-hover/v5conv:pointer-events-auto group-hover/v5conv:visible group-hover/v5conv:opacity-100 group-focus-within/v5conv:pointer-events-auto group-focus-within/v5conv:visible group-focus-within/v5conv:opacity-100">
+      <div
+        className={`absolute right-0 top-[calc(100%-6px)] z-[80] pt-3 ${
+          dropdownOpen ? VARIANT5_INSIGHT_DROPDOWN_SHOW_CLASS : VARIANT5_INSIGHT_DROPDOWN_HIDE_CLASS
+        }`}
+      >
         <GrowingDemandDropdownPanel />
       </div>
     </div>
@@ -1512,6 +1552,20 @@ export function ListHeaderVariant4Strip({
   onRefillBudget?: () => void;
   onPromote?: () => void;
 }) {
+  const [insightDropdown, setInsightDropdown] = useState<'budget' | 'conv' | null>(null);
+
+  useEffect(() => {
+    dismissVariant4InsightDropdown = () => setInsightDropdown(null);
+    return () => {
+      dismissVariant4InsightDropdown = null;
+    };
+  }, []);
+
+  const openInsightDropdown = useCallback((which: 'budget' | 'conv') => {
+    activeVariant3ChipDropdownClose?.();
+    setInsightDropdown(which);
+  }, []);
+
   return (
     <div className="flex h-26 w-full min-w-0 items-stretch gap-3 overflow-visible">
       <div
@@ -1554,8 +1608,18 @@ export function ListHeaderVariant4Strip({
       </div>
       {showInsightCards ? (
         <>
-          <Variant5BudgetInsightCard onRefillBudget={onRefillBudget} />
-          <Variant5ConversionInsightCard onPromote={onPromote} />
+          <Variant5BudgetInsightCard
+            onRefillBudget={onRefillBudget}
+            dropdownOpen={insightDropdown === 'budget'}
+            onHoverStart={() => openInsightDropdown('budget')}
+            onHoverEnd={() => setInsightDropdown((cur) => (cur === 'budget' ? null : cur))}
+          />
+          <Variant5ConversionInsightCard
+            onPromote={onPromote}
+            dropdownOpen={insightDropdown === 'conv'}
+            onHoverStart={() => openInsightDropdown('conv')}
+            onHoverEnd={() => setInsightDropdown((cur) => (cur === 'conv' ? null : cur))}
+          />
         </>
       ) : null}
     </div>
