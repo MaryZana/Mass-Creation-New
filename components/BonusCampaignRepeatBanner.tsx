@@ -532,7 +532,16 @@ function Variant4PromotionFitDropdown({
         <div className="mt-3 flex flex-col gap-2 border-t border-gray-100 pt-3">
           {demandPeakFootnote}
           {onPromote ? (
-            <button type="button" onClick={onPromote} className={`self-start ${VARIANT5_INSIGHT_CTA_CLASS}`}>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onPromote();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={`self-start ${VARIANT5_INSIGHT_CTA_CLASS}`}
+            >
               Продвигать
             </button>
           ) : null}
@@ -542,7 +551,12 @@ function Variant4PromotionFitDropdown({
         <div className="mt-3 flex flex-col gap-2 border-t border-gray-100 pt-3">
           <button
             type="button"
-            onClick={onRefillBudget}
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              onRefillBudget();
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             className={`self-start ${VARIANT5_INSIGHT_CTA_CLASS}`}
           >
             Пополнить бюджет
@@ -781,6 +795,39 @@ function Variant3ProductChip({
     setDropdownOpen(false);
   }, []);
 
+  const hoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleHoverEnter = useCallback(() => {
+    if (hoverCloseTimerRef.current) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+    openDropdown();
+  }, [openDropdown]);
+
+  const scheduleHoverClose = useCallback(() => {
+    if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
+    hoverCloseTimerRef.current = setTimeout(() => {
+      setDropdownOpen(false);
+      hoverCloseTimerRef.current = null;
+    }, 160);
+  }, []);
+
+  const runChipAction = useCallback(() => {
+    if (hoverCloseTimerRef.current) {
+      clearTimeout(hoverCloseTimerRef.current);
+      hoverCloseTimerRef.current = null;
+    }
+    setDropdownOpen(false);
+    onAction?.();
+  }, [onAction]);
+
+  useEffect(() => {
+    return () => {
+      if (hoverCloseTimerRef.current) clearTimeout(hoverCloseTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     if (!dropdownOpen) return;
     const onScrollOrResize = () => syncDropdownPosition();
@@ -797,16 +844,16 @@ function Variant3ProductChip({
     typeof document !== 'undefined' &&
     createPortal(
       <div
-        className="fixed z-[500] pt-2"
-        style={{ top: dropdownPos.top, left: dropdownPos.left }}
-        onMouseEnter={openDropdown}
-        onMouseLeave={closeDropdown}
+        className="fixed z-[500]"
+        style={{ top: dropdownPos.top - 10, left: dropdownPos.left, paddingTop: 10 }}
+        onMouseEnter={handleHoverEnter}
+        onMouseLeave={scheduleHoverClose}
       >
         <Variant4PromotionFitDropdown
           item={item}
           kind={dropdownKind}
-          onPromote={chipTab === 'organic' && onAction ? onAction : undefined}
-          onRefillBudget={chipTab === 'bonuses' && onAction ? onAction : undefined}
+          onPromote={chipTab === 'organic' && onAction ? runChipAction : undefined}
+          onRefillBudget={chipTab === 'bonuses' && onAction ? runChipAction : undefined}
         />
       </div>,
       document.body,
@@ -817,8 +864,8 @@ function Variant3ProductChip({
     <article
       ref={anchorRef}
       className="group relative flex h-auto w-[228px] shrink-0 self-center overflow-visible rounded-[12px] bg-[#f5f5f7] p-2.5 transition-colors hover:bg-[#efeff2]"
-      onMouseEnter={openDropdown}
-      onMouseLeave={closeDropdown}
+      onMouseEnter={handleHoverEnter}
+      onMouseLeave={scheduleHoverClose}
     >
       <div className="flex w-full min-w-0 flex-col gap-1.5">
         <div className="flex items-start gap-2">
@@ -886,7 +933,8 @@ function Variant3ProductChip({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onAction();
+              e.preventDefault();
+              runChipAction();
             }}
             onPointerDown={(e) => e.stopPropagation()}
             className="self-start pt-0.5 text-[11px] font-semibold leading-none text-[#2563eb] transition-colors hover:text-[#7c3aed] hover:underline border-0 bg-transparent p-0"
