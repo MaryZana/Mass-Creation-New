@@ -47,13 +47,32 @@ export function AppHeader({
 
           <nav className="flex items-center gap-1 text-sm font-medium">
             <NavLink
+              to="/overview"
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
+              }
+            >
+              Обзор
+            </NavLink>
+            <NavLink
               to="/campaigns"
+              end
               onClick={onNavigate}
               className={({ isActive }) =>
                 `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
               }
             >
               Кампании
+            </NavLink>
+            <NavLink
+              to="/campaigns-with-widgets"
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
+              }
+            >
+              Кампании с виджетами
             </NavLink>
             <NavLink
               to="/stats"

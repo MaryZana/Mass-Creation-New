@@ -18,10 +18,12 @@ import { SingleCampaignPage } from './components/SingleCampaignPage';
 import { AppHeader } from './components/AppHeader';
 import { useProfile, type RepeatLaunchPreset } from './components/ProfileContext';
 import CampaignsPage from './pages/CampaignsPage';
+import CampaignsWithWidgetsPage from './pages/CampaignsWithWidgetsPage';
 import StatsPage from './pages/StatsPage';
 import FinancePage from './pages/FinancePage';
 import BonusesPage from './pages/BonusesPage';
-
+import OverviewPage from './pages/OverviewPage';
+import { CampaignsInsightFilterProvider } from './context/CampaignsInsightFilterContext';
 // Плейсхолдеры изображений для пустого состояния страницы массового создания
 const EMPTY_STATE_IMG_1 = 'https://www.figma.com/api/mcp/asset/82a3fb19-ac63-4dd6-9093-3c176a7b5469';
 const EMPTY_STATE_IMG_2 = 'https://www.figma.com/api/mcp/asset/9123a3c1-9b05-4288-a464-9b5a7f6e5ec9';
@@ -2652,20 +2654,9 @@ export default function App() {
   }
 
   if (appState === 'list') {
-    return (
-      <div className="min-h-screen bg-[#EEF1F5] font-sans text-gray-900 relative">
-        <AppHeader
-          onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
-          onLaunchPromotion={() =>
-            handleNavigationAttempt(() => setAppState('single-campaign'))
-          }
-        />
-        <Routes>
-          <Route
-            path="/campaigns"
-            element={
-              <CampaignsPage>
-                <main className="mx-auto min-h-[calc(100vh-3.5rem)] max-w-[1600px] bg-[#EEF1F5] px-7 pt-4 pb-10">
+    const campaignsListContent = (
+      <>
+                <main className="mx-auto min-h-[calc(100vh-3.5rem)] max-w-[1600px] bg-[#F3F5F8] px-7 pt-4 pb-10">
                   <SuccessPage
                     isLaunching={isLaunching}
                     launchTotal={totalAllValidCount}
@@ -2846,14 +2837,38 @@ export default function App() {
 
                 {downloadStatus === 'loading' && <DownloadNotification count={downloadCount} />}
                 <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
-              </CampaignsPage>
-            }
-          />
-          <Route path="/stats" element={<StatsPage />} />
-          <Route path="/finance" element={<FinancePage />} />
-          <Route path="/bonuses" element={<BonusesPage />} />
-          <Route path="/" element={<Navigate to="/campaigns" replace />} />
-        </Routes>
+      </>
+    );
+
+    return (
+      <div className="min-h-screen bg-[#F3F5F8] font-sans text-gray-900 relative">
+        <AppHeader
+          onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
+          onLaunchPromotion={() =>
+            handleNavigationAttempt(() => setAppState('single-campaign'))
+          }
+        />
+        <CampaignsInsightFilterProvider>
+          <Routes>
+            <Route
+              path="/campaigns"
+              element={<CampaignsPage>{campaignsListContent}</CampaignsPage>}
+            />
+            <Route
+              path="/campaigns-with-widgets"
+              element={
+                <CampaignsWithWidgetsPage>
+                  <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                </CampaignsWithWidgetsPage>
+              }
+            />
+            <Route path="/overview" element={<OverviewPage />} />
+            <Route path="/stats" element={<StatsPage />} />
+            <Route path="/finance" element={<FinancePage />} />
+            <Route path="/bonuses" element={<BonusesPage />} />
+            <Route path="/" element={<Navigate to="/campaigns" replace />} />
+          </Routes>
+        </CampaignsInsightFilterProvider>
       </div>
     );
   }

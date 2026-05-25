@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
@@ -28,6 +29,10 @@ import {
     Check
 } from './Icons';
 import { CampaignRecord } from '../types';
+import {
+  campaignMatchesInsightFilter,
+  useCampaignsInsightFilterOptional,
+} from '../context/CampaignsInsightFilterContext';
 import {
   PRODUCTS_SOURCE,
   PRODUCTS_SOURCE_PROFILE_2,
@@ -2704,6 +2709,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [showMoreViewsPromoCard, setShowMoreViewsPromoCard] = useState(true);
   // Поиск: по названию товара, названию кампании, артикулу товара, ID кампании
   const [searchQuery, setSearchQuery] = useState('');
+
+  const location = useLocation();
+  const isCampaignsWithWidgetsPage = location.pathname === '/campaigns-with-widgets';
+  const insightFilterCtx = useCampaignsInsightFilterOptional();
+  const insightFilter =
+    isCampaignsWithWidgetsPage && insightFilterCtx ? insightFilterCtx.filter : null;
+  const clearInsightFilter = insightFilterCtx?.clearFilter;
+
+  useEffect(() => {
+    if (!insightFilter) return;
+    setListTab('campaigns');
+    setCurrentPage(1);
+  }, [insightFilter]);
+
   // Раскрытые строки товаров (вкладка Товары)
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
   // Дропдаун тегов: открыт для productId
@@ -2899,6 +2918,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter(c => idSet.has(c.campaignId));
     }
 
+    if (insightFilter) {
+      filtered = filtered.filter((c) => campaignMatchesInsightFilter(c, insightFilter.kind));
+    }
+
     // Sort campaigns
     if (filterSort === 'by-name') {
       filtered.sort((a, b) => a.name.localeCompare(b.name));
@@ -2918,14 +2941,27 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter((c) => (c.name && c.name.toLowerCase().includes(q)) || String(c.campaignId).toLowerCase().includes(q));
     }
 
-    // Всегда добавляем предсобранную кампанию первой (если она есть в текущем массиве)
     const prebuilt = allCampaigns.find((c) => c.id === PREBUILT_CPC_CAMPAIGN_ID);
-    if (prebuilt) {
+    if (prebuilt && !insightFilter) {
       filtered = [prebuilt, ...filtered.filter((c) => c.id !== PREBUILT_CPC_CAMPAIGN_ID)];
     }
 
     return filtered;
-  }, [allCampaigns, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory, filterPromoTagsOnly, failedFilterIds, productTagsOverride, searchQuery]);
+  }, [
+    allCampaigns,
+    filterStatus,
+    filterAutorefill,
+    filterPayment,
+    filterSort,
+    filterByCategory,
+    filterTags,
+    filterTagsCategory,
+    filterPromoTagsOnly,
+    failedFilterIds,
+    productTagsOverride,
+    searchQuery,
+    insightFilter,
+  ]);
 
   /** Товары, отфильтрованные по тем же правилам, что и кампании (на вкладке «Товары» показываем товар, если есть хотя бы одна подходящая кампания) */
   const filteredProducts = useMemo(() => {
@@ -2946,6 +2982,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         if (filterAutorefill !== 'all' && (filterAutorefill === 'enabled') !== camp.autoRefill) return false;
         if (filterPayment !== 'all' && camp.type !== filterPayment) return false;
         if (filterTags.length > 0 && !filterTags.some((t) => productTagsResolved.includes(t))) return false;
+        if (insightFilter) {
+          return campaignMatchesInsightFilter(
+            {
+              status: effectiveStatus,
+              remainingBudget: camp.remainingBudget,
+              dailyLimitExhausted: camp.dailyLimitExhausted,
+              tags: [],
+            },
+            insightFilter.kind,
+          );
+        }
         return true;
       });
       if (!hasMatchingCampaign) return false;
@@ -2963,6 +3010,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     filterPromoTagsOnly,
     productCampaignStatusOverride,
     getProductTags,
+    insightFilter,
   ]);
 
   // Поиск по товарам: по названию товара, артикулу, артикулу WB, артикулу продавца, названию кампании, ID кампании
@@ -3124,11 +3172,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   };
 
   const showNotificationCardVariantPicker =
-    profileId === '1' && listTab === 'campaigns';
+    profileId === '1' && listTab === 'campaigns' && !isCampaignsWithWidgetsPage;
 
   return (
     <div
-      className={`animate-in fade-in duration-300 mx-auto w-full max-w-[1600px] min-h-full bg-[#EEF1F5] ${
+      className={`animate-in fade-in duration-300 mx-auto w-full max-w-[1600px] min-h-full bg-[#F3F5F8] ${
         showNotificationCardVariantPicker ? 'pb-24' : ''
       }`}
     >
@@ -3189,7 +3237,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       )}
 
       {/* Шапка списка кампаний (под главной шапкой сайта) */}
-      <div className="-mx-6 mb-0 px-6 py-4">
+      <div className="-mx-6 mb-0 px-6 pt-0 pb-4">
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
             <div
@@ -3315,6 +3363,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           </div>
 
+          {insightFilter && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] py-1.5 pl-3 pr-1.5 text-sm font-medium text-gray-900">
+                <span className="truncate">{insightFilter.label}</span>
+                <button
+                  type="button"
+                  onClick={() => clearInsightFilter?.()}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.12)] hover:text-gray-900"
+                  aria-label="Сбросить фильтр"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              </span>
+            </div>
+          )}
+
+          {!isCampaignsWithWidgetsPage && (
           <div
             className={
               notificationCardVariant === 2
@@ -3452,6 +3517,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
