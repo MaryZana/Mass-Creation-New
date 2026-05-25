@@ -21,6 +21,18 @@ const OV = {
   mtSection: 'mt-6',
 } as const;
 
+/** Полоса «Кампании с виджетами» — фиксированные px, без замера DOM. */
+const MINI_WIDGETS_ROW_MIN_PX = 64;
+const MINI_WIDGETS_ROW_GAP_PX = 8;
+const MINI_WIDGETS_STATS_CHROME_PX = 48;
+const MINI_WIDGETS_STRIP_HEIGHT_PX =
+  MINI_WIDGETS_ROW_MIN_PX * 3 + MINI_WIDGETS_ROW_GAP_PX * 2 + MINI_WIDGETS_STATS_CHROME_PX;
+const miniWidgetsStripHeightStyle: React.CSSProperties = {
+  height: MINI_WIDGETS_STRIP_HEIGHT_PX,
+  minHeight: MINI_WIDGETS_STRIP_HEIGHT_PX,
+};
+const miniWidgetsRowMinStyle: React.CSSProperties = { minHeight: MINI_WIDGETS_ROW_MIN_PX };
+
 const INSIGHT_TABLE_CTA_CLASS =
   'inline-flex shrink-0 whitespace-nowrap rounded-lg border border-transparent bg-[#ececef] px-3 py-1.5 text-xs font-medium leading-none text-gray-700 transition-colors hover:bg-[#e2e2e6]';
 
@@ -1494,7 +1506,8 @@ function OverviewInsightAlertCard({
     const clickable = Boolean(onButtonClick);
     return (
       <section
-        className={`flex min-h-16 flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
+        style={miniWidgetsRowMinStyle}
+        className={`flex flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
           clickable ? 'cursor-pointer transition-colors hover:bg-gray-50/90' : ''
         }`}
         role={clickable ? 'button' : undefined}
@@ -2509,9 +2522,6 @@ function ChannelTableSortHeader({
   );
 }
 
-/** Минимальная высота одной карточки/метрики в полосе виджетов (совпадает с превью). */
-const MINI_WIDGETS_ROW_MIN_PX = 64;
-
 /** Компактные виджеты обзора для страницы «Кампании с виджетами». */
 export function OverviewMiniWidgetsForCampaignsList() {
   const { applyFilter } = useCampaignsInsightFilter();
@@ -2522,61 +2532,13 @@ export function OverviewMiniWidgetsForCampaignsList() {
   const showInList = (kind: CampaignsInsightFilterKind, label: string) => () =>
     applyFilter(kind, label);
 
-  const statsPanelRef = useRef<HTMLElement>(null);
-  const insightsRailRef = useRef<HTMLDivElement>(null);
-  const insightsContentRef = useRef<HTMLDivElement>(null);
-  const [syncedPanelHeight, setSyncedPanelHeight] = useState<number | undefined>(undefined);
-
-  useLayoutEffect(() => {
-    const statsPanel = statsPanelRef.current;
-    const insightsRail = insightsRailRef.current;
-    const insightsContent = insightsContentRef.current;
-    if (!statsPanel || !insightsRail || !insightsContent) return;
-
-    const measureNaturalHeight = (el: HTMLElement) => {
-      const prev = el.style.height;
-      el.style.height = 'auto';
-      const h = el.offsetHeight;
-      el.style.height = prev;
-      return h;
-    };
-
-    const minStripFromRows = (rowCount: number, extraChromePx: number) =>
-      rowCount * MINI_WIDGETS_ROW_MIN_PX + Math.max(0, rowCount - 1) * 8 + extraChromePx;
-
-    const syncHeight = () => {
-      const statsNaturalH = measureNaturalHeight(statsPanel);
-      const insightsNaturalH = measureNaturalHeight(insightsRail);
-      const statsFloor = minStripFromRows(3, 52);
-      const insightsFloor = minStripFromRows(3, 0);
-      setSyncedPanelHeight(
-        Math.max(statsNaturalH, insightsNaturalH, statsFloor, insightsFloor),
-      );
-    };
-
-    syncHeight();
-    const raf = requestAnimationFrame(syncHeight);
-    const observer = new ResizeObserver(syncHeight);
-    observer.observe(statsPanel);
-    observer.observe(insightsRail);
-    observer.observe(insightsContent);
-    return () => {
-      cancelAnimationFrame(raf);
-      observer.disconnect();
-    };
-  }, [chartPeriod, statsForPeriod]);
-
-  const syncedHeightStyle =
-    syncedPanelHeight != null ? { height: syncedPanelHeight, minHeight: syncedPanelHeight } : undefined;
-
   return (
     <div className="flex w-full min-w-0 items-stretch gap-2 overflow-visible">
       <div
-        ref={insightsRailRef}
-        style={syncedHeightStyle}
-        className="flex h-full min-h-0 w-[min(100%,16rem)] shrink-0 flex-col overflow-hidden"
+        style={miniWidgetsStripHeightStyle}
+        className="flex min-h-0 w-[min(100%,16rem)] shrink-0 flex-col overflow-hidden"
       >
-        <div ref={insightsContentRef} className="flex h-full min-h-0 flex-col gap-2">
+        <div className="flex h-full min-h-0 flex-col gap-2">
         <OverviewInsightAlertCard
           dense
           icon={<AlertBudgetIcon />}
@@ -2615,9 +2577,8 @@ export function OverviewMiniWidgetsForCampaignsList() {
       </div>
 
       <section
-        ref={statsPanelRef}
-        style={syncedHeightStyle}
-        className="flex h-full min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-2 shadow-sm"
+        style={miniWidgetsStripHeightStyle}
+        className="flex min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-2 shadow-sm"
       >
         <div className="flex shrink-0 justify-start">
           <PeriodToggle value={chartPeriod} onChange={setChartPeriod} className="scale-[0.92] origin-left" />
@@ -2634,7 +2595,8 @@ export function OverviewMiniWidgetsForCampaignsList() {
             return (
               <div
                 key={m.title}
-                className="flex min-h-16 flex-1 flex-col justify-between gap-1"
+                style={miniWidgetsRowMinStyle}
+                className="flex flex-1 flex-col justify-between gap-1"
               >
                 <div className="shrink-0">
                   <p className="text-[9px] font-medium leading-none text-gray-500">{m.title}</p>
@@ -2661,7 +2623,7 @@ export function OverviewMiniWidgetsForCampaignsList() {
       </section>
 
       <section
-        style={syncedHeightStyle}
+        style={miniWidgetsStripHeightStyle}
         className="flex min-h-0 min-w-0 flex-[1.15] flex-col overflow-hidden rounded-xl bg-white p-2 shadow-sm"
       >
         <div className="flex shrink-0 justify-start">
