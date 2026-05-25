@@ -2593,12 +2593,12 @@ export function OverviewMiniWidgetsForCampaignsList() {
       <section
         ref={statsPanelRef}
         style={syncedHeightStyle}
-        className="flex min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-2 shadow-sm"
+        className="flex h-full min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-2 shadow-sm"
       >
         <div className="flex shrink-0 justify-start">
           <PeriodToggle value={chartPeriod} onChange={setChartPeriod} className="scale-[0.92] origin-left" />
         </div>
-        <div className="mt-1 flex flex-col gap-2">
+        <div className="mt-1 flex min-h-0 flex-1 flex-col gap-2">
           {statsForPeriod.metrics.map((m) => {
             const trendPositive = isTrendPositive(m.trend, m.lowerIsBetter);
             const sparkPositive =
@@ -2610,14 +2610,18 @@ export function OverviewMiniWidgetsForCampaignsList() {
             return (
               <div
                 key={m.title}
-                className="grid min-w-0 grid-cols-[1fr_auto] gap-x-1.5 gap-y-0"
+                className="flex min-h-0 flex-1 flex-col justify-between gap-1"
               >
-                <p className="col-span-2 text-[9px] font-medium leading-none text-gray-500">{m.title}</p>
-                <p className="text-lg font-bold leading-none text-gray-900">{m.value}</p>
-                <span className="self-center text-[9px] font-medium leading-none">
-                  <TrendPill value={m.trend} positive={trendPositive} />
-                </span>
-                <div className="col-span-2 min-w-0">
+                <div className="shrink-0">
+                  <p className="text-[9px] font-medium leading-none text-gray-500">{m.title}</p>
+                  <div className="mt-0.5 flex min-w-0 items-baseline justify-between gap-1.5">
+                    <p className="text-lg font-bold leading-none text-gray-900">{m.value}</p>
+                    <span className="shrink-0 text-[9px] font-medium leading-none">
+                      <TrendPill value={m.trend} positive={trendPositive} />
+                    </span>
+                  </div>
+                </div>
+                <div className="flex min-h-0 flex-1 items-end">
                   <MiniSparkline
                     points={m.points}
                     previousPoints={m.previousPoints}
