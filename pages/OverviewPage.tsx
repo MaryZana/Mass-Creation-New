@@ -1494,7 +1494,7 @@ function OverviewInsightAlertCard({
     const clickable = Boolean(onButtonClick);
     return (
       <section
-        className={`flex flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
+        className={`flex min-h-0 flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
           clickable ? 'cursor-pointer transition-colors hover:bg-gray-50/90' : ''
         }`}
         role={clickable ? 'button' : undefined}
@@ -2516,29 +2516,43 @@ export function OverviewMiniWidgetsForCampaignsList() {
     applyFilter(kind, label);
 
   const statsPanelRef = useRef<HTMLElement>(null);
+  const insightsRailRef = useRef<HTMLDivElement>(null);
+  const insightsContentRef = useRef<HTMLDivElement>(null);
   const [syncedPanelHeight, setSyncedPanelHeight] = useState<number | undefined>(undefined);
 
   useLayoutEffect(() => {
     const statsPanel = statsPanelRef.current;
-    if (!statsPanel) return;
+    const insightsRail = insightsRailRef.current;
+    const insightsContent = insightsContentRef.current;
+    if (!statsPanel || !insightsRail || !insightsContent) return;
 
-    const syncHeight = () => setSyncedPanelHeight(statsPanel.offsetHeight);
+    const syncHeight = () => {
+      const statsH = statsPanel.offsetHeight;
+      const prevHeight = insightsRail.style.height;
+      insightsRail.style.height = 'auto';
+      const insightsNaturalH = insightsContent.offsetHeight;
+      insightsRail.style.height = prevHeight;
+      setSyncedPanelHeight(Math.max(statsH, insightsNaturalH));
+    };
 
     syncHeight();
     const observer = new ResizeObserver(syncHeight);
     observer.observe(statsPanel);
+    observer.observe(insightsContent);
     return () => observer.disconnect();
   }, [chartPeriod, statsForPeriod]);
 
   const syncedHeightStyle =
-    syncedPanelHeight != null ? { height: syncedPanelHeight } : undefined;
+    syncedPanelHeight != null ? { height: syncedPanelHeight, minHeight: syncedPanelHeight } : undefined;
 
   return (
-    <div className="flex w-full min-w-0 items-start gap-2 overflow-visible">
+    <div className="flex w-full min-w-0 items-stretch gap-2 overflow-visible">
       <div
+        ref={insightsRailRef}
         style={syncedHeightStyle}
-        className="flex min-h-0 w-[min(100%,16rem)] shrink-0 flex-col gap-2 overflow-hidden"
+        className="flex h-full min-h-0 w-[min(100%,16rem)] shrink-0 flex-col overflow-hidden"
       >
+        <div ref={insightsContentRef} className="flex h-full min-h-0 flex-col gap-2">
         <OverviewInsightAlertCard
           dense
           icon={<AlertBudgetIcon />}
@@ -2573,11 +2587,13 @@ export function OverviewMiniWidgetsForCampaignsList() {
           dropdownAlign="end"
           onButtonClick={showInList('launch', 'Готовы к запуску')}
         />
+        </div>
       </div>
 
       <section
         ref={statsPanelRef}
-        className="flex min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-2 shadow-sm"
+        style={syncedHeightStyle}
+        className="flex min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-2 shadow-sm"
       >
         <div className="flex shrink-0 justify-start">
           <PeriodToggle value={chartPeriod} onChange={setChartPeriod} className="scale-[0.92] origin-left" />
