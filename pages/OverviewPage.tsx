@@ -1494,7 +1494,7 @@ function OverviewInsightAlertCard({
     const clickable = Boolean(onButtonClick);
     return (
       <section
-        className={`flex min-h-0 flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
+        className={`flex min-h-[5.75rem] flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
           clickable ? 'cursor-pointer transition-colors hover:bg-gray-50/90' : ''
         }`}
         role={clickable ? 'button' : undefined}
@@ -2505,6 +2505,9 @@ function ChannelTableSortHeader({
   );
 }
 
+/** Минимальная высота одной карточки/метрики в полосе виджетов (совпадает с превью). */
+const MINI_WIDGETS_ROW_MIN_PX = 92;
+
 /** Компактные виджеты обзора для страницы «Кампании с виджетами». */
 export function OverviewMiniWidgetsForCampaignsList() {
   const { applyFilter } = useCampaignsInsightFilter();
@@ -2526,20 +2529,37 @@ export function OverviewMiniWidgetsForCampaignsList() {
     const insightsContent = insightsContentRef.current;
     if (!statsPanel || !insightsRail || !insightsContent) return;
 
+    const measureNaturalHeight = (el: HTMLElement) => {
+      const prev = el.style.height;
+      el.style.height = 'auto';
+      const h = el.offsetHeight;
+      el.style.height = prev;
+      return h;
+    };
+
+    const minStripFromRows = (rowCount: number, extraChromePx: number) =>
+      rowCount * MINI_WIDGETS_ROW_MIN_PX + Math.max(0, rowCount - 1) * 8 + extraChromePx;
+
     const syncHeight = () => {
-      const statsH = statsPanel.offsetHeight;
-      const prevHeight = insightsRail.style.height;
-      insightsRail.style.height = 'auto';
-      const insightsNaturalH = insightsContent.offsetHeight;
-      insightsRail.style.height = prevHeight;
-      setSyncedPanelHeight(Math.max(statsH, insightsNaturalH));
+      const statsNaturalH = measureNaturalHeight(statsPanel);
+      const insightsNaturalH = measureNaturalHeight(insightsRail);
+      const statsFloor = minStripFromRows(3, 52);
+      const insightsFloor = minStripFromRows(3, 0);
+      setSyncedPanelHeight(
+        Math.max(statsNaturalH, insightsNaturalH, statsFloor, insightsFloor),
+      );
     };
 
     syncHeight();
+    const raf = requestAnimationFrame(syncHeight);
     const observer = new ResizeObserver(syncHeight);
     observer.observe(statsPanel);
+    observer.observe(insightsRail);
     observer.observe(insightsContent);
-    return () => observer.disconnect();
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
   }, [chartPeriod, statsForPeriod]);
 
   const syncedHeightStyle =
@@ -2610,7 +2630,7 @@ export function OverviewMiniWidgetsForCampaignsList() {
             return (
               <div
                 key={m.title}
-                className="flex min-h-0 flex-1 flex-col justify-between gap-1"
+                className="flex min-h-[5.75rem] flex-1 flex-col justify-between gap-1"
               >
                 <div className="shrink-0">
                   <p className="text-[9px] font-medium leading-none text-gray-500">{m.title}</p>
