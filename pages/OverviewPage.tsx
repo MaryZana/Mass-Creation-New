@@ -1494,7 +1494,7 @@ function OverviewInsightAlertCard({
     const clickable = Boolean(onButtonClick);
     return (
       <section
-        className={`flex min-h-[5.75rem] flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
+        className={`flex min-h-16 flex-1 flex-col justify-center overflow-visible rounded-lg bg-white px-3 py-2 shadow-sm ${
           clickable ? 'cursor-pointer transition-colors hover:bg-gray-50/90' : ''
         }`}
         role={clickable ? 'button' : undefined}
@@ -1516,7 +1516,11 @@ function OverviewInsightAlertCard({
           </div>
           <div className={`flex min-w-0 flex-1 flex-col items-start text-left ${OV.tight}`}>
             <p className="mb-0 w-full text-xs font-semibold leading-none text-gray-500">{title}</p>
-            {countDropdownTrigger}
+            <span
+              className={`block w-full truncate font-bold leading-none text-gray-900 ${countBtnClass}`}
+            >
+              {countLabel}
+            </span>
             <p className="mb-0 w-full text-xs leading-tight text-gray-500">{subtitle}</p>
           </div>
           {clickable ? (
@@ -2506,7 +2510,7 @@ function ChannelTableSortHeader({
 }
 
 /** Минимальная высота одной карточки/метрики в полосе виджетов (совпадает с превью). */
-const MINI_WIDGETS_ROW_MIN_PX = 92;
+const MINI_WIDGETS_ROW_MIN_PX = 64;
 
 /** Компактные виджеты обзора для страницы «Кампании с виджетами». */
 export function OverviewMiniWidgetsForCampaignsList() {
@@ -2630,7 +2634,7 @@ export function OverviewMiniWidgetsForCampaignsList() {
             return (
               <div
                 key={m.title}
-                className="flex min-h-[5.75rem] flex-1 flex-col justify-between gap-1"
+                className="flex min-h-16 flex-1 flex-col justify-between gap-1"
               >
                 <div className="shrink-0">
                   <p className="text-[9px] font-medium leading-none text-gray-500">{m.title}</p>
