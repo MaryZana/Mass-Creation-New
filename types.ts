@@ -57,4 +57,8 @@ export interface CampaignRecord {
   usePromoBonuses: boolean; // New field for promo bonuses toggle
   source: string; // New field for the source (filename or 'Manual')
   cpcCompatible?: boolean;
+  /** CTR товара для колонки «Рост» (подборка) */
+  prospectCtr?: number;
+  /** Изменение CTR относительно подкатегории, % (например +10) */
+  prospectCtrChange?: number;
 }

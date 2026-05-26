@@ -1,20 +1,201 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Wallet, HelpCircle, X, ChevronDown, Plus, Bell } from './Icons';
-import { ProductMultiSelect } from './ProductMultiSelect';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Wallet, HelpCircle, X, ChevronDown, Plus, Bell, MoreVertical } from './Icons';
+import { SingleCampaignAddProductsModal } from './SingleCampaignAddProductsModal';
 import { AppHeader } from './AppHeader';
 import { ReferralInviteCreationBanner } from './ReferralInviteCreationBanner';
 import { useProfile } from './ProfileContext';
+import {
+  PRODUCT_TABLE_THUMB_FALLBACK,
+  resolveProductTableThumbSrc,
+} from './SuccessPageTestData';
 
 const UNIFIED_BALANCE = 105350;
 
+type CampaignProductRow = {
+  nmId: number;
+  productName: string;
+  imageUrl: string;
+  category: string;
+  brand?: string;
+  articleSeller?: string;
+  cpcCompatible?: boolean;
+};
+
+const DEMO_PRODUCT_BIDS: Record<number, string> = {
+  215685549: '70',
+  215685550: '160',
+};
+
+function seedBidsForProducts(
+  items: CampaignProductRow[],
+  prev: Record<number, string>,
+  fallbackBid: string,
+): Record<number, string> {
+  const next = { ...prev };
+  items.forEach((p, index) => {
+    if (next[p.nmId] !== undefined) return;
+    next[p.nmId] =
+      DEMO_PRODUCT_BIDS[p.nmId] ?? (index === 0 ? '70' : index === 1 ? '160' : fallbackBid);
+  });
+  return next;
+}
+
 // Mock products for selection
-const MOCK_PRODUCTS = [
-  { nmId: 160747184, productName: 'Футболка хлопок мягкая приятная', imageUrl: 'https://via.placeholder.com/80', category: 'Одежда', cpcCompatible: true },
-  { nmId: 160747185, productName: 'Джинсы классические', imageUrl: 'https://via.placeholder.com/80', category: 'Одежда', cpcCompatible: true },
-  { nmId: 160747186, productName: 'Кроссовки спортивные', imageUrl: 'https://via.placeholder.com/80', category: 'Обувь', cpcCompatible: true },
-  { nmId: 160747187, productName: 'Рюкзак городской', imageUrl: 'https://via.placeholder.com/80', category: 'Аксессуары', cpcCompatible: false },
-  { nmId: 160747188, productName: 'Куртка зимняя', imageUrl: 'https://via.placeholder.com/80', category: 'Одежда', cpcCompatible: true },
+const MOCK_PRODUCTS: CampaignProductRow[] = [
+  {
+    nmId: 215685549,
+    productName: 'Фото',
+    brand: 'PhotoBrand',
+    articleSeller: 'PH-001',
+    imageUrl: '',
+    category: 'Фоторамки',
+    cpcCompatible: true,
+  },
+  {
+    nmId: 215685550,
+    productName: 'фото',
+    brand: 'PhotoBrand',
+    articleSeller: 'PH-002',
+    imageUrl: '',
+    category: 'Фоторамки',
+    cpcCompatible: true,
+  },
+  {
+    nmId: 216362914,
+    productName: 'фото',
+    brand: 'PhotoBrand',
+    articleSeller: 'PH-003',
+    imageUrl: '',
+    category: 'Фоторамки',
+    cpcCompatible: true,
+  },
+  {
+    nmId: 160747186,
+    productName: 'Кроссовки спортивные',
+    brand: 'Nike',
+    articleSeller: 'NK-8842',
+    imageUrl: '',
+    category: 'Кроссовки',
+    cpcCompatible: true,
+  },
+  {
+    nmId: 160747187,
+    productName: 'Рюкзак городской',
+    brand: 'Adidas',
+    articleSeller: 'AD-120',
+    imageUrl: '',
+    category: 'Сумки',
+    cpcCompatible: false,
+  },
+  {
+    nmId: 160747188,
+    productName: 'Куртка зимняя',
+    brand: 'Reserved',
+    articleSeller: 'RS-991',
+    imageUrl: '',
+    category: 'Футболки',
+    cpcCompatible: true,
+  },
 ];
+
+const PRODUCT_THUMB_CLASS =
+  'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
+
+function CampaignProductThumb({
+  nmId,
+  imageUrl,
+  category,
+  alt,
+}: {
+  nmId: number;
+  imageUrl: string;
+  category: string;
+  alt: string;
+}) {
+  const id = String(nmId);
+  const [url, setUrl] = useState(() => resolveProductTableThumbSrc(id, imageUrl, category));
+  useEffect(() => {
+    setUrl(resolveProductTableThumbSrc(id, imageUrl, category));
+  }, [id, imageUrl, category]);
+  return (
+    <img
+      src={url}
+      alt={alt}
+      width={30}
+      height={38}
+      className={PRODUCT_THUMB_CLASS}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        if (url !== PRODUCT_TABLE_THUMB_FALLBACK) setUrl(PRODUCT_TABLE_THUMB_FALLBACK);
+      }}
+    />
+  );
+}
+
+function CopyNmIdButton({ nmId }: { nmId: number }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(String(nmId));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="inline-flex shrink-0 text-gray-400 hover:text-gray-600"
+      aria-label={copied ? 'Скопировано' : 'Скопировать артикул'}
+      title={copied ? 'Скопировано' : 'Скопировать'}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="h-3.5 w-3.5"
+        aria-hidden
+      >
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+    </button>
+  );
+}
+
+function BidHistogramButton({ onClick }: { onClick?: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+      aria-label="Статистика ставки"
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
+        <rect x="1" y="8" width="3" height="7" rx="0.5" fill="currentColor" opacity="0.35" />
+        <rect x="6.5" y="5" width="3" height="10" rx="0.5" fill="currentColor" opacity="0.6" />
+        <rect x="12" y="2" width="3" height="13" rx="0.5" fill="currentColor" />
+      </svg>
+    </button>
+  );
+}
+
+function HeaderHint({ label }: { label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 text-xs font-normal text-gray-400">
+      {label}
+      <HelpCircle className="h-3.5 w-3.5 text-gray-300" aria-hidden />
+    </span>
+  );
+}
 
 interface SingleCampaignPageProps {
   onBack: () => void;
@@ -60,14 +241,6 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
   </button>
 );
 
-type CampaignProductRow = {
-  nmId: number;
-  productName: string;
-  imageUrl: string;
-  category: string;
-  cpcCompatible?: boolean;
-};
-
 export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }) => {
   const {
     profileId,
@@ -96,13 +269,31 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
+  const [productBidsByNmId, setProductBidsByNmId] = useState<Record<number, string>>({});
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
+  const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
+  const uploadMenuRef = useRef<HTMLDivElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
   const [referralCode, setReferralCode] = useState('');
+
+  useEffect(() => {
+    if (!isUploadMenuOpen) return;
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (uploadMenuRef.current?.contains(event.target as Node)) return;
+      setIsUploadMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [isUploadMenuOpen]);
 
   useEffect(() => {
     if (!singleCampaignSeed || repeatSeedAppliedRef.current) return;
     repeatSeedAppliedRef.current = true;
-    setProducts([singleCampaignSeed.product]);
+    const seeded = [singleCampaignSeed.product];
+    setProducts(seeded);
+    setProductBidsByNmId((prev) =>
+      seedBidsForProducts(seeded, prev, paymentModel === 'CPM' ? unifiedBid : unifiedBid),
+    );
     if (singleCampaignSeed.campaignName) {
       setCampaignName(singleCampaignSeed.campaignName);
     }
@@ -156,6 +347,94 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
       }
     }
   };
+
+  const bidFallback = paymentModel === 'CPM' ? unifiedBid : unifiedBid;
+
+  const replaceProducts = (next: CampaignProductRow[]) => {
+    setProducts(next);
+    setProductBidsByNmId((prev) => seedBidsForProducts(next, prev, bidFallback));
+  };
+
+  const getProductBid = (nmId: number) => productBidsByNmId[nmId] ?? bidFallback;
+
+  const handleProductBidChange = (nmId: number, value: string) => {
+    const parsed = parseDisplayValue(value);
+    if (!isNaN(parsed)) {
+      setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(parsed) }));
+    } else if (value === '') {
+      setProductBidsByNmId((prev) => ({ ...prev, [nmId]: '' }));
+    }
+  };
+
+  const bidColumnTitle =
+    paymentModel === 'CPC' ? 'Ставка (CPC)' : 'Ставка (CPM)';
+
+  const alreadyAddedNmIds = useMemo(
+    () => new Set(products.map((p) => p.nmId)),
+    [products],
+  );
+
+  const renderProductBidCell = (nmId: number) => {
+    const raw = getProductBid(nmId);
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <div className="inline-flex h-9 min-w-[5.5rem] items-center rounded-lg border border-gray-200 bg-white px-2.5 text-sm text-gray-900">
+          <input
+            type="text"
+            value={formatForDisplay(raw)}
+            onChange={(e) => handleProductBidChange(nmId, e.target.value)}
+            className="w-full min-w-0 border-0 bg-transparent p-0 text-sm outline-none focus:ring-0"
+          />
+          <span className="shrink-0 text-gray-500">₽</span>
+        </div>
+        <BidHistogramButton />
+      </div>
+    );
+  };
+
+  const uploadMenu = (
+    <div className="relative" ref={uploadMenuRef}>
+      <button
+        type="button"
+        onClick={() => setIsUploadMenuOpen((open) => !open)}
+        className="inline-flex items-center gap-2 rounded-xl bg-[#F2F2F7] px-4 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
+      >
+        Загрузить
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-gray-600 transition-transform ${isUploadMenuOpen ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {isUploadMenuOpen && (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-20 min-w-[12rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+          <button
+            type="button"
+            className="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+            onClick={() => {
+              setIsUploadMenuOpen(false);
+              excelInputRef.current?.click();
+            }}
+          >
+            Загрузить Excel
+          </button>
+        </div>
+      )}
+      <input
+        ref={excelInputRef}
+        type="file"
+        accept=".xlsx,.csv"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (!file) return;
+          replaceProducts(MOCK_PRODUCTS.slice(0, 2));
+          setToastMessage('Товары загружены из файла');
+          setShowToast(true);
+        }}
+      />
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#F7F7FA] font-sans text-gray-900" style={{ background: '#F7F7FA' }}>
@@ -414,7 +693,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-1">
               <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 680, fontSize: '22px', lineHeight: '28px' }}>
-                Ставки по товарам
+                Зона показа
               </h2>
             </div>
 
@@ -431,25 +710,18 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                     <div className="w-[18px] h-[18px] bg-white border-2 border-[#BBB7C9] rounded-full"></div>
                   )}
                 </button>
-                <div className="flex items-center gap-2 flex-1 flex-wrap">
-                  <span className="text-base text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
-                    Единая ставка: продвижение сразу в поиске, каталоге и рекомендациях, мин. ставка 30 - 230 ₽ в зависимости от категории товаров
-                  </span>
-                  {bidType === 'unified' ? (
-                    <>
-                      <input
-                        type="text"
-                        value={formatForDisplay(unifiedBid)}
-                        onChange={(e) => handleBidChange(e.target.value, 'unified')}
-                        className="text-base text-gray-900 bg-transparent border-none outline-none focus:outline-none w-20"
-                        style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}
-                      />
-                      <span className="text-base text-gray-900">₽</span>
-                    </>
-                  ) : (
-                    <span className="text-base text-gray-900">{formatForDisplay(unifiedBid)} ₽</span>
-                  )}
-                </div>
+                <span
+                  className="text-base text-gray-900"
+                  style={{
+                    fontFamily: "'ALS Hauss VF', sans-serif",
+                    fontStyle: 'normal',
+                    fontWeight: 440,
+                    fontSize: '16px',
+                    lineHeight: '20px',
+                  }}
+                >
+                  Единая ставка: продвижение сразу в поиске, каталоге и рекомендациях
+                </span>
               </div>
 
               {/* Ручное управление */}
@@ -464,25 +736,18 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                     <div className="w-[18px] h-[18px] bg-white border-2 border-[#BBB7C9] rounded-full"></div>
                   )}
                 </button>
-                <div className="flex items-center gap-2 flex-1 flex-wrap">
-                  <span className="text-base text-[#4A4A59]" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
-                    Ручная ставка: выбирайте зоны показов и ставку для них, мин. ставка 40 - 500 ₽ в зависимости от категории товаров
-                  </span>
-                  {bidType === 'manual' ? (
-                    <>
-                      <input
-                        type="text"
-                        value={formatForDisplay(manualBid)}
-                        onChange={(e) => handleBidChange(e.target.value, 'manual')}
-                        className="text-base text-[#4E4E53] bg-transparent border-none outline-none focus:outline-none w-20"
-                        style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}
-                      />
-                      <span className="text-base text-[#4E4E53]">₽</span>
-                    </>
-                  ) : (
-                    <span className="text-base text-[#4E4E53]">{formatForDisplay(manualBid)} ₽</span>
-                  )}
-                </div>
+                <span
+                  className="text-base text-[#4A4A59]"
+                  style={{
+                    fontFamily: "'ALS Hauss VF', sans-serif",
+                    fontStyle: 'normal',
+                    fontWeight: 440,
+                    fontSize: '16px',
+                    lineHeight: '20px',
+                  }}
+                >
+                  Ручная ставка: выбирайте зоны показов и ставку для них
+                </span>
               </div>
             </div>
           </div>
@@ -490,115 +755,174 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
 
         {/* Товары */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-            <h2 className="text-lg font-bold text-gray-900">Ставки по товарам</h2>
-            <div className="flex flex-wrap items-center gap-3">
-              {products.length === 0 && (
-                <button 
+          {products.length === 0 ? (
+            <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
+              <p className="mb-6 max-w-lg text-sm leading-relaxed text-gray-500">
+                Выберите товары для продвижения или загрузите с помощью Excel
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
                   onClick={() => setIsAddProductsModalOpen(true)}
-                  className="px-3 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900"
+                  className="inline-flex items-center gap-2 rounded-xl bg-[#2E3038] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#23252c]"
                 >
-                  Добавить товар
+                  <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                  Добавить товары
                 </button>
-              )}
-              {products.length > 0 && (
-                <input
-                  type="text"
-                  placeholder="Поиск по товарам"
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                />
-              )}
+                <div className="relative" ref={uploadMenuRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsUploadMenuOpen((open) => !open)}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#F2F2F7] px-5 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
+                  >
+                    Загрузить
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-gray-600 transition-transform ${isUploadMenuOpen ? 'rotate-180' : ''}`}
+                      aria-hidden
+                    />
+                  </button>
+                  {isUploadMenuOpen && (
+                    <div className="absolute left-0 top-[calc(100%+8px)] z-20 min-w-[12rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
+                      <button
+                        type="button"
+                        className="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
+                        onClick={() => {
+                          setIsUploadMenuOpen(false);
+                          excelInputRef.current?.click();
+                        }}
+                      >
+                        Загрузить Excel
+                      </button>
+                    </div>
+                  )}
+                  <input
+                    ref={excelInputRef}
+                    type="file"
+                    accept=".xlsx,.csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = '';
+                      if (!file) return;
+                      replaceProducts(MOCK_PRODUCTS.slice(0, 2));
+                      setToastMessage('Товары загружены из файла');
+                      setShowToast(true);
+                    }}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-          {products.length > 0 && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-gray-500 font-medium">
-                  <tr>
-                    <th className="p-3 text-left">Товар</th>
-                    {paymentModel === 'CPC' && (
-                      <th className="p-3 text-left">В поиске (CPC)</th>
-                    )}
-                    {paymentModel === 'CPM' && bidType === 'manual' && (
-                      <>
-                        <th className="p-3 text-left">В поиске (CPM)</th>
-                        <th className="p-3 text-left">В рекомендациях (CPM)</th>
-                      </>
-                    )}
-                    {paymentModel === 'CPM' && bidType === 'unified' && (
-                      <th className="p-3 text-left">Единая ставка (CPM)</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {products.map((product) => (
-                    <tr key={product.nmId}>
-                      <td className="p-3">
-                        <div className="flex items-center gap-3">
-                          <img src={product.imageUrl} alt={product.productName} className="w-10 h-10 rounded-md object-cover" />
-                          <div>
-                            <p className="font-medium text-gray-800">Товар {product.nmId}</p>
-                            <p className="text-xs text-gray-500">{product.productName}</p>
-                          </div>
-                        </div>
-                      </td>
-                      {paymentModel === 'CPC' && (
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={formatForDisplay(unifiedBid)}
-                              onChange={(e) => handleBidChange(e.target.value, 'unified')}
-                              className="w-20 px-2 py-1 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                            />
-                            <span className="text-gray-500">₽</span>
-                          </div>
-                        </td>
-                      )}
+          ) : (
+            <>
+              <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-lg font-bold text-gray-900">
+                  Товары{' '}
+                  <span className="font-normal text-gray-500">
+                    {products.length} шт.
+                  </span>
+                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddProductsModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#F2F2F7] px-4 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
+                  >
+                    <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                    Добавить товары
+                  </button>
+                  {uploadMenu}
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[720px] text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 text-left">
+                      <th className="pb-3 pr-3 font-normal">
+                        <HeaderHint label="Фото" />
+                      </th>
+                      <th className="pb-3 pr-4 font-normal">
+                        <HeaderHint label="Бренд · Артикул · Название" />
+                      </th>
+                      <th className="pb-3 pr-4 font-normal text-right">
+                        <span className="inline-flex justify-end">
+                          <HeaderHint label={bidColumnTitle} />
+                        </span>
+                      </th>
                       {paymentModel === 'CPM' && bidType === 'manual' && (
-                        <>
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={formatForDisplay(manualBid)}
-                                onChange={(e) => handleBidChange(e.target.value, 'manual')}
-                                className="w-20 px-2 py-1 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                              />
-                              <span className="text-gray-500">₽</span>
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="text"
-                                value={formatForDisplay(manualBid)}
-                                onChange={(e) => handleBidChange(e.target.value, 'manual')}
-                                className="w-20 px-2 py-1 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                              />
-                              <span className="text-gray-500">₽</span>
-                            </div>
-                          </td>
-                        </>
+                        <th className="pb-3 pr-4 font-normal text-right">
+                          <span className="inline-flex justify-end">
+                            <HeaderHint label="В рекомендациях (CPM)" />
+                          </span>
+                        </th>
                       )}
-                      {paymentModel === 'CPM' && bidType === 'unified' && (
-                        <td className="p-3">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={formatForDisplay(unifiedBid)}
-                              onChange={(e) => handleBidChange(e.target.value, 'unified')}
-                              className="w-20 px-2 py-1 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none"
-                            />
-                            <span className="text-gray-500">₽</span>
-                          </div>
-                        </td>
-                      )}
+                      <th className="pb-3 pr-2 font-normal">
+                        <HeaderHint label="Преследование ставки" />
+                      </th>
+                      <th className="pb-3 w-10" aria-hidden />
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {products.map((product) => {
+                      const brand = product.brand ?? '—';
+                      const article = product.articleSeller ?? '—';
+                      return (
+                        <tr key={product.nmId} className="align-middle">
+                          <td className="py-3 pr-3">
+                            <CampaignProductThumb
+                              nmId={product.nmId}
+                              imageUrl={product.imageUrl}
+                              category={product.category}
+                              alt={product.productName}
+                            />
+                          </td>
+                          <td className="py-3 pr-4">
+                            <p className="text-sm font-semibold leading-tight text-gray-900">
+                              {product.productName}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-gray-500">
+                              {brand} · {article}
+                            </p>
+                            <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
+                              <span>· {product.nmId}</span>
+                              <CopyNmIdButton nmId={product.nmId} />
+                            </div>
+                          </td>
+                          <td className="py-3 pr-4 text-right">
+                            {renderProductBidCell(product.nmId)}
+                          </td>
+                          {paymentModel === 'CPM' && bidType === 'manual' && (
+                            <td className="py-3 pr-4 text-right">
+                              {renderProductBidCell(product.nmId)}
+                            </td>
+                          )}
+                          <td className="py-3 pr-2">
+                            <button
+                              type="button"
+                              className="rounded-lg bg-[#F2F2F7] px-4 py-2 text-sm font-medium text-gray-800 hover:bg-[#e8e8ed]"
+                              onClick={() => {
+                                setToastMessage('Настройка преследования ставки');
+                                setShowToast(true);
+                              }}
+                            >
+                              Настроить
+                            </button>
+                          </td>
+                          <td className="py-3 text-right">
+                            <button
+                              type="button"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                              aria-label="Действия"
+                            >
+                              <MoreVertical className="h-5 w-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       </main>
@@ -607,34 +931,25 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
       <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
 
       {/* Modal for adding products */}
-      {isAddProductsModalOpen && (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={() => setIsAddProductsModalOpen(false)}>
-          <div className="relative bg-white rounded-xl shadow-xl w-full max-w-2xl p-6 overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg text-gray-900">Добавить товар</h3>
-              <button onClick={() => setIsAddProductsModalOpen(false)}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
-            </div>
-            <div className="mb-6 flex-1 min-h-[500px]">
-              <ProductMultiSelect
-                options={MOCK_PRODUCTS}
-                selected={products}
-                onChange={(selected) => {
-                  setProducts(selected);
-                  setIsAddProductsModalOpen(false);
-                  setToastMessage('Товар добавлен');
-                  setShowToast(true);
-                }}
-                isCpcMode={paymentModel === 'CPC'}
-                submitLabel="Добавить товар"
-                singleSelect={true}
-              />
-            </div>
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-              <button onClick={() => setIsAddProductsModalOpen(false)} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Закрыть</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <SingleCampaignAddProductsModal
+        isOpen={isAddProductsModalOpen}
+        onClose={() => setIsAddProductsModalOpen(false)}
+        options={MOCK_PRODUCTS}
+        alreadyAddedNmIds={alreadyAddedNmIds}
+        isCpcMode={paymentModel === 'CPC'}
+        onConfirm={(added) => {
+          const merged = [...products];
+          for (const p of added) {
+            if (!merged.some((m) => m.nmId === p.nmId)) merged.push(p);
+          }
+          replaceProducts(merged);
+          const n = added.length;
+          setToastMessage(
+            n === 1 ? 'Товар добавлен' : `Добавлено ${n} товаров`,
+          );
+          setShowToast(true);
+        }}
+      />
 
       {/* Fixed footer with launch button */}
       {products.length > 0 && (

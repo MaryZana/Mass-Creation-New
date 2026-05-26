@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, ArrowUp
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -68,6 +68,45 @@ const BONUS_PACKAGES: BonusPackage[] = [
 
 // --- Helpers ---
 export const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
+
+function formatCtrPercent(value: number): string {
+  const s = value.toFixed(1).replace('.', ',');
+  return `${s}%`;
+}
+
+function ProspectGrowthCell({ ctr, change }: { ctr: number; change: number }) {
+  const up = change >= 0;
+  const changeLabel = `${up ? '+' : ''}${change}%`;
+  return (
+    <div className="tooltip relative inline-flex cursor-help flex-col items-start justify-start">
+      <div className="flex flex-col gap-0.5">
+        <span className="text-sm font-medium tabular-nums text-gray-900">
+          {formatCtrPercent(ctr)} CTR
+        </span>
+        <span
+          className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums ${
+            up ? 'text-emerald-600' : 'text-red-600'
+          }`}
+        >
+          {up ? (
+            <ArrowUp className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          )}
+          {changeLabel}
+        </span>
+      </div>
+      <span
+        className="tooltip-text !bottom-auto !left-0 !top-full !mt-2 !w-[17rem] !max-w-[17rem] !translate-x-0 !whitespace-normal !py-2.5 !px-3 !text-left !text-xs !font-normal !leading-snug z-[120]"
+        role="tooltip"
+      >
+        CTR выше на {change}%, чем у конкурентов в категории.
+        <br />
+        Спрос растёт (125%)
+      </span>
+    </div>
+  );
+}
 const formatForDisplay = (num: number | string | undefined | null): string => {
   if (num === null || num === undefined || num === '') return '';
   const numValue = typeof num === 'string' ? parseDisplayValue(num) : num;
@@ -1912,7 +1951,9 @@ export default function App() {
       if (Number.isNaN(nmId) || seenNmIds.has(nmId)) return false;
       seenNmIds.add(nmId);
       return true;
-    }).map((p, index) => {
+    })
+      .slice(0, 10)
+      .map((p, index) => {
       const nmId = Number(p.id);
       return {
         id: `growing-demand-v5-${p.id}-${index}`,
@@ -1926,7 +1967,9 @@ export default function App() {
         fundingSource: 'Единый счёт' as const,
         status: CampaignStatus.VALID,
         usePromoBonuses: true,
-        source: 'Рекомендации: хорошая конверсия',
+        source: 'Подборка недели',
+        prospectCtr: p.ctr,
+        prospectCtrChange: Math.max(0, p.ctrChange),
         cpcCompatible: true,
         bonusAmount: 0,
         searchBid: 30,
@@ -1957,11 +2000,11 @@ export default function App() {
         duplicateNmIds: new Set(),
         correctedNmIds: new Set(),
         currentPage: 1,
-        sourceFiles: new Set(['Рекомендации: хорошая конверсия']),
+        sourceFiles: new Set(['Подборка недели']),
       },
     ]);
     setToastMessage(
-      `Открыто массовое создание: ${items.length} ${getPlural(items.length, 'товар', 'товара', 'товаров')} в группе «${label}»`,
+      `Подборка: ${items.length} ${getPlural(items.length, 'товар', 'товара', 'товаров')} с CTR выше подкатегории`,
     );
     setShowToast(true);
     setAppState('creation');
@@ -3132,6 +3175,7 @@ export default function App() {
             const selectedOnPageCount = paginatedIds.filter(id => selectedCampaignIds.includes(id)).length;
             const allOnPageSelected = selectedOnPageCount === paginatedIds.length && paginatedIds.length > 0;
             const isIndeterminate = !allOnPageSelected && selectedOnPageCount > 0;
+            const showProspectColumn = campaignsForReview.some((c) => c.prospectCtr != null);
             if (filteredGroupCampaigns.length === 0 && areFiltersActive) return null;
 
             return ( <section key={group.id} className="bg-white rounded-2xl shadow-sm px-6 pb-6 pt-0 space-y-4 animate-fade-in"> 
@@ -3193,7 +3237,15 @@ export default function App() {
                       className="h-4 w-4 text-purple-600"
                     />
                   </th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Товар</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th> 
+                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Товар</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th>
+                  {showProspectColumn ? (
+                    <th className="table-header-cell px-2 py-1.5 font-normal w-[11%] bg-white">
+                      <div className="tooltip justify-start">
+                        <span>Рост</span>
+                        <span className="tooltip-text">CTR товара и отклонение от среднего по подкатегории</span>
+                      </div>
+                    </th>
+                  ) : null}
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
                   <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Преследование</span><span className="tooltip-text">Автоматическое управление ставками</span></div></th> 
@@ -3231,7 +3283,14 @@ export default function App() {
             <img src={row.imageUrl} alt={row.productName} className="w-full h-full object-cover" />
         </div>
       </div>
-      <div className="min-w-0"> <a href="#" title={row.productName} className="font-medium text-purple-600 hover:underline leading-tight block truncate">{row.productName}</a> <div className="text-gray-500 mt-0.5">ID {row.nmId}</div> </div> </div> </td> 
+      <div className="min-w-0"> <a href="#" title={row.productName} className="font-medium text-purple-600 hover:underline leading-tight block truncate">{row.productName}</a> <div className="text-gray-500 mt-0.5">ID {row.nmId}</div> </div> </div> </td>
+      {showProspectColumn ? (
+        <td className="px-2 py-1.5 align-top">
+          {row.prospectCtr != null && row.prospectCtrChange != null ? (
+            <ProspectGrowthCell ctr={row.prospectCtr} change={row.prospectCtrChange} />
+          ) : null}
+        </td>
+      ) : null}
       <td
         className="px-2 py-1.5 align-top"
         onDoubleClick={() => {

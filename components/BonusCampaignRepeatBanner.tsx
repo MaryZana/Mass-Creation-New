@@ -191,15 +191,26 @@ function notificationCardSurfaceClass(variant: BonusNotificationCardVariant): st
   }
 }
 
-/** Товары для массового создания из карточки варианта 4 «Конверсия выше конкурентов» */
-export const GROWING_DEMAND_PRODUCTS = [
+/** Товары для массового создания из подборки / карточки «растущий спрос» */
+export const GROWING_DEMAND_PRODUCTS: ReadonlyArray<{
+  id: string;
+  name: string;
+  image: string;
+  showsBase: number;
+  showsPromo: number;
+  ctr: number;
+  /** Изменение CTR vs подкатегория, % */
+  ctrChange: number;
+  seasonality: number;
+}> = [
   {
     id: '312883517',
     name: 'Рюкзак школьный',
     image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=80&h=80&fit=crop',
     showsBase: 1234,
     showsPromo: 10234,
-    ctr: 23,
+    ctr: 2.3,
+    ctrChange: 10,
     seasonality: 1092,
   },
   {
@@ -208,8 +219,9 @@ export const GROWING_DEMAND_PRODUCTS = [
     image: 'https://images.unsplash.com/photo-1595777457583-95e059d58199?w=80&h=80&fit=crop',
     showsBase: 1346,
     showsPromo: 18234,
-    ctr: 10,
-    seasonality: 1092,
+    ctr: 1.8,
+    ctrChange: 12,
+    seasonality: 1240,
   },
   {
     id: '312883519',
@@ -217,26 +229,29 @@ export const GROWING_DEMAND_PRODUCTS = [
     image: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=80&h=80&fit=crop',
     showsBase: 3234,
     showsPromo: 13234,
-    ctr: 35,
-    seasonality: 1092,
+    ctr: 3.5,
+    ctrChange: 18,
+    seasonality: 980,
   },
   {
     id: '312883520',
-    name: 'Рюкзак школьный',
-    image: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=80&h=80&fit=crop',
-    showsBase: 1234,
-    showsPromo: 10234,
-    ctr: 23,
-    seasonality: 1092,
+    name: 'Бомбер утеплённый',
+    image: 'https://images.unsplash.com/photo-1544966503-7cc5ac882d5f?w=80&h=80&fit=crop',
+    showsBase: 980,
+    showsPromo: 8900,
+    ctr: 2.1,
+    ctrChange: 8,
+    seasonality: 1180,
   },
   {
     id: '312883521',
-    name: 'Платье женское',
-    image: 'https://images.unsplash.com/photo-1595777457583-95e059d58199?w=80&h=80&fit=crop',
-    showsBase: 1346,
-    showsPromo: 18234,
-    ctr: 10,
-    seasonality: 1092,
+    name: 'Блузка офисная',
+    image: 'https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=80&h=80&fit=crop',
+    showsBase: 1560,
+    showsPromo: 14200,
+    ctr: 2.7,
+    ctrChange: 14,
+    seasonality: 760,
   },
   {
     id: '312883522',
@@ -244,10 +259,51 @@ export const GROWING_DEMAND_PRODUCTS = [
     image: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=80&h=80&fit=crop',
     showsBase: 2100,
     showsPromo: 11500,
-    ctr: 18,
+    ctr: 2.4,
+    ctrChange: 7,
     seasonality: 856,
   },
-] as const;
+  {
+    id: '312883523',
+    name: 'Джинсы прямого кроя',
+    image: 'https://images.unsplash.com/photo-1542272604-787c3835535d?w=80&h=80&fit=crop',
+    showsBase: 1890,
+    showsPromo: 12100,
+    ctr: 3.1,
+    ctrChange: 15,
+    seasonality: 640,
+  },
+  {
+    id: '312883524',
+    name: 'Сарафан летний',
+    image: 'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=80&h=80&fit=crop',
+    showsBase: 1120,
+    showsPromo: 9800,
+    ctr: 1.9,
+    ctrChange: 6,
+    seasonality: 1320,
+  },
+  {
+    id: '312883525',
+    name: 'Куртка ветровка',
+    image: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=80&h=80&fit=crop',
+    showsBase: 2450,
+    showsPromo: 15600,
+    ctr: 3.3,
+    ctrChange: 11,
+    seasonality: 920,
+  },
+  {
+    id: '312883526',
+    name: 'Сумка городская',
+    image: 'https://images.unsplash.com/photo-1590874103328-eac38a683ce7?w=80&h=80&fit=crop',
+    showsBase: 870,
+    showsPromo: 7400,
+    ctr: 2.0,
+    ctrChange: 9,
+    seasonality: 1410,
+  },
+];
 
 /** Превью в колонке «Растущий спрос» (рюкзак, платье, светлое платье), 28×38 */
 const GROWING_DEMAND_INSIGHTS_STACK_IMAGES = [

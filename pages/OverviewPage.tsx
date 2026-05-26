@@ -291,12 +291,12 @@ const ATTENTION_TAB_ITEMS: { id: AttentionTab; label: string; count: number }[] 
 
 /** Вкладки блока «Требует внимания» на /campaigns-with-widgets */
 export const ATTENTION_MINI_TABS_CAMPAIGNS: { id: AttentionTab; label: string; count: number }[] = [
-  { id: 'conv', label: 'Хорошая конверсия', count: 12 },
+  { id: 'growth', label: 'Хороший рост заказов', count: 4 },
   { id: 'issues', label: 'Проблемные', count: 7 },
 ];
 
 export const ATTENTION_MINI_TABS_PRODUCTS: { id: AttentionTab; label: string; count: number }[] = [
-  { id: 'growth', label: 'Хороший рост заказов', count: 4 },
+  { id: 'conv', label: 'Хорошая конверсия', count: 12 },
   { id: 'rating', label: 'Лучший рейтинг', count: 6 },
 ];
 
@@ -316,8 +316,8 @@ const ATTENTION_TAB_ROW_CTA_COMPACT: Record<AttentionTab, string | null> = {
 };
 
 const ATTENTION_TAB_HEADERS_COMPACT: Record<AttentionTab, [string, string, string]> = {
-  conv: ['Показы', 'CTR', 'CR'],
-  growth: ['Заказы', 'Рост', 'Сезон.'],
+  conv: ['Показы', 'CTR', 'Сезон.'],
+  growth: ['Заказы', 'Рост', ''],
   issues: ['ДРР', 'Затраты', 'Проблема'],
   rating: ['Рейтинг', 'Отзывы', 'Заказы'],
 };
@@ -364,7 +364,7 @@ const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
         image: OVERVIEW_IMG.bag,
         col2: { value: '1 234 000' },
         col3: { value: '4,2%', trend: '+0,8 п.п.', trendUp: true },
-        col4: { value: '12,4%', trend: '+1,2 п.п.', trendUp: true },
+        col4: { value: '+128%', trendUp: true },
       },
       {
         id: '1400001',
@@ -372,7 +372,7 @@ const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
         image: OVERVIEW_IMG.dress,
         col2: { value: '842 000' },
         col3: { value: '3,8%', trend: '+0,6 п.п.', trendUp: true },
-        col4: { value: '9,1%', trend: '+0,4 п.п.', trendUp: true },
+        col4: { value: '+96%', trendUp: true },
       },
       {
         id: '1400003',
@@ -380,7 +380,7 @@ const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
         image: OVERVIEW_IMG.office,
         col2: { value: '506 000' },
         col3: { value: '4,1%', trend: '+1,1 п.п.', trendUp: true },
-        col4: { value: '11,0%', trend: '+0,9 п.п.', trendUp: true },
+        col4: { value: '+84%', trendUp: true },
       },
       {
         id: '7002002',
@@ -388,7 +388,7 @@ const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
         image: OVERVIEW_IMG.shirt,
         col2: { value: '980 000' },
         col3: { value: '3,2%', trend: '+0,3 п.п.', trendUp: true },
-        col4: { value: '8,4%', trend: '+0,2 п.п.', trendUp: true },
+        col4: { value: '+71%', trendUp: true },
       },
       {
         id: '6001002',
@@ -396,7 +396,7 @@ const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
         image: OVERVIEW_IMG.dress,
         col2: { value: '412 000' },
         col3: { value: '5,0%', trend: '+1,4 п.п.', trendUp: true },
-        col4: { value: '13,2%', trend: '+1,0 п.п.', trendUp: true },
+        col4: { value: '+62%', trendUp: true },
       },
     ],
   },
@@ -734,19 +734,33 @@ function AttentionProductsTable({
     : ATTENTION_TAB_ROW_CTA[tab];
   const showRowCta = rowCtaLabel != null;
   const displayHeaders = compact ? ATTENTION_TAB_HEADERS_COMPACT[tab] : headers;
+  const hideThirdMetricColumn = compact && tab === 'growth';
   const cellPad = tight ? 'px-1.5 py-1.5' : 'px-2 py-2';
   const headPad = tight ? 'px-1.5 py-1.5' : 'px-2 py-1.5';
 
   return (
     <table className="w-full min-w-0 table-fixed border-collapse text-left text-xs">
       <colgroup>
-        {compact && showRowCta ? (
+        {compact && showRowCta && hideThirdMetricColumn ? (
+          <>
+            <col style={{ width: '32%' }} />
+            <col style={{ width: '18%' }} />
+            <col style={{ width: '18%' }} />
+            <col style={{ width: '32%' }} />
+          </>
+        ) : compact && showRowCta ? (
           <>
             <col style={{ width: '26%' }} />
             <col style={{ width: '14%' }} />
             <col style={{ width: '14%' }} />
             <col style={{ width: '14%' }} />
             <col style={{ width: '32%' }} />
+          </>
+        ) : compact && hideThirdMetricColumn ? (
+          <>
+            <col style={{ width: '40%' }} />
+            <col style={{ width: '30%' }} />
+            <col style={{ width: '30%' }} />
           </>
         ) : compact ? (
           <>
@@ -770,11 +784,13 @@ function AttentionProductsTable({
           <th className={`${headPad} text-left font-medium`}>Кампания</th>
           <th className={`${headPad} text-right font-medium`}>{displayHeaders[0]}</th>
           <th className={`${headPad} text-right font-medium`}>{displayHeaders[1]}</th>
-          <th
-            className={`${headPad} font-medium ${tab === 'issues' ? 'text-left' : 'text-right'}`}
-          >
-            {displayHeaders[2]}
-          </th>
+          {!hideThirdMetricColumn ? (
+            <th
+              className={`${headPad} font-medium ${tab === 'issues' ? 'text-left' : 'text-right'}`}
+            >
+              {displayHeaders[2]}
+            </th>
+          ) : null}
           {showRowCta ? <th className={headPad} /> : null}
         </tr>
       </thead>
@@ -789,18 +805,20 @@ function AttentionProductsTable({
             </td>
             <AttentionMetricTd cell={row.col2} compact={tight} />
             <AttentionMetricTd cell={row.col3} compact={tight} />
-            {tab === 'issues' ? (
-              <AttentionProblemTd
-                cell={row.col4}
-                compact={tight}
-                advice={
-                  ATTENTION_ISSUE_ADVICE[row.col4.value] ??
-                  'Сверьте динамику с прошлым периодом и скорректируйте ставки или креативы.'
-                }
-              />
-            ) : (
-              <AttentionMetricTd cell={row.col4} compact={tight} />
-            )}
+            {!hideThirdMetricColumn ? (
+              tab === 'issues' ? (
+                <AttentionProblemTd
+                  cell={row.col4}
+                  compact={tight}
+                  advice={
+                    ATTENTION_ISSUE_ADVICE[row.col4.value] ??
+                    'Сверьте динамику с прошлым периодом и скорректируйте ставки или креативы.'
+                  }
+                />
+              ) : (
+                <AttentionMetricTd cell={row.col4} compact={tight} />
+              )
+            ) : null}
             {showRowCta ? (
               <td className={`min-w-0 text-right align-middle ${cellPad}`}>
                 <button

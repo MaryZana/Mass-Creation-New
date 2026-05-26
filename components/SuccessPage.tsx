@@ -2498,25 +2498,51 @@ function buildBonusNotificationQueue(
   });
 }
 
-const CreateCampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: { onNavigateToCreation: () => void; onOpenSingleCampaign?: () => void }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
+function GreenGrowthChartIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+      aria-hidden
+    >
+      <rect x="1" y="9" width="3" height="6" rx="0.5" fill="currentColor" opacity="0.35" />
+      <rect x="6" y="6" width="3" height="9" rx="0.5" fill="currentColor" opacity="0.65" />
+      <rect x="11" y="2" width="3" height="13" rx="0.5" fill="currentColor" />
+      <path
+        d="M2 12.5 L6 8.5 L9.5 10 L14 4"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.9"
+      />
+    </svg>
+  );
+}
 
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (ref.current && !ref.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+const CreateCampaignDropdown = ({
+  onNavigateToCreation,
+  onOpenSingleCampaign,
+  onNavigateToCuratedPick,
+}: {
+  onNavigateToCreation: () => void;
+  onOpenSingleCampaign?: () => void;
+  onNavigateToCuratedPick?: () => void;
+}) => {
+    const [isOpen, setIsOpen] = useState(false);
 
     return (
-        <div className="relative shrink-0" ref={ref}>
+        <div
+            className="relative shrink-0"
+            onMouseEnter={() => setIsOpen(true)}
+            onMouseLeave={() => setIsOpen(false)}
+        >
             <button
                 type="button"
-                onClick={() => setIsOpen(!isOpen)}
+                onClick={() => onOpenSingleCampaign?.()}
                 className="flex items-center justify-center gap-1.5 shrink-0 h-11 px-4 rounded-[10px] bg-[#9a41fe] hover:bg-[#8840e5] text-white text-sm font-medium leading-5 transition-colors"
             >
                 <Plus className="w-5 h-5 shrink-0" aria-hidden />
@@ -2524,13 +2550,41 @@ const CreateCampaignDropdown = ({ onNavigateToCreation, onOpenSingleCampaign }: 
                 <ChevronDown className={`w-5 h-5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
             </button>
             {isOpen && (
-                <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-[200] py-1 animate-in fade-in zoom-in-95 duration-100">
-                    <button type="button" onClick={() => { onOpenSingleCampaign?.(); setIsOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                        Создать одну кампанию
-                    </button>
-                    <button type="button" onClick={() => { onNavigateToCreation(); setIsOpen(false); }} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
-                        Много кампаний
-                    </button>
+                <div className="absolute top-full left-0 z-[200] w-56 pt-2">
+                    <div className="rounded-lg border border-gray-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onOpenSingleCampaign?.();
+                                setIsOpen(false);
+                            }}
+                            className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                            Одну кампанию
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onNavigateToCreation();
+                                setIsOpen(false);
+                            }}
+                            className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                            Много кампаний
+                        </button>
+                        <div className="my-1 border-t border-gray-200" role="separator" />
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onNavigateToCuratedPick?.();
+                                setIsOpen(false);
+                            }}
+                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                        >
+                            <GreenGrowthChartIcon className="shrink-0 text-emerald-600" />
+                            Подборка недели
+                        </button>
+                    </div>
                 </div>
             )}
         </div>
@@ -2644,6 +2698,33 @@ const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory, showUploadHint = fa
 
 type FilterTab = 'status' | 'autorefill' | 'payment' | 'sort' | 'category' | 'tags';
 
+type ProductsFilterSection =
+  | 'categories'
+  | 'conflicts'
+  | 'status'
+  | 'autorefill'
+  | 'payment'
+  | 'sort'
+  | 'campaignTypes';
+
+const PRODUCTS_FILTER_DEMO_CATEGORIES = [
+  'Бейсболки',
+  'Блузки',
+  'Боди',
+  'Бомберы',
+  'Брелоки',
+  'Брюки',
+  'Ветровки',
+  'Калейдоскопы',
+  'Коврики комнатные',
+];
+
+const CAMPAIGN_TYPE_FILTER_OPTIONS = [
+  { id: 'CPC', label: 'CPC' },
+  { id: 'CPM_UNIFIED', label: 'CPM, единая ставка' },
+  { id: 'CPM_MANUAL', label: 'CPM, ручная ставка' },
+] as const;
+
 const FilterDropdown = ({ 
   isOpen, 
   onClose, 
@@ -2666,10 +2747,30 @@ const FilterDropdown = ({
   tempFilterPromoTagsOnly,
   onTempFilterPromoTagsOnlyChange,
   availableTags,
+  variant = 'campaigns',
+  productCategoryOptions = [],
+  productsSection,
+  onProductsSectionChange,
+  tempProductCategories,
+  onTempProductCategoriesChange,
+  tempConflictOnly,
+  onTempConflictOnlyChange,
+  tempCampaignTypes,
+  onTempCampaignTypesChange,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onApply: () => void;
+  variant?: 'campaigns' | 'products';
+  productCategoryOptions?: string[];
+  productsSection?: ProductsFilterSection;
+  onProductsSectionChange?: (section: ProductsFilterSection) => void;
+  tempProductCategories?: string[];
+  onTempProductCategoriesChange?: (categories: string[]) => void;
+  tempConflictOnly?: boolean;
+  onTempConflictOnlyChange?: (value: boolean) => void;
+  tempCampaignTypes?: string[];
+  onTempCampaignTypesChange?: (types: string[]) => void;
   category: FilterTab;
   onCategoryChange: (cat: FilterTab) => void;
   status: string;
@@ -2717,6 +2818,243 @@ const FilterDropdown = ({
   }, [onClose]);
 
   if (!isOpen) return null;
+
+  const productsSectionTitle = (() => {
+    switch (productsSection) {
+      case 'categories':
+        return 'Категории';
+      case 'conflicts':
+        return 'Конфликты кампаний';
+      case 'status':
+        return 'Статус кампаний';
+      case 'autorefill':
+        return 'Автопополнение';
+      case 'payment':
+        return 'Модель оплаты';
+      case 'sort':
+        return 'Тип сортировки кампаний';
+      case 'campaignTypes':
+        return 'Типы кампании';
+      default:
+        return 'Категории';
+    }
+  })();
+
+  const allCategoriesSelected =
+    productCategoryOptions.length > 0 &&
+    productCategoryOptions.every((c) => tempProductCategories?.includes(c));
+
+  const toggleAllProductCategories = () => {
+    if (!onTempProductCategoriesChange) return;
+    if (allCategoriesSelected) onTempProductCategoriesChange([]);
+    else onTempProductCategoriesChange([...productCategoryOptions]);
+  };
+
+  const productsNavBtn = (section: ProductsFilterSection, label: string) => (
+    <button
+      type="button"
+      onClick={() => onProductsSectionChange?.(section)}
+      className={`w-full rounded-xl px-4 py-2.5 text-left text-sm font-medium transition-colors ${
+        productsSection === section
+          ? 'bg-[rgba(74,74,89,0.08)] text-gray-900'
+          : 'text-gray-700 hover:bg-[rgba(74,74,89,0.05)]'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
+  if (variant === 'products') {
+    return (
+      <div
+        ref={dropdownRef}
+        className="absolute top-full right-0 z-20 mt-2 flex max-h-[600px] w-[800px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+      >
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex w-56 shrink-0 flex-col gap-1 border-r border-gray-100 p-3">
+            {productsNavBtn('categories', 'Категории')}
+            {productsNavBtn('conflicts', 'Конфликты кампаний')}
+            <p className="px-4 pt-3 pb-1 text-xs font-medium text-gray-400">Кампании</p>
+            {productsNavBtn('status', 'Статус кампаний')}
+            {productsNavBtn('autorefill', 'Автопополнение')}
+            {productsNavBtn('payment', 'Модель оплаты')}
+            {productsNavBtn('sort', 'Тип сортировки кампаний')}
+            {productsNavBtn('campaignTypes', 'Типы кампании')}
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <h3 className="text-lg font-bold text-gray-900">Товары</h3>
+              {productsSection === 'categories' && (
+                <button
+                  type="button"
+                  onClick={toggleAllProductCategories}
+                  className="text-sm font-medium text-[#5067DE] hover:underline"
+                >
+                  Выбрать все
+                </button>
+              )}
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {productsSection === 'categories' && (
+                <>
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  <div className="space-y-3">
+                    {productCategoryOptions.map((cat) => (
+                      <label key={cat} className="flex cursor-pointer items-center gap-3">
+                        <Checkbox
+                          checked={tempProductCategories?.includes(cat) ?? false}
+                          onChange={(e) => {
+                            if (!onTempProductCategoriesChange || !tempProductCategories) return;
+                            if (e.target.checked) {
+                              onTempProductCategoriesChange([...tempProductCategories, cat]);
+                            } else {
+                              onTempProductCategoriesChange(
+                                tempProductCategories.filter((c) => c !== cat),
+                              );
+                            }
+                          }}
+                        />
+                        <span className="text-sm text-gray-900">{cat}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+              {productsSection === 'conflicts' && (
+                <>
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  <label className="flex cursor-pointer items-center gap-3">
+                    <Checkbox
+                      checked={tempConflictOnly ?? false}
+                      onChange={(e) => onTempConflictOnlyChange?.(e.target.checked)}
+                    />
+                    <span className="text-sm text-gray-900">
+                      Только товары с конфликтом кампаний (CPC и CPM одновременно)
+                    </span>
+                  </label>
+                </>
+              )}
+              {productsSection === 'campaignTypes' && (
+                <>
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  <div className="space-y-3">
+                    {CAMPAIGN_TYPE_FILTER_OPTIONS.map((opt) => (
+                      <label key={opt.id} className="flex cursor-pointer items-center gap-3">
+                        <Checkbox
+                          checked={tempCampaignTypes?.includes(opt.id) ?? false}
+                          onChange={(e) => {
+                            if (!onTempCampaignTypesChange || !tempCampaignTypes) return;
+                            if (e.target.checked) {
+                              onTempCampaignTypesChange([...tempCampaignTypes, opt.id]);
+                            } else {
+                              onTempCampaignTypesChange(
+                                tempCampaignTypes.filter((t) => t !== opt.id),
+                              );
+                            }
+                          }}
+                        />
+                        <span className="text-sm text-gray-900">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>
+              )}
+              {productsSection === 'status' && (
+                <div className="space-y-3">
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  {[
+                    { value: 'all-except-archived', label: 'Все, кроме архивных' },
+                    { value: 'ready-to-launch', label: 'Готовые к запуску' },
+                    { value: 'active', label: 'Активные' },
+                    { value: 'paused', label: 'Приостановленные' },
+                    { value: 'archived', label: 'Архивные' },
+                  ].map((option) => (
+                    <label key={option.value} className="flex cursor-pointer items-center gap-3">
+                      <Checkbox
+                        checked={tempStatus === option.value}
+                        onChange={() => onTempStatusChange(option.value)}
+                      />
+                      <span className="text-sm text-gray-900">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {productsSection === 'autorefill' && (
+                <div className="space-y-3">
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  {[
+                    { value: 'all', label: 'Все' },
+                    { value: 'enabled', label: 'Включено' },
+                    { value: 'disabled', label: 'Выключено' },
+                  ].map((option) => (
+                    <label key={option.value} className="flex cursor-pointer items-center gap-3">
+                      <Checkbox
+                        checked={tempAutorefill === option.value}
+                        onChange={() => onTempAutorefillChange(option.value)}
+                      />
+                      <span className="text-sm text-gray-900">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {productsSection === 'payment' && (
+                <div className="space-y-3">
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  {[
+                    { value: 'all', label: 'Все' },
+                    { value: 'CPC', label: 'CPC' },
+                    { value: 'CPM', label: 'CPM' },
+                  ].map((option) => (
+                    <label key={option.value} className="flex cursor-pointer items-center gap-3">
+                      <Checkbox
+                        checked={tempPayment === option.value}
+                        onChange={() => onTempPaymentChange(option.value)}
+                      />
+                      <span className="text-sm text-gray-900">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {productsSection === 'sort' && (
+                <div className="space-y-3">
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  {[
+                    { value: 'by-date', label: 'По дате создания' },
+                    { value: 'by-name', label: 'По названию' },
+                    { value: 'by-category', label: 'По категории' },
+                  ].map((option) => (
+                    <label key={option.value} className="flex cursor-pointer items-center gap-3">
+                      <Checkbox
+                        checked={tempSort === option.value}
+                        onChange={() => onTempSortChange(option.value)}
+                      />
+                      <span className="text-sm text-gray-900">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 border-t border-gray-100 px-6 py-4">
+          <button
+            type="button"
+            onClick={onApply}
+            className="rounded-xl bg-[#9A41FE] px-6 py-2.5 text-sm font-medium text-white hover:bg-[#8840e5]"
+          >
+            Применить
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-[rgba(74,74,89,0.08)] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)]"
+          >
+            Отмена
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div 
@@ -3255,6 +3593,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [filterPromoTagsOnly, setFilterPromoTagsOnly] = useState(false);
   const [tempFilterPromoTagsOnly, setTempFilterPromoTagsOnly] = useState(false);
 
+  const [productsFilterSection, setProductsFilterSection] =
+    useState<ProductsFilterSection>('categories');
+  const [tempProductsFilterSection, setTempProductsFilterSection] =
+    useState<ProductsFilterSection>('categories');
+  const [filterProductCategories, setFilterProductCategories] = useState<string[]>([]);
+  const [tempFilterProductCategories, setTempFilterProductCategories] = useState<string[]>([]);
+  const [filterConflictOnly, setFilterConflictOnly] = useState(false);
+  const [tempFilterConflictOnly, setTempFilterConflictOnly] = useState(false);
+  const [filterCampaignTypes, setFilterCampaignTypes] = useState<string[]>([]);
+  const [tempFilterCampaignTypes, setTempFilterCampaignTypes] = useState<string[]>([]);
+
   // Тень у левой закреплённой части таблиц при горизонтальном скролле
   const [hasCampaignsScrollShadow, setHasCampaignsScrollShadow] = useState(false);
   const [hasProductsScrollShadow, setHasProductsScrollShadow] = useState(false);
@@ -3383,6 +3732,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }, [profileCampaigns, getCampaignProductTags]);
 
   /** Ярлыки, уже добавленные на страницу (для фильтра «По ярлыкам») */
+  const productFilterCategoryOptions = useMemo(() => {
+    const set = new Set<string>(PRODUCTS_FILTER_DEMO_CATEGORIES);
+    profileProductTree.forEach((p) => {
+      if (p.category) set.add(p.category);
+    });
+    CATEGORIES.forEach((c) => set.add(c));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [profileProductTree]);
+
   const availableTags = useMemo(() => {
     const set = new Set<string>();
     allCampaigns.forEach(c =>
@@ -3412,28 +3770,54 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       setTempFilterAutorefill(filterAutorefill);
       setTempFilterPayment(filterPayment);
       setTempFilterSort(filterSort);
+      setTempFilterByCategory(filterByCategory);
       setTempTags(filterTags);
       setTempTagsSearch('');
       setTempTagsCategory(filterTagsCategory);
       setTempFilterPromoTagsOnly(filterPromoTagsOnly);
+      setTempProductsFilterSection(productsFilterSection);
+      setTempFilterProductCategories(filterProductCategories);
+      setTempFilterConflictOnly(filterConflictOnly);
+      setTempFilterCampaignTypes(filterCampaignTypes);
     }
-  }, [isFilterDropdownOpen, filterCategory, filterStatus, filterAutorefill, filterPayment, filterSort, filterByCategory, filterTags, filterTagsCategory, filterPromoTagsOnly]);
+  }, [
+    isFilterDropdownOpen,
+    filterCategory,
+    filterStatus,
+    filterAutorefill,
+    filterPayment,
+    filterSort,
+    filterByCategory,
+    filterTags,
+    filterTagsCategory,
+    filterPromoTagsOnly,
+    productsFilterSection,
+    filterProductCategories,
+    filterConflictOnly,
+    filterCampaignTypes,
+  ]);
 
   const handleApplyFilters = () => {
-    setFilterCategory(tempFilterCategory);
+    if (listTab === 'products') {
+      setProductsFilterSection(tempProductsFilterSection);
+      setFilterProductCategories(tempFilterProductCategories);
+      setFilterConflictOnly(tempFilterConflictOnly);
+      setFilterCampaignTypes(tempFilterCampaignTypes);
+    } else {
+      setFilterCategory(tempFilterCategory);
+      setFilterByCategory(tempFilterByCategory);
+      setFilterTags(tempTags);
+      setFilterTagsCategory(tempTagsCategory);
+      setFilterPromoTagsOnly(tempFilterPromoTagsOnly);
+    }
     setFilterStatus(tempFilterStatus);
     setFilterAutorefill(tempFilterAutorefill);
     setFilterPayment(tempFilterPayment);
     setFilterSort(tempFilterSort);
-    setFilterByCategory(tempFilterByCategory);
-    setFilterTags(tempTags);
-    setFilterTagsCategory(tempTagsCategory);
-    setFilterPromoTagsOnly(tempFilterPromoTagsOnly);
     setIsFilterDropdownOpen(false);
   };
 
   const handleCancelFilters = () => {
-    // Reset temporary states to current applied states
     setTempFilterCategory(filterCategory);
     setTempFilterStatus(filterStatus);
     setTempFilterAutorefill(filterAutorefill);
@@ -3444,6 +3828,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setTempTagsSearch('');
     setTempTagsCategory(filterTagsCategory);
     setTempFilterPromoTagsOnly(filterPromoTagsOnly);
+    setTempProductsFilterSection(productsFilterSection);
+    setTempFilterProductCategories(filterProductCategories);
+    setTempFilterConflictOnly(filterConflictOnly);
+    setTempFilterCampaignTypes(filterCampaignTypes);
     setIsFilterDropdownOpen(false);
   };
 
@@ -3554,7 +3942,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const filteredProducts = useMemo(() => {
     return profileProductTree.filter((product) => {
       if (product.campaigns.length === 0) {
-        if (filterStatus === 'all-except-archived' && !filterByCategory && filterTags.length === 0 && filterAutorefill === 'all' && filterPayment === 'all') return true;
+        const noCampaignFilters =
+          filterStatus === 'all-except-archived' &&
+          filterAutorefill === 'all' &&
+          filterPayment === 'all' &&
+          filterTags.length === 0 &&
+          filterCampaignTypes.length === 0 &&
+          !filterConflictOnly &&
+          !insightFilter;
+        const categoryOk =
+          listTab === 'products'
+            ? filterProductCategories.length === 0 ||
+              filterProductCategories.includes(product.category)
+            : !filterByCategory || product.category === filterByCategory;
+        if (noCampaignFilters && categoryOk) return true;
         return false;
       }
       const productTagsResolved = getProductTags(product);
@@ -3583,7 +3984,34 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         return true;
       });
       if (!hasMatchingCampaign) return false;
-      if (filterByCategory && filterByCategory !== '' && product.category !== filterByCategory) return false;
+      if (listTab === 'products' && filterProductCategories.length > 0) {
+        if (!filterProductCategories.includes(product.category)) return false;
+      } else if (filterByCategory && filterByCategory !== '' && product.category !== filterByCategory) {
+        return false;
+      }
+      if (filterConflictOnly && !productHasCampaignConflict(product)) return false;
+      if (filterCampaignTypes.length > 0) {
+        if (product.campaigns.length === 0) return false;
+        const matchesType = product.campaigns.some((camp) => {
+          if (filterCampaignTypes.includes('CPC') && camp.type === 'CPC') return true;
+          if (
+            filterCampaignTypes.includes('CPM_UNIFIED') &&
+            camp.type === 'CPM' &&
+            /един/i.test(camp.typeDetails)
+          ) {
+            return true;
+          }
+          if (
+            filterCampaignTypes.includes('CPM_MANUAL') &&
+            camp.type === 'CPM' &&
+            /ручн/i.test(camp.typeDetails)
+          ) {
+            return true;
+          }
+          return false;
+        });
+        if (!matchesType) return false;
+      }
       if (filterPromoTagsOnly && productTagsResolved.length === 0) return false;
       return true;
     });
@@ -3594,10 +4022,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     filterPayment,
     filterTags,
     filterByCategory,
+    filterProductCategories,
+    filterConflictOnly,
+    filterCampaignTypes,
     filterPromoTagsOnly,
     productCampaignStatusOverride,
     getProductTags,
     insightFilter,
+    listTab,
   ]);
 
   // Поиск по товарам: по названию товара, артикулу, артикулу WB, артикулу продавца, названию кампании, ID кампании
@@ -3860,7 +4292,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </button>
             </div>
 
-            <CreateCampaignDropdown onNavigateToCreation={onNavigateToCreation} onOpenSingleCampaign={onOpenSingleCampaign} />
+            <CreateCampaignDropdown
+              onNavigateToCreation={onNavigateToCreation}
+              onOpenSingleCampaign={onOpenSingleCampaign}
+              onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
+            />
 
             <ExcelActionsDropdown
               onOpenUpload={onOpenUploadEditsModal}
@@ -3900,9 +4336,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 </button>
                 {(listTab === 'campaigns' || listTab === 'products') && (
                   <FilterDropdown
+                    variant={listTab === 'products' ? 'products' : 'campaigns'}
                     isOpen={isFilterDropdownOpen}
                     onClose={handleCancelFilters}
                     onApply={handleApplyFilters}
+                    productCategoryOptions={productFilterCategoryOptions}
+                    productsSection={tempProductsFilterSection}
+                    onProductsSectionChange={setTempProductsFilterSection}
+                    tempProductCategories={tempFilterProductCategories}
+                    onTempProductCategoriesChange={setTempFilterProductCategories}
+                    tempConflictOnly={tempFilterConflictOnly}
+                    onTempConflictOnlyChange={setTempFilterConflictOnly}
+                    tempCampaignTypes={tempFilterCampaignTypes}
+                    onTempCampaignTypesChange={setTempFilterCampaignTypes}
                     category={filterCategory}
                     onCategoryChange={setFilterCategory}
                     status={filterStatus}
