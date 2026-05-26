@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
+import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
@@ -39,6 +40,10 @@ import {
   CATEGORIES,
   type CampaignSpec,
   type ProductSource,
+  PRODUCT_TABLE_THUMB_FALLBACK,
+  productTableThumbFallbackUrl,
+  resolveProductTableThumbSrc,
+  productTableThumbUrl,
 } from './SuccessPageTestData';
 import {
   useProfile,
@@ -291,6 +296,554 @@ type ProductRow = {
   agg?: { spend: number; impressions: number; ctr: number; orders: number; spendShare: number; changeSpend?: number; changeImpressions?: number; changeCtr?: number; changeOrders?: number; changeShare?: number };
 };
 
+/** Столбцы статистики на вкладке «Товары» (слева направо после служебных колонок). */
+const PRODUCTS_STAT_COLUMN_LABELS = [
+  'Затраты',
+  'Показы',
+  'CTR',
+  'Заказы',
+  'Доля затрат',
+  'Средняя позиция',
+  'Клики',
+  'Добавления в корзину',
+  'Сумма заказов',
+  'CPC',
+  'CPO',
+  'CR',
+  'CPM',
+  'Отмены технические',
+] as const;
+
+const PRODUCTS_PRIMARY_COLUMN_IDS = [
+  { id: 'product', label: 'Товар' },
+  { id: 'campaignType', label: 'Тип кампании' },
+  { id: 'budgetRemainder', label: 'Остаток бюджета' },
+] as const;
+
+const PRODUCTS_MIDDLE_COLUMN_IDS = [
+  { id: 'dailyLimit', label: 'Дневной лимит' },
+  { id: 'tags', label: 'Ярлыки' },
+] as const;
+
+function productsStatColumnId(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number]): string {
+  return `stat:${label}`;
+}
+
+function defaultProductsColumnVisibility(): Record<string, boolean> {
+  const next: Record<string, boolean> = {};
+  for (const col of PRODUCTS_PRIMARY_COLUMN_IDS) next[col.id] = true;
+  for (const col of PRODUCTS_MIDDLE_COLUMN_IDS) {
+    next[col.id] = col.id !== 'tags';
+  }
+  for (const label of PRODUCTS_STAT_COLUMN_LABELS) next[productsStatColumnId(label)] = true;
+  return next;
+}
+
+function ProductsColumnPinIcon({ className = 'h-4 w-4 text-gray-400' }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M16 10V7a4 4 0 1 0-8 0v3l-2 4.5V18h12v-3.5L16 10zm-6-3a2 2 0 1 1 4 0v3h-4V7z" />
+    </svg>
+  );
+}
+
+function ProductsColumnGripIcon() {
+  return (
+    <span className="inline-grid grid-cols-2 gap-[3px] px-0.5" aria-hidden>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <span key={i} className="h-[3px] w-[3px] rounded-full bg-gray-400" />
+      ))}
+    </span>
+  );
+}
+
+function ProductsColumnSettingsDropdown({
+  open,
+  onClose,
+  visibility,
+  onToggle,
+  onReset,
+}: {
+  open: boolean;
+  onClose: () => void;
+  visibility: Record<string, boolean>;
+  onToggle: (columnId: string, visible: boolean) => void;
+  onReset: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (panelRef.current?.contains(e.target as Node)) return;
+      onClose();
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const checkboxClass =
+    '[&_.ant-checkbox-inner]:rounded [&_.ant-checkbox-checked_.ant-checkbox-inner]:border-[#9a41fe] [&_.ant-checkbox-checked_.ant-checkbox-inner]:bg-[#9a41fe]';
+
+  const renderRow = (
+    columnId: string,
+    label: string,
+    options?: { showActions?: boolean },
+  ) => {
+    const checked = visibility[columnId] !== false;
+    return (
+      <div
+        key={columnId}
+        className="flex items-center gap-3 border-b border-gray-100 px-4 py-3 last:border-b-0"
+      >
+        <Checkbox
+          checked={checked}
+          onChange={(e) => onToggle(columnId, e.target.checked)}
+          className={checkboxClass}
+        />
+        <span className="min-w-0 flex-1 text-sm text-gray-900">{label}</span>
+        {options?.showActions ? (
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              aria-label={`Закрепить колонку «${label}»`}
+            >
+              <ProductsColumnPinIcon />
+            </button>
+            <span className="cursor-grab text-gray-400">
+              <ProductsColumnGripIcon />
+            </span>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
+
+  return (
+    <div
+      ref={panelRef}
+      className="absolute right-0 top-[calc(100%+8px)] z-[200] w-[min(100vw-2rem,340px)] overflow-hidden rounded-[20px] border border-gray-100 bg-white shadow-lg"
+      role="dialog"
+      aria-label="Настройки колонок"
+    >
+      <div className="max-h-[min(70vh,520px)] overflow-y-auto">
+        {PRODUCTS_PRIMARY_COLUMN_IDS.map((col) => renderRow(col.id, col.label))}
+        <div className="border-t border-gray-200" />
+        {PRODUCTS_MIDDLE_COLUMN_IDS.map((col) =>
+          renderRow(col.id, col.label, { showActions: true }),
+        )}
+        {PRODUCTS_STAT_COLUMN_LABELS.map((label) =>
+          renderRow(productsStatColumnId(label), label, { showActions: true }),
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={onReset}
+        className="flex w-full items-center justify-center gap-2 border-t border-gray-100 bg-[#f7f7f8] px-4 py-3 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100"
+      >
+        <span className="text-gray-500" aria-hidden>
+          ⌫
+        </span>
+        Сбросить настройки
+      </button>
+    </div>
+  );
+}
+
+type ProductStatsBase = {
+  spend: number;
+  impressions: number;
+  ctr: number;
+  orders: number;
+  spendShare: number;
+};
+
+type ProductStatsExtended = ProductStatsBase & {
+  avgPosition: number;
+  clicks: number;
+  cartAdds: number;
+  orderSum: number;
+  cpc: number;
+  cpo: number;
+  cr: number;
+  cpm: number;
+  techCancels: number;
+};
+
+function buildExtendedProductStats(
+  base: ProductStatsBase,
+  avgPositionOverride?: number,
+): ProductStatsExtended {
+  const clicks =
+    base.impressions > 0 ? Math.max(1, Math.round((base.impressions * base.ctr) / 100)) : 0;
+  const cartAdds = Math.max(0, Math.round(base.orders * 2.4));
+  const orderSum = Math.round(base.spend * 14.2);
+  const cpc = clicks > 0 ? base.spend / clicks : 0;
+  const cpo = base.orders > 0 ? base.spend / base.orders : 0;
+  const cr = clicks > 0 ? (base.orders / clicks) * 100 : 0;
+  const cpm = base.impressions > 0 ? (base.spend / base.impressions) * 1000 : 0;
+  const avgPosition =
+    avgPositionOverride ?? (base.spendShare > 0 ? Math.round(8 + base.spendShare * 0.35) : 24);
+  const techCancels = Math.max(0, Math.round(base.orders * 0.04));
+  return {
+    ...base,
+    clicks,
+    cartAdds,
+    orderSum,
+    cpc,
+    cpo,
+    cr,
+    cpm,
+    avgPosition,
+    techCancels,
+  };
+}
+
+function formatProductsStatValue(
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+  stats: ProductStatsExtended,
+): string {
+  switch (label) {
+    case 'Затраты':
+      return `${formatForDisplay(stats.spend)} ₽`;
+    case 'Показы':
+      return formatForDisplay(stats.impressions);
+    case 'CTR':
+      return `${stats.ctr.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+    case 'Заказы':
+      return formatForDisplay(stats.orders);
+    case 'Доля затрат':
+      return `${stats.spendShare.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} %`;
+    case 'Средняя позиция':
+      return formatForDisplay(stats.avgPosition);
+    case 'Клики':
+      return formatForDisplay(stats.clicks);
+    case 'Добавления в корзину':
+      return formatForDisplay(stats.cartAdds);
+    case 'Сумма заказов':
+      return `${formatForDisplay(stats.orderSum)} ₽`;
+    case 'CPC':
+      return `${formatForDisplay(Math.round(stats.cpc))} ₽`;
+    case 'CPO':
+      return `${formatForDisplay(Math.round(stats.cpo))} ₽`;
+    case 'CR':
+      return formatPercentage(stats.cr);
+    case 'CPM':
+      return `${formatForDisplay(Math.round(stats.cpm))} ₽`;
+    case 'Отмены технические':
+      return formatForDisplay(stats.techCancels);
+    default:
+      return '—';
+  }
+}
+
+type ProductStatsChanges = {
+  changeSpend?: number;
+  changeImpressions?: number;
+  changeCtr?: number;
+  changeOrders?: number;
+  changeShare?: number;
+  changePosition?: number;
+};
+
+function productsStatPositiveIsGood(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number]): boolean {
+  switch (label) {
+    case 'Затраты':
+    case 'CPC':
+    case 'CPO':
+    case 'CPM':
+    case 'Доля затрат':
+    case 'Отмены технические':
+      return false;
+    case 'Средняя позиция':
+      return false;
+    default:
+      return true;
+  }
+}
+
+/** Стабильный % изменения для колонок без явных данных в моке. */
+function derivedProductsStatChange(productId: string, label: string): number {
+  let h = 0;
+  const key = `${productId}|${label}`;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  const pool = [-24.1, -9.7, -2, -1.3, 0, 1.2, 2.8, 7.3, 12.6, 18.4];
+  return pool[Math.abs(h) % pool.length]!;
+}
+
+function productsStatChangeForLabel(
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+  productId: string,
+  explicit?: ProductStatsChanges,
+): number {
+  const fromExplicit: Partial<Record<(typeof PRODUCTS_STAT_COLUMN_LABELS)[number], number | undefined>> = {
+    Затраты: explicit?.changeSpend,
+    Показы: explicit?.changeImpressions,
+    CTR: explicit?.changeCtr,
+    Заказы: explicit?.changeOrders,
+    'Доля затрат': explicit?.changeShare,
+    'Средняя позиция': explicit?.changePosition,
+  };
+  const value = fromExplicit[label];
+  if (value !== undefined && value !== null) return value;
+  return derivedProductsStatChange(productId, label);
+}
+
+function formatProductsStatTrendPercent(change: number): string {
+  const abs = Math.abs(change);
+  const body =
+    abs >= 100
+      ? Math.round(abs).toLocaleString('ru-RU')
+      : abs.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 1 });
+  return `${body} %`;
+}
+
+function ProductsStatTrendBadge({
+  change,
+  positiveIsGood,
+  lowerIsBetter = false,
+}: {
+  change: number;
+  positiveIsGood: boolean;
+  lowerIsBetter?: boolean;
+}) {
+  const isZero = Math.abs(change) < 0.05;
+  const isUp = change > 0;
+  const favorable = isZero
+    ? null
+    : lowerIsBetter
+      ? !isUp
+      : isUp
+        ? positiveIsGood
+        : !positiveIsGood;
+  const tone = isZero ? 'text-gray-400' : favorable ? 'text-emerald-600' : 'text-red-500';
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[11px] font-medium leading-none ${tone}`}>
+      <span aria-hidden>{isZero ? '▼' : isUp ? '▲' : '▼'}</span>
+      {formatProductsStatTrendPercent(change)}
+    </span>
+  );
+}
+
+function ProductsStatMetricCell({
+  label,
+  stats,
+  productId,
+  changes,
+}: {
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number];
+  stats: ProductStatsExtended;
+  productId: string;
+  changes?: ProductStatsChanges;
+}) {
+  const change = productsStatChangeForLabel(label, productId, changes);
+  const lowerIsBetter =
+    label === 'Средняя позиция' ||
+    label === 'CPC' ||
+    label === 'CPO' ||
+    label === 'CPM' ||
+    label === 'Затраты' ||
+    label === 'Доля затрат' ||
+    label === 'Отмены технические';
+
+  return (
+    <div className="flex flex-col gap-0.5 leading-none tabular-nums">
+      <span className="text-sm font-semibold text-gray-900">{formatProductsStatValue(label, stats)}</span>
+      <ProductsStatTrendBadge
+        change={change}
+        positiveIsGood={productsStatPositiveIsGood(label)}
+        lowerIsBetter={lowerIsBetter}
+      />
+    </div>
+  );
+}
+
+const PRODUCTS_STAT_TH_CLASS = 'p-4 text-left font-normal w-[130px] min-w-[120px]';
+const PRODUCTS_STAT_TD_CLASS = 'p-4 align-top w-[130px] min-w-[120px]';
+
+/** Ширина колонки «Товар» — как при раскрытых кампаниях, чтобы влезала мета-строка. */
+const PRODUCTS_TABLE_PRODUCT_COL_CLASS = 'w-[520px] min-w-[520px] max-w-[520px]';
+
+/** Закреплённые слева при горизонтальном скролле (порядок важен). */
+const PRODUCTS_PINNED_COLUMNS = [
+  { id: 'product' as const, width: 520, widthClass: PRODUCTS_TABLE_PRODUCT_COL_CLASS },
+  { id: 'campaignType' as const, width: 160, widthClass: 'w-[160px] min-w-[160px] max-w-[160px]' },
+  { id: 'budgetRemainder' as const, width: 180, widthClass: 'w-[180px] min-w-[180px] max-w-[180px]' },
+  {
+    id: 'dailyLimit' as const,
+    width: 152,
+    widthClass: 'w-[152px] min-w-[152px] max-w-[152px]',
+  },
+];
+
+const PRODUCTS_PINNED_HEAD_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['id'], string> = {
+  product: 'z-20',
+  campaignType: 'z-[19]',
+  budgetRemainder: 'z-[18]',
+  dailyLimit: 'z-[17]',
+};
+
+const PRODUCTS_PINNED_BODY_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['id'], string> = {
+  product: 'z-10',
+  campaignType: 'z-[9]',
+  budgetRemainder: 'z-[8]',
+  dailyLimit: 'z-[7]',
+};
+
+function productsPinnedLeftPx(columnId: string, visibility: Record<string, boolean>): number {
+  let left = 0;
+  for (const col of PRODUCTS_PINNED_COLUMNS) {
+    if (col.id === columnId) return left;
+    if (visibility[col.id] !== false) left += col.width;
+  }
+  return left;
+}
+
+function productsPinnedTotalPx(visibility: Record<string, boolean>): number {
+  return PRODUCTS_PINNED_COLUMNS.reduce(
+    (sum, col) => (visibility[col.id] !== false ? sum + col.width : sum),
+    0,
+  );
+}
+
+function lastVisibleProductsPinnedColumnId(
+  visibility: Record<string, boolean>,
+): (typeof PRODUCTS_PINNED_COLUMNS)[number]['id'] | null {
+  let last: (typeof PRODUCTS_PINNED_COLUMNS)[number]['id'] | null = null;
+  for (const col of PRODUCTS_PINNED_COLUMNS) {
+    if (visibility[col.id] !== false) last = col.id;
+  }
+  return last;
+}
+
+/** Тень на правом крае последней закреплённой колонки (не поверх прокручиваемых ячеек). */
+const PRODUCTS_PINNED_EDGE_SHADOW_CLASS = 'shadow-[4px_0_10px_-3px_rgba(15,23,42,0.12)]';
+
+function productsPinnedCellProps(
+  columnId: (typeof PRODUCTS_PINNED_COLUMNS)[number]['id'],
+  visibility: Record<string, boolean>,
+  variant: 'head' | 'body' | 'bodyNested',
+  extraClass = '',
+  showPinnedEdgeShadow = false,
+): { className: string; style: React.CSSProperties } {
+  const meta = PRODUCTS_PINNED_COLUMNS.find((c) => c.id === columnId)!;
+  const z = variant === 'head' ? PRODUCTS_PINNED_HEAD_Z[columnId] : PRODUCTS_PINNED_BODY_Z[columnId];
+  const bg =
+    variant === 'head' ? 'bg-gray-50' : variant === 'bodyNested' ? 'bg-gray-50/80' : 'bg-white';
+  const edgeShadow =
+    showPinnedEdgeShadow && lastVisibleProductsPinnedColumnId(visibility) === columnId
+      ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS
+      : '';
+  return {
+    className: [`sticky`, z, meta.widthClass, bg, edgeShadow, extraClass].filter(Boolean).join(' '),
+    style: { left: productsPinnedLeftPx(columnId, visibility) },
+  };
+}
+
+const PRODUCTS_PINNED_TH_CLASS = 'px-4 py-4 text-left font-normal align-middle';
+const PRODUCTS_PINNED_TH_PRODUCT_CLASS = 'px-5 py-4 text-left font-normal align-middle';
+
+const PRODUCT_TABLE_THUMB_CLASS =
+  'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
+
+function ProductTableThumb({
+  productId,
+  src,
+  category,
+  alt = '',
+}: {
+  productId: string;
+  src: string;
+  category?: string;
+  alt?: string;
+}) {
+  const [url, setUrl] = useState(() => resolveProductTableThumbSrc(productId, src, category));
+  useEffect(() => {
+    setUrl(resolveProductTableThumbSrc(productId, src, category));
+  }, [src, productId, category]);
+  return (
+    <img
+      src={url}
+      alt={alt}
+      width={30}
+      height={38}
+      className={PRODUCT_TABLE_THUMB_CLASS}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        const picsum = productTableThumbFallbackUrl(productId);
+        if (url !== PRODUCT_TABLE_THUMB_FALLBACK) {
+          setUrl(PRODUCT_TABLE_THUMB_FALLBACK);
+          return;
+        }
+        if (url !== picsum) {
+          setUrl(picsum);
+        }
+      }}
+    />
+  );
+}
+
+function productHasCampaignConflict(product: ProductRow): boolean {
+  const types = new Set(product.campaigns.map((c) => c.type));
+  return product.campaigns.length >= 2 && types.has('CPC') && types.has('CPM');
+}
+
+function formatProductCampaignCount(count: number): string {
+  return `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
+}
+
+function ProductCollapsedRowCell({
+  product,
+  expanded,
+  onToggleExpand,
+}: {
+  product: ProductRow;
+  expanded: boolean;
+  onToggleExpand: () => void;
+}) {
+  const campaignCount = product.campaigns.length;
+  const showConflict = productHasCampaignConflict(product);
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <button
+        type="button"
+        onClick={onToggleExpand}
+        className={`inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 transition-colors ${
+          expanded ? 'text-violet-600' : 'text-gray-400 hover:text-gray-600'
+        }`}
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Свернуть кампании' : 'Развернуть кампании'}
+      >
+        {expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+      </button>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold leading-none text-gray-900">{product.name}</p>
+          <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-2 overflow-hidden text-xs leading-none text-gray-500">
+            <span className="shrink-0 whitespace-nowrap">Арт. {product.articleWb}</span>
+            {campaignCount > 0 ? (
+              <span className="shrink-0 whitespace-nowrap">{formatProductCampaignCount(campaignCount)}</span>
+            ) : null}
+            {showConflict ? (
+              <span className="inline-flex min-w-0 shrink items-center gap-1 whitespace-nowrap text-gray-600">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
+                <span className="truncate">Конфликт кампаний</span>
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const MAX_TAGS_PER_PRODUCT = 15;
 const MAX_TAG_LENGTH = 15;
 
@@ -312,6 +865,7 @@ function buildCampaignsAndProductTree(sources: ProductSource[]): { campaigns: Di
   };
 
   for (const p of sources) {
+    const productImage = productTableThumbUrl(p.id, p.category);
     const articleWb = p.articleWb ?? p.article;
     const articleSeller = p.articleSeller ?? String((Number(p.article) || 0) + 5000000);
     const productCampaigns: ProductCampaign[] = [];
@@ -360,7 +914,7 @@ function buildCampaignsAndProductTree(sources: ProductSource[]): { campaigns: Di
       const typeIcons = spec.type === 'CPC' ? [<Search className="w-4 h-4 text-gray-400" key="s" />] : [<Search className="w-4 h-4 text-gray-400" key="s" />, <ThumbsUp className="w-4 h-4 text-gray-400" key="t" />];
       campaigns.push({
         id: String(cid),
-        image: p.image,
+        image: productImage,
         name: campName,
         category: p.category,
         status: spec.status,
@@ -402,7 +956,7 @@ function buildCampaignsAndProductTree(sources: ProductSource[]): { campaigns: Di
 
     productTree.push({
       id: p.id,
-      image: p.image,
+      image: productImage,
       name: p.name,
       article: p.article,
       articleWb: p.articleWb ?? p.article,
@@ -458,6 +1012,9 @@ const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
   dailyLimitExhausted: false,
   // Подменим заголовок под «предсобранную» логику
   name: 'Футболка хлопок мягкая приятная / CPC-кампания за 0 ₽',
+  productId: 'pr7',
+  category: 'Футболки',
+  image: productTableThumbUrl('pr7', 'Футболки'),
 };
 
 function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
@@ -1121,9 +1678,11 @@ const DailyLimitCell: React.FC<{
 
   const content =
     dailyLimit != null ? (
-      <div className="space-y-1">
-        <span className="font-medium">{formatForDisplay(dailyLimit)} ₽</span>
-        <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+      <div className="w-max max-w-full space-y-0.5">
+        <span className="whitespace-nowrap text-sm font-medium tabular-nums">
+          {formatForDisplay(dailyLimit)} ₽
+        </span>
+        <div className="h-1.5 w-[4.5rem] max-w-full rounded-full bg-gray-200 overflow-hidden">
           <div
             className={`h-full rounded-full ${exhausted ? 'bg-red-500' : 'bg-purple-600'}`}
             style={{ width: exhausted ? '100%' : '60%' }}
@@ -2702,8 +3261,36 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const [isProductsPromoModalOpen, setIsProductsPromoModalOpen] = useState(false);
 
+  const [isProductsColumnSettingsOpen, setIsProductsColumnSettingsOpen] = useState(false);
+  const [productsColumnVisibility, setProductsColumnVisibility] = useState<Record<string, boolean>>(
+    defaultProductsColumnVisibility,
+  );
+  const productsColVisible = useCallback(
+    (columnId: string) => productsColumnVisibility[columnId] !== false,
+    [productsColumnVisibility],
+  );
+  const productsPinnedProps = useCallback(
+    (
+      columnId: (typeof PRODUCTS_PINNED_COLUMNS)[number]['id'],
+      variant: 'head' | 'body' | 'bodyNested',
+      extraClass = '',
+    ) =>
+      productsPinnedCellProps(
+        columnId,
+        productsColumnVisibility,
+        variant,
+        extraClass,
+        hasProductsScrollShadow,
+      ),
+    [productsColumnVisibility, hasProductsScrollShadow],
+  );
+
   // Вкладки списка: Кампании | Товары
   const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
+
+  useEffect(() => {
+    if (listTab !== 'products') setIsProductsColumnSettingsOpen(false);
+  }, [listTab]);
   const [notificationCardVariant, setNotificationCardVariant] =
     useState<BonusNotificationCardVariant>(1);
   const [showMoreViewsPromoCard, setShowMoreViewsPromoCard] = useState(true);
@@ -3176,7 +3763,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   return (
     <div
-      className={`animate-in fade-in duration-300 mx-auto w-full max-w-[1600px] min-h-full bg-[#F3F5F8] ${
+      className={`animate-in fade-in duration-300 mx-auto w-full max-w-[1920px] min-h-full bg-[#F3F5F8] ${
         showNotificationCardVariantPicker ? 'pb-24' : ''
       }`}
     >
@@ -3352,16 +3939,45 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   />
                 )}
               </div>
-              <button
-                type="button"
-                className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] hover:bg-[rgba(74,74,89,0.12)] transition-colors"
-                title="Настройки"
-                aria-label="Настройки"
-              >
-                <Settings className="h-5 w-5 text-gray-700" aria-hidden />
-              </button>
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (listTab === 'products') {
+                      setIsProductsColumnSettingsOpen((prev) => !prev);
+                    }
+                  }}
+                  className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
+                    listTab === 'products' && isProductsColumnSettingsOpen
+                      ? 'ring-2 ring-[#9a41fe]/30'
+                      : ''
+                  }`}
+                  title={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                  aria-label={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                  aria-expanded={listTab === 'products' ? isProductsColumnSettingsOpen : undefined}
+                >
+                  <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                </button>
+                {listTab === 'products' && (
+                  <ProductsColumnSettingsDropdown
+                    open={isProductsColumnSettingsOpen}
+                    onClose={() => setIsProductsColumnSettingsOpen(false)}
+                    visibility={productsColumnVisibility}
+                    onToggle={(columnId, visible) => {
+                      setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                    }}
+                    onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                  />
+                )}
+              </div>
             </div>
           </div>
+
+          {isCampaignsWithWidgetsPage && (
+            <div className="w-full min-w-0">
+              <OverviewMiniWidgetsForCampaignsList listTab={listTab} />
+            </div>
+          )}
 
           {insightFilter && (
             <div className="flex flex-wrap items-center gap-2">
@@ -3522,7 +4138,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       </div>
 
       {listTab === 'campaigns' && (
-      <div className="w-full max-w-[1600px]">
+      <div className="w-full max-w-[1920px]">
           <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
           {isProductsPromoModalOpen && (
             <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">
@@ -3666,9 +4282,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             }}
           >
               {/* Тень между закреплёнными колонками и прокручиваемыми данными */}
-              {hasCampaignsScrollShadow && (
-                <div className="pointer-events-none absolute inset-y-0 left-[100px] w-4 bg-gradient-to-r from-black/10 to-transparent z-10" />
-              )}
               <table className="relative w-full text-sm min-w-[1600px]">
                   <thead className="bg-gray-50 text-gray-500 font-medium">
                       <tr>
@@ -3680,7 +4293,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             />
                           </th>
                           <th className="sticky left-[52px] z-20 p-4 w-10 bg-gray-50"></th>
-                          <th className="sticky left-[100px] z-20 p-4 text-left font-medium min-w-[300px] bg-gray-50">
+                          <th
+                            className={`sticky left-[100px] z-20 p-4 text-left font-medium min-w-[300px] bg-gray-50 ${
+                              hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
+                            }`}
+                          >
                                 <div className="flex items-center gap-1">
                                     Товар/Кампания <ArrowUp className="w-4 h-4" />
                                 </div>
@@ -3720,9 +4337,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       disabled={c.status === 'draft' || c.status === 'error'}
                                   />
                               </td>
-                              <td className="sticky left-[100px] z-10 p-4 bg-white">
+                              <td
+                                className={`sticky left-[100px] z-10 p-4 bg-white ${
+                                  hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
+                                }`}
+                              >
                                   <div className="flex items-center gap-3">
-                                      <img src={c.image} alt={c.name} className="w-10 h-10 rounded-md shrink-0"/>
+                                      <ProductTableThumb
+                                        productId={c.productId ?? c.productIds?.[0] ?? 'pr1'}
+                                        src={c.image}
+                                        category={c.category}
+                                        alt={c.name}
+                                      />
                                       <div>
                                           <p className="font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
@@ -3818,7 +4444,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
       {listTab === 'products' && (
         <>
-          <div className="w-full max-w-[1600px] bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          <div className="w-full max-w-[1920px] bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
             {isProductsPromoModalOpen && (
               <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">
                 <div className="relative bg-white w-[740px] h-[406px] max-w-[92vw] rounded-2xl shadow-2xl overflow-hidden">
@@ -3965,40 +4591,73 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               }}
             >
               {/* Тень справа от закреплённого столбца товара */}
-              {hasProductsScrollShadow && (
-                <div className="pointer-events-none absolute inset-y-0 left-[280px] w-4 bg-gradient-to-r from-black/10 to-transparent z-10" />
-              )}
-              <table className="relative w-full text-sm min-w-[1600px]">
-                <thead className="bg-gray-50 text-gray-500 font-medium">
+              <table className="relative w-full text-sm min-w-[2800px]">
+                <thead className="bg-gray-50 text-gray-500 font-normal">
                   <tr>
-                    <th className="sticky left-0 z-20 p-4 text-left font-medium w-[444px] min-w-[444px] bg-gray-50">Товар</th>
-                    <th className="p-4 text-left font-medium w-[160px]">
-                      <span className="inline-flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
-                    <th className="p-4 text-left font-medium w-[180px]">
-                      <span className="inline-flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
-                    <th className="p-4 text-left font-medium w-[180px]">
-                      <span className="inline-flex items-center gap-1">Дневной лимит <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
-                    <th className="p-4 text-left font-medium w-[220px] min-w-[220px] max-w-[240px]">
-                      Ярлыки
-                    </th>
-                    <th className="p-4 text-left font-medium w-[140px]">
-                      <span className="inline-flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
-                    <th className="p-4 text-left font-medium w-[140px]">
-                      <span className="inline-flex items-center gap-1">Показы <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
-                    <th className="p-4 text-left font-medium w-[100px]">
-                      <span className="inline-flex items-center gap-1">CTR <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
-                    <th className="p-4 text-left font-medium w-[120px]">
-                      <span className="inline-flex items-center gap-1">Заказы <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
-                    <th className="p-4 text-left font-medium w-[140px]">
-                      <span className="inline-flex items-center gap-1">Доля затрат <HelpCircle className="w-4 h-4 text-gray-400" /></span>
-                    </th>
+                    {productsColVisible('product') ? (
+                      <th
+                        {...productsPinnedProps(
+                          'product',
+                          'head',
+                          PRODUCTS_PINNED_TH_PRODUCT_CLASS,
+                        )}
+                      >
+                        <span className="block text-left">Товар</span>
+                      </th>
+                    ) : null}
+                    {productsColVisible('campaignType') ? (
+                      <th
+                        {...productsPinnedProps(
+                          'campaignType',
+                          'head',
+                          PRODUCTS_PINNED_TH_CLASS,
+                        )}
+                      >
+                        <span className="inline-flex items-center justify-start gap-1 text-left">
+                          Тип кампании <HelpCircle className="w-4 h-4 text-gray-400" />
+                        </span>
+                      </th>
+                    ) : null}
+                    {productsColVisible('budgetRemainder') ? (
+                      <th
+                        {...productsPinnedProps(
+                          'budgetRemainder',
+                          'head',
+                          PRODUCTS_PINNED_TH_CLASS,
+                        )}
+                      >
+                        <span className="inline-flex items-center justify-start gap-1 text-left">
+                          Остаток бюджета <HelpCircle className="w-4 h-4 text-gray-400" />
+                        </span>
+                      </th>
+                    ) : null}
+                    {productsColVisible('dailyLimit') ? (
+                      <th
+                        {...productsPinnedProps(
+                          'dailyLimit',
+                          'head',
+                          PRODUCTS_PINNED_TH_CLASS,
+                        )}
+                      >
+                        <span className="inline-flex items-center justify-start gap-1 whitespace-nowrap text-left">
+                          Дневной лимит <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                        </span>
+                      </th>
+                    ) : null}
+                    {productsColVisible('tags') ? (
+                      <th className="p-4 text-left font-normal w-[220px] min-w-[220px] max-w-[240px]">
+                        Ярлыки
+                      </th>
+                    ) : null}
+                    {PRODUCTS_STAT_COLUMN_LABELS.map((label) =>
+                      productsColVisible(productsStatColumnId(label)) ? (
+                        <th key={label} className={PRODUCTS_STAT_TH_CLASS}>
+                          <span className="inline-flex items-center gap-1">
+                            {label} <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                          </span>
+                        </th>
+                      ) : null,
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -4006,25 +4665,49 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     <React.Fragment key={product.id}>
                       {/* Строка товара */}
                       <tr className="hover:bg-gray-50/80 transition-colors">
-                        <td className="sticky left-0 z-10 p-4 align-top bg-white w-[444px] min-w-[444px]">
-                          <div className="flex items-start gap-3">
-                            <button type="button" onClick={() => toggleProductExpanded(product.id)} className="shrink-0 mt-0.5 text-gray-400 hover:text-gray-600">
-                              {expandedProductIds.has(product.id) ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-                            </button>
-                            <img src={product.image} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                              <div className="flex-1 min-w-0 max-w-[280px]">
-                              <p className="font-medium text-gray-900">{product.name}</p>
-                              <p className="text-xs text-gray-500 mt-1">Артикул WB: {product.articleWb} · Артикул продавца: {product.articleSeller}</p>
-                            </div>
-                          </div>
-                        </td>
-                        {/* Тип кампании (агрегировано по товару — сейчас пусто) */}
-                        <td className="p-4 align-top w-[160px]"></td>
-                        {/* Остаток бюджета (агрегировано по товару — сейчас в колонке "Затраты" ниже) */}
-                        <td className="p-4 align-top w-[180px]"></td>
-                        {/* Дневной лимит (агрегировано по товару — пока Н/Д) */}
-                        <td className="p-4 align-top w-[180px]"></td>
-                        {/* Колонка с ярлыками товара — помещается тег (до 15 символов) и "+1" */}
+                        {productsColVisible('product') ? (
+                          <td
+                            {...productsPinnedProps(
+                              'product',
+                              'body',
+                              'px-5 py-4 align-middle',
+                            )}
+                          >
+                            <ProductCollapsedRowCell
+                              product={product}
+                              expanded={expandedProductIds.has(product.id)}
+                              onToggleExpand={() => toggleProductExpanded(product.id)}
+                            />
+                          </td>
+                        ) : null}
+                        {productsColVisible('campaignType') ? (
+                          <td
+                            {...productsPinnedProps(
+                              'campaignType',
+                              'body',
+                              'p-4 align-top',
+                            )}
+                          />
+                        ) : null}
+                        {productsColVisible('budgetRemainder') ? (
+                          <td
+                            {...productsPinnedProps(
+                              'budgetRemainder',
+                              'body',
+                              'p-4 align-top',
+                            )}
+                          />
+                        ) : null}
+                        {productsColVisible('dailyLimit') ? (
+                          <td
+                            {...productsPinnedProps(
+                              'dailyLimit',
+                              'body',
+                              'px-2 py-3 align-top',
+                            )}
+                          />
+                        ) : null}
+                        {productsColVisible('tags') ? (
                         <td className="p-4 align-top w-[220px] min-w-[220px] max-w-[240px]">
                           <div
                             className="flex items-center gap-1.5 mt-1.5 flex-wrap"
@@ -4085,21 +4768,27 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             />
                           )}
                         </td>
-                        <td className="p-4 align-top font-semibold text-gray-900 w-[140px]">
-                          {product.agg ? `${formatForDisplay(product.agg.spend)} ₽` : 'Н/Д'}
-                        </td>
-                        <td className="p-4 align-top font-semibold text-gray-900 w-[140px]">
-                          {product.agg ? formatForDisplay(product.agg.impressions) : 'Н/Д'}
-                        </td>
-                        <td className="p-4 align-top font-semibold text-gray-900 w-[100px]">
-                          {product.agg ? `${product.agg.ctr}%` : 'Н/Д'}
-                        </td>
-                        <td className="p-4 align-top font-semibold text-gray-900 w-[120px]">
-                          {product.agg ? formatForDisplay(product.agg.orders) : 'Н/Д'}
-                        </td>
-                        <td className="p-4 align-top font-semibold text-gray-900 w-[140px]">
-                          {product.agg ? `${product.agg.spendShare}%` : 'Н/Д'}
-                        </td>
+                        ) : null}
+                        {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
+                          if (!productsColVisible(productsStatColumnId(label))) return null;
+                          const stats = product.agg
+                            ? buildExtendedProductStats(product.agg)
+                            : null;
+                          return (
+                            <td key={label} className={PRODUCTS_STAT_TD_CLASS}>
+                              {stats ? (
+                                <ProductsStatMetricCell
+                                  label={label}
+                                  stats={stats}
+                                  productId={product.id}
+                                  changes={product.agg}
+                                />
+                              ) : (
+                                <span className="text-sm font-semibold text-gray-400">Н/Д</span>
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                       {/* Вложенные строки кампаний — вид как на вкладке «Кампании» */}
                       {expandedProductIds.has(product.id) && product.campaigns.map((camp) => {
@@ -4108,25 +4797,41 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         return (
                         <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
                             {/* Товар / кампания */}
-                            <td className="sticky left-0 z-10 p-4 pl-14 bg-gray-50 w-[444px] min-w-[444px]">
+                            {productsColVisible('product') ? (
+                            <td
+                              {...productsPinnedProps(
+                                'product',
+                                'bodyNested',
+                                'px-4 py-3 pl-12 align-middle',
+                              )}
+                            >
                             <div className="flex items-center gap-3">
                               <ToggleSwitch
                                 checked={effectiveStatus === 'active'}
                                 onChange={(checked) => setProductCampaignStatusOverride(prev => ({ ...prev, [camp.id]: checked ? 'active' : 'paused' }))}
                                 disabled={camp.status === 'draft' || camp.status === 'error'}
                               />
-                              <img src={product.image} alt="" className="w-10 h-10 rounded-md shrink-0 object-cover" />
-                                <div className="min-w-0 flex-1 max-w-[280px]">
-                                <p className="font-medium text-gray-800 truncate" title={camp.name}>{camp.name}</p>
-                                <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
+                              <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
+                                <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium text-gray-800" title={camp.name}>
+                                  {camp.name}
+                                </p>
+                                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-none text-gray-500">
                                   <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
                                   <span>ID {camp.campaignId}</span>
                                 </div>
                               </div>
                             </div>
                           </td>
-                            {/* Тип кампании */}
-                            <td className="p-4 w-[160px]">
+                            ) : null}
+                            {productsColVisible('campaignType') ? (
+                            <td
+                              {...productsPinnedProps(
+                                'campaignType',
+                                'bodyNested',
+                                'p-4 align-top',
+                              )}
+                            >
                             <div className="font-semibold text-gray-900">{camp.type}</div>
                             <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
                               {camp.typeDetails && <span>{camp.typeDetails}</span>}
@@ -4139,8 +4844,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 </span>
                             </div>
                           </td>
-                            {/* Остаток бюджета */}
-                            <td className="p-4 w-[180px]">
+                            ) : null}
+                            {productsColVisible('budgetRemainder') ? (
+                            <td
+                              {...productsPinnedProps(
+                                'budgetRemainder',
+                                'bodyNested',
+                                'p-4 align-top',
+                              )}
+                            >
                             <div className="font-semibold text-gray-900">{formatForDisplay(camp.remainingBudget)} ₽</div>
                             {camp.autoRefill && (
                               <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
@@ -4148,8 +4860,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </div>
                             )}
                           </td>
-                            {/* Дневной лимит */}
-                            <td className="p-4 w-[180px]" onClick={(e) => e.stopPropagation()}>
+                            ) : null}
+                            {productsColVisible('dailyLimit') ? (
+                            <td
+                              {...productsPinnedProps(
+                                'dailyLimit',
+                                'bodyNested',
+                                'px-2 py-3 align-top',
+                              )}
+                              onClick={(e) => e.stopPropagation()}
+                            >
                             <DailyLimitCell
                               dailyLimit={camp.dailyLimit ?? null}
                               dailyLimitExhausted={camp.dailyLimitExhausted}
@@ -4157,14 +4877,37 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               onClick={camp.type === 'CPC' ? () => { setSelectedCampaignForRefill(camp); setIsDailyLimitModalOpen(true); } : undefined}
                             />
                           </td>
-                            {/* Пустая колонка "Ярлыки" для строк кампаний */}
-                            <td className="p-4 w-[220px]" />
-                            {/* Затраты и метрики */}
-                            <td className="p-4 font-semibold text-gray-900 w-[140px]">{formatCurrency(camp.spend)}</td>
-                            <td className="p-4 font-semibold text-gray-900 w-[140px]">{formatForDisplay(camp.impressions)}</td>
-                            <td className="p-4 font-semibold text-gray-900 w-[100px]">{camp.ctr}%</td>
-                            <td className="p-4 font-semibold text-gray-900 w-[120px]">{formatForDisplay(camp.orders)}</td>
-                            <td className="p-4 font-semibold text-gray-900 w-[140px]">{camp.spendShare}%</td>
+                            ) : null}
+                            {productsColVisible('tags') ? <td className="p-4 w-[220px]" /> : null}
+                            {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
+                              if (!productsColVisible(productsStatColumnId(label))) return null;
+                              const stats = buildExtendedProductStats(
+                                {
+                                  spend: camp.spend,
+                                  impressions: camp.impressions,
+                                  ctr: camp.ctr,
+                                  orders: camp.orders,
+                                  spendShare: camp.spendShare,
+                                },
+                                camp.avgPosition,
+                              );
+                              return (
+                                <td key={label} className={`${PRODUCTS_STAT_TD_CLASS} !align-middle`}>
+                                  <ProductsStatMetricCell
+                                    label={label}
+                                    stats={stats}
+                                    productId={product.id}
+                                    changes={{
+                                      changeImpressions: camp.changeImpressions,
+                                      changeCtr: camp.changeCtr,
+                                      changeOrders: camp.changeOrders,
+                                      changeShare: camp.changeShare,
+                                      changePosition: camp.changePosition,
+                                    }}
+                                  />
+                                </td>
+                              );
+                            })}
                         </tr>
                         );
                       })}
@@ -4276,7 +5019,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           role="toolbar"
           aria-label="Вариант карточки уведомления"
         >
-          <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-center gap-2 sm:gap-3">
+          <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center justify-center gap-2 sm:gap-3">
             {([1, 2, 3, 4] as const).map((v) => (
               <button
                 key={v}

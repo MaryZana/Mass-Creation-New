@@ -35,6 +35,121 @@ export interface CampaignSpec {
   avgPosition?: number;
 }
 
+/** Те же источники превью, что на странице «Обзор» (Unsplash). */
+const UNSPLASH_THUMB = (photoId: string) =>
+  `https://images.unsplash.com/photo-${photoId}?w=60&h=76&fit=crop&auto=format&q=80`;
+
+const PRODUCT_THUMB_PHOTO = {
+  shirt: '1521572163474-6864f9cf17ab',
+  dress: '1595777457583-95e059d58199',
+  office: '1566174053879-31528523f8ae',
+  sarafan: '1496747611176-843222e1e57c',
+  bag: '1553062407-98eeb64c6a62',
+  shoes: '1549298916-b41d501d3772',
+  shoesAlt: '1542291026-7eec264c27ff',
+  cosmetic: '1596462502279-27bf8ecc9bac',
+  home: '1586023493485-953447295a39',
+} as const;
+
+export const PRODUCT_TABLE_THUMB_FALLBACK = UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt);
+
+const PRODUCT_THUMB_BY_CATEGORY: Record<string, readonly string[]> = {
+  Платья: [
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.dress),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.sarafan),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.office),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.dress),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.sarafan),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.office),
+  ],
+  Футболки: [
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
+  ],
+  Кроссовки: [
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoes),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoesAlt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoes),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoesAlt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoes),
+  ],
+  Сумки: [
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.bag),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.bag),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.bag),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.bag),
+  ],
+  Косметика: [
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.cosmetic),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.cosmetic),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.cosmetic),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.cosmetic),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.cosmetic),
+  ],
+  'Товары для дома': [
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.home),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.home),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.home),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.home),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.home),
+  ],
+};
+
+const PRODUCT_THUMB_URLS_BY_INDEX: readonly string[] = Array.from({ length: 30 }, (_, i) => {
+  const pool = [
+    PRODUCT_THUMB_PHOTO.dress,
+    PRODUCT_THUMB_PHOTO.sarafan,
+    PRODUCT_THUMB_PHOTO.shirt,
+    PRODUCT_THUMB_PHOTO.bag,
+    PRODUCT_THUMB_PHOTO.shoes,
+    PRODUCT_THUMB_PHOTO.cosmetic,
+    PRODUCT_THUMB_PHOTO.home,
+  ];
+  return UNSPLASH_THUMB(pool[i % pool.length]!);
+});
+
+function productIndexFromId(productId: string): number {
+  const n = Number.parseInt(productId.replace(/\D/g, ''), 10);
+  return Number.isFinite(n) && n > 0 ? n - 1 : 0;
+}
+
+export function isProductTablePlaceholderImage(url: string | undefined): boolean {
+  return !url || /placehold\.co/i.test(url);
+}
+
+export function productTableThumbPlaceholderUrl(_productId: string): string {
+  return PRODUCT_TABLE_THUMB_FALLBACK;
+}
+
+export function productTableThumbFallbackUrl(productId: string): string {
+  return `https://picsum.photos/seed/wb-${encodeURIComponent(productId)}/60/76`;
+}
+
+export function productTableThumbUrl(productId: string, category?: string): string {
+  const idx = productIndexFromId(productId);
+  if (category && PRODUCT_THUMB_BY_CATEGORY[category]?.length) {
+    const list = PRODUCT_THUMB_BY_CATEGORY[category]!;
+    return list[idx % list.length]!;
+  }
+  return PRODUCT_THUMB_URLS_BY_INDEX[idx] ?? PRODUCT_TABLE_THUMB_FALLBACK;
+}
+
+export function resolveProductTableThumbSrc(productId: string, src?: string, category?: string): string {
+  const catalog = productTableThumbUrl(productId, category);
+  if (isProductTablePlaceholderImage(src)) return catalog;
+  return src!;
+}
+
+function withCatalogProductImages(products: ProductSource[]): ProductSource[] {
+  return products.map((p) => ({
+    ...p,
+    image: productTableThumbUrl(p.id, p.category),
+  }));
+}
+
 export interface ProductSource {
   id: string;
   name: string;
@@ -51,7 +166,7 @@ export interface ProductSource {
 }
 
 /** 30 товаров. Теги: тест, регулярный, Распродажа, Новинки — не у всех кампаний. */
-export const PRODUCTS_SOURCE: ProductSource[] = [
+const PRODUCTS_SOURCE_BASE: ProductSource[] = [
   // Платья (6)
   { id: 'pr1', name: 'Летнее платье "Ривьера"', article: '1001001', category: 'Платья', brand: 'Zara', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=1', tags: ['регулярный'], campaigns: [{ type: 'CPC', status: 'active', statusText: 'активна', typeDetails: '', budget: 300000, remainingBudget: 1500, dailyLimit: 2000, dailyLimitExhausted: false, autoRefill: true, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8, campaignTags: ['тест'] }, { type: 'CPM', status: 'active', statusText: 'активна', typeDetails: 'Единая', budget: 300000, remainingBudget: 3200, autoRefill: false, spend: 50200, impressions: 180000, ctr: 1.1, orders: 45, spendShare: 9.8, campaignTags: [], changeImpressions: -9.7, changeCtr: -1.3 }] },
   { id: 'pr2', name: 'Вечернее платье "Грация"', article: '1001002', category: 'Платья', brand: 'Zara', image: 'https://placehold.co/64x64/E9D5FF/4C1D95?text=2', tags: ['Новинки', 'Распродажа'], campaigns: [{ type: 'CPC', status: 'active', statusText: 'активна', typeDetails: '', budget: 300000, remainingBudget: 800, dailyLimit: 1500, dailyLimitExhausted: true, autoRefill: false, spend: 100350, impressions: 324580, ctr: 1.2, orders: 89, spendShare: 15.8, tag: 'warning', campaignTags: ['регулярный'] }] },
@@ -90,8 +205,10 @@ export const PRODUCTS_SOURCE: ProductSource[] = [
   { id: 'pr30', name: 'Набор посуды 6 персон', article: '6006005', category: 'Товары для дома', brand: 'IKEA', image: 'https://placehold.co/64x64/DBEAFE/1E40AF?text=30', tags: ['регулярный', 'Новинки'], campaigns: [{ type: 'CPC', status: 'active', statusText: 'активна', typeDetails: 'Ручная', budget: 400000, remainingBudget: 4900, dailyLimit: 5000, dailyLimitExhausted: false, autoRefill: false, spend: 390000, impressions: 800000, ctr: 1.1, orders: 150, spendShare: 19.5, campaignTags: ['регулярный'] }, { type: 'CPM', status: 'active', statusText: 'активна', typeDetails: 'Единая', budget: 400000, remainingBudget: 120000, autoRefill: false, spend: 180000, impressions: 450000, ctr: 1.2, orders: 210, spendShare: 12.1, campaignTags: ['Новинки'], changeImpressions: -5.2, changeOrders: 3.1 }] },
 ];
 
+export const PRODUCTS_SOURCE: ProductSource[] = withCatalogProductImages(PRODUCTS_SOURCE_BASE);
+
 /** Профиль 2: 2 товара, 3 кампании (1 + 2). */
-export const PRODUCTS_SOURCE_PROFILE_2: ProductSource[] = [
+const PRODUCTS_SOURCE_PROFILE_2_BASE: ProductSource[] = [
   {
     id: 'pr2',
     name: 'Вечернее платье "Грация"',
@@ -165,3 +282,7 @@ export const PRODUCTS_SOURCE_PROFILE_2: ProductSource[] = [
     ],
   },
 ];
+
+export const PRODUCTS_SOURCE_PROFILE_2: ProductSource[] = withCatalogProductImages(
+  PRODUCTS_SOURCE_PROFILE_2_BASE,
+);

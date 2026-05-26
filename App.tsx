@@ -2656,7 +2656,7 @@ export default function App() {
   if (appState === 'list') {
     const campaignsListContent = (
       <>
-                <main className="mx-auto min-h-[calc(100vh-3.5rem)] max-w-[1600px] bg-[#F3F5F8] px-7 pt-4 pb-10">
+                <main className="mx-auto w-full min-h-[calc(100vh-3.5rem)] max-w-[1920px] bg-[#F3F5F8] px-7 pt-4 pb-10">
                   <SuccessPage
                     isLaunching={isLaunching}
                     launchTotal={totalAllValidCount}

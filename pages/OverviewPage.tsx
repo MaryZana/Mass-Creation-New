@@ -65,7 +65,10 @@ const OVERVIEW_IMG = {
   shoes: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=80&h=80&fit=crop&q=80',
 } as const;
 
-function OverviewProductImage({ src, sizeClass = 'h-7 w-7' }: { src: string; sizeClass?: string }) {
+/** Портрет 30×38, как превью товара в списке кампаний (масштаб ~28×22). */
+const OVERVIEW_PRODUCT_THUMB_CLASS = 'h-7 w-[22px]';
+
+function OverviewProductImage({ src, sizeClass = OVERVIEW_PRODUCT_THUMB_CLASS }: { src: string; sizeClass?: string }) {
   const [resolvedSrc, setResolvedSrc] = useState(src);
 
   useEffect(() => {
@@ -278,7 +281,7 @@ function PeriodToggle({
   );
 }
 
-type AttentionTab = 'conv' | 'growth' | 'issues';
+type AttentionTab = 'conv' | 'growth' | 'issues' | 'rating';
 
 const ATTENTION_TAB_ITEMS: { id: AttentionTab; label: string; count: number }[] = [
   { id: 'conv', label: 'Хорошая конверсия', count: 12 },
@@ -286,10 +289,22 @@ const ATTENTION_TAB_ITEMS: { id: AttentionTab; label: string; count: number }[] 
   { id: 'issues', label: 'Проблемные кампании', count: 7 },
 ];
 
+/** Вкладки блока «Требует внимания» на /campaigns-with-widgets */
+export const ATTENTION_MINI_TABS_CAMPAIGNS: { id: AttentionTab; label: string; count: number }[] = [
+  { id: 'conv', label: 'Хорошая конверсия', count: 12 },
+  { id: 'issues', label: 'Проблемные', count: 7 },
+];
+
+export const ATTENTION_MINI_TABS_PRODUCTS: { id: AttentionTab; label: string; count: number }[] = [
+  { id: 'growth', label: 'Хороший рост заказов', count: 4 },
+  { id: 'rating', label: 'Лучший рейтинг', count: 6 },
+];
+
 const ATTENTION_TAB_ROW_CTA: Record<AttentionTab, string | null> = {
   conv: 'Продвигать',
   growth: 'Пополнить бюджет',
   issues: null,
+  rating: 'Продвигать',
 };
 
 /** Короткие подписи CTA в компактной таблице (без горизонтального скролла) */
@@ -297,12 +312,14 @@ const ATTENTION_TAB_ROW_CTA_COMPACT: Record<AttentionTab, string | null> = {
   conv: 'Продвигать',
   growth: 'Пополнить бюджет',
   issues: null,
+  rating: 'Продвигать',
 };
 
 const ATTENTION_TAB_HEADERS_COMPACT: Record<AttentionTab, [string, string, string]> = {
   conv: ['Показы', 'CTR', 'CR'],
   growth: ['Заказы', 'Рост', 'Сезон.'],
   issues: ['ДРР', 'Затраты', 'Проблема'],
+  rating: ['Рейтинг', 'Отзывы', 'Заказы'],
 };
 
 type AttentionMetricCell = {
@@ -486,6 +503,43 @@ const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
         col2: { value: '14,9%' },
         col3: { value: '28 100 ₽' },
         col4: { value: 'CTR', trend: '↓ 1,4 п.п. за 2 нед.', trendUp: false },
+      },
+    ],
+  },
+  rating: {
+    headers: ['Рейтинг', 'Отзывы', 'Заказы'],
+    rows: [
+      {
+        id: '1400001',
+        name: 'Летнее платье «Ривьера»',
+        image: OVERVIEW_IMG.dress,
+        col2: { value: '4,9' },
+        col3: { value: '1 842' },
+        col4: { value: '124', trend: '+18%', trendUp: true },
+      },
+      {
+        id: '312883517',
+        name: 'Рюкзак школьный',
+        image: OVERVIEW_IMG.bag,
+        col2: { value: '4,8' },
+        col3: { value: '956' },
+        col4: { value: '89', trend: '+9%', trendUp: true },
+      },
+      {
+        id: '7002002',
+        name: 'Футболка с принтом «Лето»',
+        image: OVERVIEW_IMG.shirt,
+        col2: { value: '4,8' },
+        col3: { value: '612' },
+        col4: { value: '76', trend: '+6%', trendUp: true },
+      },
+      {
+        id: '1400003',
+        name: 'Платье-футляр «Офис»',
+        image: OVERVIEW_IMG.office,
+        col2: { value: '4,7' },
+        col3: { value: '428' },
+        col4: { value: '54', trend: '+4%', trendUp: true },
       },
     ],
   },
@@ -729,7 +783,7 @@ function AttentionProductsTable({
           <tr key={row.id} className="border-t border-gray-50 hover:bg-gray-50/60">
             <td className={`${cellPad} min-w-0`}>
               <div className={`flex min-w-0 items-center ${tight ? 'gap-1.5' : OV.inline}`}>
-                <OverviewProductImage src={row.image} sizeClass={tight ? 'h-6 w-6' : undefined} />
+                <OverviewProductImage src={row.image} />
                 <OverviewProductTitleId name={row.name} id={row.id} />
               </div>
             </td>
@@ -769,17 +823,23 @@ function AttentionProductsTable({
 function AttentionTabToggle({
   value,
   onChange,
+  items = ATTENTION_TAB_ITEMS,
+  className = '',
+  ariaLabel = 'Фильтр кампаний',
 }: {
   value: AttentionTab;
   onChange: (tab: AttentionTab) => void;
+  items?: { id: AttentionTab; label: string; count: number }[];
+  className?: string;
+  ariaLabel?: string;
 }) {
   return (
     <div
-      className="inline-flex max-w-full flex-wrap rounded-xl bg-[#F2F2F7] p-0.5 text-xs font-semibold text-[#4A4D57]"
+      className={`inline-flex max-w-full flex-wrap rounded-xl bg-[#F2F2F7] p-0.5 text-xs font-semibold text-[#4A4D57] ${className}`}
       role="tablist"
-      aria-label="Фильтр кампаний"
+      aria-label={ariaLabel}
     >
-      {ATTENTION_TAB_ITEMS.map((tab) => (
+      {items.map((tab) => (
         <button
           key={tab.id}
           type="button"
@@ -790,7 +850,8 @@ function AttentionTabToggle({
             value === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'hover:text-gray-900'
           }`}
         >
-          {tab.label} {tab.count}
+          {tab.label}{' '}
+          <span className="font-semibold tabular-nums text-gray-400">{tab.count}</span>
         </button>
       ))}
     </div>
@@ -912,6 +973,27 @@ function TrendPill({ value, positive }: { value: string; positive?: boolean }) {
   );
 }
 
+/** Подписи оси Y спарклайна (шкала points — условная, привязана к типу метрики). */
+function formatSparklineYAxisValue(metricTitle: string, chartValue: number): string {
+  switch (metricTitle) {
+    case 'Доля затрат':
+      return `${(chartValue / 6.5).toFixed(1).replace('.', ',')}%`;
+    case 'Заказы':
+      return fmtNum(Math.round(chartValue * 9.5));
+    case 'Сумма заказов': {
+      const rub = Math.round(chartValue * 55_000);
+      if (rub >= 1_000_000) {
+        const m = rub / 1_000_000;
+        const s = m >= 10 ? String(Math.round(m)) : m.toFixed(1).replace('.', ',');
+        return `${s} млн`;
+      }
+      return fmtNum(rub);
+    }
+    default:
+      return String(Math.round(chartValue));
+  }
+}
+
 function sparklineSmoothPath(vals: number[], w: number, h: number, min: number, range: number): string {
   const coords = vals.map((v, i) => ({
     x: (i / (vals.length - 1)) * w,
@@ -943,6 +1025,8 @@ function MiniSparkline({
   stroke,
   className = '',
   dense = false,
+  showYAxis = false,
+  axisMetricTitle,
 }: {
   points: number[];
   previousPoints: number[];
@@ -950,20 +1034,34 @@ function MiniSparkline({
   className?: string;
   /** Компактный спарклайн (кампании с виджетами) — толще текущая линия */
   dense?: boolean;
+  /** Подписи min / mid / max слева от графика */
+  showYAxis?: boolean;
+  axisMetricTitle?: string;
 }) {
   const w = 280;
   const h = 56;
   const scaleValues = [...points, ...previousPoints];
   const min = Math.min(...scaleValues);
   const max = Math.max(...scaleValues);
+  const mid = (min + max) / 2;
   const range = max - min || 1;
   const previousPath = sparklineSmoothPath(previousPoints, w, h, min, range);
   const currentPath = sparklineSmoothPath(points, w, h, min, range);
 
   const currentStrokeWidth = dense ? 6 : 2;
 
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className={`w-full h-14 ${className}`} preserveAspectRatio="none">
+  const formatY =
+    axisMetricTitle != null
+      ? (v: number) => formatSparklineYAxisValue(axisMetricTitle, v)
+      : (v: number) => String(Math.round(v));
+
+  const svg = (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className={showYAxis ? 'h-14 w-full' : `w-full h-14 ${className}`.trim()}
+      preserveAspectRatio="none"
+      aria-hidden={showYAxis || undefined}
+    >
       <path
         fill="none"
         stroke="#D1D5DB"
@@ -982,6 +1080,24 @@ function MiniSparkline({
         d={currentPath}
       />
     </svg>
+  );
+
+  if (!showYAxis) {
+    return svg;
+  }
+
+  return (
+    <div className={`flex items-stretch gap-1.5 ${className}`}>
+      <div
+        className="flex w-10 shrink-0 flex-col justify-between py-0.5 text-right text-[10px] leading-none text-gray-400 tabular-nums"
+        aria-hidden
+      >
+        <span>{formatY(max)}</span>
+        <span>{formatY(mid)}</span>
+        <span>{formatY(min)}</span>
+      </div>
+      <div className="min-w-0 flex-1">{svg}</div>
+    </div>
   );
 }
 
@@ -1438,7 +1554,7 @@ function OverviewInsightAlertCard({
   iconToneClassName: string;
   title: string;
   countLabel: string;
-  subtitle: string;
+  subtitle?: string;
   buttonLabel: string;
   panelVariant: 'budget' | 'stock' | 'launch';
   dropdownAlign?: 'start' | 'end';
@@ -1534,7 +1650,9 @@ function OverviewInsightAlertCard({
             >
               {countLabel}
             </span>
-            <p className="mb-0 w-full text-xs leading-tight text-gray-500">{subtitle}</p>
+            {subtitle ? (
+              <p className="mb-0 w-full text-xs leading-tight text-gray-500">{subtitle}</p>
+            ) : null}
           </div>
           {clickable ? (
             <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
@@ -1544,7 +1662,7 @@ function OverviewInsightAlertCard({
     );
   }
 
-  const cardPad = compact ? 'p-2' : OV.cardCompact;
+  const cardPad = compact ? 'p-2' : 'px-3 py-6';
 
   if (onButtonClick) {
     return (
@@ -1579,7 +1697,7 @@ function OverviewInsightAlertCard({
               </span>
               <span className={`block leading-none text-gray-600 ${compact ? 'text-[10px]' : 'text-xs'}`}>
                 {countDropdownTrigger}
-                <span> · {subtitle}</span>
+                {subtitle ? <span> · {subtitle}</span> : null}
               </span>
             </div>
           </div>
@@ -1615,7 +1733,7 @@ function OverviewInsightAlertCard({
             </span>
             <span className={`block leading-none text-gray-600 ${compact ? 'text-[10px]' : 'text-xs'}`}>
               {countDropdownTrigger}
-              <span> · {subtitle}</span>
+              {subtitle ? <span> · {subtitle}</span> : null}
             </span>
           </div>
           <RitmButton
@@ -2185,7 +2303,6 @@ const OverviewPage: React.FC = () => {
                     iconToneClassName="bg-rose-50 text-rose-600"
                     title="Закончился бюджет"
                     countLabel="3 кампании"
-                    subtitle="теряете ~22 заказа/день"
                     buttonLabel="Пополнить"
                     panelVariant="budget"
                     onButtonClick={showInList('budget', 'Закончился бюджет')}
@@ -2195,7 +2312,6 @@ const OverviewPage: React.FC = () => {
                     iconToneClassName="bg-amber-50 text-amber-600"
                     title="Закончились остатки"
                     countLabel="2 товара"
-                    subtitle="~6 заказов/день"
                     buttonLabel="Проверить"
                     panelVariant="stock"
                     onButtonClick={showInList('stock', 'Закончились остатки')}
@@ -2205,7 +2321,6 @@ const OverviewPage: React.FC = () => {
                     iconToneClassName="bg-[#9a41fe]/10 text-[#9a41fe]"
                     title="Готовы к запуску"
                     countLabel="7 кампаний"
-                    subtitle="бюджет настроен"
                     buttonLabel="Продвигать"
                     panelVariant="launch"
                     dropdownAlign="end"
@@ -2237,8 +2352,10 @@ const OverviewPage: React.FC = () => {
                             previousPoints={m.previousPoints}
                             stroke={sparkPositive ? '#22c55e' : '#ef4444'}
                             className="mt-3"
+                            showYAxis
+                            axisMetricTitle={m.title}
                           />
-                          <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+                          <div className="mt-1 flex justify-between pl-11 text-[10px] text-gray-400">
                             {statsForPeriod.dateLabels.map((label) => (
                               <span key={label}>{label}</span>
                             ))}
@@ -2523,11 +2640,24 @@ function ChannelTableSortHeader({
 }
 
 /** Компактные виджеты обзора для страницы «Кампании с виджетами». */
-export function OverviewMiniWidgetsForCampaignsList() {
+export function OverviewMiniWidgetsForCampaignsList({
+  listTab,
+}: {
+  listTab: 'campaigns' | 'products';
+}) {
   const { applyFilter } = useCampaignsInsightFilter();
-  const [chartPeriod, setChartPeriod] = useState<Period>('2w');
-  const [attentionTab, setAttentionTab] = useState<AttentionTab>('conv');
-  const statsForPeriod = useMemo(() => STATS_BY_PERIOD[chartPeriod], [chartPeriod]);
+  const attentionTabItems = useMemo(
+    () => (listTab === 'products' ? ATTENTION_MINI_TABS_PRODUCTS : ATTENTION_MINI_TABS_CAMPAIGNS),
+    [listTab],
+  );
+  const [attentionTab, setAttentionTab] = useState<AttentionTab>(attentionTabItems[0]!.id);
+
+  useEffect(() => {
+    setAttentionTab(attentionTabItems[0]!.id);
+  }, [attentionTabItems]);
+
+  /** Период метрик — с панели DateFilter в шапке списка (пока демо: 2 недели). */
+  const statsForPeriod = useMemo(() => STATS_BY_PERIOD['2w'], []);
 
   const showInList = (kind: CampaignsInsightFilterKind, label: string) => () =>
     applyFilter(kind, label);
@@ -2545,7 +2675,6 @@ export function OverviewMiniWidgetsForCampaignsList() {
           iconToneClassName="bg-rose-50 text-rose-600"
           title="Закончился бюджет"
           countLabel="3 кампании"
-          subtitle="теряете ~22 заказа/день"
           buttonLabel="Показать в списке"
           panelVariant="budget"
           onButtonClick={showInList('budget', 'Закончился бюджет')}
@@ -2556,7 +2685,6 @@ export function OverviewMiniWidgetsForCampaignsList() {
           iconToneClassName="bg-amber-50 text-amber-600"
           title="Закончились остатки"
           countLabel="2 товара"
-          subtitle="~6 заказов/день"
           buttonLabel="Показать в списке"
           panelVariant="stock"
           onButtonClick={showInList('stock', 'Закончились остатки')}
@@ -2567,7 +2695,6 @@ export function OverviewMiniWidgetsForCampaignsList() {
           iconToneClassName="bg-[#9a41fe]/10 text-[#9a41fe]"
           title="Готовы к запуску"
           countLabel="7 кампаний"
-          subtitle="бюджет настроен"
           buttonLabel="Показать в списке"
           panelVariant="launch"
           dropdownAlign="end"
@@ -2578,13 +2705,10 @@ export function OverviewMiniWidgetsForCampaignsList() {
 
       <section
         style={miniWidgetsStripHeightStyle}
-        className="flex min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-2 shadow-sm"
+        className="flex min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-4 shadow-sm"
       >
-        <div className="flex shrink-0 justify-start">
-          <PeriodToggle value={chartPeriod} onChange={setChartPeriod} className="scale-[0.92] origin-left" />
-        </div>
-        <div className="mt-1 flex min-h-0 flex-1 flex-col gap-2">
-          {statsForPeriod.metrics.map((m) => {
+        <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
+          {statsForPeriod.metrics.map((m, metricIndex) => {
             const trendPositive = isTrendPositive(m.trend, m.lowerIsBetter);
             const sparkPositive =
               m.points[m.points.length - 1] < m.points[0]
@@ -2595,26 +2719,28 @@ export function OverviewMiniWidgetsForCampaignsList() {
             return (
               <div
                 key={m.title}
-                style={miniWidgetsRowMinStyle}
-                className="flex flex-1 flex-col justify-between gap-1"
+                className={`flex min-h-0 min-w-0 flex-col justify-between gap-1${metricIndex === 0 ? ' pr-2' : ''}`}
               >
-                <div className="shrink-0">
+                <div className="min-w-0 shrink-0">
                   <p className="text-[9px] font-medium leading-none text-gray-500">{m.title}</p>
-                  <div className="mt-0.5 flex min-w-0 items-baseline justify-between gap-1.5">
-                    <p className="text-lg font-bold leading-none text-gray-900">{m.value}</p>
-                    <span className="shrink-0 text-[9px] font-medium leading-none">
-                      <TrendPill value={m.trend} positive={trendPositive} />
-                    </span>
+                  <p className="mt-0.5 text-2xl font-bold leading-none text-gray-900">{m.value}</p>
+                  <div className="mt-0.5">
+                    <TrendPill value={m.trend} positive={trendPositive} />
                   </div>
                 </div>
-                <div className="flex min-h-0 flex-1 items-end">
+                <div className="min-w-0 shrink-0">
                   <MiniSparkline
                     points={m.points}
                     previousPoints={m.previousPoints}
                     stroke={sparkPositive ? '#22c55e' : '#ef4444'}
-                    className="!h-5 w-full"
+                    className="!h-5 w-full shrink-0"
                     dense
                   />
+                  <div className="mt-1 flex justify-between text-[10px] text-gray-400">
+                    {statsForPeriod.dateLabels.map((label) => (
+                      <span key={label}>{label}</span>
+                    ))}
+                  </div>
                 </div>
               </div>
             );
@@ -2626,8 +2752,14 @@ export function OverviewMiniWidgetsForCampaignsList() {
         style={miniWidgetsStripHeightStyle}
         className="flex min-h-0 min-w-0 flex-[1.15] flex-col overflow-hidden rounded-xl bg-white p-2 shadow-sm"
       >
-        <div className="flex shrink-0 justify-start">
-          <AttentionTabToggle value={attentionTab} onChange={setAttentionTab} />
+        <div className="flex shrink-0 justify-start pb-2.5">
+          <AttentionTabToggle
+            value={attentionTab}
+            onChange={setAttentionTab}
+            items={attentionTabItems}
+            className="scale-[0.92] origin-left"
+            ariaLabel={listTab === 'products' ? 'Подборки товаров' : 'Подборки кампаний'}
+          />
         </div>
         <div className="mt-0.5 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
           <AttentionProductsTable tab={attentionTab} compact />
