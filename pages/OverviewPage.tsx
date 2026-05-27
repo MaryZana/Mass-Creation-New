@@ -2725,7 +2725,7 @@ export function OverviewMiniWidgetsForCampaignsList({
         style={miniWidgetsStripHeightStyle}
         className="flex min-h-0 min-w-0 flex-1 shrink-0 flex-col rounded-xl bg-white p-4 shadow-sm"
       >
-        <div className="grid min-h-0 flex-1 grid-cols-3 gap-2">
+        <div className="grid min-h-0 flex-1 grid-cols-3 gap-2 pt-5 pb-5">
           {statsForPeriod.metrics.map((m, metricIndex) => {
             const trendPositive = isTrendPositive(m.trend, m.lowerIsBetter);
             const sparkPositive =
