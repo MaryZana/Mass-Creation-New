@@ -2243,6 +2243,84 @@ const OverviewPage: React.FC = () => {
   }, [period]);
   const channelInsight = CHANNEL_INSIGHT_BY_PERIOD[period];
   const statsForPeriod = useMemo(() => STATS_BY_PERIOD[chartPeriod], [chartPeriod]);
+  const promotionHealth = useMemo(() => {
+    // Demo: fixed value for preview iterations.
+    const score = 74;
+
+    const label =
+      score >= 85
+        ? 'Отличное состояние'
+        : score >= 70
+          ? 'Хорошее состояние'
+          : score >= 55
+            ? 'Есть риски'
+            : 'Нужно внимание';
+
+    const hint =
+      score >= 85
+        ? 'Продолжайте в том же темпе — показатели выглядят устойчиво.'
+        : score >= 70
+          ? 'Пара точечных правок — и кабинет будет в идеальном состоянии.'
+          : score >= 55
+            ? 'Проверьте ставки и распределение бюджета — часть кампаний недополучает трафик.'
+            : 'Сначала закройте критичные алерты: бюджет/остатки, затем оптимизируйте ставки.';
+
+    const markerTone =
+      score >= 85 ? 'bg-emerald-500' : score >= 70 ? 'bg-lime-500' : score >= 55 ? 'bg-amber-500' : 'bg-rose-500';
+
+    return { score, label, hint, markerTone };
+  }, []);
+
+  const healthImproveItems = useMemo(() => {
+    // Demo factors: replace with real inputs later (coverage/profit/roas/etc).
+    const coveragePromoted = 100;
+    const coverageTotal = 500;
+    const profitWeeklyRub = 128_000;
+    const profitTargetRub = 180_000;
+    const roasPct = 292;
+    const roasTargetPct = 320;
+
+    const items = [
+      {
+        title: 'Покрытие ассортимента',
+        subtitle: `Продвигаются ${coveragePromoted}/${coverageTotal} товаров`,
+        weight: -(coverageTotal - coveragePromoted >= 250 ? 10 : coverageTotal - coveragePromoted >= 150 ? 8 : 5),
+      },
+      {
+        title: 'Работа с кластерами',
+        subtitle: 'Проверьте неэффективные кластера',
+        weight: -(roasPct < roasTargetPct * 0.85 ? 8 : roasPct < roasTargetPct ? 5 : 1),
+      },
+      {
+        title: 'Нехватка бюджета',
+        subtitle: '3 кампании остановились из‑за бюджета',
+        weight: -6,
+      },
+      {
+        title: 'Остатки',
+        subtitle: '2 товара с низкими остатками в рекламе',
+        weight: -4,
+      },
+    ] as const;
+
+    const impact = (w: number) =>
+      Math.abs(w) >= 8 ? { label: 'Сильно влияет', tone: 'bg-rose-50 text-rose-700' }
+      : Math.abs(w) >= 5 ? { label: 'Средне влияет', tone: 'bg-amber-50 text-amber-700' }
+      : { label: 'Слабо влияет', tone: 'bg-emerald-50 text-emerald-700' };
+
+    return items
+      .map((it) => ({ ...it, impact: impact(it.weight) }))
+      .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
+  }, []);
+
+  const healthImproveHint = useMemo(() => {
+    const top = healthImproveItems.slice(0, 2);
+    if (top.length === 0) return '';
+    const t0 = top[0]!.title;
+    const t1 = top[1]?.title;
+    if (!t1) return `В первую очередь улучшите: ${t0}`;
+    return `Улучшите в первую очередь: ${t0}, ${t1}`;
+  }, [healthImproveItems]);
 
   const recommendations: {
     title: string;
@@ -2285,25 +2363,24 @@ const OverviewPage: React.FC = () => {
 
               <section className={`rounded-[20px] bg-white shadow-sm ${OV.cardCompact}`}>
                 <button type="button" className="flex w-full items-center justify-between text-left">
-                  <span className="text-xs font-semibold text-gray-900">Бонусы</span>
+                  <span className="text-xs font-semibold text-gray-900">Заработано бонусов</span>
                   <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
                 </button>
-                <p className={`${OV.mtStack} text-xl font-bold leading-none tracking-tight`}>
-                  {fmtRub(12_800)}
+                <p className={`${OV.mtStack} flex items-baseline gap-2 leading-none tracking-tight`}>
+                  <span className="text-xl font-bold tabular-nums text-gray-900">{fmtRub(1_280)}</span>
+                  <span className="text-xs font-semibold text-gray-400 tabular-nums">
+                    из {fmtRub(14_000)}
+                  </span>
                 </p>
-                <p className={`${OV.mtStack} flex items-center gap-1 text-[11px] font-medium leading-none text-rose-600`}>
+                <p className="mt-1 flex items-center gap-1 text-[11px] font-medium leading-none text-gray-400">
                   <span aria-hidden>🔥</span> Сгорят 3 200 через 5 дней
                 </p>
-                <button type="button" className="text-[11px] font-semibold text-[#2979FF] hover:underline">
+                <button
+                  type="button"
+                  className="mt-2 w-full rounded-xl bg-[#F2F2F7] px-4 py-1.5 text-xs font-semibold text-gray-900 transition-colors hover:bg-[#E8E8ED]"
+                >
                   Потратить
                 </button>
-                <div className={`${OV.mtStack} border-t border-gray-100 pt-3`}>
-                  <p className="text-[11px] text-gray-500">Заработайте ещё</p>
-                  <p className="text-xs font-bold text-emerald-600">+ 48 000</p>
-                  <button type="button" className="text-[11px] font-semibold text-[#2979FF] hover:underline">
-                    3 задания
-                  </button>
-                </div>
               </section>
 
               <OverviewQuickActions />
@@ -2533,34 +2610,98 @@ const OverviewPage: React.FC = () => {
               </div>
 
               <aside
-                className={`flex w-full shrink-0 flex-col rounded-[20px] bg-white shadow-sm xl:w-[18rem] xl:self-start ${OV.cardCompact}`}
+                className="flex w-full shrink-0 flex-col gap-3 xl:w-[18rem] xl:self-start"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <h2 className="text-lg font-bold text-gray-900">Рекомендации</h2>
-                  <span className="text-lg text-[#9a41fe]" aria-hidden>
-                    ✦
-                  </span>
-                </div>
-                <ul className={`${OV.mtStack} divide-y divide-gray-100`}>
-                  {recommendations.map((rec) => (
-                    <li key={rec.title} className="py-4 first:pt-0 last:pb-0">
-                      <p className="text-sm font-semibold leading-snug text-gray-900">{rec.title}</p>
-                      <p className="mt-2 text-sm leading-relaxed text-gray-600">{rec.body}</p>
-                      <button
-                        type="button"
-                        className="mt-3 text-sm font-semibold leading-snug text-[#2979FF] hover:underline"
-                      >
-                        {rec.action}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  className={`${OV.mtStack} w-full shrink-0 rounded-xl bg-[#F2F2F7] py-2 text-sm font-semibold text-gray-900 hover:bg-[#E8E8ED]`}
-                >
-                  Показать ещё
-                </button>
+                <section className={`group rounded-[20px] bg-white shadow-sm ${OV.cardCompact}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <h2 className="text-lg font-bold text-gray-900">Здоровье кабинета</h2>
+                    <div className="shrink-0 text-right">
+                      <div className="text-2xl font-bold leading-none tabular-nums text-gray-900">
+                        {promotionHealth.score}%
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <div className="relative">
+                      <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-rose-500 via-amber-400 to-emerald-500">
+                        <div
+                          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
+                          style={{ left: `${promotionHealth.score}%` }}
+                        >
+                          <div className="h-5 w-[4px] rounded-full bg-gray-900/80 shadow-sm ring-2 ring-white/90" />
+                        </div>
+                      </div>
+                      <div className="pointer-events-none absolute right-0 top-full z-30 pt-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+                        <div className="w-[min(420px,92vw)] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_16px_48px_rgba(0,0,0,0.14)]">
+                          <div className="flex items-center justify-between px-4 py-3">
+                            <div className="text-sm font-semibold text-gray-900">Что улучшить</div>
+                            <div className="text-xs font-semibold text-gray-500 tabular-nums">
+                              {promotionHealth.score}% здоровья
+                            </div>
+                          </div>
+                          <div className="h-px bg-gray-100" />
+                          <div className="p-2">
+                            <div className="flex flex-col gap-2">
+                              {healthImproveItems.map((row) => (
+                                <div
+                                  key={row.title}
+                                  className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 hover:bg-gray-50"
+                                >
+                                  <div className="min-w-0">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span className="text-sm font-semibold text-gray-900">
+                                        {row.title}
+                                      </span>
+                                      <span
+                                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${row.impact.tone}`}
+                                      >
+                                        {row.impact.label}
+                                      </span>
+                                    </div>
+                                    <div className="mt-0.5 truncate text-xs text-gray-500">
+                                      {row.subtitle}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-xs leading-snug text-gray-600">{healthImproveHint}</p>
+                  </div>
+                </section>
+
+                <section className={`rounded-[20px] bg-white shadow-sm ${OV.cardCompact}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="text-lg font-bold text-gray-900">Рекомендации</h2>
+                    <span className="text-lg text-[#9a41fe]" aria-hidden>
+                      ✦
+                    </span>
+                  </div>
+                  <ul className={`${OV.mtStack} divide-y divide-gray-100`}>
+                    {recommendations.map((rec) => (
+                      <li key={rec.title} className="py-4 first:pt-0 last:pb-0">
+                        <p className="text-sm font-semibold leading-snug text-gray-900">{rec.title}</p>
+                        <p className="mt-2 text-sm leading-relaxed text-gray-600">{rec.body}</p>
+                        <button
+                          type="button"
+                          className="mt-3 text-sm font-semibold leading-snug text-[#2979FF] hover:underline"
+                        >
+                          {rec.action}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    className={`${OV.mtStack} w-full shrink-0 rounded-xl bg-[#F2F2F7] py-2 text-sm font-semibold text-gray-900 hover:bg-[#E8E8ED]`}
+                  >
+                    Показать ещё
+                  </button>
+                </section>
               </aside>
             </div>
           </div>

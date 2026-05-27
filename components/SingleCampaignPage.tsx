@@ -1193,7 +1193,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                       lineHeight: '28px',
                     }}
                   >
-                    Перспективные товары
+                    Добавьте перспективные товары
                   </h3>
                   <ProductRecommendationsTabToggle
                     value={recommendationsTab}
