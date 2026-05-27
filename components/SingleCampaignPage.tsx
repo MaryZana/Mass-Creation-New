@@ -295,6 +295,28 @@ function CopyNmIdButton({ nmId }: { nmId: number }) {
 
 type ProductRecommendationsTab = 'conv' | 'rating';
 
+function computeProspectsPickNmIds(params: {
+  products: CampaignProductRow[];
+  selectedRecommendationCategory: string | null;
+  recommendationsTab: ProductRecommendationsTab;
+}): number[] {
+  const { products, selectedRecommendationCategory, recommendationsTab } = params;
+  const alreadyAdded = new Set(products.map((p) => p.nmId));
+  const inCategory = MOCK_PRODUCTS.filter(
+    (p) => (selectedRecommendationCategory ? p.category === selectedRecommendationCategory : true),
+  );
+  const ratingScore = (p: CampaignProductRow) => ((p.nmId % 40) + 60) / 10; // 6.0..9.9
+  const conv = (p: CampaignProductRow) => p.conversionRate ?? 0;
+
+  const notAdded = inCategory.filter((p) => !alreadyAdded.has(p.nmId));
+  const sorted =
+    recommendationsTab === 'conv'
+      ? notAdded.slice().sort((a, b) => conv(b) - conv(a) || b.nmId - a.nmId)
+      : notAdded.slice().sort((a, b) => ratingScore(b) - ratingScore(a) || b.nmId - a.nmId);
+
+  return sorted.slice(0, 3).map((p) => p.nmId);
+}
+
 function ProductRecommendationsTabToggle({
   value,
   onChange,
@@ -437,6 +459,13 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
   const [actionsMenuNmId, setActionsMenuNmId] = useState<number | null>(null);
   const [recommendationsTab, setRecommendationsTab] = useState<ProductRecommendationsTab>('conv');
   const [recommendationsCategoryOpen, setRecommendationsCategoryOpen] = useState(false);
+  const [prospectsPickNmIds, setProspectsPickNmIds] = useState<number[]>(() =>
+    computeProspectsPickNmIds({
+      products: [],
+      selectedRecommendationCategory: null,
+      recommendationsTab: 'conv',
+    }),
+  );
   const recommendationsCategoryRef = useRef<HTMLDivElement>(null);
   const recommendationCategories = useMemo(
     () => Array.from(new Set(MOCK_PRODUCTS.map((p) => p.category))).sort((a, b) => a.localeCompare(b, 'ru')),
@@ -581,24 +610,34 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
     [],
   );
 
-  const recommendedProducts = useMemo(() => {
-    const notAdded = MOCK_PRODUCTS.filter(
-      (p) =>
-        !alreadyAddedNmIds.has(p.nmId) &&
-        (selectedRecommendationCategory ? p.category === selectedRecommendationCategory : true),
+  useEffect(() => {
+    // When category/sort changes, rebuild the pick (3 items max).
+    setProspectsPickNmIds(
+      computeProspectsPickNmIds({
+        products,
+        selectedRecommendationCategory,
+        recommendationsTab,
+      }),
     );
-    const ratingScore = (p: CampaignProductRow) => ((p.nmId % 40) + 60) / 10; // 6.0..9.9
-    const conv = (p: CampaignProductRow) => p.conversionRate ?? 0;
-    const sorted =
-      recommendationsTab === 'conv'
-        ? notAdded.slice().sort((a, b) => conv(b) - conv(a) || b.nmId - a.nmId)
-        : notAdded.slice().sort((a, b) => ratingScore(b) - ratingScore(a) || b.nmId - a.nmId);
-    return sorted.slice(0, 3);
-  }, [alreadyAddedNmIds, recommendationsTab, selectedRecommendationCategory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRecommendationCategory, recommendationsTab]);
+
+  useEffect(() => {
+    // If products are added via other paths (modal), keep pick in sync (remove added).
+    setProspectsPickNmIds((prev) => prev.filter((id) => !alreadyAddedNmIds.has(id)));
+  }, [alreadyAddedNmIds]);
+
+  const recommendedProducts = useMemo(() => {
+    if (prospectsPickNmIds.length === 0) return [];
+    const byId = new Map(MOCK_PRODUCTS.map((p) => [p.nmId, p] as const));
+    return prospectsPickNmIds.map((id) => byId.get(id)).filter(Boolean) as CampaignProductRow[];
+  }, [prospectsPickNmIds]);
 
   const addFromRecommendations = (p: CampaignProductRow) => {
     if (alreadyAddedNmIds.has(p.nmId)) return;
     replaceProducts([...products, p]);
+    // Remove from current pick without refilling.
+    setProspectsPickNmIds((prev) => prev.filter((id) => id !== p.nmId));
     setToastMessage('Товар добавлен');
     setShowToast(true);
   };
@@ -684,8 +723,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                 type="text"
                 value={campaignName}
                 onChange={(e) => setCampaignName(e.target.value)}
-                className="text-2xl font-bold text-gray-900 bg-transparent border-none outline-none focus:outline-none text-left flex-1 min-w-0"
-                style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 680, fontSize: '28px', lineHeight: '36px' }}
+                className="font-heading text-[28px] font-[680] leading-9 text-gray-900 bg-transparent border-none outline-none focus:outline-none text-left flex-1 min-w-0"
               />
               <button className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm flex-shrink-0">
                 <span>Информация</span>
@@ -711,10 +749,10 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                   )}
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-base font-normal text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
+                  <span className="font-body text-base font-normal text-gray-900">
                     CPM
                   </span>
-                  <span className="text-xs text-[#77767E]" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontSize: '13px', lineHeight: '120%' }}>
+                  <span className="font-body text-xs text-[#77767E]">
                     Оплата за показы
                   </span>
                 </div>
@@ -737,10 +775,10 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                   )}
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className="text-base font-normal text-[#4A4A59]" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
+                  <span className="font-body text-base font-normal text-[#4A4A59]">
                     CPC
                   </span>
-                  <span className="text-xs text-[#77767E]" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontSize: '13px', lineHeight: '120%' }}>
+                  <span className="font-body text-xs text-[#77767E]">
                     Оплата за клики
                   </span>
                 </div>
@@ -752,7 +790,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
         {/* Плавающий остров — бюджет */}
         <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col gap-4">
-            <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 680, fontSize: '22px', lineHeight: '28px' }}>
+            <h2 className="font-heading text-[22px] font-[680] leading-7 text-gray-900">
               Бюджет
             </h2>
             
@@ -767,7 +805,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
             <div className="flex flex-wrap items-start gap-6">
               {/* Бюджет кампании */}
               <div className="flex flex-col gap-2" style={{ width: '240px' }}>
-                <label className="text-base text-[#4E4E53]" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
+                <label className="font-body text-base text-[#4E4E53]">
                   Бюджет кампании
                 </label>
                 <div className="relative">
@@ -777,10 +815,9 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                     onChange={handleBudgetChange}
                     onBlur={handleBudgetBlur}
                     className="w-full px-3 py-3 bg-white border border-[#E3E4EA] rounded-lg outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
-                    style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}
                   />
                 </div>
-                <p className="text-xs text-[#767386] font-semibold" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 560, fontSize: '13px', lineHeight: '16px' }}>
+                <p className="font-body text-xs font-semibold text-[#767386]">
                   Минимальный бюджет 1000 ₽
                 </p>
               </div>
@@ -802,7 +839,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                       style={{ width: '12px', height: '12px' }}
                     />
                   </button>
-                  <span className="text-base text-[#5067DE]" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
+                  <span className="font-body text-base text-[#5067DE]">
                     Автопополнение бюджета
                   </span>
                   <div className="relative">
@@ -825,7 +862,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                     setIsDailyLimitEnabled(checked);
                   }} 
                 />
-                <p className="text-sm text-gray-800 flex items-center gap-1" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 440, fontSize: '16px', lineHeight: '20px' }}>
+                <p className="font-body text-sm text-gray-800 flex items-center gap-1">
                   Дневной лимит
                   <div 
                     className="relative inline-block"
@@ -921,7 +958,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
         <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-1">
-              <h2 className="text-xl font-bold text-gray-900" style={{ fontFamily: "'ALS Hauss VF', sans-serif", fontStyle: 'normal', fontWeight: 680, fontSize: '22px', lineHeight: '28px' }}>
+              <h2 className="font-heading text-[22px] font-[680] leading-7 text-gray-900">
                 Зона показа
               </h2>
             </div>
@@ -940,14 +977,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                   )}
                 </button>
                 <span
-                  className="text-base text-gray-900"
-                  style={{
-                    fontFamily: "'ALS Hauss VF', sans-serif",
-                    fontStyle: 'normal',
-                    fontWeight: 440,
-                    fontSize: '16px',
-                    lineHeight: '20px',
-                  }}
+                  className="font-body text-base text-gray-900"
                 >
                   Единая ставка: продвижение сразу в поиске, каталоге и рекомендациях
                 </span>
@@ -966,14 +996,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                   )}
                 </button>
                 <span
-                  className="text-base text-[#4A4A59]"
-                  style={{
-                    fontFamily: "'ALS Hauss VF', sans-serif",
-                    fontStyle: 'normal',
-                    fontWeight: 440,
-                    fontSize: '16px',
-                    lineHeight: '20px',
-                  }}
+                  className="font-body text-base text-[#4A4A59]"
                 >
                   Ручная ставка: выбирайте зоны показов и ставку для них
                 </span>
@@ -1177,22 +1200,13 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
           )}
         </div>
 
-        {/* Рекомендации */}
-        {products.length === 0 && (
+        {/* Рекомендации / перспективные товары */}
+        {(
           <section className="flex w-full max-w-[1200px] flex-col gap-6 mx-auto">
             <div className="bg-white rounded-2xl p-6 w-full">
               <div className="flex items-center justify-between gap-3 mb-4">
                 <div className="flex min-w-0 items-center gap-3">
-                  <h3
-                    className="min-w-0 text-xl font-bold text-gray-900"
-                    style={{
-                      fontFamily: "'ALS Hauss VF', sans-serif",
-                      fontStyle: 'normal',
-                      fontWeight: 680,
-                      fontSize: '22px',
-                      lineHeight: '28px',
-                    }}
-                  >
+                  <h3 className="font-heading min-w-0 text-[22px] font-[680] leading-7 text-gray-900">
                     Добавьте перспективные товары
                   </h3>
                   <ProductRecommendationsTabToggle

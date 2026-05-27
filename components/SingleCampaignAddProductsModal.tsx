@@ -499,7 +499,7 @@ export function SingleCampaignAddProductsModal({
                         </td>
                       </tr>
                     ) : (
-                      sortedFilteredProducts.map((product) => {
+                      sortedFilteredProducts.map((product, index) => {
                         const isAdded = alreadyAddedNmIds.has(product.nmId);
                         const isIncompatible = isCpcMode && !product.cpcCompatible;
                         const disabled = isAdded || isIncompatible;
@@ -507,6 +507,7 @@ export function SingleCampaignAddProductsModal({
                         const atCap = pending.length >= MAX_SELECT && !isChecked;
                         const conv = product.conversionRate;
                         const convDelta = product.conversionChangePercent;
+                        const showPromoteLabel = index < 5;
                         return (
                           <tr
                             key={product.nmId}
@@ -531,6 +532,11 @@ export function SingleCampaignAddProductsModal({
                               <div className="flex items-center gap-1 text-sm text-gray-900">
                                 <span className="text-gray-400">·</span>
                                 <span className="tabular-nums text-gray-600">{product.nmId}</span>
+                                {showPromoteLabel && !disabled && (
+                                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                    Выгодно продвигать
+                                  </span>
+                                )}
                               </div>
                               <p className="mt-0.5 text-sm font-medium text-gray-900">
                                 {product.productName}
