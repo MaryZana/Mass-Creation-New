@@ -19,6 +19,8 @@ type CampaignProductRow = {
   brand?: string;
   articleSeller?: string;
   cpcCompatible?: boolean;
+  conversionRate?: number;
+  conversionChangePercent?: number;
 };
 
 const DEMO_PRODUCT_BIDS: Record<number, string> = {
@@ -41,62 +43,182 @@ function seedBidsForProducts(
 }
 
 // Mock products for selection
-const MOCK_PRODUCTS: CampaignProductRow[] = [
-  {
-    nmId: 215685549,
-    productName: 'Фото',
-    brand: 'PhotoBrand',
-    articleSeller: 'PH-001',
-    imageUrl: '',
-    category: 'Фоторамки',
-    cpcCompatible: true,
-  },
-  {
-    nmId: 215685550,
-    productName: 'фото',
-    brand: 'PhotoBrand',
-    articleSeller: 'PH-002',
-    imageUrl: '',
-    category: 'Фоторамки',
-    cpcCompatible: true,
-  },
-  {
-    nmId: 216362914,
-    productName: 'фото',
-    brand: 'PhotoBrand',
-    articleSeller: 'PH-003',
-    imageUrl: '',
-    category: 'Фоторамки',
-    cpcCompatible: true,
-  },
-  {
-    nmId: 160747186,
-    productName: 'Кроссовки спортивные',
-    brand: 'Nike',
-    articleSeller: 'NK-8842',
-    imageUrl: '',
-    category: 'Кроссовки',
-    cpcCompatible: true,
-  },
-  {
-    nmId: 160747187,
-    productName: 'Рюкзак городской',
-    brand: 'Adidas',
-    articleSeller: 'AD-120',
-    imageUrl: '',
-    category: 'Сумки',
-    cpcCompatible: false,
-  },
-  {
-    nmId: 160747188,
-    productName: 'Куртка зимняя',
-    brand: 'Reserved',
-    articleSeller: 'RS-991',
-    imageUrl: '',
-    category: 'Футболки',
-    cpcCompatible: true,
-  },
-];
+// Требование: в каждой категории минимум 7 товаров; в одной категории — 50 товаров.
+export const MOCK_PRODUCTS: CampaignProductRow[] = (() => {
+  const categories = ['Платья', 'Футболки', 'Кроссовки', 'Сумки', 'Косметика', 'Товары для дома'] as const;
+  const massiveCategory: (typeof categories)[number] = 'Кроссовки';
+
+  const baseNmId = 160747000;
+  let seq = 0;
+
+  const makeProduct = (category: (typeof categories)[number], indexInCategory: number): CampaignProductRow => {
+    seq += 1;
+    const nmId = baseNmId + seq;
+    const articleSeller = `${category.slice(0, 2).toUpperCase()}-${String(indexInCategory + 1).padStart(3, '0')}`;
+    const brandsByCategory: Record<(typeof categories)[number], string[]> = {
+      Платья: ['Zara', 'Mango', 'Reserved'],
+      Футболки: ['H&M', 'Nike', 'Decathlon'],
+      Кроссовки: ['Nike', 'Adidas', 'Decathlon'],
+      Сумки: ['Adidas', 'Zara', 'Reserved'],
+      Косметика: ["L'Oreal", 'Oriflame'],
+      'Товары для дома': ['IKEA', 'Hoff'],
+    };
+    const brandPool = brandsByCategory[category] ?? ['Brand'];
+    const brand = brandPool[indexInCategory % brandPool.length]!;
+    const namesByCategory: Record<(typeof categories)[number], string[]> = {
+      Платья: [
+        'Платье-рубашка льняное',
+        'Платье миди с поясом',
+        'Платье вечернее с пайетками',
+        'Сарафан летний на бретелях',
+        'Платье-футляр офисное',
+        'Платье в цветочный принт',
+        'Платье трикотажное облегающее',
+        'Платье с запахом',
+        'Платье макси струящееся',
+        'Платье-комбинация сатиновое',
+      ],
+      Футболки: [
+        'Футболка базовая хлопковая',
+        'Футболка оверсайз',
+        'Футболка с принтом',
+        'Футболка поло',
+        'Футболка спортивная дышащая',
+        'Футболка с длинным рукавом',
+        'Футболка укороченная',
+        'Футболка с V-образным вырезом',
+        'Футболка в полоску',
+        'Футболка для бега',
+      ],
+      Кроссовки: [
+        'Кроссовки беговые AirFlow',
+        'Кроссовки беговые RoadRunner',
+        'Кроссовки для зала FlexTrain',
+        'Кроссовки повседневные CityWalk',
+        'Кроссовки трейловые TrailGrip',
+        'Кроссовки баскетбольные CourtPro',
+        'Кроссовки с амортизацией CloudStep',
+        'Кроссовки легкие UltraLite',
+        'Кроссовки зимние утепленные SnowGuard',
+        'Кроссовки текстильные BreezeKnit',
+      ],
+      Сумки: [
+        'Рюкзак городской',
+        'Сумка шоппер',
+        'Сумка через плечо',
+        'Сумка поясная',
+        'Сумка дорожная',
+        'Клатч вечерний',
+        'Сумка кожаная классическая',
+        'Рюкзак спортивный',
+        'Сумка для ноутбука',
+        'Сумка кросс-боди',
+      ],
+      Косметика: [
+        'Крем увлажняющий для лица 50 мл',
+        'Сыворотка с витамином C',
+        'Тушь для ресниц удлиняющая',
+        'Помада матовая',
+        'Пудра компактная',
+        'Тональный крем',
+        'Пенка для умывания',
+        'Шампунь восстановление',
+        'Бальзам для волос',
+        'Маска для лица тканевая',
+      ],
+      'Товары для дома': [
+        'Набор полотенец 3 шт',
+        'Настольная лампа',
+        'Плед декоративный',
+        'Ваза керамическая',
+        'Набор посуды 6 персон',
+        'Органайзер для кухни',
+        'Подушка декоративная',
+        'Свеча ароматическая',
+        'Коврик для ванной',
+        'Корзина для хранения',
+      ],
+    };
+
+    const sneakerModels = [
+      'AirFlow',
+      'RoadRunner',
+      'FlexTrain',
+      'CityWalk',
+      'TrailGrip',
+      'CourtPro',
+      'CloudStep',
+      'UltraLite',
+      'SnowGuard',
+      'BreezeKnit',
+      'Pulse',
+      'Sprint',
+      'Core',
+      'Nova',
+      'Edge',
+      'Prime',
+    ];
+    const sneakerColors = [
+      'чёрные',
+      'белые',
+      'серые',
+      'синие',
+      'красные',
+      'зелёные',
+      'бежевые',
+      'фиолетовые',
+      'оранжевые',
+      'розовые',
+    ];
+    const sneakerUse = [
+      'для бега',
+      'для зала',
+      'повседневные',
+      'трейловые',
+      'баскетбольные',
+      'на платформе',
+      'с амортизацией',
+      'легкие',
+      'утепленные',
+      'текстильные',
+    ];
+
+    const baseNamePool = namesByCategory[category] ?? ['Товар'];
+    const baseName = baseNamePool[indexInCategory % baseNamePool.length]!;
+    const productName =
+      category === massiveCategory
+        ? `Кроссовки ${sneakerUse[indexInCategory % sneakerUse.length]} ${sneakerModels[indexInCategory % sneakerModels.length]} ${sneakerColors[indexInCategory % sneakerColors.length]}`
+        : baseName;
+
+    // Дет. метрики для отображения/сортировки: конверсия и её динамика
+    const convRaw = ((nmId % 37) + 8) / 1000; // 0.8%..4.4%
+    const conversionRate = Math.max(0.003, Math.min(0.08, convRaw));
+    const conversionChangePercent = ((nmId % 21) - 10) * 2; // -20..+20
+
+    return {
+      nmId,
+      productName,
+      brand,
+      articleSeller,
+      // Явный URL для превью, чтобы картинки точно отличались
+      imageUrl: `https://picsum.photos/seed/wb-${nmId}/60/76`,
+      category,
+      // иногда несовместимы с CPC, чтобы было видно дизейбл-стейт
+      cpcCompatible: indexInCategory % 8 !== 0,
+      conversionRate,
+      conversionChangePercent,
+    };
+  };
+
+  const result: CampaignProductRow[] = [];
+  for (const category of categories) {
+    const count = category === massiveCategory ? 50 : 7;
+    for (let i = 0; i < count; i += 1) {
+      result.push(makeProduct(category, i));
+    }
+  }
+  return result;
+})();
 
 const PRODUCT_THUMB_CLASS =
   'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
@@ -168,6 +290,46 @@ function CopyNmIdButton({ nmId }: { nmId: number }) {
         <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
       </svg>
     </button>
+  );
+}
+
+type ProductRecommendationsTab = 'conv' | 'rating';
+
+function ProductRecommendationsTabToggle({
+  value,
+  onChange,
+  items,
+  ariaLabel = 'Подборки товаров',
+  className = '',
+}: {
+  value: ProductRecommendationsTab;
+  onChange: (tab: ProductRecommendationsTab) => void;
+  items: { id: ProductRecommendationsTab; label: string; count: number }[];
+  ariaLabel?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`inline-flex max-w-full flex-wrap rounded-xl bg-[#F2F2F7] p-0.5 text-xs font-semibold text-[#4A4D57] ${className}`}
+      role="tablist"
+      aria-label={ariaLabel}
+    >
+      {items.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={value === tab.id}
+          onClick={() => onChange(tab.id)}
+          className={`whitespace-nowrap rounded-[10px] px-2.5 py-1.5 transition-colors ${
+            value === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'hover:text-gray-900'
+          }`}
+        >
+          {tab.label}{' '}
+          <span className="font-semibold tabular-nums text-gray-400">{tab.count}</span>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -272,8 +434,18 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
   const [productBidsByNmId, setProductBidsByNmId] = useState<Record<number, string>>({});
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
   const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
+  const [actionsMenuNmId, setActionsMenuNmId] = useState<number | null>(null);
+  const [recommendationsTab, setRecommendationsTab] = useState<ProductRecommendationsTab>('conv');
+  const [recommendationsCategoryOpen, setRecommendationsCategoryOpen] = useState(false);
+  const recommendationsCategoryRef = useRef<HTMLDivElement>(null);
+  const recommendationCategories = useMemo(
+    () => Array.from(new Set(MOCK_PRODUCTS.map((p) => p.category))).sort((a, b) => a.localeCompare(b, 'ru')),
+    [],
+  );
+  const [selectedRecommendationCategory, setSelectedRecommendationCategory] = useState<string | null>(null);
   const uploadMenuRef = useRef<HTMLDivElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
+  const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [referralCode, setReferralCode] = useState('');
 
   useEffect(() => {
@@ -285,6 +457,26 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [isUploadMenuOpen]);
+
+  useEffect(() => {
+    if (!recommendationsCategoryOpen) return;
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (recommendationsCategoryRef.current?.contains(event.target as Node)) return;
+      setRecommendationsCategoryOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [recommendationsCategoryOpen]);
+
+  useEffect(() => {
+    if (actionsMenuNmId === null) return;
+    const onDocMouseDown = (event: MouseEvent) => {
+      if (actionsMenuRef.current?.contains(event.target as Node)) return;
+      setActionsMenuNmId(null);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [actionsMenuNmId]);
 
   useEffect(() => {
     if (!singleCampaignSeed || repeatSeedAppliedRef.current) return;
@@ -355,6 +547,13 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
     setProductBidsByNmId((prev) => seedBidsForProducts(next, prev, bidFallback));
   };
 
+  const removeProduct = (nmId: number) => {
+    replaceProducts(products.filter((p) => p.nmId !== nmId));
+    setActionsMenuNmId(null);
+    setToastMessage('Товар удалён');
+    setShowToast(true);
+  };
+
   const getProductBid = (nmId: number) => productBidsByNmId[nmId] ?? bidFallback;
 
   const handleProductBidChange = (nmId: number, value: string) => {
@@ -373,6 +572,36 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
     () => new Set(products.map((p) => p.nmId)),
     [products],
   );
+
+  const recommendationItems = useMemo(
+    () => [
+      { id: 'conv' as const, label: 'Хорошая конверсия', count: 12 },
+      { id: 'rating' as const, label: 'Лучший рейтинг', count: 6 },
+    ],
+    [],
+  );
+
+  const recommendedProducts = useMemo(() => {
+    const notAdded = MOCK_PRODUCTS.filter(
+      (p) =>
+        !alreadyAddedNmIds.has(p.nmId) &&
+        (selectedRecommendationCategory ? p.category === selectedRecommendationCategory : true),
+    );
+    const ratingScore = (p: CampaignProductRow) => ((p.nmId % 40) + 60) / 10; // 6.0..9.9
+    const conv = (p: CampaignProductRow) => p.conversionRate ?? 0;
+    const sorted =
+      recommendationsTab === 'conv'
+        ? notAdded.slice().sort((a, b) => conv(b) - conv(a) || b.nmId - a.nmId)
+        : notAdded.slice().sort((a, b) => ratingScore(b) - ratingScore(a) || b.nmId - a.nmId);
+    return sorted.slice(0, 3);
+  }, [alreadyAddedNmIds, recommendationsTab, selectedRecommendationCategory]);
+
+  const addFromRecommendations = (p: CampaignProductRow) => {
+    if (alreadyAddedNmIds.has(p.nmId)) return;
+    replaceProducts([...products, p]);
+    setToastMessage('Товар добавлен');
+    setShowToast(true);
+  };
 
   const renderProductBidCell = (nmId: number) => {
     const raw = getProductBid(nmId);
@@ -908,13 +1137,35 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                             </button>
                           </td>
                           <td className="py-3 text-right">
-                            <button
-                              type="button"
-                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
-                              aria-label="Действия"
-                            >
-                              <MoreVertical className="h-5 w-5" />
-                            </button>
+                            <div className="relative inline-flex" ref={actionsMenuNmId === product.nmId ? actionsMenuRef : null}>
+                              <button
+                                type="button"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                                aria-label="Действия"
+                                aria-haspopup="menu"
+                                aria-expanded={actionsMenuNmId === product.nmId}
+                                onClick={() =>
+                                  setActionsMenuNmId((prev) => (prev === product.nmId ? null : product.nmId))
+                                }
+                              >
+                                <MoreVertical className="h-5 w-5" />
+                              </button>
+                              {actionsMenuNmId === product.nmId && (
+                                <div
+                                  role="menu"
+                                  className="absolute right-0 bottom-[calc(100%+6px)] z-50 min-w-[10rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                                >
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                                    onClick={() => removeProduct(product.nmId)}
+                                  >
+                                    Удалить
+                                  </button>
+                                </div>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -925,6 +1176,175 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
             </>
           )}
         </div>
+
+        {/* Рекомендации */}
+        {products.length === 0 && (
+          <section className="flex w-full max-w-[1200px] flex-col gap-6 mx-auto">
+            <div className="bg-white rounded-2xl p-6 w-full">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <h3
+                    className="min-w-0 text-xl font-bold text-gray-900"
+                    style={{
+                      fontFamily: "'ALS Hauss VF', sans-serif",
+                      fontStyle: 'normal',
+                      fontWeight: 680,
+                      fontSize: '22px',
+                      lineHeight: '28px',
+                    }}
+                  >
+                    Перспективные товары
+                  </h3>
+                  <ProductRecommendationsTabToggle
+                    value={recommendationsTab}
+                    onChange={setRecommendationsTab}
+                    items={recommendationItems}
+                    className="scale-[0.92] origin-left"
+                    ariaLabel="Подборки товаров"
+                  />
+                </div>
+                <div className="relative" ref={recommendationsCategoryRef}>
+                  <button
+                    type="button"
+                    onClick={() => setRecommendationsCategoryOpen((o) => !o)}
+                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:border-gray-300"
+                    aria-label="Категории"
+                    aria-haspopup="menu"
+                    aria-expanded={recommendationsCategoryOpen}
+                  >
+                    {selectedRecommendationCategory ?? 'Все категории'}
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                        recommendationsCategoryOpen ? 'rotate-180' : ''
+                      }`}
+                      aria-hidden
+                    />
+                  </button>
+                  {recommendationsCategoryOpen && (
+                    <div
+                      role="menu"
+                      className="absolute right-0 top-[calc(100%+6px)] z-30 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                          selectedRecommendationCategory === null
+                            ? 'bg-purple-50 font-medium text-purple-700'
+                            : 'text-gray-800'
+                        }`}
+                        onClick={() => {
+                          setSelectedRecommendationCategory(null);
+                          setRecommendationsCategoryOpen(false);
+                        }}
+                      >
+                        Все категории
+                      </button>
+                      <div className="my-1 h-px bg-gray-100" />
+                      <div className="max-h-56 overflow-y-auto">
+                        {recommendationCategories.map((cat) => {
+                          const selected = selectedRecommendationCategory === cat;
+                          return (
+                            <button
+                              key={cat}
+                              type="button"
+                              role="menuitem"
+                              className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                                selected ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
+                              }`}
+                              onClick={() => {
+                                setSelectedRecommendationCategory(cat);
+                                setRecommendationsCategoryOpen(false);
+                              }}
+                            >
+                              {cat}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+                <div className="mb-3 rounded-lg bg-emerald-50 px-3 py-2">
+                  <span className="text-sm font-semibold text-emerald-800">
+                    Лучшие для продвижения
+                  </span>
+                </div>
+                <div className="overflow-x-auto rounded-lg border border-gray-100">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-100 text-left text-xs font-normal text-gray-400">
+                        <th className="w-[52px] px-2 py-2">Фото</th>
+                        <th className="px-3 py-2">Товар</th>
+                        <th className="w-[160px] px-3 py-2">Категория</th>
+                        <th className="w-[112px] px-3 py-2 text-right">CTR</th>
+                        <th className="w-[120px] px-3 py-2 text-right"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {recommendedProducts.map((p) => (
+                        <tr key={p.nmId} className="transition-colors hover:bg-gray-50/70">
+                          <td className="px-2 py-2 align-middle">
+                            <CampaignProductThumb
+                              nmId={p.nmId}
+                              imageUrl={p.imageUrl}
+                              category={p.category}
+                              alt={p.productName}
+                            />
+                          </td>
+                          <td className="px-3 py-2 align-middle">
+                            <p className="mb-0 text-sm font-medium text-gray-900">{p.productName}</p>
+                            <p className="mt-[2px] text-xs text-gray-500">
+                              {p.brand} · {p.nmId}
+                            </p>
+                          </td>
+                          <td className="px-3 py-2 align-middle text-sm text-gray-500">
+                            {p.category}
+                          </td>
+                          <td className="px-3 py-2 align-middle text-right">
+                            <span className="text-sm font-medium tabular-nums text-gray-900">
+                              {typeof p.conversionRate === 'number'
+                                ? `${(p.conversionRate * 100).toFixed(1).replace('.', ',')}%`
+                                : '—'}
+                            </span>
+                            {typeof p.conversionChangePercent === 'number' ? (
+                              <div
+                                className={`text-xs font-medium tabular-nums ${
+                                  p.conversionChangePercent > 0
+                                    ? 'text-emerald-600'
+                                    : p.conversionChangePercent < 0
+                                      ? 'text-red-600'
+                                      : 'text-gray-500'
+                                }`}
+                              >
+                                {p.conversionChangePercent > 0 ? '+' : p.conversionChangePercent < 0 ? '−' : ''}
+                                {Math.abs(p.conversionChangePercent)}%
+                              </div>
+                            ) : (
+                              <div className="text-xs text-gray-400"> </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 align-middle text-right">
+                            <button
+                              type="button"
+                              onClick={() => addFromRecommendations(p)}
+                              className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-[#e8e8ed]"
+                            >
+                              Добавить
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+          </section>
+        )}
       </main>
 
       {/* Toast */}

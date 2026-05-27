@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox } from 'antd';
 import { Search, X, ChevronDown } from './Icons';
 import {
@@ -16,6 +16,10 @@ export type SingleCampaignSelectableProduct = {
   brand?: string;
   articleSeller?: string;
   cpcCompatible?: boolean;
+  /** 0..1 */
+  conversionRate?: number;
+  /** change vs previous period, in percent (e.g. +10 means +10%) */
+  conversionChangePercent?: number;
 };
 
 function ProductThumb({
@@ -73,16 +77,20 @@ export function SingleCampaignAddProductsModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [pending, setPending] = useState<SingleCampaignSelectableProduct[]>([]);
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [sortKey, setSortKey] = useState<'conversion' | 'stalePromotion' | 'highSeason'>('conversion');
+  const sortButtonRef = useRef<HTMLButtonElement | null>(null);
+  const sortMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
     setSearchTerm('');
     setPending([]);
     setCategoryOpen(false);
-    setCategory((prev) => {
-      if (prev && categories.includes(prev)) return prev;
-      return categories[0] ?? '';
-    });
+    setSortOpen(false);
+    setSortKey('conversion');
+    // Изначально категория не выбрана
+    setCategory('');
   }, [isOpen, categories]);
 
   const categoryProducts = useMemo(() => {
@@ -108,9 +116,166 @@ export function SingleCampaignAddProductsModal({
     );
   }, [categoryProducts, searchTerm]);
 
+  const sortedFilteredProducts = useMemo(() => {
+    // Если бэкенд пришлёт дополнительные метрики (конверсия / давность / сезонность),
+    // применяем сортировку; если метрик нет — оставляем исходный порядок.
+    const indexed = filteredProducts.map((p, idx) => ({ p, idx }));
+    if (indexed.length <= 1) return filteredProducts;
+
+    const getNumberFromKeys = (product: SingleCampaignSelectableProduct, keys: string[]) => {
+      const anyProduct = product as any;
+      for (const key of keys) {
+        const v = anyProduct?.[key];
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+        if (typeof v === 'string') {
+          const n = Number.parseFloat(v.replace(',', '.'));
+          if (Number.isFinite(n)) return n;
+        }
+      }
+      return undefined;
+    };
+
+    const getMaybeTimestampMs = (product: SingleCampaignSelectableProduct, keys: string[]) => {
+      const anyProduct = product as any;
+      for (const key of keys) {
+        const v = anyProduct?.[key];
+        if (typeof v === 'number' && Number.isFinite(v)) return v;
+        if (typeof v === 'string') {
+          const asNum = Number.parseFloat(v.replace(',', '.'));
+          if (Number.isFinite(asNum)) return asNum;
+          const d = new Date(v);
+          const t = d.getTime();
+          if (Number.isFinite(t)) return t;
+        }
+      }
+      return undefined;
+    };
+
+    const hasAnyMetric = (extractor: (p: SingleCampaignSelectableProduct) => number | undefined) =>
+      indexed.some(({ p }) => extractor(p) !== undefined);
+
+    const compareWithOptional = (a: number | undefined, b: number | undefined, direction: 'asc' | 'desc') => {
+      if (a === undefined && b === undefined) return 0;
+      if (a === undefined) return 1;
+      if (b === undefined) return -1;
+      return direction === 'asc' ? a - b : b - a;
+    };
+
+    if (sortKey === 'conversion') {
+      const conversion = (p: SingleCampaignSelectableProduct) =>
+        getNumberFromKeys(p, [
+          'conversionRate',
+          'conversion',
+          'conv',
+          'goodConversion',
+          'conversionScore',
+          'cr',
+        ]);
+      if (!hasAnyMetric(conversion)) {
+        // fallback: на мок-данных без метрик всё равно меняем порядок
+        return indexed
+          .slice()
+          .sort((a, b) => a.p.productName.localeCompare(b.p.productName, 'ru') || a.idx - b.idx)
+          .map(({ p }) => p);
+      }
+      return indexed
+        .slice()
+        .sort((a, b) => compareWithOptional(conversion(a.p), conversion(b.p), 'desc') || a.idx - b.idx)
+        .map(({ p }) => p);
+    }
+
+    if (sortKey === 'stalePromotion') {
+      const daysSince = (p: SingleCampaignSelectableProduct) =>
+        getNumberFromKeys(p, [
+          'daysSincePromoted',
+          'daysSinceLastPromoted',
+          'lastPromotedDaysAgo',
+          'promotedDaysAgo',
+          'daysSincePromotion',
+        ]);
+
+      if (hasAnyMetric(daysSince)) {
+        return indexed
+          .slice()
+          .sort((a, b) => compareWithOptional(daysSince(a.p), daysSince(b.p), 'desc') || a.idx - b.idx)
+          .map(({ p }) => p);
+      }
+
+      // fallback: пытаемся считать timestamp и сортировать “старые” (давние) первыми
+      const promotedAtTs = (p: SingleCampaignSelectableProduct) =>
+        getMaybeTimestampMs(p, ['lastPromotedAt', 'promotedAt', 'lastPromotionAt', 'lastPromoted']);
+      if (!hasAnyMetric(promotedAtTs)) {
+        // fallback: на мок-данных без метрик всё равно меняем порядок
+        return indexed
+          .slice()
+          .sort((a, b) => a.p.nmId - b.p.nmId || a.idx - b.idx)
+          .map(({ p }) => p);
+      }
+
+      return indexed
+        .slice()
+        .sort((a, b) => {
+          const av = promotedAtTs(a.p);
+          const bv = promotedAtTs(b.p);
+          // older first
+          return compareWithOptional(av, bv, 'asc') || a.idx - b.idx;
+        })
+        .map(({ p }) => p);
+    }
+
+    if (sortKey === 'highSeason') {
+      const season = (p: SingleCampaignSelectableProduct) =>
+        getNumberFromKeys(p, [
+          'seasonality',
+          'season',
+          'seasonScore',
+          'seasonIndex',
+          'highSeasonScore',
+        ]);
+      if (!hasAnyMetric(season)) {
+        // fallback: на мок-данных без метрик всё равно меняем порядок
+        return indexed
+          .slice()
+          .sort((a, b) => b.p.nmId - a.p.nmId || a.idx - b.idx)
+          .map(({ p }) => p);
+      }
+      return indexed
+        .slice()
+        .sort((a, b) => compareWithOptional(season(a.p), season(b.p), 'desc') || a.idx - b.idx)
+        .map(({ p }) => p);
+    }
+
+    return filteredProducts;
+  }, [filteredProducts, sortKey]);
+
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      const btn = sortButtonRef.current;
+      const menu = sortMenuRef.current;
+      if (btn && btn.contains(target)) return;
+      if (menu && menu.contains(target)) return;
+      setSortOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [sortOpen]);
+
+  const sortLabel =
+    sortKey === 'conversion'
+      ? 'Сначала с высокой конверсией'
+      : sortKey === 'stalePromotion'
+        ? 'Сначала давно не продвигались'
+        : 'Сначала с высоким сезоном';
+
   const selectableInView = useMemo(
-    () => filteredProducts.filter((p) => !(isCpcMode && !p.cpcCompatible) && !alreadyAddedNmIds.has(p.nmId)),
-    [filteredProducts, isCpcMode, alreadyAddedNmIds],
+    () =>
+      sortedFilteredProducts.filter(
+        (p) => !(isCpcMode && !p.cpcCompatible) && !alreadyAddedNmIds.has(p.nmId),
+      ),
+    [sortedFilteredProducts, isCpcMode, alreadyAddedNmIds],
   );
 
   const allInViewSelected =
@@ -159,13 +324,22 @@ export function SingleCampaignAddProductsModal({
       ? `Поиск среди ${categoryProducts.length} товаров`
       : 'Поиск';
 
+  const fmtPct = (value: number, digits = 1) =>
+    `${(value * 100).toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
+
+  const fmtChange = (value: number) => {
+    const sign = value > 0 ? '+' : value < 0 ? '−' : '';
+    const abs = Math.abs(value);
+    return `${sign}${abs.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}%`;
+  };
+
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        className="flex max-h-[800px] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5">
@@ -205,6 +379,7 @@ export function SingleCampaignAddProductsModal({
                       onClick={() => {
                         setCategory(cat);
                         setCategoryOpen(false);
+                        setSortOpen(false);
                         setSearchTerm('');
                         setPending([]);
                       }}
@@ -230,7 +405,75 @@ export function SingleCampaignAddProductsModal({
 
           {category ? (
             <>
-              <p className="mb-2 text-sm font-medium text-gray-900">{category}</p>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-gray-900">{category}</p>
+                <div className="relative">
+                  <button
+                    ref={sortButtonRef}
+                    type="button"
+                    onClick={() => setSortOpen((o) => !o)}
+                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:border-gray-300"
+                    aria-label="Сортировка"
+                    aria-haspopup="menu"
+                    aria-expanded={sortOpen}
+                  >
+                    {sortLabel}
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                        sortOpen ? 'rotate-180' : ''
+                      }`}
+                      aria-hidden
+                    />
+                  </button>
+                  {sortOpen && (
+                    <div
+                      ref={sortMenuRef}
+                      role="menu"
+                      className="absolute right-0 top-[calc(100%+4px)] z-30 w-64 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+                    >
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setSortKey('conversion');
+                          setSortOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                          sortKey === 'conversion' ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
+                        }`}
+                      >
+                        Сначала с высокой конверсией
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setSortKey('stalePromotion');
+                          setSortOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                          sortKey === 'stalePromotion' ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
+                        }`}
+                      >
+                        Сначала давно не продвигались
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setSortKey('highSeason');
+                          setSortOpen(false);
+                        }}
+                        className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                          sortKey === 'highSeason' ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
+                        }`}
+                      >
+                        Сначала с высоким сезоном
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-100">
                 <table className="w-full text-sm">
                   <thead>
@@ -245,22 +488,25 @@ export function SingleCampaignAddProductsModal({
                       </th>
                       <th className="w-[52px] px-2 py-2">Фото</th>
                       <th className="px-3 py-2">Бренд · Артикул · Название</th>
+                      <th className="w-[112px] px-3 py-2 text-right">CTR</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filteredProducts.length === 0 ? (
+                    {sortedFilteredProducts.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="px-3 py-8 text-center text-sm text-gray-400">
+                        <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400">
                           Товары не найдены
                         </td>
                       </tr>
                     ) : (
-                      filteredProducts.map((product) => {
+                      sortedFilteredProducts.map((product) => {
                         const isAdded = alreadyAddedNmIds.has(product.nmId);
                         const isIncompatible = isCpcMode && !product.cpcCompatible;
                         const disabled = isAdded || isIncompatible;
                         const isChecked = pending.some((p) => p.nmId === product.nmId);
                         const atCap = pending.length >= MAX_SELECT && !isChecked;
+                        const conv = product.conversionRate;
+                        const convDelta = product.conversionChangePercent;
                         return (
                           <tr
                             key={product.nmId}
@@ -294,6 +540,32 @@ export function SingleCampaignAddProductsModal({
                               )}
                               {isIncompatible && !isAdded && (
                                 <p className="mt-0.5 text-xs text-red-600">Не продвигается по CPC</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-3 align-middle text-right">
+                              {conv === undefined ? (
+                                <span className="text-xs text-gray-400">—</span>
+                              ) : (
+                                <div className="flex flex-col items-end">
+                                  <span className="text-sm font-medium text-gray-900 tabular-nums">
+                                    {fmtPct(conv)}
+                                  </span>
+                                  {typeof convDelta === 'number' && Number.isFinite(convDelta) ? (
+                                    <span
+                                      className={`text-xs font-medium tabular-nums ${
+                                        convDelta > 0
+                                          ? 'text-emerald-600'
+                                          : convDelta < 0
+                                            ? 'text-red-600'
+                                            : 'text-gray-500'
+                                      }`}
+                                    >
+                                      {fmtChange(convDelta)}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-gray-400"> </span>
+                                  )}
+                                </div>
                               )}
                             </td>
                           </tr>

@@ -14,7 +14,11 @@ import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 import { CpcCampaignPage } from './components/CpcCampaignPage';
 import { MassEditPage } from './components/MassEditPage';
-import { SingleCampaignPage } from './components/SingleCampaignPage';
+import { SingleCampaignPage, MOCK_PRODUCTS as SINGLE_CAMPAIGN_CURATED_CATALOG } from './components/SingleCampaignPage';
+import {
+  CuratedProductPicksSection,
+  type CuratedPickProduct,
+} from './components/CuratedProductPicksSection';
 import { AppHeader } from './components/AppHeader';
 import { useProfile, type RepeatLaunchPreset } from './components/ProfileContext';
 import CampaignsPage from './pages/CampaignsPage';
@@ -24,12 +28,6 @@ import FinancePage from './pages/FinancePage';
 import BonusesPage from './pages/BonusesPage';
 import OverviewPage from './pages/OverviewPage';
 import { CampaignsInsightFilterProvider } from './context/CampaignsInsightFilterContext';
-// Плейсхолдеры изображений для пустого состояния страницы массового создания
-const EMPTY_STATE_IMG_1 = 'https://www.figma.com/api/mcp/asset/82a3fb19-ac63-4dd6-9093-3c176a7b5469';
-const EMPTY_STATE_IMG_2 = 'https://www.figma.com/api/mcp/asset/9123a3c1-9b05-4288-a464-9b5a7f6e5ec9';
-const EMPTY_STATE_IMG_3 = 'https://www.figma.com/api/mcp/asset/93a31786-4c37-4e2e-be1b-1cb423a50c10';
-const EMPTY_STATE_IMG_4 = 'https://www.figma.com/api/mcp/asset/910a7d7a-33f8-42e8-9eb3-aee871716568';
-const EMPTY_STATE_IMG_5 = 'https://www.figma.com/api/mcp/asset/1f2b7315-1b3e-460f-9e67-01b4a7d5b096';
 
 // --- Types ---
 interface TemplateGroup {
@@ -59,7 +57,7 @@ const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
-const SELLER_PASSWORD = '238012328';
+const SELLER_PASSWORD = 'Uy4b3n2';
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
@@ -81,7 +79,7 @@ function ProspectGrowthCell({ ctr, change }: { ctr: number; change: number }) {
     <div className="tooltip relative inline-flex cursor-help flex-col items-start justify-start">
       <div className="flex flex-col gap-0.5">
         <span className="text-sm font-medium tabular-nums text-gray-900">
-          {formatCtrPercent(ctr)} CTR
+          {formatCtrPercent(ctr)}
         </span>
         <span
           className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums ${
@@ -135,7 +133,7 @@ const FirstListCpcTooltip: React.FC<{ onDismiss: () => void }> = ({ onDismiss })
   }, [onDismiss]);
   return (
     <div className="absolute left-0 top-full mt-2 z-50 flex items-start gap-2 max-w-[280px] px-3 py-2.5 bg-gray-800 text-white text-sm rounded-lg shadow-xl animate-in fade-in slide-in-from-top-1 duration-200">
-      <p className="flex-1">Чтобы добавить CPC-кампании с теми же товарами, нажмите «Добавить список товаров» и выберите CPC</p>
+      <p className="flex-1">Чтобы добавить CPC-кампании с теми же товарами, нажмите «Добавить свой список» и выберите CPC</p>
       <button type="button" onClick={onDismiss} className="shrink-0 p-0.5 text-gray-400 hover:text-white rounded" aria-label="Закрыть">
         <X className="w-4 h-4" />
       </button>
@@ -1486,95 +1484,6 @@ const BidInput = ({
     )
 };
 
-const EmptyStatePlaceholder = () => (
-    <div className="mt-8 rounded-2xl border border-gray-200 bg-white px-8 py-10 shadow-sm">
-        <div className="mx-auto flex max-w-4xl flex-col gap-10 md:flex-row md:items-start">
-            <div className="flex-1 text-left">
-                <h3 className="text-2xl font-semibold tracking-tight text-gray-900">
-                    Массовое создание кампаний
-                </h3>
-                <p className="mt-3 text-sm text-gray-500 max-w-xl">
-                    Один товар = 1 кампания. Добавляйте товары, формируйте списки, массово задавайте десятки
-                    настроек и запускайте сразу несколько кампаний.
-                </p>
-            </div>
-
-            <div className="flex-1 flex flex-col gap-4">
-                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_2px_20px_rgba(0,0,0,0.06)]">
-                    <div className="flex items-center justify-between text-[13px] text-gray-800">
-                        <span className="font-medium">Товары CPC</span>
-                        <span className="text-gray-500">Ставка</span>
-                    </div>
-                    <div className="mt-2 space-y-2">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="h-9 w-9 rounded-md bg-gray-100" />
-                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
-                                    Футболка облегающая
-                                </span>
-                            </div>
-                            <span className="text-[13px] text-gray-500">20</span>
-                        </div>
-                        <div className="h-px bg-gray-100" />
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="relative h-9 w-9">
-                                    <div className="absolute inset-0 rounded-md bg-gray-100" />
-                                    <div className="absolute inset-1 rounded-md bg-gray-200" />
-                                </div>
-                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
-                                    Футболка облегающая
-                                </span>
-                            </div>
-                            <span className="text-[13px] text-gray-500">22</span>
-                        </div>
-                        <div className="h-px bg-gray-100" />
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="h-9 w-9 rounded-md bg-gray-200" />
-                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
-                                    Топ спортивный
-                                </span>
-                            </div>
-                            <span className="text-[13px] text-gray-500">20</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="rounded-2xl border border-gray-100 bg-white px-4 py-3 shadow-[0_2px_20px_rgba(0,0,0,0.06)]">
-                    <div className="flex items-center justify-between text-[13px] text-gray-800">
-                        <span className="font-medium">Товары CPM</span>
-                        <span className="text-gray-500">Ставка</span>
-                    </div>
-                    <div className="mt-2 space-y-2">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="h-9 w-9 rounded-md bg-gray-100" />
-                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
-                                    Лосины спортивные
-                                </span>
-                            </div>
-                            <span className="text-[13px] text-gray-500">300</span>
-                        </div>
-                        <div className="h-px bg-gray-100" />
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <div className="relative h-9 w-9">
-                                    <div className="absolute inset-0 rounded-md bg-gray-100" />
-                                    <div className="absolute inset-1 rounded-md bg-gray-200" />
-                                </div>
-                                <span className="text-xs text-gray-800 truncate max-w-[140px]">
-                                    Лосины для фитнеса
-                                </span>
-                            </div>
-                            <span className="text-[13px] text-gray-500">330</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-);
 
 const Stepper = ({ currentStep, setStep }: { currentStep: number, setStep: (step: number) => void }) => {
     const steps = [
@@ -1952,7 +1861,7 @@ export default function App() {
       seenNmIds.add(nmId);
       return true;
     })
-      .slice(0, 10)
+      .slice(0, 5)
       .map((p, index) => {
       const nmId = Number(p.id);
       return {
@@ -2221,6 +2130,49 @@ export default function App() {
           clearTimeout(timer1);
       }, 2500);
       return () => { clearTimeout(timer1); clearTimeout(timer2); }
+  };
+
+  const massCreationCuratedCatalog = useMemo((): CuratedPickProduct[] => {
+    return SINGLE_CAMPAIGN_CURATED_CATALOG.map((p) => ({
+      nmId: p.nmId,
+      productName: p.productName,
+      imageUrl: p.imageUrl,
+      category: p.category,
+      conversionRate: p.conversionRate,
+    }));
+  }, []);
+
+  const curatedCatalogAlreadyAddedNmIds = useMemo(
+    () => new Set(templateGroups.flatMap((g) => g.campaigns.map((c) => c.nmId))),
+    [templateGroups],
+  );
+
+  const handleAddCuratedBundle = (items: CuratedPickProduct[]) => {
+    const currentDate = new Date().toLocaleDateString('ru-RU');
+    const campaigns: CampaignRecord[] = items.map((p, index) => ({
+      id: `curated-pick-${p.nmId}-${index}-${Date.now()}`,
+      nmId: p.nmId,
+      productName: p.productName,
+      campaignName: `${p.productName} CPC ${currentDate}`,
+      imageUrl: p.imageUrl,
+      category: p.category,
+      budget: 3000,
+      autoReplenishment: false,
+      fundingSource: 'Единый счёт',
+      status: CampaignStatus.VALID,
+      usePromoBonuses: true,
+      source: 'Готовая подборка',
+      prospectCtr: typeof p.conversionRate === 'number' ? p.conversionRate * 100 : 2.5,
+      prospectCtrChange: Math.max(0, (p.nmId % 21) - 10) * 2,
+      cpcCompatible: true,
+      bonusAmount: 0,
+      searchBid: 30,
+      recommendationsBid: 30,
+    }));
+    handleAddItemSubmit(
+      { paymentModel: PaymentModel.CPC, bidType: BidType.UNIFIED },
+      campaigns,
+    );
   };
   
   const handlePageChange = (groupId: string, page: number) => { setTemplateGroups(prev => prev.map(g => g.id === groupId ? { ...g, currentPage: page } : g)); };
@@ -3066,7 +3018,7 @@ export default function App() {
                 <div className="relative flex items-center gap-2">
                     <button onClick={() => setIsAddItemModalOpen(true)} className="px-5 py-2.5 text-sm font-bold text-white bg-gray-700 hover:bg-gray-800 rounded-lg shadow-sm transition-all flex items-center gap-2 w-auto">
                         <Plus className="w-4 h-4" />
-                        <span>Добавить список товаров</span>
+                        <span>Добавить свой список</span>
                     </button>
                     {templateGroups.length === 1 && !hasShownFirstListCpcTooltip && (
                       <FirstListCpcTooltip onDismiss={() => setHasShownFirstListCpcTooltip(true)} />
@@ -3086,6 +3038,15 @@ export default function App() {
                 )}
             </div>
         </section>
+
+        {!isTableLoading && templateGroups.length === 0 && (
+          <CuratedProductPicksSection
+            className="mb-8"
+            products={massCreationCuratedCatalog}
+            alreadyAddedNmIds={curatedCatalogAlreadyAddedNmIds}
+            onAddBundle={handleAddCuratedBundle}
+          />
+        )}
 
         {templateGroups.length > 0 && (
              <div className="mt-6 mb-8">
@@ -3241,7 +3202,7 @@ export default function App() {
                   {showProspectColumn ? (
                     <th className="table-header-cell px-2 py-1.5 font-normal w-[11%] bg-white">
                       <div className="tooltip justify-start">
-                        <span>Рост</span>
+                        <span>CTR</span>
                         <span className="tooltip-text">CTR товара и отклонение от среднего по подкатегории</span>
                       </div>
                     </th>
@@ -3584,9 +3545,7 @@ export default function App() {
       </td> 
       <td className="px-2 py-1.5 text-left align-top"></td> 
       </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={3} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={showZoneColumns ? 6 : 5} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
-        ) : (
-            <EmptyStatePlaceholder />
-        )}
+        ) : null}
     </main> 
 
     {selectedCampaignIds.length > 0 && (
