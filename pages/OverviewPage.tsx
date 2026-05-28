@@ -6,6 +6,7 @@ import {
   useCampaignsInsightFilter,
 } from '../context/CampaignsInsightFilterContext';
 import { ArrowUp, ChevronDown, ChevronRight, Sparkles } from '../components/Icons';
+import { useProfile } from '../components/ProfileContext';
 
 /** Ritm 4px grid — см. .cursor/rules/ritm-spacing.mdc */
 const OV = {
@@ -291,6 +292,15 @@ const ATTENTION_TAB_ITEMS: { id: AttentionTab; label: string; count: number }[] 
 
 /** Вкладки блока «Требует внимания» на /campaigns-with-widgets */
 export const ATTENTION_MINI_TABS_CAMPAIGNS: { id: AttentionTab; label: string; count: number }[] = [
+  { id: 'conv', label: 'С хорошей конверсией', count: 12 },
+  { id: 'growth', label: 'Рост заказов', count: 4 },
+  { id: 'issues', label: 'Проблемные', count: 7 },
+  { id: 'ab', label: 'А/Б тест', count: 2 },
+  { id: 'promo', label: 'В акциях', count: 5 },
+];
+
+/** Вкладки «Обратите внимание» на главной странице Overview (старые формулировки). */
+const ATTENTION_MINI_TABS_OVERVIEW: { id: AttentionTab; label: string; count: number }[] = [
   { id: 'conv', label: 'Рост конверсии', count: 12 },
   { id: 'growth', label: 'Рост заказов', count: 4 },
   { id: 'issues', label: 'Проблемные', count: 7 },
@@ -797,12 +807,15 @@ function AttentionProductsTable({
   tab,
   maxRows,
   compact,
+  compactVariant = 'list',
 }: {
   tab: AttentionTab;
   maxRows?: number;
   /** Плотная таблица (страница «Кампании с виджетами») */
   compact?: boolean;
+  compactVariant?: 'overview' | 'list';
 }) {
+  const { beginRepeatLaunchFlow } = useProfile();
   const { headers, rows } = ATTENTION_BY_TAB[tab];
   const visibleRows = maxRows != null ? rows.slice(0, maxRows) : rows;
   const tight = compact ?? maxRows != null;
@@ -932,7 +945,82 @@ function AttentionProductsTable({
     );
   }
 
-  if (tight && tab === 'conv') {
+  if (tight && tab === 'conv' && compactVariant === 'list') {
+    return (
+      <table className="w-full min-w-0 table-fixed border-collapse text-left text-xs">
+        <colgroup>
+          <col style={{ width: '34%' }} />
+          <col style={{ width: '14%' }} />
+          <col style={{ width: '16%' }} />
+          <col style={{ width: '16%' }} />
+          <col style={{ width: '20%' }} />
+        </colgroup>
+        <thead className="sticky top-0 z-[1] bg-white">
+          <tr className="text-[10px] leading-none text-gray-500">
+            <th className={`${headPad} text-left font-medium`}>Товар</th>
+            <th className={`${headPad} text-right font-medium`}>Рек. ставка</th>
+            <th className={`${headPad} text-right font-medium`}>Клики</th>
+            <th className={`${headPad} text-right font-medium`}>Бюджет</th>
+            <th className={headPad} />
+          </tr>
+        </thead>
+        <tbody className="[&_td]:align-middle">
+          {visibleRows.map((row) => {
+            const seed = Number.parseInt(String(row.id).replace(/\D/g, ''), 10) || 0;
+            const recBid = 150 + (seed % 5) * 50;
+            const clicks = 20_300 + (seed % 4) * 1_750;
+            const budget = 1_000 + (seed % 6) * 500;
+            return (
+            <tr key={row.id} className="border-t border-gray-50 hover:bg-gray-50/60">
+              <td className={`${cellPad} min-w-0`}>
+                <div className={`flex min-w-0 items-center overflow-hidden ${tight ? 'gap-1.5' : OV.inline}`}>
+                  <OverviewProductImage src={row.image} />
+                  <OverviewProductTitleId name={row.name} id={row.id} />
+                </div>
+              </td>
+              <td className={`${cellPad} min-w-0 text-right`}>
+                <span className="text-xs font-semibold tabular-nums text-gray-900">
+                  {recBid.toLocaleString('ru-RU')} ₽
+                </span>
+              </td>
+              <td className={`${cellPad} min-w-0 text-right`}>
+                <span className="text-xs font-semibold tabular-nums text-gray-900">
+                  {clicks.toLocaleString('ru-RU')}
+                </span>
+              </td>
+              <td className={`${cellPad} min-w-0 text-right`}>
+                <span className="text-xs font-semibold tabular-nums text-gray-900">
+                  {budget.toLocaleString('ru-RU')} ₽
+                </span>
+              </td>
+              <td className={`${cellPad} min-w-0 pl-3 text-right`}>
+                <button
+                  type="button"
+                  className={INSIGHT_TABLE_CTA_CLASS}
+                  onClick={() => {
+                    beginRepeatLaunchFlow({
+                      product: {
+                        nmId: Number.parseInt(row.id, 10) || 0,
+                        productName: row.name,
+                        imageUrl: row.image,
+                        category: 'Товары',
+                        cpcCompatible: true,
+                      },
+                      campaignName: `${row.name} CPC`,
+                    });
+                  }}
+                >
+                  К кампании
+                </button>
+              </td>
+            </tr>
+          )})}
+        </tbody>
+      </table>
+    );
+  }
+
+  if (tight && tab === 'conv' && compactVariant === 'overview') {
     return (
       <table className="w-full min-w-0 table-fixed border-collapse text-left text-xs">
         <colgroup>
@@ -944,7 +1032,7 @@ function AttentionProductsTable({
         <thead className="sticky top-0 z-[1] bg-white">
           <tr className="text-[10px] leading-none text-gray-500">
             <th className={`${headPad} text-left font-medium`}>Товар</th>
-            <th className={`${headPad} text-right font-medium`}>CTR</th>
+            <th className={`${headPad} text-right font-medium`}>Конверсия</th>
             <th className={`${headPad} text-right font-medium`}>Рост</th>
             <th className={headPad} />
           </tr>
@@ -2416,7 +2504,7 @@ const OverviewPage: React.FC = () => {
   const [period, setPeriod] = useState<Period>('2w');
   const [chartPeriod, setChartPeriod] = useState<Period>('2w');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const attentionTabItems = useMemo(() => ATTENTION_MINI_TABS_CAMPAIGNS, []);
+  const attentionTabItems = useMemo(() => ATTENTION_MINI_TABS_OVERVIEW, []);
   const [attentionTab, setAttentionTab] = useState<AttentionTab>(attentionTabItems[0]!.id);
   const [channelSort, setChannelSort] = useState<ChannelSortKey>('orders');
   const [channelSortDesc, setChannelSortDesc] = useState(true);
@@ -2728,7 +2816,7 @@ const OverviewPage: React.FC = () => {
                   </div>
                   <div className={`${OV.mtStack} min-w-0`}>
                     <div className="mt-0.5 min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain">
-                      <AttentionProductsTable tab={attentionTab} compact />
+                      <AttentionProductsTable tab={attentionTab} compact compactVariant="overview" />
                     </div>
                   </div>
                 </section>
@@ -3181,7 +3269,7 @@ export function OverviewMiniWidgetsForCampaignsList({
           />
         </div>
         <div className="mt-0.5 min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
-          <AttentionProductsTable tab={attentionTab} compact />
+          <AttentionProductsTable tab={attentionTab} compact compactVariant="list" />
         </div>
       </section>
     </div>
