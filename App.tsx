@@ -2126,6 +2126,43 @@ export default function App() {
       return () => { clearTimeout(timer1); clearTimeout(timer2); }
   };
 
+  const handleNavigateToCreationWithSingleCampaignProducts = useCallback(
+    (items: { nmId: number; productName: string; imageUrl: string; category: string }[]) => {
+      if (!items || items.length === 0) {
+        setAppState('creation');
+        return;
+      }
+      const currentDate = new Date().toLocaleDateString('ru-RU');
+      const campaigns: CampaignRecord[] = items.map((p, index) => ({
+        id: `single-campaign-pick-${p.nmId}-${index}-${Date.now()}`,
+        nmId: p.nmId,
+        productName: p.productName,
+        campaignName: `${p.productName} CPC ${currentDate}`,
+        imageUrl: p.imageUrl,
+        category: p.category,
+        budget: 3000,
+        autoReplenishment: false,
+        fundingSource: 'Единый счёт',
+        status: CampaignStatus.VALID,
+        usePromoBonuses: true,
+        source: 'Ручной подбор (одна кампания)',
+        prospectCtr: typeof (p as any).conversionRate === 'number' ? (p as any).conversionRate * 100 : 2.5,
+        prospectCtrChange: Math.max(0, (p.nmId % 21) - 10) * 2,
+        cpcCompatible: true,
+        bonusAmount: 0,
+        searchBid: 30,
+        recommendationsBid: 30,
+      }));
+
+      handleAddItemSubmit(
+        { paymentModel: PaymentModel.CPC, bidType: BidType.UNIFIED },
+        campaigns,
+      );
+      setAppState('creation');
+    },
+    [handleAddItemSubmit],
+  );
+
   const massCreationCuratedCatalog = useMemo((): CuratedPickProduct[] => {
     return SINGLE_CAMPAIGN_CURATED_CATALOG.map((p) => ({
       nmId: p.nmId,
@@ -2639,6 +2676,11 @@ export default function App() {
     return (
       <SingleCampaignPage 
         onBack={() => handleNavigationAttempt(handleNavigateToList)}
+        onNavigateToMassCreation={(items) =>
+          handleNavigationAttempt(() =>
+            handleNavigateToCreationWithSingleCampaignProducts(items),
+          )
+        }
       />
     );
   }

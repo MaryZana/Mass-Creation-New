@@ -293,7 +293,13 @@ function CopyNmIdButton({ nmId }: { nmId: number }) {
   );
 }
 
-type ProductRecommendationsTab = 'conv' | 'rating';
+type ProductRecommendationsTab = 'growth' | 'ab' | 'promo';
+
+const PRODUCT_RECOMMENDATIONS_TAB_COUNTS: Record<ProductRecommendationsTab, number> = {
+  growth: 5,
+  ab: 3,
+  promo: 3,
+};
 
 function computeProspectsPickNmIds(params: {
   products: CampaignProductRow[];
@@ -305,16 +311,27 @@ function computeProspectsPickNmIds(params: {
   const inCategory = MOCK_PRODUCTS.filter(
     (p) => (selectedRecommendationCategory ? p.category === selectedRecommendationCategory : true),
   );
-  const ratingScore = (p: CampaignProductRow) => ((p.nmId % 40) + 60) / 10; // 6.0..9.9
-  const conv = (p: CampaignProductRow) => p.conversionRate ?? 0;
 
   const notAdded = inCategory.filter((p) => !alreadyAdded.has(p.nmId));
-  const sorted =
-    recommendationsTab === 'conv'
-      ? notAdded.slice().sort((a, b) => conv(b) - conv(a) || b.nmId - a.nmId)
-      : notAdded.slice().sort((a, b) => ratingScore(b) - ratingScore(a) || b.nmId - a.nmId);
+  const byNmDesc = (a: CampaignProductRow, b: CampaignProductRow) => b.nmId - a.nmId;
+  const inPromo = (p: CampaignProductRow) => p.nmId % 7 === 0;
+  const inAbTest = (p: CampaignProductRow) => p.nmId % 9 === 0;
+  const orders = (p: CampaignProductRow) => ((p.nmId % 180) + 40) | 0; // deterministic demo
 
-  return sorted.slice(0, 3).map((p) => p.nmId);
+  const sorted = (() => {
+    switch (recommendationsTab) {
+      case 'promo':
+        return notAdded.filter(inPromo).slice().sort(byNmDesc);
+      case 'ab':
+        return notAdded.filter(inAbTest).slice().sort(byNmDesc);
+      case 'growth':
+      default:
+        return notAdded.slice().sort((a, b) => orders(b) - orders(a) || byNmDesc(a, b));
+    }
+  })();
+
+  const limit = PRODUCT_RECOMMENDATIONS_TAB_COUNTS[recommendationsTab] ?? 3;
+  return sorted.slice(0, limit).map((p) => p.nmId);
 }
 
 function ProductRecommendationsTabToggle({
@@ -383,6 +400,7 @@ function HeaderHint({ label }: { label: string }) {
 
 interface SingleCampaignPageProps {
   onBack: () => void;
+  onNavigateToMassCreation: (items: CampaignProductRow[]) => void;
 }
 
 // Шапка приложения вынесена в общий компонент `AppHeader`.
@@ -425,7 +443,10 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
   </button>
 );
 
-export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }) => {
+export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
+  onBack,
+  onNavigateToMassCreation,
+}) => {
   const {
     profileId,
     showReferralInviteCreationBanner,
@@ -452,18 +473,19 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
   const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [isMultiCategoryWarningOpen, setIsMultiCategoryWarningOpen] = useState(false);
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
   const [productBidsByNmId, setProductBidsByNmId] = useState<Record<number, string>>({});
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
   const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
   const [actionsMenuNmId, setActionsMenuNmId] = useState<number | null>(null);
-  const [recommendationsTab, setRecommendationsTab] = useState<ProductRecommendationsTab>('conv');
+  const [recommendationsTab, setRecommendationsTab] = useState<ProductRecommendationsTab>('growth');
   const [recommendationsCategoryOpen, setRecommendationsCategoryOpen] = useState(false);
   const [prospectsPickNmIds, setProspectsPickNmIds] = useState<number[]>(() =>
     computeProspectsPickNmIds({
       products: [],
       selectedRecommendationCategory: null,
-      recommendationsTab: 'conv',
+      recommendationsTab: 'growth',
     }),
   );
   const recommendationsCategoryRef = useRef<HTMLDivElement>(null);
@@ -602,10 +624,29 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
     [products],
   );
 
+  const isSingleCategoryAdditionAllowed = (
+    existing: CampaignProductRow[],
+    incoming: CampaignProductRow[],
+  ) => {
+    const existingCategory = existing[0]?.category;
+    const categories = new Set(
+      [
+        ...(existingCategory ? [existingCategory] : []),
+        ...incoming.map((p) => p.category),
+      ].filter(Boolean),
+    );
+    return categories.size <= 1;
+  };
+
   const recommendationItems = useMemo(
     () => [
-      { id: 'conv' as const, label: 'Хорошая конверсия', count: 12 },
-      { id: 'rating' as const, label: 'Лучший рейтинг', count: 6 },
+      {
+        id: 'growth' as const,
+        label: 'Рост заказов',
+        count: PRODUCT_RECOMMENDATIONS_TAB_COUNTS.growth,
+      },
+      { id: 'ab' as const, label: 'А/Б тест', count: PRODUCT_RECOMMENDATIONS_TAB_COUNTS.ab },
+      { id: 'promo' as const, label: 'В акциях', count: PRODUCT_RECOMMENDATIONS_TAB_COUNTS.promo },
     ],
     [],
   );
@@ -635,6 +676,10 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
 
   const addFromRecommendations = (p: CampaignProductRow) => {
     if (alreadyAddedNmIds.has(p.nmId)) return;
+    if (!isSingleCategoryAdditionAllowed(products, [p])) {
+      setIsMultiCategoryWarningOpen(true);
+      return;
+    }
     replaceProducts([...products, p]);
     // Remove from current pick without refilling.
     setProspectsPickNmIds((prev) => prev.filter((id) => id !== p.nmId));
@@ -1293,7 +1338,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                         <th className="w-[52px] px-2 py-2">Фото</th>
                         <th className="px-3 py-2">Товар</th>
                         <th className="w-[160px] px-3 py-2">Категория</th>
-                        <th className="w-[112px] px-3 py-2 text-right">CTR</th>
                         <th className="w-[120px] px-3 py-2 text-right"></th>
                       </tr>
                     </thead>
@@ -1316,29 +1360,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                           </td>
                           <td className="px-3 py-2 align-middle text-sm text-gray-500">
                             {p.category}
-                          </td>
-                          <td className="px-3 py-2 align-middle text-right">
-                            <span className="text-sm font-medium tabular-nums text-gray-900">
-                              {typeof p.conversionRate === 'number'
-                                ? `${(p.conversionRate * 100).toFixed(1).replace('.', ',')}%`
-                                : '—'}
-                            </span>
-                            {typeof p.conversionChangePercent === 'number' ? (
-                              <div
-                                className={`text-xs font-medium tabular-nums ${
-                                  p.conversionChangePercent > 0
-                                    ? 'text-emerald-600'
-                                    : p.conversionChangePercent < 0
-                                      ? 'text-red-600'
-                                      : 'text-gray-500'
-                                }`}
-                              >
-                                {p.conversionChangePercent > 0 ? '+' : p.conversionChangePercent < 0 ? '−' : ''}
-                                {Math.abs(p.conversionChangePercent)}%
-                              </div>
-                            ) : (
-                              <div className="text-xs text-gray-400"> </div>
-                            )}
                           </td>
                           <td className="px-3 py-2 align-middle text-right">
                             <button
@@ -1372,6 +1393,10 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
         alreadyAddedNmIds={alreadyAddedNmIds}
         isCpcMode={paymentModel === 'CPC'}
         onConfirm={(added) => {
+          if (!isSingleCategoryAdditionAllowed(products, added)) {
+            setIsMultiCategoryWarningOpen(true);
+            return false;
+          }
           const merged = [...products];
           for (const p of added) {
             if (!merged.some((m) => m.nmId === p.nmId)) merged.push(p);
@@ -1382,8 +1407,59 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
             n === 1 ? 'Товар добавлен' : `Добавлено ${n} товаров`,
           );
           setShowToast(true);
+          return true;
         }}
       />
+
+      {isMultiCategoryWarningOpen && (
+        <div
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setIsMultiCategoryWarningOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+            <h3 className="text-lg font-bold text-gray-900">
+              Добавляйте товары из разных категорий в массовом создании кампании
+            </h3>
+              <button
+                type="button"
+                onClick={() => setIsMultiCategoryWarningOpen(false)}
+                className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Закрыть"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <p className="mt-2 text-sm leading-snug text-gray-600">
+              В одной кампании можно добавлять товары только из одной категории. Если хотите
+              добавлять товары из разных категорий — создайте отдельную кампанию для каждого товара
+              (или для каждой категории).
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsMultiCategoryWarningOpen(false)}
+                className="rounded-xl bg-[#F2F2F7] px-5 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMultiCategoryWarningOpen(false);
+                  onNavigateToMassCreation(products);
+                }}
+                className="rounded-xl bg-[#2E3038] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#23252c]"
+              >
+                Добавить товар
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fixed footer with launch button */}
       {products.length > 0 && (
@@ -1416,7 +1492,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
                   if (profileId === '2' && referralCode.trim()) {
                     notifyReferralCampaignCreatedFromCreation();
                   }
-                  onBack();
+                  onNavigateToMassCreation(products);
                 }
               }}
             >

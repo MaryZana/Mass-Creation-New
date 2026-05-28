@@ -8,6 +8,14 @@ import {
 
 const MAX_SELECT = 50;
 
+const PROSPECT_PICK_REASONS = [
+  'Конверсия выше 20%',
+  'Рейтинг выше 4.9',
+  'Товары в акциях',
+  'Товары с А/Б тестом',
+  'Сезонный спрос выше 100%',
+] as const;
+
 export type SingleCampaignSelectableProduct = {
   nmId: number;
   productName: string;
@@ -65,7 +73,8 @@ export function SingleCampaignAddProductsModal({
   onClose: () => void;
   options: SingleCampaignSelectableProduct[];
   alreadyAddedNmIds: Set<number>;
-  onConfirm: (selected: SingleCampaignSelectableProduct[]) => void;
+  /** return true to close modal, false to keep open */
+  onConfirm: (selected: SingleCampaignSelectableProduct[]) => boolean;
   isCpcMode: boolean;
 }) {
   const categories = useMemo(() => {
@@ -79,6 +88,7 @@ export function SingleCampaignAddProductsModal({
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [sortKey, setSortKey] = useState<'conversion' | 'stalePromotion' | 'highSeason'>('conversion');
+  const [categoryTab, setCategoryTab] = useState<'all' | 'growth' | 'ab' | 'promo'>('all');
   const sortButtonRef = useRef<HTMLButtonElement | null>(null);
   const sortMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -89,6 +99,7 @@ export function SingleCampaignAddProductsModal({
     setCategoryOpen(false);
     setSortOpen(false);
     setSortKey('conversion');
+    setCategoryTab('all');
     // Изначально категория не выбрана
     setCategory('');
   }, [isOpen, categories]);
@@ -98,29 +109,59 @@ export function SingleCampaignAddProductsModal({
     return options.filter((p) => p.category === category);
   }, [options, category]);
 
+  const prospectProducts = useMemo(() => {
+    if (category) return [];
+    const base = options.filter((p) => !alreadyAddedNmIds.has(p.nmId) && !(isCpcMode && !p.cpcCompatible));
+    const hasConv = base.some((p) => typeof p.conversionRate === 'number');
+    const sorted = base
+      .slice()
+      .sort((a, b) => {
+        if (hasConv) {
+          const av = a.conversionRate ?? -1;
+          const bv = b.conversionRate ?? -1;
+          if (bv !== av) return bv - av;
+        }
+        return b.nmId - a.nmId;
+      });
+    return sorted.slice(0, 20);
+  }, [options, alreadyAddedNmIds, isCpcMode, category]);
+
+  const baseProducts = category ? categoryProducts : prospectProducts;
+
   const filteredProducts = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return categoryProducts;
+    if (!term) return baseProducts;
     if (term.includes(',')) {
       const ids = term.split(',').map((s) => s.trim()).filter(Boolean);
       if (ids.length > 0) {
-        return categoryProducts.filter((p) => ids.includes(String(p.nmId)));
+        return baseProducts.filter((p) => ids.includes(String(p.nmId)));
       }
     }
-    return categoryProducts.filter(
+    return baseProducts.filter(
       (p) =>
         p.productName.toLowerCase().includes(term) ||
         String(p.nmId).includes(term) ||
         (p.articleSeller ?? '').toLowerCase().includes(term) ||
         (p.brand ?? '').toLowerCase().includes(term),
     );
-  }, [categoryProducts, searchTerm]);
+  }, [baseProducts, searchTerm]);
+
+  const tabFilteredProducts = useMemo(() => {
+    if (!category) return filteredProducts;
+    if (categoryTab === 'all') return filteredProducts;
+    const inPromo = (p: SingleCampaignSelectableProduct) => p.nmId % 7 === 0;
+    const inAbTest = (p: SingleCampaignSelectableProduct) => p.nmId % 9 === 0;
+    const inGrowth = (p: SingleCampaignSelectableProduct) => p.nmId % 5 === 0;
+    if (categoryTab === 'promo') return filteredProducts.filter(inPromo);
+    if (categoryTab === 'ab') return filteredProducts.filter(inAbTest);
+    return filteredProducts.filter(inGrowth);
+  }, [filteredProducts, category, categoryTab]);
 
   const sortedFilteredProducts = useMemo(() => {
     // Если бэкенд пришлёт дополнительные метрики (конверсия / давность / сезонность),
     // применяем сортировку; если метрик нет — оставляем исходный порядок.
-    const indexed = filteredProducts.map((p, idx) => ({ p, idx }));
-    if (indexed.length <= 1) return filteredProducts;
+    const indexed = tabFilteredProducts.map((p, idx) => ({ p, idx }));
+    if (indexed.length <= 1) return tabFilteredProducts;
 
     const getNumberFromKeys = (product: SingleCampaignSelectableProduct, keys: string[]) => {
       const anyProduct = product as any;
@@ -245,8 +286,8 @@ export function SingleCampaignAddProductsModal({
         .map(({ p }) => p);
     }
 
-    return filteredProducts;
-  }, [filteredProducts, sortKey]);
+    return tabFilteredProducts;
+  }, [tabFilteredProducts, sortKey]);
 
   useEffect(() => {
     if (!sortOpen) return;
@@ -313,16 +354,14 @@ export function SingleCampaignAddProductsModal({
 
   const handleConfirm = () => {
     if (pending.length === 0) return;
-    onConfirm(pending);
-    onClose();
+    const shouldClose = onConfirm(pending);
+    if (shouldClose) onClose();
   };
 
   if (!isOpen) return null;
 
   const searchPlaceholder =
-    categoryProducts.length > 0
-      ? `Поиск среди ${categoryProducts.length} товаров`
-      : 'Поиск';
+    baseProducts.length > 0 ? `Поиск среди ${baseProducts.length} товаров` : 'Поиск';
 
   const fmtPct = (value: number, digits = 1) =>
     `${(value * 100).toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
@@ -339,7 +378,7 @@ export function SingleCampaignAddProductsModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[800px] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
+        className="flex h-[700px] min-h-[700px] max-h-[700px] w-[700px] min-w-[700px] max-w-[700px] flex-col overflow-hidden rounded-2xl bg-white shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5">
@@ -395,8 +434,7 @@ export function SingleCampaignAddProductsModal({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                disabled={!category}
-                placeholder={category ? searchPlaceholder : 'Сначала выберите категорию'}
+                placeholder={category ? searchPlaceholder : 'Поиск по перспективным товарам'}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-white pr-10 pl-3 text-sm outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 disabled:bg-gray-50 disabled:text-gray-400"
               />
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -405,8 +443,39 @@ export function SingleCampaignAddProductsModal({
 
           {category ? (
             <>
-              <div className="mb-2 flex items-center justify-between gap-3">
+              <div className="mb-1 flex items-center justify-between gap-3">
                 <p className="text-sm font-medium text-gray-900">{category}</p>
+              </div>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+                <div
+                  className="inline-flex max-w-full flex-wrap rounded-xl bg-[#F2F2F7] p-0.5 text-xs font-semibold text-[#4A4D57]"
+                  role="tablist"
+                  aria-label="Подборки товаров"
+                >
+                  {(
+                    [
+                      { id: 'all' as const, label: 'Все' },
+                      { id: 'growth' as const, label: 'Рост заказов' },
+                      { id: 'ab' as const, label: 'А/Б тест' },
+                      { id: 'promo' as const, label: 'В акциях' },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={categoryTab === tab.id}
+                      onClick={() => setCategoryTab(tab.id)}
+                      className={`whitespace-nowrap rounded-[10px] px-2.5 py-1.5 transition-colors ${
+                        categoryTab === tab.id
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'hover:text-gray-900'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
                 <div className="relative">
                   <button
                     ref={sortButtonRef}
@@ -439,7 +508,9 @@ export function SingleCampaignAddProductsModal({
                           setSortOpen(false);
                         }}
                         className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                          sortKey === 'conversion' ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
+                          sortKey === 'conversion'
+                            ? 'bg-purple-50 font-medium text-purple-700'
+                            : 'text-gray-800'
                         }`}
                       >
                         Сначала с высокой конверсией
@@ -452,7 +523,9 @@ export function SingleCampaignAddProductsModal({
                           setSortOpen(false);
                         }}
                         className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                          sortKey === 'stalePromotion' ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
+                          sortKey === 'stalePromotion'
+                            ? 'bg-purple-50 font-medium text-purple-700'
+                            : 'text-gray-800'
                         }`}
                       >
                         Сначала давно не продвигались
@@ -465,7 +538,9 @@ export function SingleCampaignAddProductsModal({
                           setSortOpen(false);
                         }}
                         className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                          sortKey === 'highSeason' ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
+                          sortKey === 'highSeason'
+                            ? 'bg-purple-50 font-medium text-purple-700'
+                            : 'text-gray-800'
                         }`}
                       >
                         Сначала с высоким сезоном
@@ -488,13 +563,12 @@ export function SingleCampaignAddProductsModal({
                       </th>
                       <th className="w-[52px] px-2 py-2">Фото</th>
                       <th className="px-3 py-2">Бренд · Артикул · Название</th>
-                      <th className="w-[112px] px-3 py-2 text-right">CTR</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {sortedFilteredProducts.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="px-3 py-8 text-center text-sm text-gray-400">
+                        <td colSpan={3} className="px-3 py-8 text-center text-sm text-gray-400">
                           Товары не найдены
                         </td>
                       </tr>
@@ -505,9 +579,6 @@ export function SingleCampaignAddProductsModal({
                         const disabled = isAdded || isIncompatible;
                         const isChecked = pending.some((p) => p.nmId === product.nmId);
                         const atCap = pending.length >= MAX_SELECT && !isChecked;
-                        const conv = product.conversionRate;
-                        const convDelta = product.conversionChangePercent;
-                        const showPromoteLabel = index < 5;
                         return (
                           <tr
                             key={product.nmId}
@@ -532,11 +603,6 @@ export function SingleCampaignAddProductsModal({
                               <div className="flex items-center gap-1 text-sm text-gray-900">
                                 <span className="text-gray-400">·</span>
                                 <span className="tabular-nums text-gray-600">{product.nmId}</span>
-                                {showPromoteLabel && !disabled && (
-                                  <span className="ml-2 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                    Выгодно продвигать
-                                  </span>
-                                )}
                               </div>
                               <p className="mt-0.5 text-sm font-medium text-gray-900">
                                 {product.productName}
@@ -548,32 +614,6 @@ export function SingleCampaignAddProductsModal({
                                 <p className="mt-0.5 text-xs text-red-600">Не продвигается по CPC</p>
                               )}
                             </td>
-                            <td className="px-3 py-3 align-middle text-right">
-                              {conv === undefined ? (
-                                <span className="text-xs text-gray-400">—</span>
-                              ) : (
-                                <div className="flex flex-col items-end">
-                                  <span className="text-sm font-medium text-gray-900 tabular-nums">
-                                    {fmtPct(conv)}
-                                  </span>
-                                  {typeof convDelta === 'number' && Number.isFinite(convDelta) ? (
-                                    <span
-                                      className={`text-xs font-medium tabular-nums ${
-                                        convDelta > 0
-                                          ? 'text-emerald-600'
-                                          : convDelta < 0
-                                            ? 'text-red-600'
-                                            : 'text-gray-500'
-                                      }`}
-                                    >
-                                      {fmtChange(convDelta)}
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs text-gray-400"> </span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
                           </tr>
                         );
                       })
@@ -583,8 +623,92 @@ export function SingleCampaignAddProductsModal({
               </div>
             </>
           ) : (
-            <div className="flex flex-1 items-center justify-center py-16 text-sm text-gray-400">
-              Выберите категорию, чтобы увидеть товары
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-100">
+              <div className="sticky top-0 z-[1] border-b border-gray-100 bg-white px-3 py-2">
+                <p className="text-sm font-semibold text-gray-900">Перспективные товары</p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-xs font-normal text-gray-400">
+                    <th className="w-10 px-3 py-2">
+                      <Checkbox
+                        checked={allInViewSelected}
+                        indeterminate={someInViewSelected}
+                        disabled={selectableInView.length === 0}
+                        onChange={toggleSelectAllInView}
+                      />
+                    </th>
+                    <th className="w-[52px] px-2 py-2">Фото</th>
+                    <th className="px-3 py-2">Бренд · Артикул · Название</th>
+                    <th className="w-[140px] px-3 py-2">Категория</th>
+                    <th className="w-[152px] px-3 py-2 text-right" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {sortedFilteredProducts.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-400">
+                        Перспективные товары не найдены
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedFilteredProducts.map((product, index) => {
+                      const isAdded = alreadyAddedNmIds.has(product.nmId);
+                      const isIncompatible = isCpcMode && !product.cpcCompatible;
+                      const disabled = isAdded || isIncompatible;
+                      const isChecked = pending.some((p) => p.nmId === product.nmId);
+                      const atCap = pending.length >= MAX_SELECT && !isChecked;
+                      return (
+                        <tr
+                          key={product.nmId}
+                          className={`${disabled ? 'opacity-50' : 'hover:bg-gray-50/80'} ${isChecked ? 'bg-purple-50/30' : ''}`}
+                        >
+                          <td className="px-3 py-3 align-middle">
+                            <Checkbox
+                              checked={isChecked}
+                              disabled={disabled || atCap}
+                              onChange={() => toggleProduct(product)}
+                            />
+                          </td>
+                          <td className="px-2 py-3 align-middle">
+                            <ProductThumb
+                              nmId={product.nmId}
+                              imageUrl={product.imageUrl}
+                              category={product.category}
+                              alt={product.productName}
+                            />
+                          </td>
+                          <td className="px-3 py-3 align-middle">
+                            <div className="flex items-center gap-1 text-sm text-gray-900">
+                              <span className="text-gray-400">·</span>
+                              <span className="tabular-nums text-gray-600">{product.nmId}</span>
+                            </div>
+                            <p className="mt-0.5 text-sm font-medium text-gray-900">
+                              {product.productName}
+                            </p>
+                            {isAdded && (
+                              <p className="mt-0.5 text-xs text-gray-500">Уже в кампании</p>
+                            )}
+                            {isIncompatible && !isAdded && (
+                              <p className="mt-0.5 text-xs text-red-600">Не продвигается по CPC</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-middle">
+                            <span className="block text-xs font-medium leading-snug text-gray-700">
+                              {product.category}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 align-middle text-right">
+                            <span className="block text-left text-xs font-medium leading-snug text-gray-700">
+                              {PROSPECT_PICK_REASONS[index % PROSPECT_PICK_REASONS.length]}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
