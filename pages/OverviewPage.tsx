@@ -905,7 +905,7 @@ function AttentionProductsTable({
         </colgroup>
         <thead className="sticky top-0 z-[1] bg-white">
           <tr className="text-[10px] leading-none text-gray-500">
-            <th className={`${headPad} text-left font-medium`}>Кампания</th>
+            <th className={`${headPad} text-left font-medium`}>Товар</th>
             <th className={`${headPad} text-left font-medium`}>Тест</th>
             <th className={headPad} />
           </tr>
@@ -943,7 +943,7 @@ function AttentionProductsTable({
         </colgroup>
         <thead className="sticky top-0 z-[1] bg-white">
           <tr className="text-[10px] leading-none text-gray-500">
-            <th className={`${headPad} text-left font-medium`}>Кампания</th>
+            <th className={`${headPad} text-left font-medium`}>Товар</th>
             <th className={`${headPad} text-right font-medium`}>CTR</th>
             <th className={`${headPad} text-right font-medium`}>Рост</th>
             <th className={headPad} />
@@ -1020,7 +1020,9 @@ function AttentionProductsTable({
       </colgroup>
       <thead className="sticky top-0 z-[1] bg-white">
         <tr className="text-[10px] leading-none text-gray-500">
-          <th className={`${headPad} text-left font-medium`}>Кампания</th>
+          <th className={`${headPad} text-left font-medium`}>
+            {tab === 'issues' ? 'Кампания' : 'Товар'}
+          </th>
           <th className={`${headPad} text-right font-medium`}>{displayHeaders[0]}</th>
           <th className={`${headPad} text-right font-medium`}>{displayHeaders[1]}</th>
           {!hideThirdMetricColumn ? (
@@ -2414,9 +2416,14 @@ const OverviewPage: React.FC = () => {
   const [period, setPeriod] = useState<Period>('2w');
   const [chartPeriod, setChartPeriod] = useState<Period>('2w');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [attentionTab, setAttentionTab] = useState<AttentionTab>('conv');
+  const attentionTabItems = useMemo(() => ATTENTION_MINI_TABS_CAMPAIGNS, []);
+  const [attentionTab, setAttentionTab] = useState<AttentionTab>(attentionTabItems[0]!.id);
   const [channelSort, setChannelSort] = useState<ChannelSortKey>('orders');
   const [channelSortDesc, setChannelSortDesc] = useState(true);
+
+  useEffect(() => {
+    setAttentionTab(attentionTabItems[0]!.id);
+  }, [attentionTabItems]);
 
   const channelRows = useMemo(() => CHANNEL_DATA_BY_PERIOD[period], [period]);
 
@@ -2711,10 +2718,18 @@ const OverviewPage: React.FC = () => {
                 <section className={`rounded-[20px] bg-white shadow-sm ${OV.card}`}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-lg font-bold">Обратите внимание</h2>
-                    <AttentionTabToggle value={attentionTab} onChange={setAttentionTab} />
+                    <AttentionTabToggle
+                      value={attentionTab}
+                      onChange={setAttentionTab}
+                      items={attentionTabItems}
+                      className="scale-[0.92] origin-right"
+                      ariaLabel="Подборки кампаний"
+                    />
                   </div>
-                  <div className={`${OV.mtStack} min-w-0 overflow-x-auto`}>
-                    <AttentionProductsTable tab={attentionTab} />
+                  <div className={`${OV.mtStack} min-w-0`}>
+                    <div className="mt-0.5 min-w-0 overflow-y-auto overflow-x-hidden overscroll-y-contain">
+                      <AttentionProductsTable tab={attentionTab} compact />
+                    </div>
                   </div>
                 </section>
 

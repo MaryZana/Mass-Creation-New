@@ -125,21 +125,15 @@ const getTemplateGroupLabel = (config: Pick<CampaignConfig, 'paymentModel' | 'bi
 
 // --- Sub-Components ---
 
-/** Тёмный тултип после первого добавления списка: можно добавить CPC-кампании с теми же товарами. Показывается один раз. */
-const FirstListCpcTooltip: React.FC<{ onDismiss: () => void }> = ({ onDismiss }) => {
-  useEffect(() => {
-    const t = setTimeout(onDismiss, 8000);
-    return () => clearTimeout(t);
-  }, [onDismiss]);
-  return (
-    <div className="absolute left-0 top-full mt-2 z-50 flex items-start gap-2 max-w-[280px] px-3 py-2.5 bg-gray-800 text-white text-sm rounded-lg shadow-xl animate-in fade-in slide-in-from-top-1 duration-200">
-      <p className="flex-1">Чтобы добавить CPC-кампании с теми же товарами, нажмите «Добавить свой список» и выберите CPC</p>
-      <button type="button" onClick={onDismiss} className="shrink-0 p-0.5 text-gray-400 hover:text-white rounded" aria-label="Закрыть">
-        <X className="w-4 h-4" />
-      </button>
-    </div>
-  );
-};
+const PROSPECT_PICK_REASONS = [
+  'Конверсия выше 20%',
+  'Рейтинг выше 4.9',
+  'Товары в акциях',
+  'Товары с А/Б тестом',
+  'Сезонный спрос выше 100%',
+] as const;
+
+// FirstListCpcTooltip removed per UX request.
 
 const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
   const [password, setPassword] = useState('');
@@ -1811,7 +1805,7 @@ export default function App() {
   const [isConfirmLaunchOpen, setIsConfirmLaunchOpen] = useState(false);
   const [isConfirmLaunchWithFiltersOpen, setIsConfirmLaunchWithFiltersOpen] = useState(false);
   const [showAddMoreHint, setShowAddMoreHint] = useState(true);
-  const [hasShownFirstListCpcTooltip, setHasShownFirstListCpcTooltip] = useState(false);
+  // Removed: hasShownFirstListCpcTooltip (tooltip UI removed)
   const [isLaunchSummaryModalOpen, setIsLaunchSummaryModalOpen] = useState(false);
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [campaignForAutoRefill, setCampaignForAutoRefill] = useState<CampaignRecord | null>(null);
@@ -1876,7 +1870,7 @@ export default function App() {
         fundingSource: 'Единый счёт' as const,
         status: CampaignStatus.VALID,
         usePromoBonuses: true,
-        source: 'Подборка недели',
+        source: PROSPECT_PICK_REASONS[index % PROSPECT_PICK_REASONS.length],
         prospectCtr: p.ctr,
         prospectCtrChange: Math.max(0, p.ctrChange),
         cpcCompatible: true,
@@ -2161,7 +2155,8 @@ export default function App() {
       fundingSource: 'Единый счёт',
       status: CampaignStatus.VALID,
       usePromoBonuses: true,
-      source: 'Готовая подборка',
+      // Each row should have its own human-readable reason.
+      source: PROSPECT_PICK_REASONS[index % PROSPECT_PICK_REASONS.length],
       prospectCtr: typeof p.conversionRate === 'number' ? p.conversionRate * 100 : 2.5,
       prospectCtrChange: Math.max(0, (p.nmId % 21) - 10) * 2,
       cpcCompatible: true,
@@ -3020,9 +3015,7 @@ export default function App() {
                         <Plus className="w-4 h-4" />
                         <span>Добавить свой список</span>
                     </button>
-                    {templateGroups.length === 1 && !hasShownFirstListCpcTooltip && (
-                      <FirstListCpcTooltip onDismiss={() => setHasShownFirstListCpcTooltip(true)} />
-                    )}
+                    {/* FirstListCpcTooltip removed */}
                 </div>
                  {templateGroups.length > 0 && showAddMoreHint && (
                     <div className="flex items-center gap-2 text-sm font-medium animate-in fade-in">
@@ -3152,12 +3145,9 @@ export default function App() {
                     className="text-xs text-gray-600 mt-0.5 truncate"
                     title={[
                       zonesLabel,
-                      Array.from(group.sourceFiles).join(', '),
                     ].filter(Boolean).join(' • ')}
                   >
                     {zonesLabel ? <span className="text-gray-700">{zonesLabel}</span> : null}
-                    {zonesLabel ? <span className="text-gray-300 mx-2">•</span> : null}
-                    <span className="text-gray-500">{Array.from(group.sourceFiles).join(', ')}</span>
                   </p>
                 </div>
                 <span className="text-gray-400 text-sm font-medium">{validCount} {getPlural(validCount, 'кампания', 'кампании', 'кампаний')}</span> 
@@ -3202,8 +3192,8 @@ export default function App() {
                   {showProspectColumn ? (
                     <th className="table-header-cell px-2 py-1.5 font-normal w-[11%] bg-white">
                       <div className="tooltip justify-start">
-                        <span>CTR</span>
-                        <span className="tooltip-text">CTR товара и отклонение от среднего по подкатегории</span>
+                        <span>Подборка</span>
+                        <span className="tooltip-text">Причина попадания товара в подборку</span>
                       </div>
                     </th>
                   ) : null}
@@ -3247,8 +3237,12 @@ export default function App() {
       <div className="min-w-0"> <a href="#" title={row.productName} className="font-medium text-purple-600 hover:underline leading-tight block truncate">{row.productName}</a> <div className="text-gray-500 mt-0.5">ID {row.nmId}</div> </div> </div> </td>
       {showProspectColumn ? (
         <td className="px-2 py-1.5 align-top">
-          {row.prospectCtr != null && row.prospectCtrChange != null ? (
-            <ProspectGrowthCell ctr={row.prospectCtr} change={row.prospectCtrChange} />
+          {row.source ? (
+            <div className="max-w-full">
+              <span className="block max-w-full whitespace-normal break-words text-xs font-medium leading-snug text-gray-700">
+                {row.source}
+              </span>
+            </div>
           ) : null}
         </td>
       ) : null}

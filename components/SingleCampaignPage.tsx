@@ -1207,7 +1207,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({ onBack }
               <div className="flex items-center justify-between gap-3 mb-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <h3 className="font-heading min-w-0 text-[22px] font-[680] leading-7 text-gray-900">
-                    Добавьте перспективные товары
+                    Рекомендуем перспективные
                   </h3>
                   <ProductRecommendationsTabToggle
                     value={recommendationsTab}
