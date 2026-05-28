@@ -281,7 +281,7 @@ function PeriodToggle({
   );
 }
 
-type AttentionTab = 'conv' | 'growth' | 'issues' | 'rating';
+type AttentionTab = 'conv' | 'growth' | 'issues' | 'rating' | 'ab' | 'promo';
 
 const ATTENTION_TAB_ITEMS: { id: AttentionTab; label: string; count: number }[] = [
   { id: 'conv', label: 'Хорошая конверсия', count: 12 },
@@ -291,8 +291,11 @@ const ATTENTION_TAB_ITEMS: { id: AttentionTab; label: string; count: number }[] 
 
 /** Вкладки блока «Требует внимания» на /campaigns-with-widgets */
 export const ATTENTION_MINI_TABS_CAMPAIGNS: { id: AttentionTab; label: string; count: number }[] = [
-  { id: 'growth', label: 'Хороший рост заказов', count: 4 },
+  { id: 'conv', label: 'Рост конверсии', count: 12 },
+  { id: 'growth', label: 'Рост заказов', count: 4 },
   { id: 'issues', label: 'Проблемные', count: 7 },
+  { id: 'ab', label: 'А/Б тест', count: 2 },
+  { id: 'promo', label: 'В акциях', count: 5 },
 ];
 
 export const ATTENTION_MINI_TABS_PRODUCTS: { id: AttentionTab; label: string; count: number }[] = [
@@ -305,6 +308,8 @@ const ATTENTION_TAB_ROW_CTA: Record<AttentionTab, string | null> = {
   growth: 'Пополнить бюджет',
   issues: null,
   rating: 'Продвигать',
+  ab: 'Открыть',
+  promo: 'Открыть',
 };
 
 /** Короткие подписи CTA в компактной таблице (без горизонтального скролла) */
@@ -313,13 +318,17 @@ const ATTENTION_TAB_ROW_CTA_COMPACT: Record<AttentionTab, string | null> = {
   growth: 'Пополнить бюджет',
   issues: null,
   rating: 'Продвигать',
+  ab: 'Продвигать',
+  promo: 'Продвигать',
 };
 
 const ATTENTION_TAB_HEADERS_COMPACT: Record<AttentionTab, [string, string, string]> = {
-  conv: ['Показы', 'CTR', 'Сезон.'],
+  conv: ['CTR', 'Рост', 'CR в корзину'],
   growth: ['Заказы', 'Рост', ''],
   issues: ['ДРР', 'Затраты', 'Проблема'],
   rating: ['Рейтинг', 'Отзывы', 'Заказы'],
+  ab: ['CTR', 'CR', 'Тест'],
+  promo: ['Скидка WB', 'Заказы', 'Рост'],
 };
 
 type AttentionMetricCell = {
@@ -356,46 +365,46 @@ const ATTENTION_ISSUE_ADVICE: Record<string, string> = {
 
 const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
   conv: {
-    headers: ['Показы', 'CTR', 'CR в корзину'],
+    headers: ['CTR', 'Рост', 'CR в корзину'],
     rows: [
       {
         id: '312883517',
         name: 'Рюкзак школьный',
         image: OVERVIEW_IMG.bag,
-        col2: { value: '1 234 000' },
-        col3: { value: '4,2%', trend: '+0,8 п.п.', trendUp: true },
+        col2: { value: '28%', trendUp: true },
+        col3: { value: '+34%', trend: 'за 2 недели', trendUp: true },
         col4: { value: '+128%', trendUp: true },
       },
       {
         id: '1400001',
         name: 'Летнее платье «Ривьера»',
         image: OVERVIEW_IMG.dress,
-        col2: { value: '842 000' },
-        col3: { value: '3,8%', trend: '+0,6 п.п.', trendUp: true },
+        col2: { value: '24%', trendUp: true },
+        col3: { value: '+28%', trend: 'за 2 недели', trendUp: true },
         col4: { value: '+96%', trendUp: true },
       },
       {
         id: '1400003',
         name: 'Платье-футляр «Офис»',
         image: OVERVIEW_IMG.office,
-        col2: { value: '506 000' },
-        col3: { value: '4,1%', trend: '+1,1 п.п.', trendUp: true },
+        col2: { value: '22%', trendUp: true },
+        col3: { value: '+22%', trend: 'за 2 недели', trendUp: true },
         col4: { value: '+84%', trendUp: true },
       },
       {
         id: '7002002',
         name: 'Футболка с принтом «Лето»',
         image: OVERVIEW_IMG.shirt,
-        col2: { value: '980 000' },
-        col3: { value: '3,2%', trend: '+0,3 п.п.', trendUp: true },
+        col2: { value: '21%', trendUp: true },
+        col3: { value: '+18%', trend: 'за 2 недели', trendUp: true },
         col4: { value: '+71%', trendUp: true },
       },
       {
         id: '6001002',
         name: 'Вечернее платье «Грация»',
         image: OVERVIEW_IMG.dress,
-        col2: { value: '412 000' },
-        col3: { value: '5,0%', trend: '+1,4 п.п.', trendUp: true },
+        col2: { value: '30%', trendUp: true },
+        col3: { value: '+12%', trend: 'за 2 недели', trendUp: true },
         col4: { value: '+62%', trendUp: true },
       },
     ],
@@ -543,16 +552,80 @@ const ATTENTION_BY_TAB: Record<AttentionTab, AttentionTabConfig> = {
       },
     ],
   },
+  ab: {
+    headers: ['CTR', 'CR', 'Тест'],
+    rows: [
+      {
+        id: '312883519',
+        name: 'Кроссовки беговые',
+        image: OVERVIEW_IMG.shoes,
+        col2: { value: '2,9%', trend: '+0,3 п.п.', trendUp: true },
+        col3: { value: '1,8%', trend: '+0,2 п.п.', trendUp: true },
+        col4: { value: 'Тест 3 креативов', trend: 'Идет до 21 мая', trendUp: true },
+      },
+      {
+        id: '1400009',
+        name: 'Футболка хлопок мягкая',
+        image: OVERVIEW_IMG.shirt,
+        col2: { value: '2,4%', trend: '−0,1 п.п.', trendUp: false },
+        col3: { value: '1,5%', trend: '+0,1 п.п.', trendUp: true },
+        col4: { value: 'Тест 2 креативов', trend: 'Идет до 21 мая', trendUp: true },
+      },
+      {
+        id: '1400003',
+        name: 'Платье-футляр «Офис»',
+        image: OVERVIEW_IMG.office,
+        col2: { value: '3,1%', trend: '+0,2 п.п.', trendUp: true },
+        col3: { value: '2,0%', trend: '+0,3 п.п.', trendUp: true },
+        col4: { value: 'Тест 3 креативов', trend: 'Идет до 21 мая', trendUp: true },
+      },
+    ],
+  },
+  promo: {
+    headers: ['Скидка WB', 'Заказы', 'Рост'],
+    rows: [
+      {
+        id: '1400001',
+        name: 'Летнее платье «Ривьера»',
+        image: OVERVIEW_IMG.dress,
+        col2: { value: '−15%', trendUp: true },
+        col3: { value: '124', trend: '+18%', trendUp: true },
+        col4: { value: '+7%', trend: 'за 2 недели', trendUp: true },
+      },
+      {
+        id: '7002002',
+        name: 'Футболка с принтом «Лето»',
+        image: OVERVIEW_IMG.shirt,
+        col2: { value: '−10%', trendUp: true },
+        col3: { value: '76', trend: '+6%', trendUp: true },
+        col4: { value: '+4%', trend: 'за 2 недели', trendUp: true },
+      },
+      {
+        id: '312883517',
+        name: 'Рюкзак школьный',
+        image: OVERVIEW_IMG.bag,
+        col2: { value: '−20%', trendUp: true },
+        col3: { value: '89', trend: '+9%', trendUp: true },
+        col4: { value: '+5%', trend: 'за 2 недели', trendUp: true },
+      },
+    ],
+  },
 };
 
 function AttentionMetricTd({
   cell,
   compact,
   alignStart = false,
+  hideTrend = false,
+  valueClassName,
+  trendClassName,
 }: {
   cell: AttentionMetricCell;
   compact?: boolean;
   alignStart?: boolean;
+  hideTrend?: boolean;
+  valueClassName?: string;
+  trendClassName?: string;
 }) {
   const trendClass =
     cell.trendUp === false
@@ -566,13 +639,17 @@ function AttentionMetricTd({
         className={`flex flex-col ${alignStart ? 'items-start' : 'items-end'} ${OV.tight} leading-none`}
       >
         <span
-          className={`text-xs font-semibold ${cell.muted ? 'text-gray-600' : 'text-gray-900'}`}
+          className={`text-xs font-semibold ${
+            valueClassName ?? (cell.muted ? 'text-gray-600' : 'text-gray-900')
+          }`}
         >
           {cell.value}
         </span>
-        {cell.trend ? (
+        {!hideTrend && cell.trend ? (
           <span
-            className={`font-medium ${trendClass} ${compact ? 'text-[10px]' : 'mt-0.5 text-[10px]'}`}
+            className={`font-medium ${
+              trendClassName ?? trendClass
+            } ${compact ? 'text-[10px]' : 'mt-0.5 text-[10px]'}`}
           >
             {cell.trend}
           </span>
@@ -738,6 +815,168 @@ function AttentionProductsTable({
   const cellPad = tight ? 'px-1.5 py-1.5' : 'px-2 py-2';
   const headPad = tight ? 'px-1.5 py-1.5' : 'px-2 py-1.5';
 
+  if (tight && tab === 'issues') {
+    const shortIssueLabel = (value: string) => {
+      const v = value.trim();
+      if (v === 'Показы') return 'Мало показов';
+      if (v === 'CTR') return 'Низкий CTR';
+      if (v === 'CR') return 'Низкий CR';
+      if (v === 'ROAS') return 'Низкий ROAS';
+      if (v === 'Заказы') return 'Мало заказов';
+      return v;
+    };
+
+    const issueMetricValue = (value: string) => {
+      const v = value.trim();
+      // Intentionally "low" demo values for the compact widget.
+      if (v === 'Показы') return '5';
+      if (v === 'CTR') return '0,6%';
+      if (v === 'CR') return '0,4%';
+      if (v === 'ROAS') return '38%';
+      if (v === 'Заказы') return '2';
+      return '—';
+    };
+
+    const shortAdviceLabel = (value: string) => {
+      const v = value.trim();
+      if (v === 'Показы') return 'Поднять ставки';
+      if (v === 'CTR') return 'Сменить фото';
+      if (v === 'CR') return 'Проверить цену';
+      if (v === 'ROAS') return 'Снизить ставки';
+      if (v === 'Заказы') return 'Проверить спрос';
+      return 'Что делать';
+    };
+
+    return (
+      <table className="w-full min-w-0 table-fixed border-collapse text-left text-xs">
+        <colgroup>
+          <col style={{ width: '42%' }} />
+          <col style={{ width: '24%' }} />
+          <col style={{ width: '34%' }} />
+        </colgroup>
+        <thead className="sticky top-0 z-[1] bg-white">
+          <tr className="text-[10px] leading-none text-gray-500">
+            <th className={`${headPad} text-left font-medium`}>Кампания</th>
+            <th className={`${headPad} text-left font-medium`}>Проблема</th>
+            <th className={`${headPad} text-left font-medium`}>Совет</th>
+          </tr>
+        </thead>
+        <tbody className="[&_td]:align-middle">
+          {visibleRows.map((row) => (
+            <tr key={row.id} className="border-t border-gray-50 hover:bg-gray-50/60">
+              <td className={`${cellPad} min-w-0`}>
+                <div className={`flex min-w-0 items-center ${tight ? 'gap-1.5' : OV.inline}`}>
+                  <OverviewProductImage src={row.image} />
+                  <OverviewProductTitleId name={row.name} id={row.id} />
+                </div>
+              </td>
+              <td className={`${cellPad} min-w-0`}>
+                <div className={`flex min-w-0 flex-col ${OV.tight} leading-none`}>
+                  <span className="block truncate text-xs font-semibold text-gray-900">
+                    {issueMetricValue(row.col4.value)}
+                  </span>
+                  <span className="block truncate text-[10px] font-medium text-gray-400">
+                    {shortIssueLabel(row.col4.value)}
+                  </span>
+                </div>
+              </td>
+              <AttentionProblemTd
+                cell={{ ...row.col4, value: shortAdviceLabel(row.col4.value), trend: undefined }}
+                compact={tight}
+                advice={
+                  ATTENTION_ISSUE_ADVICE[row.col4.value] ??
+                  'Сверьте динамику с прошлым периодом и скорректируйте ставки или креативы.'
+                }
+              />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  if (tight && tab === 'ab') {
+    return (
+      <table className="w-full min-w-0 table-fixed border-collapse text-left text-xs">
+        <colgroup>
+          <col style={{ width: '40%' }} />
+          <col style={{ width: '42%' }} />
+          <col style={{ width: '18%' }} />
+        </colgroup>
+        <thead className="sticky top-0 z-[1] bg-white">
+          <tr className="text-[10px] leading-none text-gray-500">
+            <th className={`${headPad} text-left font-medium`}>Кампания</th>
+            <th className={`${headPad} text-left font-medium`}>Тест</th>
+            <th className={headPad} />
+          </tr>
+        </thead>
+        <tbody className="[&_td]:align-middle">
+          {visibleRows.map((row) => (
+            <tr key={row.id} className="border-t border-gray-50 hover:bg-gray-50/60">
+              <td className={`${cellPad} min-w-0`}>
+                <div className={`flex min-w-0 items-center ${tight ? 'gap-1.5' : OV.inline}`}>
+                  <OverviewProductImage src={row.image} />
+                  <OverviewProductTitleId name={row.name} id={row.id} />
+                </div>
+              </td>
+              <AttentionMetricTd cell={row.col4} compact={tight} alignStart />
+              <td className={`${cellPad} min-w-0 pl-3 text-right`}>
+                <button type="button" className={INSIGHT_TABLE_CTA_CLASS}>
+                  Продвигать
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
+  if (tight && tab === 'conv') {
+    return (
+      <table className="w-full min-w-0 table-fixed border-collapse text-left text-xs">
+        <colgroup>
+          <col style={{ width: '38%' }} />
+          <col style={{ width: '16%' }} />
+          <col style={{ width: '24%' }} />
+          <col style={{ width: '22%' }} />
+        </colgroup>
+        <thead className="sticky top-0 z-[1] bg-white">
+          <tr className="text-[10px] leading-none text-gray-500">
+            <th className={`${headPad} text-left font-medium`}>Кампания</th>
+            <th className={`${headPad} text-right font-medium`}>CTR</th>
+            <th className={`${headPad} text-right font-medium`}>Рост</th>
+            <th className={headPad} />
+          </tr>
+        </thead>
+        <tbody className="[&_td]:align-middle">
+          {visibleRows.map((row) => (
+            <tr key={row.id} className="border-t border-gray-50 hover:bg-gray-50/60">
+              <td className={`${cellPad} min-w-0`}>
+                <div className={`flex min-w-0 items-center ${tight ? 'gap-1.5' : OV.inline}`}>
+                  <OverviewProductImage src={row.image} />
+                  <OverviewProductTitleId name={row.name} id={row.id} />
+                </div>
+              </td>
+              <AttentionMetricTd cell={row.col2} compact={tight} hideTrend />
+              <AttentionMetricTd
+                cell={row.col3}
+                compact={tight}
+                valueClassName="text-emerald-600"
+                trendClassName="text-gray-400"
+              />
+              <td className={`${cellPad} min-w-0 pl-3 text-right`}>
+                <button type="button" className={INSIGHT_TABLE_CTA_CLASS}>
+                  Продвигать
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+
   return (
     <table className="w-full min-w-0 table-fixed border-collapse text-left text-xs">
       <colgroup>
@@ -803,8 +1042,8 @@ function AttentionProductsTable({
                 <OverviewProductTitleId name={row.name} id={row.id} />
               </div>
             </td>
-            <AttentionMetricTd cell={row.col2} compact={tight} />
-            <AttentionMetricTd cell={row.col3} compact={tight} />
+            <AttentionMetricTd cell={row.col2} compact={tight} hideTrend={tab === 'conv'} />
+            <AttentionMetricTd cell={row.col3} compact={tight} hideTrend={tab === 'conv'} />
             {!hideThirdMetricColumn ? (
               tab === 'issues' ? (
                 <AttentionProblemTd
@@ -816,7 +1055,7 @@ function AttentionProductsTable({
                   }
                 />
               ) : (
-                <AttentionMetricTd cell={row.col4} compact={tight} />
+                <AttentionMetricTd cell={row.col4} compact={tight} hideTrend={tab === 'conv'} />
               )
             ) : null}
             {showRowCta ? (
@@ -851,13 +1090,21 @@ function AttentionTabToggle({
   className?: string;
   ariaLabel?: string;
 }) {
+  const resolvedItems = useMemo(
+    () =>
+      items.map((tab) => ({
+        ...tab,
+        count: ATTENTION_BY_TAB[tab.id]?.rows?.length ?? tab.count,
+      })),
+    [items],
+  );
   return (
     <div
       className={`inline-flex max-w-full flex-wrap rounded-xl bg-[#F2F2F7] p-0.5 text-xs font-semibold text-[#4A4D57] ${className}`}
       role="tablist"
       aria-label={ariaLabel}
     >
-      {items.map((tab) => (
+      {resolvedItems.map((tab) => (
         <button
           key={tab.id}
           type="button"
@@ -2805,10 +3052,8 @@ export function OverviewMiniWidgetsForCampaignsList({
   listTab: 'campaigns' | 'products';
 }) {
   const { applyFilter } = useCampaignsInsightFilter();
-  const attentionTabItems = useMemo(
-    () => (listTab === 'products' ? ATTENTION_MINI_TABS_PRODUCTS : ATTENTION_MINI_TABS_CAMPAIGNS),
-    [listTab],
-  );
+  // Use the same "requires attention" block for both tabs (Campaigns and Products).
+  const attentionTabItems = useMemo(() => ATTENTION_MINI_TABS_CAMPAIGNS, []);
   const [attentionTab, setAttentionTab] = useState<AttentionTab>(attentionTabItems[0]!.id);
 
   useEffect(() => {
