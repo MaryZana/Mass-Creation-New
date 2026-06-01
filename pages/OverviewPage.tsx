@@ -1962,8 +1962,8 @@ function OverviewInsightProductPreviewCard({
           </p>
         </div>
       </div>
-      <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-gray-100 pt-2">
-        <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
+      <div className="mt-3 flex min-h-0 flex-1 flex-col gap-[10px] border-t border-gray-100 pt-2">
+        <ul className="flex shrink-0 flex-col gap-1.5 overflow-hidden">
           {visibleRows.map((row) => (
             <li
               key={row.id}
@@ -1987,7 +1987,7 @@ function OverviewInsightProductPreviewCard({
           ))}
         </ul>
         {restCount > 0 ? (
-          <div className="mt-auto flex shrink-0 items-center gap-3 pt-0.5">
+          <div className="flex shrink-0 items-center gap-3">
             <button
               type="button"
               className={INSIGHT_PREVIEW_FOOTER_BTN_CLASS}
