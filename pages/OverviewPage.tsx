@@ -5,6 +5,11 @@ import {
   type CampaignsInsightFilterKind,
   useCampaignsInsightFilter,
 } from '../context/CampaignsInsightFilterContext';
+import {
+  useOverviewBridge,
+  type OverviewInsightMassCreationItem,
+} from '../context/OverviewBridgeContext';
+import { BudgetRefillModal } from '../components/SuccessPage';
 import { ArrowUp, ChevronDown, ChevronRight, Sparkles } from '../components/Icons';
 import { useProfile } from '../components/ProfileContext';
 
@@ -37,6 +42,9 @@ const miniWidgetsRowMinStyle: React.CSSProperties = { minHeight: MINI_WIDGETS_RO
 const INSIGHT_TABLE_CTA_CLASS =
   'inline-flex shrink-0 whitespace-nowrap rounded-lg border border-transparent bg-[#ececef] px-3 py-1.5 text-xs font-medium leading-none text-gray-700 transition-colors hover:bg-[#e2e2e6]';
 
+const INSIGHT_PREVIEW_CTA_CLASS =
+  'inline-flex shrink-0 whitespace-nowrap rounded-md border border-transparent bg-[#ececef] px-2 py-1 text-[10px] font-semibold leading-none text-gray-700 transition-colors hover:bg-[#e2e2e6]';
+
 const fmtRub = (n: number) =>
   new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n) + ' ₽';
 
@@ -68,6 +76,9 @@ const OVERVIEW_IMG = {
 
 /** Портрет 30×38, как превью товара в списке кампаний (масштаб ~28×22). */
 const OVERVIEW_PRODUCT_THUMB_CLASS = 'h-7 w-[22px]';
+
+/** Квадратное превью в карточках инсайтов на обзоре — ниже по высоте, чем портрет в таблицах. */
+const INSIGHT_PREVIEW_THUMB_CLASS = 'h-6 w-6';
 
 function OverviewProductImage({ src, sizeClass = OVERVIEW_PRODUCT_THUMB_CLASS }: { src: string; sizeClass?: string }) {
   const [resolvedSrc, setResolvedSrc] = useState(src);
@@ -304,7 +315,6 @@ const ATTENTION_MINI_TABS_OVERVIEW: { id: AttentionTab; label: string; count: nu
   { id: 'conv', label: 'Рост конверсии', count: 12 },
   { id: 'growth', label: 'Рост заказов', count: 4 },
   { id: 'issues', label: 'Проблемные', count: 7 },
-  { id: 'ab', label: 'А/Б тест', count: 2 },
   { id: 'promo', label: 'В акциях', count: 5 },
 ];
 
@@ -1630,32 +1640,50 @@ type BudgetCampaignRow = {
   ordersTrend: number;
 };
 
-const BUDGET_EMPTY_CAMPAIGNS: BudgetCampaignRow[] = [
-  {
-    id: '1400001',
-    name: 'Летнее платье «Ривьера»',
-    image: OVERVIEW_IMG.dress,
-    shows: 842_000,
-    orders: 12,
-    ordersTrend: 8.4,
-  },
-  {
-    id: '1400009',
-    name: 'Футболка хлопок мягкая',
-    image: OVERVIEW_IMG.shirt,
-    shows: 1_120_000,
-    orders: 6,
-    ordersTrend: 5.2,
-  },
-  {
-    id: '1400003',
-    name: 'Платье-футляр «Офис»',
-    image: OVERVIEW_IMG.office,
-    shows: 506_000,
-    orders: 4,
-    ordersTrend: 12.1,
-  },
+const INSIGHT_PREVIEW_LIST_SIZE = 24;
+
+const INSIGHT_PREVIEW_PRODUCT_TITLES = [
+  'Летнее платье «Ривьера»',
+  'Футболка хлопок мягкая',
+  'Платье-футляр «Офис»',
+  'Футболка поло мужская',
+  'Сарафан «Прованс»',
+  'Рюкзак школьный',
+  'Платье женское',
+  'Вечернее платье «Грация»',
+  'CPC — Ривьера (тест)',
+  'Коктейльное платье «Шарм»',
+  'Блуза шёлк премиум',
+  'Футболка oversize',
+  'Кроссовки городские',
+  'Юбка миди лён',
+  'Пальто демисезон',
+  'Шорты домашние',
+  'Свитшот уютный',
+  'Жакет утеплённый',
+] as const;
+
+const INSIGHT_PREVIEW_IMAGES: readonly string[] = [
+  OVERVIEW_IMG.dress,
+  OVERVIEW_IMG.shirt,
+  OVERVIEW_IMG.office,
+  OVERVIEW_IMG.sarafan,
+  OVERVIEW_IMG.bag,
+  OVERVIEW_IMG.shoes,
 ];
+
+function buildInsightPreviewBudgetRows(count: number): BudgetCampaignRow[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `budget-insight-${i + 1}`,
+    name: INSIGHT_PREVIEW_PRODUCT_TITLES[i % INSIGHT_PREVIEW_PRODUCT_TITLES.length]!,
+    image: INSIGHT_PREVIEW_IMAGES[i % INSIGHT_PREVIEW_IMAGES.length]!,
+    shows: 380_000 + ((i * 91_137) % 1_100_000),
+    orders: 2 + (i % 14),
+    ordersTrend: 3.5 + (i % 9) * 1.1,
+  }));
+}
+
+const BUDGET_EMPTY_CAMPAIGNS = buildInsightPreviewBudgetRows(INSIGHT_PREVIEW_LIST_SIZE);
 
 type StockProductRow = {
   id: string;
@@ -1666,24 +1694,18 @@ type StockProductRow = {
   lostPerDay: number;
 };
 
-const STOCK_OUT_PRODUCTS: StockProductRow[] = [
-  {
-    id: '7002003',
-    name: 'Футболка поло мужская',
-    image: OVERVIEW_IMG.shirt,
-    shows: 612_000,
+function buildInsightPreviewStockRows(count: number): StockProductRow[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `stock-insight-${i + 1}`,
+    name: INSIGHT_PREVIEW_PRODUCT_TITLES[(i + 3) % INSIGHT_PREVIEW_PRODUCT_TITLES.length]!,
+    image: INSIGHT_PREVIEW_IMAGES[i % INSIGHT_PREVIEW_IMAGES.length]!,
+    shows: 250_000 + ((i * 73_291) % 900_000),
     stockLeft: 0,
-    lostPerDay: 4,
-  },
-  {
-    id: '1400004',
-    name: 'Сарафан «Прованс»',
-    image: OVERVIEW_IMG.sarafan,
-    shows: 284_000,
-    stockLeft: 0,
-    lostPerDay: 2,
-  },
-];
+    lostPerDay: 1 + (i % 6),
+  }));
+}
+
+const STOCK_OUT_PRODUCTS = buildInsightPreviewStockRows(INSIGHT_PREVIEW_LIST_SIZE);
 
 type LaunchCampaignRow = {
   id: string;
@@ -1694,64 +1716,18 @@ type LaunchCampaignRow = {
   seasonality: number;
 };
 
-const READY_TO_LAUNCH_CAMPAIGNS: LaunchCampaignRow[] = [
-  {
-    id: '312883517',
-    name: 'Рюкзак школьный',
-    image: OVERVIEW_IMG.bag,
-    shows: 1_234_000,
-    ctr: 23,
-    seasonality: 1092,
-  },
-  {
-    id: '312883518',
-    name: 'Платье женское',
-    image: OVERVIEW_IMG.dress,
-    shows: 1_346_000,
-    ctr: 10,
-    seasonality: 1092,
-  },
-  {
-    id: '1400002',
-    name: 'Вечернее платье «Грация»',
-    image: OVERVIEW_IMG.dress,
-    shows: 892_000,
-    ctr: 18,
-    seasonality: 856,
-  },
-  {
-    id: '6001001',
-    name: 'CPC — Ривьера (тест)',
-    image: OVERVIEW_IMG.dress,
-    shows: 756_000,
-    ctr: 15,
-    seasonality: 920,
-  },
-  {
-    id: '1400006',
-    name: 'Коктейльное платье «Шарм»',
-    image: OVERVIEW_IMG.office,
-    shows: 428_000,
-    ctr: 21,
-    seasonality: 780,
-  },
-  {
-    id: '1400007',
-    name: 'Блуза шёлк премиум',
-    image: OVERVIEW_IMG.sarafan,
-    shows: 512_000,
-    ctr: 14,
-    seasonality: 640,
-  },
-  {
-    id: '1400010',
-    name: 'Футболка oversize',
-    image: OVERVIEW_IMG.shirt,
-    shows: 980_000,
-    ctr: 19,
-    seasonality: 710,
-  },
-];
+function buildInsightPreviewLaunchRows(count: number): LaunchCampaignRow[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `launch-insight-${i + 1}`,
+    name: INSIGHT_PREVIEW_PRODUCT_TITLES[(i + 5) % INSIGHT_PREVIEW_PRODUCT_TITLES.length]!,
+    image: INSIGHT_PREVIEW_IMAGES[i % INSIGHT_PREVIEW_IMAGES.length]!,
+    shows: 500_000 + ((i * 88_421) % 1_200_000),
+    ctr: 8 + (i % 18),
+    seasonality: 600 + (i % 500),
+  }));
+}
+
+const READY_TO_LAUNCH_CAMPAIGNS = buildInsightPreviewLaunchRows(INSIGHT_PREVIEW_LIST_SIZE);
 
 function InsightAlertDropdownPanel({ variant }: { variant: 'budget' | 'stock' | 'launch' }) {
   if (variant === 'budget') {
@@ -1889,6 +1865,153 @@ function InsightAlertDropdownPanel({ variant }: { variant: 'budget' | 'stock' | 
         </table>
       </div>
     </div>
+  );
+}
+
+const INSIGHT_PREVIEW_MAX_ROWS = 4;
+
+type InsightPreviewRow = { id: string; name: string; image: string };
+
+function insightPreviewRows(panelVariant: 'budget' | 'stock' | 'launch'): InsightPreviewRow[] {
+  switch (panelVariant) {
+    case 'budget':
+      return BUDGET_EMPTY_CAMPAIGNS;
+    case 'stock':
+      return STOCK_OUT_PRODUCTS;
+    case 'launch':
+      return READY_TO_LAUNCH_CAMPAIGNS;
+  }
+}
+
+function insightPreviewRowCta(panelVariant: 'budget' | 'stock' | 'launch'): string {
+  switch (panelVariant) {
+    case 'budget':
+      return 'Пополнить';
+    case 'stock':
+      return 'Продвигать';
+    case 'launch':
+      return 'Пополнить';
+  }
+}
+
+function insightPreviewBulkCta(panelVariant: 'budget' | 'stock' | 'launch'): string {
+  switch (panelVariant) {
+    case 'budget':
+      return 'Пополнить все';
+    case 'stock':
+      return 'Продвигать все';
+    case 'launch':
+      return 'Пополнить и запустить';
+  }
+}
+
+function insightPreviewRowsToMassCreationItems(
+  rows: InsightPreviewRow[],
+): OverviewInsightMassCreationItem[] {
+  return rows.map((row, index) => {
+    const parsed = Number.parseInt(row.id.replace(/\D/g, ''), 10);
+    return {
+      nmId: Number.isFinite(parsed) && parsed > 0 ? parsed : 1_400_000 + index,
+      productName: row.name,
+      imageUrl: row.image,
+      category: 'Товары',
+    };
+  });
+}
+
+const INSIGHT_PREVIEW_FOOTER_BTN_CLASS =
+  'inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-[#ececef] px-2 py-1.5 text-[11px] font-medium leading-none text-gray-700 transition-colors hover:bg-[#e2e2e6]';
+
+const INSIGHT_PREVIEW_FOOTER_LINK_CLASS =
+  'shrink-0 whitespace-nowrap text-[11px] font-semibold leading-none text-[#2979FF] transition-colors hover:underline';
+
+function OverviewInsightProductPreviewCard({
+  icon,
+  iconToneClassName,
+  title,
+  panelVariant,
+  onShowAll,
+  onBulkAction,
+  onRowAction,
+}: {
+  icon: React.ReactNode;
+  iconToneClassName: string;
+  title: string;
+  panelVariant: 'budget' | 'stock' | 'launch';
+  onShowAll: () => void;
+  onBulkAction: () => void;
+  onRowAction: (row: InsightPreviewRow) => void;
+}) {
+  const allRows = insightPreviewRows(panelVariant);
+  const visibleRows = allRows.slice(0, INSIGHT_PREVIEW_MAX_ROWS);
+  const totalCount = allRows.length;
+  const restCount = totalCount - visibleRows.length;
+  const rowCta = insightPreviewRowCta(panelVariant);
+  const bulkCta = insightPreviewBulkCta(panelVariant);
+
+  return (
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-[20px] bg-white px-3 py-3 shadow-sm">
+      <div className="flex shrink-0 items-center gap-2">
+        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${iconToneClassName}`}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="mb-0 flex min-w-0 items-baseline gap-1.5 text-sm font-bold leading-none text-gray-900">
+            <span className="truncate">{title}</span>
+            <span className="shrink-0 font-semibold tabular-nums text-gray-400">{totalCount}</span>
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 flex min-h-0 flex-1 flex-col border-t border-gray-100 pt-2">
+        <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden">
+          {visibleRows.map((row) => (
+            <li
+              key={row.id}
+              className="group flex shrink-0 items-center gap-2 rounded-lg pt-1 pb-0 hover:bg-gray-50/80"
+            >
+              <OverviewProductImage src={row.image} sizeClass={INSIGHT_PREVIEW_THUMB_CLASS} />
+              <div className="min-w-0 flex-1">
+                <p className="mb-0 truncate text-xs font-normal leading-tight text-gray-500">{row.name}</p>
+              </div>
+              <button
+                type="button"
+                className={`${INSIGHT_PREVIEW_CTA_CLASS} opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRowAction(row);
+                }}
+              >
+                {rowCta}
+              </button>
+            </li>
+          ))}
+        </ul>
+        {restCount > 0 ? (
+          <div className="mt-auto flex shrink-0 items-center gap-3 pt-0.5">
+            <button
+              type="button"
+              className={INSIGHT_PREVIEW_FOOTER_BTN_CLASS}
+              onClick={(e) => {
+                e.stopPropagation();
+                onBulkAction();
+              }}
+            >
+              {bulkCta}
+            </button>
+            <button
+              type="button"
+              className={INSIGHT_PREVIEW_FOOTER_LINK_CLASS}
+              onClick={(e) => {
+                e.stopPropagation();
+                onShowAll();
+              }}
+            >
+              Смотреть все
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
@@ -2495,6 +2618,29 @@ const CHANNEL_INSIGHT_BY_PERIOD: Record<Period, React.ReactNode> = {
 const OverviewPage: React.FC = () => {
   const navigate = useNavigate();
   const { applyFilter } = useCampaignsInsightFilter();
+  const overviewBridge = useOverviewBridge();
+  const [isInsightMassBudgetModalOpen, setIsInsightMassBudgetModalOpen] = useState(false);
+  const [insightMassBudgetCampaignCount, setInsightMassBudgetCampaignCount] = useState(
+    INSIGHT_PREVIEW_LIST_SIZE,
+  );
+
+  const openInsightMassBudgetRefill = useCallback((campaignCount: number) => {
+    setInsightMassBudgetCampaignCount(Math.max(1, campaignCount));
+    setIsInsightMassBudgetModalOpen(true);
+  }, []);
+
+  const handleInsightPreviewRowAction = useCallback(
+    (panelVariant: 'budget' | 'stock' | 'launch', row: InsightPreviewRow) => {
+      if (panelVariant === 'stock') {
+        overviewBridge?.openMassCreationWithProducts(
+          insightPreviewRowsToMassCreationItems([row]),
+        );
+        return;
+      }
+      openInsightMassBudgetRefill(1);
+    },
+    [overviewBridge, openInsightMassBudgetRefill],
+  );
 
   const showInList = (kind: CampaignsInsightFilterKind, label: string) => () => {
     applyFilter(kind, label);
@@ -2735,33 +2881,36 @@ const OverviewPage: React.FC = () => {
                 <div
                   className={`grid grid-cols-1 overflow-visible md:grid-cols-3 md:items-stretch ${OV.stack}`}
                 >
-                  <OverviewInsightAlertCard
+                  <OverviewInsightProductPreviewCard
                     icon={<AlertBudgetIcon />}
                     iconToneClassName="bg-rose-50 text-rose-600"
                     title="Закончился бюджет"
-                    countLabel="3 кампании"
-                    buttonLabel="Пополнить"
                     panelVariant="budget"
-                    onButtonClick={showInList('budget', 'Закончился бюджет')}
+                    onShowAll={showInList('budget', 'Закончился бюджет')}
+                    onBulkAction={() => openInsightMassBudgetRefill(BUDGET_EMPTY_CAMPAIGNS.length)}
+                    onRowAction={(row) => handleInsightPreviewRowAction('budget', row)}
                   />
-                  <OverviewInsightAlertCard
+                  <OverviewInsightProductPreviewCard
                     icon={<AlertStockIcon />}
                     iconToneClassName="bg-amber-50 text-amber-600"
-                    title="Закончились остатки"
-                    countLabel="2 товара"
-                    buttonLabel="Проверить"
+                    title="Идет А/Б тест"
                     panelVariant="stock"
-                    onButtonClick={showInList('stock', 'Закончились остатки')}
+                    onShowAll={showInList('stock', 'Идет А/Б тест')}
+                    onBulkAction={() =>
+                      overviewBridge?.openMassCreationWithProducts(
+                        insightPreviewRowsToMassCreationItems(STOCK_OUT_PRODUCTS),
+                      )
+                    }
+                    onRowAction={(row) => handleInsightPreviewRowAction('stock', row)}
                   />
-                  <OverviewInsightAlertCard
+                  <OverviewInsightProductPreviewCard
                     icon={<AlertGrowthChartIcon />}
                     iconToneClassName="bg-[#9a41fe]/10 text-[#9a41fe]"
                     title="Готовы к запуску"
-                    countLabel="7 кампаний"
-                    buttonLabel="Продвигать"
                     panelVariant="launch"
-                    dropdownAlign="end"
-                    onButtonClick={showInList('launch', 'Готовы к запуску')}
+                    onShowAll={showInList('launch', 'Готовы к запуску')}
+                    onBulkAction={() => openInsightMassBudgetRefill(READY_TO_LAUNCH_CAMPAIGNS.length)}
+                    onRowAction={(row) => handleInsightPreviewRowAction('launch', row)}
                   />
                 </div>
 
@@ -3057,6 +3206,13 @@ const OverviewPage: React.FC = () => {
           </div>
         </div>
       </div>
+      <BudgetRefillModal
+        isOpen={isInsightMassBudgetModalOpen}
+        onClose={() => setIsInsightMassBudgetModalOpen(false)}
+        onSave={() => setIsInsightMassBudgetModalOpen(false)}
+        currentBudget={0}
+        campaignCount={insightMassBudgetCampaignCount}
+      />
     </main>
   );
 };

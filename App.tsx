@@ -28,6 +28,7 @@ import FinancePage from './pages/FinancePage';
 import BonusesPage from './pages/BonusesPage';
 import OverviewPage from './pages/OverviewPage';
 import { CampaignsInsightFilterProvider } from './context/CampaignsInsightFilterContext';
+import { OverviewBridgeProvider } from './context/OverviewBridgeContext';
 
 // --- Types ---
 interface TemplateGroup {
@@ -2881,25 +2882,34 @@ export default function App() {
           }
         />
         <CampaignsInsightFilterProvider>
-          <Routes>
-            <Route
-              path="/campaigns"
-              element={<CampaignsPage>{campaignsListContent}</CampaignsPage>}
-            />
-            <Route
-              path="/campaigns-with-widgets"
-              element={
-                <CampaignsWithWidgetsPage>
-                  <CampaignsPage>{campaignsListContent}</CampaignsPage>
-                </CampaignsWithWidgetsPage>
-              }
-            />
-            <Route path="/overview" element={<OverviewPage />} />
-            <Route path="/stats" element={<StatsPage />} />
-            <Route path="/finance" element={<FinancePage />} />
-            <Route path="/bonuses" element={<BonusesPage />} />
-            <Route path="/" element={<Navigate to="/campaigns" replace />} />
-          </Routes>
+          <OverviewBridgeProvider
+            value={{
+              openMassCreationWithProducts: (items) =>
+                handleNavigationAttempt(() =>
+                  handleNavigateToCreationWithSingleCampaignProducts(items),
+                ),
+            }}
+          >
+            <Routes>
+              <Route
+                path="/campaigns"
+                element={<CampaignsPage>{campaignsListContent}</CampaignsPage>}
+              />
+              <Route
+                path="/campaigns-with-widgets"
+                element={
+                  <CampaignsWithWidgetsPage>
+                    <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                  </CampaignsWithWidgetsPage>
+                }
+              />
+              <Route path="/overview" element={<OverviewPage />} />
+              <Route path="/stats" element={<StatsPage />} />
+              <Route path="/finance" element={<FinancePage />} />
+              <Route path="/bonuses" element={<BonusesPage />} />
+              <Route path="/" element={<Navigate to="/campaigns" replace />} />
+            </Routes>
+          </OverviewBridgeProvider>
         </CampaignsInsightFilterProvider>
       </div>
     );

@@ -1900,7 +1900,7 @@ const DailyLimitModal: React.FC<{
   );
 };
 
-const BudgetRefillModal: React.FC<{
+export const BudgetRefillModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   onSave: (amount: number) => void;
