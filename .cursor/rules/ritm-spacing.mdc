@@ -1,0 +1,31 @@
+---
+description: Ritm UI spacing scale (4px grid, inner < outer) for WB promotion surfaces
+globs: pages/**/*.tsx,components/**/*.tsx
+alwaysApply: false
+---
+
+# Ritm spacing
+
+Base unit **4px**. Use only these steps: **4 · 8 · 12 · 16 · 24 · 32** (Tailwind `1 · 2 · 3 · 4 · 6 · 8` or explicit `gap-[4px]` where needed).
+
+## Hard rules
+
+1. **Minimum 4px** between distinct UI pieces (text lines, control groups). Never `gap-0` / `mt-0` between label and value stacks — use at least `gap-1` / `mt-1`.
+2. **Outer > inner**: gap between page sections > gap inside a card > gap between title and subtitle (e.g. page `space-y-6` → card blocks `gap-4` / `mt-4` → title+caption `gap-[4px]`).
+3. **Stacked text**: `leading-none` on title + caption pairs; spacing via **gap**, not loose `leading-snug` on `<p>`.
+4. **Card padding**: compact widgets `p-3` (12px), main sections `p-4` (16px). Prefer one padding per card type.
+5. **Content → primary CTA**: **16px** (`gap-4` / `mt-4`), not mixed `mt-2`/`mt-5` without reason.
+6. **Icon + text row**: **8px** (`gap-2`).
+7. **Grids of cards**: **16px** (`gap-4`) between cards; **12px** (`gap-3`) only for dense toolbars/sidebar stacks.
+
+## Semantic tokens (Overview / Ritm cards)
+
+| Token | px | Use |
+|-------|-----|-----|
+| tight | 4 | Title + subtitle, name + article |
+| inline | 8 | Icon + text, toggle groups |
+| group | 12 | Sidebar card stack, compact internal groups |
+| stack | 16 | Text block → button, subsection spacing (`mt-4`) |
+| page | 24 | Between major page blocks (`space-y-6`, `gap-6`) |
+
+When in doubt, pick the **smaller** inner step and the **larger** outer step — never the reverse.

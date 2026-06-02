@@ -2131,14 +2131,6 @@ function Widgets2Strip({
   onPromoteItem: (item: Widgets2Card['item']) => void;
   onOpenBudgetHint: () => void;
 }) {
-  const toneBadge =
-    (tone: Widgets2Card['tone']) =>
-    tone === 'rose'
-      ? 'bg-rose-50 text-rose-700'
-      : tone === 'amber'
-        ? 'bg-amber-50 text-amber-700'
-        : 'bg-emerald-50 text-emerald-700';
-
   return (
     <div className="flex w-full min-w-0 items-stretch gap-2 overflow-visible">
       {items.map((card) => (
@@ -2155,39 +2147,95 @@ function Widgets2Strip({
           >
             <X className="h-4 w-4" aria-hidden />
           </button>
+
           <div className="min-w-0 pr-9">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold leading-none text-gray-900">{card.title}</span>
-              <span
-                className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneBadge(card.tone)}`}
-              >
-                {card.subtitle}
-              </span>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-end justify-between gap-2 pb-1">
+                <div className="min-w-0 text-sm font-bold leading-none text-gray-900">{card.title}</div>
+              </div>
             </div>
 
-            <div className="mt-3 flex min-w-0 items-center gap-2 rounded-lg bg-gray-50/60 px-2 py-2">
-              <img
-                src={card.item.image}
-                alt=""
-                className="h-7 w-7 shrink-0 rounded-md bg-gray-100 object-cover"
-              />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-xs font-semibold text-gray-900">{card.item.name}</div>
-                <div className="mt-0.5 text-[11px] leading-none text-gray-500">NM {card.item.nmId}</div>
+            <div className="mt-3 flex min-w-0 flex-1 flex-col rounded-lg px-0 py-0">
+              <div className="flex min-w-0 items-center gap-2 pb-2">
+                <img
+                  src={card.item.image}
+                  alt=""
+                  className="h-7 w-7 shrink-0 rounded-md bg-gray-100 object-cover"
+                  loading="lazy"
+                  onError={(e) => {
+                    const img = e.currentTarget;
+                    if (img.src !== PRODUCT_TABLE_THUMB_FALLBACK) img.src = PRODUCT_TABLE_THUMB_FALLBACK;
+                  }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-semibold text-gray-900">{card.item.name}</div>
+                  <div className="mt-0.5 text-[11px] leading-none text-gray-500">{card.item.nmId}</div>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (card.id === 'views-drop') {
-                    onOpenBudgetHint();
-                    return;
-                  }
-                  onPromoteItem(card.item);
-                }}
-                className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-              >
-                {card.ctaLabel}
-              </button>
+              <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (card.id === 'views-drop') {
+                      onOpenBudgetHint();
+                      return;
+                    }
+                    onPromoteItem(card.item);
+                  }}
+                  className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                >
+                  {card.ctaLabel}
+                </button>
+
+                {card.id === 'good-sales' ? (
+                  <div className="shrink-0 -mr-9 text-right">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-end gap-0.5" aria-hidden>
+                        <div className="h-2 w-1 rounded-sm bg-emerald-200" />
+                        <div className="h-3 w-1 rounded-sm bg-emerald-200" />
+                        <div className="h-4 w-1 rounded-sm bg-emerald-200" />
+                        <div className="h-3 w-1 rounded-sm bg-emerald-300" />
+                        <div className="h-5 w-1 rounded-sm bg-emerald-500" />
+                      </div>
+                      <div className="text-[11px] font-medium leading-none text-gray-400">
+                        Увеличьте продажи с продвижением
+                      </div>
+                    </div>
+                  </div>
+                ) : card.id === 'start-promo' ? (
+                  <div className="shrink-0 -mr-9 text-right">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="rounded-md bg-rose-50 p-1" aria-hidden>
+                        <div className="flex items-center gap-0.5">
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
+                        </div>
+                      </div>
+                      <div className="text-[11px] font-medium leading-none text-gray-400">
+                        Недобор показов без продвижения
+                      </div>
+                    </div>
+                  </div>
+                ) : card.id === 'views-drop' ? (
+                  <div className="shrink-0 -mr-9 text-right">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="rounded-md bg-rose-50 p-1" aria-hidden>
+                        <div className="flex items-center gap-0.5">
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
+                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
+                        </div>
+                      </div>
+                      <div className="text-[11px] font-medium leading-none text-gray-400">
+                        Недобор показов из-за низкого бюджета
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         </section>
@@ -3756,28 +3804,34 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     const p1 = profileProductTree[1] ?? p0;
     const c0 = profileCampaigns[0];
 
+    const demoImages = [
+      'https://images.unsplash.com/photo-1595777457583-95e059d58199?w=80&h=80&fit=crop&auto=format&q=80',
+      'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=80&h=80&fit=crop&auto=format&q=80',
+      'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=80&h=80&fit=crop&auto=format&q=80',
+    ] as const;
+
     return [
       {
         id: 'start-promo',
-        title: 'Запусти продвижение',
+        title: 'Товар без продвижения',
         subtitle: 'Вы теряете продажи',
         tone: 'rose',
         item: {
           nmId: p0?.nmId ?? 1400001,
-          name: p0?.productName ?? 'Товар без продвижения',
-          image: p0?.imageUrl ?? PRODUCT_TABLE_THUMB_FALLBACK,
+          name: p0?.productName ?? 'Летнее платье «Ривьера»',
+          image: p0?.imageUrl ?? demoImages[0],
         },
-        ctaLabel: 'Запустить',
+        ctaLabel: 'Продвигать',
       },
       {
         id: 'good-sales',
-        title: 'Этот товар хорошо продается',
+        title: 'Товар хорошо продается',
         subtitle: 'Высокий GMV, нет продвижения',
         tone: 'emerald',
         item: {
           nmId: p1?.nmId ?? 1400002,
-          name: p1?.productName ?? 'Товар с высоким GMV',
-          image: p1?.imageUrl ?? PRODUCT_TABLE_THUMB_FALLBACK,
+          name: p1?.productName ?? 'Вечернее платье «Грация»',
+          image: p1?.imageUrl ?? demoImages[1],
         },
         ctaLabel: 'Продвигать',
       },
@@ -3788,8 +3842,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         tone: 'amber',
         item: {
           nmId: c0?.nmId ?? p0?.nmId ?? 1400003,
-          name: c0?.productName ?? 'Кампания с падением показов',
-          image: c0?.imageUrl ?? p0?.imageUrl ?? PRODUCT_TABLE_THUMB_FALLBACK,
+          name: c0?.productName ?? 'Платье-футляр «Офис»',
+          image: c0?.imageUrl ?? p0?.imageUrl ?? demoImages[2],
         },
         ctaLabel: 'Увеличить бюджет',
       },
@@ -4356,13 +4410,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     );
   };
 
-  const showNotificationCardVariantPicker =
-    profileId === '1' && listTab === 'campaigns' && !isCampaignsWithWidgetsPage;
-
   return (
     <div
       className={`animate-in fade-in duration-300 mx-auto w-full max-w-[1920px] min-h-full bg-[#F3F5F8] ${
-        showNotificationCardVariantPicker ? 'pb-24' : ''
+        ''
       }`}
     >
       {isLaunching && <CompactLaunchLoader total={launchTotal} />}
@@ -5636,30 +5687,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         />
       )}
 
-      {showNotificationCardVariantPicker && (
-        <div
-          className="fixed bottom-0 left-0 right-0 z-[45] border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-6px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
-          role="toolbar"
-          aria-label="Вариант карточки уведомления"
-        >
-          <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center justify-center gap-2 sm:gap-3">
-            {([1, 2, 3, 4] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setNotificationCardVariant(v)}
-                className={`min-w-[7.5rem] rounded-lg px-5 py-2.5 text-sm font-medium transition-colors ${
-                  notificationCardVariant === v
-                    ? 'bg-[#9a41fe] text-white shadow-sm'
-                    : 'border border-gray-200 bg-gray-50 text-gray-800 hover:bg-gray-100'
-                }`}
-              >
-                Вариант {v}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* demo variant picker removed for this page */}
 
     </div>
   );

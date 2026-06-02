@@ -2735,28 +2735,11 @@ const OverviewPage: React.FC = () => {
     // Demo: fixed value for preview iterations.
     const score = 74;
 
-    const label =
-      score >= 85
-        ? 'Отличное состояние'
-        : score >= 70
-          ? 'Хорошее состояние'
-          : score >= 55
-            ? 'Есть риски'
-            : 'Нужно внимание';
+    const stageIndex = score >= 75 ? 3 : score >= 50 ? 2 : score >= 25 ? 1 : 0;
+    const stageLabel = (['Плохо', 'Нормально', 'Хорошо', 'Отлично'] as const)[stageIndex];
+    const stageTone = (['bg-rose-500', 'bg-amber-400', 'bg-lime-500', 'bg-emerald-500'] as const)[stageIndex];
 
-    const hint =
-      score >= 85
-        ? 'Продолжайте в том же темпе — показатели выглядят устойчиво.'
-        : score >= 70
-          ? 'Пара точечных правок — и кабинет будет в идеальном состоянии.'
-          : score >= 55
-            ? 'Проверьте ставки и распределение бюджета — часть кампаний недополучает трафик.'
-            : 'Сначала закройте критичные алерты: бюджет/остатки, затем оптимизируйте ставки.';
-
-    const markerTone =
-      score >= 85 ? 'bg-emerald-500' : score >= 70 ? 'bg-lime-500' : score >= 55 ? 'bg-amber-500' : 'bg-rose-500';
-
-    return { score, label, hint, markerTone };
+    return { score, stageIndex, stageLabel, stageTone };
   }, []);
 
   const healthImproveItems = useMemo(() => {
@@ -3109,8 +3092,8 @@ const OverviewPage: React.FC = () => {
                   <div className="flex items-start justify-between gap-3">
                     <h2 className="text-lg font-bold text-gray-900">Здоровье кабинета</h2>
                     <div className="shrink-0 text-right">
-                      <div className="text-2xl font-bold leading-none tabular-nums text-gray-900">
-                        {promotionHealth.score}%
+                      <div className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold leading-none text-emerald-700">
+                        {promotionHealth.stageLabel}
                       </div>
                     </div>
                   </div>
@@ -3129,9 +3112,7 @@ const OverviewPage: React.FC = () => {
                         <div className="w-[min(420px,92vw)] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_16px_48px_rgba(0,0,0,0.14)]">
                           <div className="flex items-center justify-between px-4 py-3">
                             <div className="text-sm font-semibold text-gray-900">Что улучшить</div>
-                            <div className="text-xs font-semibold text-gray-500 tabular-nums">
-                              {promotionHealth.score}% здоровья
-                            </div>
+                              {/* removed: "{score}% здоровья" */}
                           </div>
                           <div className="h-px bg-gray-100" />
                           <div className="p-2">
