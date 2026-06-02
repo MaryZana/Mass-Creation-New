@@ -2131,12 +2131,157 @@ function Widgets2Strip({
   onPromoteItem: (item: Widgets2Card['item']) => void;
   onOpenBudgetHint: () => void;
 }) {
+  const promotionHealth = useMemo(() => {
+    // Demo: fixed value for preview iterations.
+    const score = 74;
+
+    const stageIndex = score >= 75 ? 3 : score >= 50 ? 2 : score >= 25 ? 1 : 0;
+    const stageLabel = (['Плохо', 'Нормально', 'Хорошо', 'Отлично'] as const)[stageIndex];
+    const stageTone = (['bg-rose-500', 'bg-amber-400', 'bg-lime-500', 'bg-emerald-500'] as const)[stageIndex];
+
+    return { score, stageIndex, stageLabel, stageTone };
+  }, []);
+
+  const healthImproveItems = useMemo(() => {
+    // Demo factors: replace with real inputs later (coverage/profit/roas/etc).
+    const coveragePromoted = 100;
+    const coverageTotal = 500;
+    const roasPct = 292;
+    const roasTargetPct = 320;
+
+    const items = [
+      {
+        title: 'Покрытие ассортимента',
+        subtitle: `Продвигаются ${coveragePromoted}/${coverageTotal} товаров`,
+        weight: -(coverageTotal - coveragePromoted >= 250 ? 10 : coverageTotal - coveragePromoted >= 150 ? 8 : 5),
+      },
+      {
+        title: 'Работа с кластерами',
+        subtitle: 'Проверьте неэффективные кластера',
+        weight: -(roasPct < roasTargetPct * 0.85 ? 8 : roasPct < roasTargetPct ? 5 : 1),
+      },
+      {
+        title: 'Нехватка бюджета',
+        subtitle: '3 кампании остановились из‑за бюджета',
+        weight: -6,
+      },
+      {
+        title: 'Остатки',
+        subtitle: '2 товара с низкими остатками в рекламе',
+        weight: -4,
+      },
+    ] as const;
+
+    return items.sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
+  }, []);
+
+  const healthImproveHint = useMemo(() => {
+    const top = healthImproveItems.slice(0, 2);
+    if (top.length === 0) return '';
+    const t0 = top[0]!.title;
+    const t1 = top[1]?.title;
+    if (!t1) return `В первую очередь улучшите: ${t0}`;
+    return `Улучшите в первую очередь: ${t0}, ${t1}`;
+  }, [healthImproveItems]);
+
   return (
     <div className="flex w-full min-w-0 items-stretch gap-2 overflow-visible">
+      <section className="group flex min-h-0 min-w-0 flex-[0.85] flex-col rounded-[20px] bg-white p-3 shadow-sm">
+        <div className="flex items-start justify-between gap-3 pb-3">
+          <h2 className="text-sm font-bold leading-none text-gray-900">Здоровье кабинета</h2>
+          <div className="shrink-0 text-right">
+            <div className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold leading-none text-emerald-700">
+              {promotionHealth.stageLabel}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-0">
+          <div className="relative">
+            <div className="relative h-2 w-full rounded-full bg-gradient-to-r from-rose-500 via-amber-400 to-emerald-500">
+              <div
+                className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2"
+                style={{ left: `${promotionHealth.score}%` }}
+              >
+                <div className="h-5 w-[4px] rounded-full bg-gray-900/80 shadow-sm ring-2 ring-white/90" />
+              </div>
+            </div>
+            <div className="pointer-events-none absolute left-0 top-full z-50 pt-3 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100">
+              <div className="w-[min(420px,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-[0_16px_48px_rgba(0,0,0,0.14)]">
+                <div className="flex items-center justify-between px-4 py-3">
+                  <div className="text-sm font-semibold text-gray-900">Что улучшить</div>
+                </div>
+                <div className="h-px bg-gray-100" />
+                <div className="p-2">
+                  <div className="flex flex-col gap-2">
+                    {healthImproveItems.map((row) => (
+                      <div
+                        key={row.title}
+                        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2 hover:bg-gray-50"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-900">{row.title}</span>
+                          </div>
+                          <div className="mt-0.5 truncate text-xs text-gray-500">{row.subtitle}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <p className="mt-3 text-xs leading-snug text-gray-600">
+            {healthImproveHint}
+          </p>
+        </div>
+      </section>
+
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-white p-4 shadow-sm">
+        <div className="mt-3 grid w-full min-w-0 grid-cols-[1fr_130px] items-baseline gap-x-3 gap-y-3">
+          <div className="text-[11px] leading-none text-[#767386]">Сумма заказов</div>
+          <div className="flex items-baseline gap-2 leading-none justify-self-start">
+            <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">196 000 ₽</div>
+            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+              <ArrowUp className="h-2.5 w-2.5" aria-hidden />
+              1.9%
+            </div>
+          </div>
+
+          <div className="text-[11px] leading-none text-[#767386]">Затраты</div>
+          <div className="flex items-baseline gap-2 leading-none justify-self-start">
+            <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">10 000 ₽</div>
+            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+              <ArrowUp className="h-2.5 w-2.5 rotate-180" aria-hidden />
+              3.1%
+            </div>
+          </div>
+
+          <div className="text-[11px] leading-none text-[#767386]">Доля затрат</div>
+          <div className="flex items-baseline gap-2 leading-none justify-self-start">
+            <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">9,7 %</div>
+            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+              <ArrowUp className="h-2.5 w-2.5" aria-hidden />
+              5.8%
+            </div>
+          </div>
+
+          <div className="text-[11px] leading-none text-[#767386]">CTR</div>
+          <div className="flex items-baseline gap-2 leading-none justify-self-start">
+            <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">4,7 %</div>
+            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+              <ArrowUp className="h-2.5 w-2.5" aria-hidden />
+              12.6%
+            </div>
+          </div>
+        </div>
+      </section>
+
       {items.map((card) => (
         <section
           key={card.id}
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-white p-4 shadow-sm"
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-white p-4 pb-2 shadow-sm"
         >
           <button
             type="button"
@@ -2150,7 +2295,27 @@ function Widgets2Strip({
 
           <div className="min-w-0 pr-9">
             <div className="min-w-0">
-              <div className="flex min-w-0 items-end justify-between gap-2 pb-1">
+              <div className="flex min-w-0 items-center gap-2 pb-1">
+                <div className="shrink-0" aria-hidden>
+                  {card.id === 'good-sales' ? (
+                    <div className="flex items-end gap-0.5">
+                      <div className="h-2 w-1 rounded-sm bg-emerald-200" />
+                      <div className="h-3 w-1 rounded-sm bg-emerald-200" />
+                      <div className="h-4 w-1 rounded-sm bg-emerald-200" />
+                      <div className="h-3 w-1 rounded-sm bg-emerald-300" />
+                      <div className="h-5 w-1 rounded-sm bg-emerald-500" />
+                    </div>
+                  ) : (
+                    <div className="rounded-md bg-rose-50 p-1">
+                      <div className="flex items-center gap-0.5">
+                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
+                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
+                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
+                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <div className="min-w-0 text-sm font-bold leading-none text-gray-900">{card.title}</div>
               </div>
             </div>
@@ -2160,7 +2325,7 @@ function Widgets2Strip({
                 <img
                   src={card.item.image}
                   alt=""
-                  className="h-7 w-7 shrink-0 rounded-md bg-gray-100 object-cover"
+                  className="h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover"
                   loading="lazy"
                   onError={(e) => {
                     const img = e.currentTarget;
@@ -2169,72 +2334,69 @@ function Widgets2Strip({
                 />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-semibold text-gray-900">{card.item.name}</div>
-                  <div className="mt-0.5 text-[11px] leading-none text-gray-500">{card.item.nmId}</div>
+                  <div className="mt-0.5 text-[11px] leading-none text-gray-500">
+                    {card.id === 'good-sales'
+                      ? 'Увеличьте продажи с продвижением'
+                      : card.id === 'start-promo'
+                        ? 'Недобор показов без продвижения'
+                        : card.id === 'views-drop'
+                          ? 'Недобор показов из-за низкого бюджета'
+                          : card.item.nmId}
+                  </div>
                 </div>
               </div>
-              <div className="mt-auto flex items-end justify-between gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (card.id === 'views-drop') {
-                      onOpenBudgetHint();
-                      return;
-                    }
-                    onPromoteItem(card.item);
-                  }}
-                  className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-                >
-                  {card.ctaLabel}
-                </button>
-
+              <div className="mt-auto pt-2">
                 {card.id === 'good-sales' ? (
-                  <div className="shrink-0 -mr-9 text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="flex items-end gap-0.5" aria-hidden>
-                        <div className="h-2 w-1 rounded-sm bg-emerald-200" />
-                        <div className="h-3 w-1 rounded-sm bg-emerald-200" />
-                        <div className="h-4 w-1 rounded-sm bg-emerald-200" />
-                        <div className="h-3 w-1 rounded-sm bg-emerald-300" />
-                        <div className="h-5 w-1 rounded-sm bg-emerald-500" />
-                      </div>
-                      <div className="text-[11px] font-medium leading-none text-gray-400">
-                        Увеличьте продажи с продвижением
-                      </div>
-                    </div>
+                  <div className="flex flex-col items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onPromoteItem(card.item)}
+                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                    >
+                      {card.ctaLabel}
+                    </button>
                   </div>
                 ) : card.id === 'start-promo' ? (
-                  <div className="shrink-0 -mr-9 text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="rounded-md bg-rose-50 p-1" aria-hidden>
-                        <div className="flex items-center gap-0.5">
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
-                        </div>
-                      </div>
-                      <div className="text-[11px] font-medium leading-none text-gray-400">
-                        Недобор показов без продвижения
-                      </div>
-                    </div>
+                  <div className="flex flex-col items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (card.id === 'views-drop') {
+                          onOpenBudgetHint();
+                          return;
+                        }
+                        onPromoteItem(card.item);
+                      }}
+                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                    >
+                      {card.ctaLabel}
+                    </button>
                   </div>
                 ) : card.id === 'views-drop' ? (
-                  <div className="shrink-0 -mr-9 text-right">
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="rounded-md bg-rose-50 p-1" aria-hidden>
-                        <div className="flex items-center gap-0.5">
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
-                          <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
-                        </div>
-                      </div>
-                      <div className="text-[11px] font-medium leading-none text-gray-400">
-                        Недобор показов из-за низкого бюджета
-                      </div>
-                    </div>
+                  <div className="flex flex-col items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenBudgetHint();
+                      }}
+                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                    >
+                      {card.ctaLabel}
+                    </button>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="flex justify-start">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onPromoteItem(card.item);
+                      }}
+                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                    >
+                      {card.ctaLabel}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -3787,6 +3949,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const location = useLocation();
   const isCampaignsWithWidgetsPage = location.pathname === '/campaigns-with-widgets';
   const isCampaignsWithWidgets2Page = location.pathname === '/campaigns-with-widgets-2';
+  const isCampaignsPage = location.pathname === '/campaigns';
   const insightFilterCtx = useCampaignsInsightFilterOptional();
   const insightFilter =
     (isCampaignsWithWidgetsPage || isCampaignsWithWidgets2Page) && insightFilterCtx
@@ -4413,7 +4576,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   return (
     <div
       className={`animate-in fade-in duration-300 mx-auto w-full max-w-[1920px] min-h-full bg-[#F3F5F8] ${
-        ''
+        isCampaignsPage ? 'pb-24' : ''
       }`}
     >
       {isLaunching && <CompactLaunchLoader total={launchTotal} />}
@@ -4475,174 +4638,178 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       {/* Шапка списка кампаний (под главной шапкой сайта) */}
       <div className="-mx-6 mb-0 px-6 pt-0 pb-4">
         <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
-            <div
-              className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
-              role="tablist"
-              aria-label="Раздел списка"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={listTab === 'campaigns'}
-                onClick={() => setListTab('campaigns')}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                  listTab === 'campaigns'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-[#767386] hover:text-gray-900'
-                }`}
-              >
-                Кампании
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={listTab === 'products'}
-                onClick={() => setListTab('products')}
-                className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                  listTab === 'products'
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-[#767386] hover:text-gray-900'
-                }`}
-              >
-                Товары
-              </button>
-            </div>
-
-            <CreateCampaignDropdown
-              onNavigateToCreation={onNavigateToCreation}
-              onOpenSingleCampaign={onOpenSingleCampaign}
-              onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
-            />
-
-            <ExcelActionsDropdown
-              onOpenUpload={onOpenUploadEditsModal}
-              onOpenHistory={onOpenHistoryModal}
-              showUploadHint={showUploadHint}
-              onDismissUploadHint={onDismissUploadHint}
-            />
-
-            <div className="relative min-w-[200px] flex-1">
-              <Search
-                className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
-                aria-hidden
-              />
-              <input
-                type="text"
-                placeholder={
-                  listTab === 'campaigns'
-                    ? 'Поиск по ID кампании или названию'
-                    : 'Поиск по товару, артикулу или кампании'
-                }
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white pl-10 pr-3 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
-              />
-            </div>
-
-            <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
-              <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
-                  className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
-                >
-                  <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
-                  <span>Фильтр</span>
-                </button>
-                {(listTab === 'campaigns' || listTab === 'products') && (
-                  <FilterDropdown
-                    variant={listTab === 'products' ? 'products' : 'campaigns'}
-                    isOpen={isFilterDropdownOpen}
-                    onClose={handleCancelFilters}
-                    onApply={handleApplyFilters}
-                    productCategoryOptions={productFilterCategoryOptions}
-                    productsSection={tempProductsFilterSection}
-                    onProductsSectionChange={setTempProductsFilterSection}
-                    tempProductCategories={tempFilterProductCategories}
-                    onTempProductCategoriesChange={setTempFilterProductCategories}
-                    tempConflictOnly={tempFilterConflictOnly}
-                    onTempConflictOnlyChange={setTempFilterConflictOnly}
-                    tempCampaignTypes={tempFilterCampaignTypes}
-                    onTempCampaignTypesChange={setTempFilterCampaignTypes}
-                    category={filterCategory}
-                    onCategoryChange={setFilterCategory}
-                    status={filterStatus}
-                    onStatusChange={setFilterStatus}
-                    autorefill={filterAutorefill}
-                    onAutorefillChange={setFilterAutorefill}
-                    payment={filterPayment}
-                    onPaymentChange={setFilterPayment}
-                    sort={filterSort}
-                    onSortChange={setFilterSort}
-                    filterByCategory={filterByCategory}
-                    onFilterByCategoryChange={setFilterByCategory}
-                    tempCategory={tempFilterCategory}
-                    onTempCategoryChange={setTempFilterCategory}
-                    tempStatus={tempFilterStatus}
-                    onTempStatusChange={setTempFilterStatus}
-                    tempAutorefill={tempFilterAutorefill}
-                    onTempAutorefillChange={setTempFilterAutorefill}
-                    tempPayment={tempFilterPayment}
-                    onTempPaymentChange={setTempFilterPayment}
-                    tempSort={tempFilterSort}
-                    onTempSortChange={setTempFilterSort}
-                    tempFilterByCategory={tempFilterByCategory}
-                    onTempFilterByCategoryChange={setTempFilterByCategory}
-                    tempTags={tempTags}
-                    onTempTagsChange={setTempTags}
-                    tempTagsSearch={tempTagsSearch}
-                    onTempTagsSearchChange={setTempTagsSearch}
-                    tempTagsCategory={tempTagsCategory}
-                    onTempTagsCategoryChange={setTempTagsCategory}
-                    tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
-                    onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
-                    availableTags={availableTags}
-                  />
-                )}
-              </div>
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (listTab === 'products') {
-                      setIsProductsColumnSettingsOpen((prev) => !prev);
-                    }
-                  }}
-                  className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
-                    listTab === 'products' && isProductsColumnSettingsOpen
-                      ? 'ring-2 ring-[#9a41fe]/30'
-                      : ''
-                  }`}
-                  title={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
-                  aria-label={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
-                  aria-expanded={listTab === 'products' ? isProductsColumnSettingsOpen : undefined}
-                >
-                  <Settings className="h-5 w-5 text-gray-700" aria-hidden />
-                </button>
-                {listTab === 'products' && (
-                  <ProductsColumnSettingsDropdown
-                    open={isProductsColumnSettingsOpen}
-                    onClose={() => setIsProductsColumnSettingsOpen(false)}
-                    visibility={productsColumnVisibility}
-                    onToggle={(columnId, visible) => {
-                      setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
-                    }}
-                    onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-
           {isCampaignsWithWidgetsPage && (
             <div className="w-full min-w-0">
               <OverviewMiniWidgetsForCampaignsList listTab={listTab} />
             </div>
           )}
 
-          {isCampaignsWithWidgets2Page && widgets2VisibleCards.length > 0 && (
+          {isCampaignsWithWidgets2Page || isCampaignsPage ? null : (
+            <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+              <div className="flex shrink-0 items-center gap-2">
+                <div
+                  className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
+                  role="tablist"
+                  aria-label="Раздел списка"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'campaigns'}
+                    onClick={() => setListTab('campaigns')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'campaigns'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Кампании
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'products'}
+                    onClick={() => setListTab('products')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'products'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Товары
+                  </button>
+                </div>
+
+                <ExcelActionsDropdown
+                  onOpenUpload={onOpenUploadEditsModal}
+                  onOpenHistory={onOpenHistoryModal}
+                  showUploadHint={showUploadHint}
+                  onDismissUploadHint={onDismissUploadHint}
+                />
+              </div>
+
+              <CreateCampaignDropdown
+                onNavigateToCreation={onNavigateToCreation}
+                onOpenSingleCampaign={onOpenSingleCampaign}
+                onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
+              />
+
+              <div className="relative min-w-[200px] flex-1">
+                <Search
+                  className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
+                  aria-hidden
+                />
+                <input
+                  type="text"
+                  placeholder={
+                    listTab === 'campaigns'
+                      ? 'Поиск по ID кампании или названию'
+                      : 'Поиск по товару, артикулу или кампании'
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white pl-10 pr-3 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
+                />
+              </div>
+
+              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+                <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                    className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
+                  >
+                    <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                    <span>Фильтр</span>
+                  </button>
+                  {(listTab === 'campaigns' || listTab === 'products') && (
+                    <FilterDropdown
+                      variant={listTab === 'products' ? 'products' : 'campaigns'}
+                      isOpen={isFilterDropdownOpen}
+                      onClose={handleCancelFilters}
+                      onApply={handleApplyFilters}
+                      productCategoryOptions={productFilterCategoryOptions}
+                      productsSection={tempProductsFilterSection}
+                      onProductsSectionChange={setTempProductsFilterSection}
+                      tempProductCategories={tempFilterProductCategories}
+                      onTempProductCategoriesChange={setTempFilterProductCategories}
+                      tempConflictOnly={tempFilterConflictOnly}
+                      onTempConflictOnlyChange={setTempFilterConflictOnly}
+                      tempCampaignTypes={tempFilterCampaignTypes}
+                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                      category={filterCategory}
+                      onCategoryChange={setFilterCategory}
+                      status={filterStatus}
+                      onStatusChange={setFilterStatus}
+                      autorefill={filterAutorefill}
+                      onAutorefillChange={setFilterAutorefill}
+                      payment={filterPayment}
+                      onPaymentChange={setFilterPayment}
+                      sort={filterSort}
+                      onSortChange={setFilterSort}
+                      filterByCategory={filterByCategory}
+                      onFilterByCategoryChange={setFilterByCategory}
+                      tempCategory={tempFilterCategory}
+                      onTempCategoryChange={setTempFilterCategory}
+                      tempStatus={tempFilterStatus}
+                      onTempStatusChange={setTempFilterStatus}
+                      tempAutorefill={tempFilterAutorefill}
+                      onTempAutorefillChange={setTempFilterAutorefill}
+                      tempPayment={tempFilterPayment}
+                      onTempPaymentChange={setTempFilterPayment}
+                      tempSort={tempFilterSort}
+                      onTempSortChange={setTempFilterSort}
+                      tempFilterByCategory={tempFilterByCategory}
+                      onTempFilterByCategoryChange={setTempFilterByCategory}
+                      tempTags={tempTags}
+                      onTempTagsChange={setTempTags}
+                      tempTagsSearch={tempTagsSearch}
+                      onTempTagsSearchChange={setTempTagsSearch}
+                      tempTagsCategory={tempTagsCategory}
+                      onTempTagsCategoryChange={setTempTagsCategory}
+                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                      availableTags={availableTags}
+                    />
+                  )}
+                </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (listTab === 'products') {
+                        setIsProductsColumnSettingsOpen((prev) => !prev);
+                      }
+                    }}
+                    className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
+                      listTab === 'products' && isProductsColumnSettingsOpen
+                        ? 'ring-2 ring-[#9a41fe]/30'
+                        : ''
+                    }`}
+                    title={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                    aria-label={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                    aria-expanded={listTab === 'products' ? isProductsColumnSettingsOpen : undefined}
+                  >
+                    <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                  </button>
+                  {listTab === 'products' && (
+                    <ProductsColumnSettingsDropdown
+                      open={isProductsColumnSettingsOpen}
+                      onClose={() => setIsProductsColumnSettingsOpen(false)}
+                      visibility={productsColumnVisibility}
+                      onToggle={(columnId, visible) => {
+                        setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                      }}
+                      onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isCampaignsWithWidgets2Page && (
             <div className="w-full min-w-0">
               <Widgets2Strip
                 items={widgets2VisibleCards}
@@ -4652,6 +4819,172 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               />
             </div>
           )}
+
+          {isCampaignsWithWidgets2Page ? (
+            <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+              <div className="flex shrink-0 items-center gap-2">
+                <div
+                  className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
+                  role="tablist"
+                  aria-label="Раздел списка"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'campaigns'}
+                    onClick={() => setListTab('campaigns')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'campaigns'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Кампании
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'products'}
+                    onClick={() => setListTab('products')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'products'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Товары
+                  </button>
+                </div>
+
+                <ExcelActionsDropdown
+                  onOpenUpload={onOpenUploadEditsModal}
+                  onOpenHistory={onOpenHistoryModal}
+                  showUploadHint={showUploadHint}
+                  onDismissUploadHint={onDismissUploadHint}
+                />
+              </div>
+
+              <CreateCampaignDropdown
+                onNavigateToCreation={onNavigateToCreation}
+                onOpenSingleCampaign={onOpenSingleCampaign}
+                onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
+              />
+
+              <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
+
+              <div className="relative min-w-[200px] flex-1">
+                <Search
+                  className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
+                  aria-hidden
+                />
+                <input
+                  type="text"
+                  placeholder={
+                    listTab === 'campaigns'
+                      ? 'Поиск по ID кампании или названию'
+                      : 'Поиск по товару, артикулу или кампании'
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white pl-10 pr-3 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
+                />
+              </div>
+
+              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                    className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
+                  >
+                    <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                    <span>Фильтр</span>
+                  </button>
+                  {(listTab === 'campaigns' || listTab === 'products') && (
+                    <FilterDropdown
+                      variant={listTab === 'products' ? 'products' : 'campaigns'}
+                      isOpen={isFilterDropdownOpen}
+                      onClose={handleCancelFilters}
+                      onApply={handleApplyFilters}
+                      productCategoryOptions={productFilterCategoryOptions}
+                      productsSection={tempProductsFilterSection}
+                      onProductsSectionChange={setTempProductsFilterSection}
+                      tempProductCategories={tempFilterProductCategories}
+                      onTempProductCategoriesChange={setTempFilterProductCategories}
+                      tempConflictOnly={tempFilterConflictOnly}
+                      onTempConflictOnlyChange={setTempFilterConflictOnly}
+                      tempCampaignTypes={tempFilterCampaignTypes}
+                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                      category={filterCategory}
+                      onCategoryChange={setFilterCategory}
+                      status={filterStatus}
+                      onStatusChange={setFilterStatus}
+                      autorefill={filterAutorefill}
+                      onAutorefillChange={setFilterAutorefill}
+                      payment={filterPayment}
+                      onPaymentChange={setFilterPayment}
+                      sort={filterSort}
+                      onSortChange={setFilterSort}
+                      filterByCategory={filterByCategory}
+                      onFilterByCategoryChange={setFilterByCategory}
+                      tempCategory={tempFilterCategory}
+                      onTempCategoryChange={setTempFilterCategory}
+                      tempStatus={tempFilterStatus}
+                      onTempStatusChange={setTempFilterStatus}
+                      tempAutorefill={tempFilterAutorefill}
+                      onTempAutorefillChange={setTempFilterAutorefill}
+                      tempPayment={tempFilterPayment}
+                      onTempPaymentChange={setTempFilterPayment}
+                      tempSort={tempFilterSort}
+                      onTempSortChange={setTempFilterSort}
+                      tempFilterByCategory={tempFilterByCategory}
+                      onTempFilterByCategoryChange={setTempFilterByCategory}
+                      tempTags={tempTags}
+                      onTempTagsChange={setTempTags}
+                      tempTagsSearch={tempTagsSearch}
+                      onTempTagsSearchChange={setTempTagsSearch}
+                      tempTagsCategory={tempTagsCategory}
+                      onTempTagsCategoryChange={setTempTagsCategory}
+                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                      availableTags={availableTags}
+                    />
+                  )}
+                </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (listTab === 'products') {
+                        setIsProductsColumnSettingsOpen((prev) => !prev);
+                      }
+                    }}
+                    className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
+                      listTab === 'products' && isProductsColumnSettingsOpen
+                        ? 'ring-2 ring-[#9a41fe]/30'
+                        : ''
+                    }`}
+                    title={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                    aria-label={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                    aria-expanded={listTab === 'products' ? isProductsColumnSettingsOpen : undefined}
+                  >
+                    <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                  </button>
+                  {listTab === 'products' && (
+                    <ProductsColumnSettingsDropdown
+                      open={isProductsColumnSettingsOpen}
+                      onClose={() => setIsProductsColumnSettingsOpen(false)}
+                      visibility={productsColumnVisibility}
+                      onToggle={(columnId, visible) => {
+                        setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                      }}
+                      onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           {insightFilter && (
             <div className="flex flex-wrap items-center gap-2">
@@ -4773,6 +5106,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               )}
 
             {profileId !== '2' &&
+              !isCampaignsWithWidgets2Page &&
               notificationCardVariant !== 2 &&
               notificationCardVariant !== 3 &&
               notificationCardVariant !== 4 && (
@@ -4808,6 +5142,171 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             )}
           </div>
           )}
+
+          {isCampaignsPage ? (
+            <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+              <div className="flex shrink-0 items-center gap-2">
+                <div
+                  className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
+                  role="tablist"
+                  aria-label="Раздел списка"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'campaigns'}
+                    onClick={() => setListTab('campaigns')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'campaigns'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Кампании
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'products'}
+                    onClick={() => setListTab('products')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'products'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Товары
+                  </button>
+                </div>
+
+                <ExcelActionsDropdown
+                  onOpenUpload={onOpenUploadEditsModal}
+                  onOpenHistory={onOpenHistoryModal}
+                  showUploadHint={showUploadHint}
+                  onDismissUploadHint={onDismissUploadHint}
+                />
+              </div>
+
+              <CreateCampaignDropdown
+                onNavigateToCreation={onNavigateToCreation}
+                onOpenSingleCampaign={onOpenSingleCampaign}
+                onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
+              />
+
+              <div className="relative min-w-[200px] flex-1">
+                <Search
+                  className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
+                  aria-hidden
+                />
+                <input
+                  type="text"
+                  placeholder={
+                    listTab === 'campaigns'
+                      ? 'Поиск по ID кампании или названию'
+                      : 'Поиск по товару, артикулу или кампании'
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white pl-10 pr-3 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
+                />
+              </div>
+
+              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+                <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                    className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
+                  >
+                    <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                    <span>Фильтр</span>
+                  </button>
+                  {(listTab === 'campaigns' || listTab === 'products') && (
+                    <FilterDropdown
+                      variant={listTab === 'products' ? 'products' : 'campaigns'}
+                      isOpen={isFilterDropdownOpen}
+                      onClose={handleCancelFilters}
+                      onApply={handleApplyFilters}
+                      productCategoryOptions={productFilterCategoryOptions}
+                      productsSection={tempProductsFilterSection}
+                      onProductsSectionChange={setTempProductsFilterSection}
+                      tempProductCategories={tempFilterProductCategories}
+                      onTempProductCategoriesChange={setTempFilterProductCategories}
+                      tempConflictOnly={tempFilterConflictOnly}
+                      onTempConflictOnlyChange={setTempFilterConflictOnly}
+                      tempCampaignTypes={tempFilterCampaignTypes}
+                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                      category={filterCategory}
+                      onCategoryChange={setFilterCategory}
+                      status={filterStatus}
+                      onStatusChange={setFilterStatus}
+                      autorefill={filterAutorefill}
+                      onAutorefillChange={setFilterAutorefill}
+                      payment={filterPayment}
+                      onPaymentChange={setFilterPayment}
+                      sort={filterSort}
+                      onSortChange={setFilterSort}
+                      filterByCategory={filterByCategory}
+                      onFilterByCategoryChange={setFilterByCategory}
+                      tempCategory={tempFilterCategory}
+                      onTempCategoryChange={setTempFilterCategory}
+                      tempStatus={tempFilterStatus}
+                      onTempStatusChange={setTempFilterStatus}
+                      tempAutorefill={tempFilterAutorefill}
+                      onTempAutorefillChange={setTempFilterAutorefill}
+                      tempPayment={tempFilterPayment}
+                      onTempPaymentChange={setTempFilterPayment}
+                      tempSort={tempFilterSort}
+                      onTempSortChange={setTempFilterSort}
+                      tempFilterByCategory={tempFilterByCategory}
+                      onTempFilterByCategoryChange={setTempFilterByCategory}
+                      tempTags={tempTags}
+                      onTempTagsChange={setTempTags}
+                      tempTagsSearch={tempTagsSearch}
+                      onTempTagsSearchChange={setTempTagsSearch}
+                      tempTagsCategory={tempTagsCategory}
+                      onTempTagsCategoryChange={setTempTagsCategory}
+                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                      availableTags={availableTags}
+                    />
+                  )}
+                </div>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (listTab === 'products') {
+                        setIsProductsColumnSettingsOpen((prev) => !prev);
+                      }
+                    }}
+                    className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
+                      listTab === 'products' && isProductsColumnSettingsOpen
+                        ? 'ring-2 ring-[#9a41fe]/30'
+                        : ''
+                    }`}
+                    title={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                    aria-label={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                    aria-expanded={listTab === 'products' ? isProductsColumnSettingsOpen : undefined}
+                  >
+                    <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                  </button>
+                  {listTab === 'products' && (
+                    <ProductsColumnSettingsDropdown
+                      open={isProductsColumnSettingsOpen}
+                      onClose={() => setIsProductsColumnSettingsOpen(false)}
+                      visibility={productsColumnVisibility}
+                      onToggle={(columnId, visible) => {
+                        setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                      }}
+                      onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -5687,7 +6186,30 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         />
       )}
 
-      {/* demo variant picker removed for this page */}
+      {isCampaignsPage && (
+        <div
+          className="fixed bottom-0 left-0 right-0 z-[45] border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-6px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
+          role="toolbar"
+          aria-label="Вариант карточки уведомления"
+        >
+          <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center justify-center gap-2 sm:gap-3">
+            {([1, 2, 3, 4] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setNotificationCardVariant(v)}
+                className={`min-w-[7.5rem] rounded-lg px-5 py-2.5 text-sm font-medium transition-colors ${
+                  notificationCardVariant === v
+                    ? 'bg-[#9a41fe] text-white shadow-sm'
+                    : 'border border-gray-200 bg-gray-50 text-gray-800 hover:bg-gray-100'
+                }`}
+              >
+                Вариант {v}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
     </div>
   );
