@@ -24,6 +24,9 @@ import {
     ClipboardCheck,
     Clock,
     Settings,
+    Package,
+    Gift,
+    RefreshCw,
     MoreVertical,
     Trash2,
     Edit2,
@@ -1024,7 +1027,11 @@ const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
 function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
   const { campaigns } = getProfileListData(profileId);
   const list = profileId === '2' ? [...campaigns] : [PREBUILT_CPC_CAMPAIGN, ...campaigns];
-  return list.map((c, index) => (index === 1 ? { ...c, isBonusCampaign: true } : c));
+  return list.map((c, index) => {
+    const base = index === 1 ? { ...c, isBonusCampaign: true } : c;
+    if (profileId !== '2') return base;
+    return { ...base, status: 'paused', statusText: 'приостановлена' };
+  });
 }
 
 function findProductSourceForProfile(productId: string | undefined, profileId: ProfileId): ProductSource | undefined {
@@ -2112,35 +2119,47 @@ export const BudgetRefillModal: React.FC<{
 };
 
 type Widgets2Card = {
-  id: 'start-promo' | 'good-sales' | 'views-drop';
+  id: 'start-promo' | 'good-sales' | 'views-drop' | 'repeat-campaign' | 'bonus-gift';
   title: string;
   subtitle: string;
   tone: 'rose' | 'emerald' | 'amber';
-  item: { nmId: number; name: string; image: string };
+  item?: { nmId: number; name: string; image: string };
   ctaLabel: string;
 };
 
 function Widgets2Strip({
+  profileId,
   items,
   onCloseItem,
   onPromoteItem,
   onOpenBudgetHint,
+  onChooseProducts,
 }: {
+  profileId: ProfileId;
   items: Widgets2Card[];
   onCloseItem: (id: Widgets2Card['id']) => void;
   onPromoteItem: (item: Widgets2Card['item']) => void;
   onOpenBudgetHint: () => void;
+  onChooseProducts: () => void;
 }) {
   const promotionHealth = useMemo(() => {
-    // Demo: fixed value for preview iterations.
-    const score = 74;
+    // Demo: fixed values for preview iterations.
+    if (profileId === '2') {
+      return {
+        score: 50,
+        stageIndex: 2,
+        stageLabel: 'Требует внимания' as const,
+        stageTone: 'bg-amber-400' as const,
+      };
+    }
 
+    const score = 74;
     const stageIndex = score >= 75 ? 3 : score >= 50 ? 2 : score >= 25 ? 1 : 0;
     const stageLabel = (['Плохо', 'Нормально', 'Хорошо', 'Отлично'] as const)[stageIndex];
     const stageTone = (['bg-rose-500', 'bg-amber-400', 'bg-lime-500', 'bg-emerald-500'] as const)[stageIndex];
 
     return { score, stageIndex, stageLabel, stageTone };
-  }, []);
+  }, [profileId]);
 
   const healthImproveItems = useMemo(() => {
     // Demo factors: replace with real inputs later (coverage/profit/roas/etc).
@@ -2190,7 +2209,11 @@ function Widgets2Strip({
         <div className="flex items-start justify-between gap-3 pb-3">
           <h2 className="text-sm font-bold leading-none text-gray-900">Здоровье кабинета</h2>
           <div className="shrink-0 text-right">
-            <div className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold leading-none text-emerald-700">
+            <div
+              className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold leading-none ${
+                profileId === '2' ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'
+              }`}
+            >
               {promotionHealth.stageLabel}
             </div>
           </div>
@@ -2243,36 +2266,52 @@ function Widgets2Strip({
           <div className="text-[11px] leading-none text-[#767386]">Сумма заказов</div>
           <div className="flex items-baseline gap-2 leading-none justify-self-start">
             <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">196 000 ₽</div>
-            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
-              <ArrowUp className="h-2.5 w-2.5" aria-hidden />
-              1.9%
+            <div
+              className={`flex items-center gap-0.5 text-[11px] font-medium leading-none ${
+                profileId === '2' ? 'text-rose-600' : 'text-emerald-600'
+              }`}
+            >
+              <ArrowUp className={`h-2.5 w-2.5 ${profileId === '2' ? 'rotate-180' : ''}`} aria-hidden />
+              {profileId === '2' ? '-1.9%' : '1.9%'}
             </div>
           </div>
 
           <div className="text-[11px] leading-none text-[#767386]">Затраты</div>
           <div className="flex items-baseline gap-2 leading-none justify-self-start">
             <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">10 000 ₽</div>
-            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
-              <ArrowUp className="h-2.5 w-2.5 rotate-180" aria-hidden />
-              3.1%
+            <div
+              className={`flex items-center gap-0.5 text-[11px] font-medium leading-none ${
+                profileId === '2' ? 'text-rose-600' : 'text-emerald-600'
+              }`}
+            >
+              <ArrowUp className={`h-2.5 w-2.5 ${profileId === '2' ? '' : 'rotate-180'}`} aria-hidden />
+              {profileId === '2' ? '-3.1%' : '3.1%'}
             </div>
           </div>
 
           <div className="text-[11px] leading-none text-[#767386]">Доля затрат</div>
           <div className="flex items-baseline gap-2 leading-none justify-self-start">
             <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">9,7 %</div>
-            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
-              <ArrowUp className="h-2.5 w-2.5" aria-hidden />
-              5.8%
+            <div
+              className={`flex items-center gap-0.5 text-[11px] font-medium leading-none ${
+                profileId === '2' ? 'text-rose-600' : 'text-emerald-600'
+              }`}
+            >
+              <ArrowUp className={`h-2.5 w-2.5 ${profileId === '2' ? 'rotate-180' : ''}`} aria-hidden />
+              {profileId === '2' ? '-5.8%' : '5.8%'}
             </div>
           </div>
 
           <div className="text-[11px] leading-none text-[#767386]">CTR</div>
           <div className="flex items-baseline gap-2 leading-none justify-self-start">
             <div className="text-[14px] font-bold tabular-nums tracking-tight text-gray-900">4,7 %</div>
-            <div className="flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
-              <ArrowUp className="h-2.5 w-2.5" aria-hidden />
-              12.6%
+            <div
+              className={`flex items-center gap-0.5 text-[11px] font-medium leading-none ${
+                profileId === '2' ? 'text-rose-600' : 'text-emerald-600'
+              }`}
+            >
+              <ArrowUp className={`h-2.5 w-2.5 ${profileId === '2' ? 'rotate-180' : ''}`} aria-hidden />
+              {profileId === '2' ? '-12.6%' : '12.6%'}
             </div>
           </div>
         </div>
@@ -2305,6 +2344,14 @@ function Widgets2Strip({
                       <div className="h-3 w-1 rounded-sm bg-emerald-300" />
                       <div className="h-5 w-1 rounded-sm bg-emerald-500" />
                     </div>
+                  ) : card.id === 'repeat-campaign' ? (
+                    <div className="rounded-md bg-emerald-50 p-1 text-emerald-700">
+                      <RefreshCw className="h-4 w-4" aria-hidden />
+                    </div>
+                  ) : card.id === 'bonus-gift' ? (
+                    <div className="rounded-md bg-purple-50 p-1 text-purple-700">
+                      <Gift className="h-4 w-4" aria-hidden />
+                    </div>
                   ) : (
                     <div className="rounded-md bg-rose-50 p-1">
                       <div className="flex items-center gap-0.5">
@@ -2321,32 +2368,62 @@ function Widgets2Strip({
             </div>
 
             <div className="mt-3 flex min-w-0 flex-1 flex-col rounded-lg px-0 py-0">
-              <div className="flex min-w-0 items-center gap-2 pb-2">
-                <img
-                  src={card.item.image}
-                  alt=""
-                  className="h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover"
-                  loading="lazy"
-                  onError={(e) => {
-                    const img = e.currentTarget;
-                    if (img.src !== PRODUCT_TABLE_THUMB_FALLBACK) img.src = PRODUCT_TABLE_THUMB_FALLBACK;
-                  }}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-semibold text-gray-900">{card.item.name}</div>
-                  <div className="mt-0.5 text-[11px] leading-none text-gray-500">
-                    {card.id === 'good-sales'
-                      ? 'Увеличьте продажи с продвижением'
-                      : card.id === 'start-promo'
-                        ? 'Недобор показов без продвижения'
-                        : card.id === 'views-drop'
-                          ? 'Недобор показов из-за низкого бюджета'
-                          : card.item.nmId}
+              {card.item ? (
+                <div className="flex min-w-0 items-center gap-2 pb-2">
+                  <img
+                    src={card.item.image}
+                    alt=""
+                    className="h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover"
+                    loading="lazy"
+                    onError={(e) => {
+                      const img = e.currentTarget;
+                      if (img.src !== PRODUCT_TABLE_THUMB_FALLBACK) img.src = PRODUCT_TABLE_THUMB_FALLBACK;
+                    }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-semibold text-gray-900">{card.item.name}</div>
+                    <div className="mt-0.5 text-[11px] leading-none text-gray-500">
+                      {card.id === 'repeat-campaign'
+                        ? card.subtitle
+                        : card.id === 'good-sales'
+                        ? 'Увеличьте продажи с продвижением'
+                        : card.id === 'start-promo'
+                          ? 'Недобор показов без продвижения'
+                          : card.id === 'views-drop'
+                            ? 'Недобор показов из-за низкого бюджета'
+                            : card.item.nmId}
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="pb-2 text-xs leading-snug text-gray-600">{card.subtitle}</div>
+              )}
               <div className="mt-auto pt-2">
-                {card.id === 'good-sales' ? (
+                {card.id === 'repeat-campaign' ? (
+                  <div className="flex flex-col items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onOpenBudgetHint();
+                      }}
+                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                    >
+                      {card.ctaLabel}
+                    </button>
+                  </div>
+                ) : card.id === 'bonus-gift' ? (
+                  <div className="flex flex-col items-start gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onChooseProducts();
+                      }}
+                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                    >
+                      {card.ctaLabel}
+                    </button>
+                  </div>
+                ) : card.id === 'good-sales' ? (
                   <div className="flex flex-col items-start gap-2">
                     <button
                       type="button"
@@ -2389,7 +2466,7 @@ function Widgets2Strip({
                     <button
                       type="button"
                       onClick={() => {
-                        onPromoteItem(card.item);
+                        if (card.item) onPromoteItem(card.item);
                       }}
                       className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
                     >
@@ -3973,6 +4050,43 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=80&h=80&fit=crop&auto=format&q=80',
     ] as const;
 
+    if (profileId === '2') {
+      const repeatOrders = profileCampaigns.find((c) => typeof c.orders === 'number')?.orders ?? 128;
+      return [
+        {
+          id: 'repeat-campaign',
+          title: `Кампания принесла ${repeatOrders} заказов`,
+          subtitle: 'Запусти её снова',
+          tone: 'amber',
+          item: {
+            nmId: p0?.nmId ?? 1400001,
+            name: p0?.productName ?? 'Летнее платье «Ривьера»',
+            image: p0?.imageUrl ?? demoImages[0],
+          },
+          ctaLabel: 'Повторить',
+        },
+        {
+          id: 'good-sales',
+          title: 'Товар хорошо продается',
+          subtitle: 'Высокий GMV, нет продвижения',
+          tone: 'emerald',
+          item: {
+            nmId: p1?.nmId ?? 1400002,
+            name: p1?.productName ?? 'Вечернее платье «Грация»',
+            image: p1?.imageUrl ?? demoImages[1],
+          },
+          ctaLabel: 'Продвигать',
+        },
+        {
+          id: 'bonus-gift',
+          title: 'Дарим 5000 бонусов до 30 апреля',
+          subtitle: 'Выберите товары и запустите продвижение с бонусами',
+          tone: 'emerald',
+          ctaLabel: 'Выбрать товары',
+        },
+      ];
+    }
+
     return [
       {
         id: 'start-promo',
@@ -4011,7 +4125,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         ctaLabel: 'Увеличить бюджет',
       },
     ];
-  }, [profileProductTree, profileCampaigns]);
+  }, [profileProductTree, profileCampaigns, profileId]);
 
   const widgets2VisibleCards = useMemo(
     () => widgets2DemoCards.filter((c) => !widgets2Closed.has(c.id)),
@@ -4035,6 +4149,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setSelectedCampaignForRefill(match);
     setIsBudgetRefillModalOpen(true);
   }, [profileCampaigns]);
+
+  const openWidgets2ChooseProducts = useCallback(() => {
+    onNavigateToCreation();
+  }, [onNavigateToCreation]);
 
   useEffect(() => {
     if (!insightFilter) return;
@@ -4812,10 +4930,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           {isCampaignsWithWidgets2Page && (
             <div className="w-full min-w-0">
               <Widgets2Strip
+                profileId={profileId}
                 items={widgets2VisibleCards}
                 onCloseItem={closeWidgets2Card}
                 onPromoteItem={openWidgets2Promote}
                 onOpenBudgetHint={openWidgets2BudgetHint}
+                onChooseProducts={openWidgets2ChooseProducts}
               />
             </div>
           )}
