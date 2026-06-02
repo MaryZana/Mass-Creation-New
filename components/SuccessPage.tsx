@@ -4618,7 +4618,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           )}
 
-          {!isCampaignsWithWidgetsPage && (
+          {!isCampaignsWithWidgetsPage && !isCampaignsWithWidgets2Page && (
           <div
             className={
               notificationCardVariant === 2
