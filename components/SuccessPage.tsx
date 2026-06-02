@@ -4056,7 +4056,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         {
           id: 'repeat-campaign',
           title: `Кампания принесла ${repeatOrders} заказов`,
-          subtitle: 'Запусти её снова',
+          subtitle: 'Запустите её снова',
           tone: 'amber',
           item: {
             nmId: p0?.nmId ?? 1400001,
