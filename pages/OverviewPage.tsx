@@ -2791,13 +2791,7 @@ const OverviewPage: React.FC = () => {
       },
     ] as const;
 
-    const impact = (w: number) =>
-      Math.abs(w) >= 8 ? { label: 'Сильно влияет', tone: 'bg-rose-50 text-rose-700' }
-      : Math.abs(w) >= 5 ? { label: 'Средне влияет', tone: 'bg-amber-50 text-amber-700' }
-      : { label: 'Слабо влияет', tone: 'bg-emerald-50 text-emerald-700' };
-
     return items
-      .map((it) => ({ ...it, impact: impact(it.weight) }))
       .sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight));
   }, []);
 
@@ -3151,11 +3145,6 @@ const OverviewPage: React.FC = () => {
                                     <div className="flex min-w-0 items-center gap-2">
                                       <span className="text-sm font-semibold text-gray-900">
                                         {row.title}
-                                      </span>
-                                      <span
-                                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${row.impact.tone}`}
-                                      >
-                                        {row.impact.label}
                                       </span>
                                     </div>
                                     <div className="mt-0.5 truncate text-xs text-gray-500">
