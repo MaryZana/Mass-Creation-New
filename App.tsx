@@ -23,6 +23,7 @@ import { AppHeader } from './components/AppHeader';
 import { useProfile, type RepeatLaunchPreset } from './components/ProfileContext';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignsWithWidgetsPage from './pages/CampaignsWithWidgetsPage';
+import CampaignsWithWidgets2Page from './pages/CampaignsWithWidgets2Page';
 import StatsPage from './pages/StatsPage';
 import FinancePage from './pages/FinancePage';
 import BonusesPage from './pages/BonusesPage';
@@ -2697,6 +2698,11 @@ export default function App() {
                     failedCampaigns={failedCampaigns}
                     onClearLaunchResult={() => setCreationResult(null)}
                     onNavigateToCreation={() => handleNavigationAttempt(handleNavigateToCreation)}
+                    onNavigateToCreationWithProducts={(items) =>
+                      handleNavigationAttempt(() =>
+                        handleNavigateToCreationWithSingleCampaignProducts(items),
+                      )
+                    }
                     onNavigateToCreationWithGrowingDemand={() =>
                       handleNavigationAttempt(handleNavigateToCreationWithGrowingDemand)
                     }
@@ -2901,6 +2907,14 @@ export default function App() {
                   <CampaignsWithWidgetsPage>
                     <CampaignsPage>{campaignsListContent}</CampaignsPage>
                   </CampaignsWithWidgetsPage>
+                }
+              />
+              <Route
+                path="/campaigns-with-widgets-2"
+                element={
+                  <CampaignsWithWidgets2Page>
+                    <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                  </CampaignsWithWidgets2Page>
                 }
               />
               <Route path="/overview" element={<OverviewPage />} />

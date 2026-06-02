@@ -192,6 +192,10 @@ interface SuccessPageProps {
   failedCampaigns: CampaignRecord[];
   onClearLaunchResult: () => void;
   onNavigateToCreation: () => void;
+  /** Массовое создание с конкретными товарами */
+  onNavigateToCreationWithProducts?: (
+    items: { nmId: number; productName: string; imageUrl: string; category: string }[],
+  ) => void;
   /** Массовое создание с товарами «хорошая конверсия» (вариант 4) */
   onNavigateToCreationWithGrowingDemand?: () => void;
   onOpenUploadEditsModal: () => void;
@@ -2107,6 +2111,91 @@ export const BudgetRefillModal: React.FC<{
   );
 };
 
+type Widgets2Card = {
+  id: 'start-promo' | 'good-sales' | 'views-drop';
+  title: string;
+  subtitle: string;
+  tone: 'rose' | 'emerald' | 'amber';
+  item: { nmId: number; name: string; image: string };
+  ctaLabel: string;
+};
+
+function Widgets2Strip({
+  items,
+  onCloseItem,
+  onPromoteItem,
+  onOpenBudgetHint,
+}: {
+  items: Widgets2Card[];
+  onCloseItem: (id: Widgets2Card['id']) => void;
+  onPromoteItem: (item: Widgets2Card['item']) => void;
+  onOpenBudgetHint: () => void;
+}) {
+  const toneBadge =
+    (tone: Widgets2Card['tone']) =>
+    tone === 'rose'
+      ? 'bg-rose-50 text-rose-700'
+      : tone === 'amber'
+        ? 'bg-amber-50 text-amber-700'
+        : 'bg-emerald-50 text-emerald-700';
+
+  return (
+    <div className="flex w-full min-w-0 items-stretch gap-2 overflow-visible">
+      {items.map((card) => (
+        <section
+          key={card.id}
+          className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-white p-4 shadow-sm"
+        >
+          <button
+            type="button"
+            onClick={() => onCloseItem(card.id)}
+            className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900"
+            aria-label="Закрыть виджет"
+            title="Закрыть"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+          <div className="min-w-0 pr-9">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-bold leading-none text-gray-900">{card.title}</span>
+              <span
+                className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneBadge(card.tone)}`}
+              >
+                {card.subtitle}
+              </span>
+            </div>
+
+            <div className="mt-3 flex min-w-0 items-center gap-2 rounded-lg bg-gray-50/60 px-2 py-2">
+              <img
+                src={card.item.image}
+                alt=""
+                className="h-7 w-7 shrink-0 rounded-md bg-gray-100 object-cover"
+              />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-xs font-semibold text-gray-900">{card.item.name}</div>
+                <div className="mt-0.5 text-[11px] leading-none text-gray-500">NM {card.item.nmId}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (card.id === 'views-drop') {
+                    onOpenBudgetHint();
+                    return;
+                  }
+                  onPromoteItem(card.item);
+                }}
+                className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+              >
+                {card.ctaLabel}
+              </button>
+            </div>
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 const StatusBadge = ({ status, text }: { status: DisplayCampaign['status'], text: string }) => {
   // Цветные плашки статуса: закругления как у ярлыков (rounded-md)
   const baseClasses = 'px-2.5 py-0.5 text-xs font-medium rounded-md';
@@ -3420,6 +3509,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     failedCampaigns, 
     onClearLaunchResult, 
     onNavigateToCreation,
+    onNavigateToCreationWithProducts,
     onNavigateToCreationWithGrowingDemand,
     onOpenUploadEditsModal,
     selectedCampaigns,
@@ -3648,10 +3738,86 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const location = useLocation();
   const isCampaignsWithWidgetsPage = location.pathname === '/campaigns-with-widgets';
+  const isCampaignsWithWidgets2Page = location.pathname === '/campaigns-with-widgets-2';
   const insightFilterCtx = useCampaignsInsightFilterOptional();
   const insightFilter =
-    isCampaignsWithWidgetsPage && insightFilterCtx ? insightFilterCtx.filter : null;
+    (isCampaignsWithWidgetsPage || isCampaignsWithWidgets2Page) && insightFilterCtx
+      ? insightFilterCtx.filter
+      : null;
   const clearInsightFilter = insightFilterCtx?.clearFilter;
+
+  const [widgets2Closed, setWidgets2Closed] = useState<Set<Widgets2Card['id']>>(new Set());
+  const closeWidgets2Card = useCallback((id: Widgets2Card['id']) => {
+    setWidgets2Closed((prev) => new Set(prev).add(id));
+  }, []);
+
+  const widgets2DemoCards = useMemo((): Widgets2Card[] => {
+    const p0 = profileProductTree[0];
+    const p1 = profileProductTree[1] ?? p0;
+    const c0 = profileCampaigns[0];
+
+    return [
+      {
+        id: 'start-promo',
+        title: 'Запусти продвижение',
+        subtitle: 'Вы теряете продажи',
+        tone: 'rose',
+        item: {
+          nmId: p0?.nmId ?? 1400001,
+          name: p0?.productName ?? 'Товар без продвижения',
+          image: p0?.imageUrl ?? PRODUCT_TABLE_THUMB_FALLBACK,
+        },
+        ctaLabel: 'Запустить',
+      },
+      {
+        id: 'good-sales',
+        title: 'Этот товар хорошо продается',
+        subtitle: 'Высокий GMV, нет продвижения',
+        tone: 'emerald',
+        item: {
+          nmId: p1?.nmId ?? 1400002,
+          name: p1?.productName ?? 'Товар с высоким GMV',
+          image: p1?.imageUrl ?? PRODUCT_TABLE_THUMB_FALLBACK,
+        },
+        ctaLabel: 'Продвигать',
+      },
+      {
+        id: 'views-drop',
+        title: 'Кампания теряет показы',
+        subtitle: 'Рекомендуем увеличить бюджет',
+        tone: 'amber',
+        item: {
+          nmId: c0?.nmId ?? p0?.nmId ?? 1400003,
+          name: c0?.productName ?? 'Кампания с падением показов',
+          image: c0?.imageUrl ?? p0?.imageUrl ?? PRODUCT_TABLE_THUMB_FALLBACK,
+        },
+        ctaLabel: 'Увеличить бюджет',
+      },
+    ];
+  }, [profileProductTree, profileCampaigns]);
+
+  const widgets2VisibleCards = useMemo(
+    () => widgets2DemoCards.filter((c) => !widgets2Closed.has(c.id)),
+    [widgets2DemoCards, widgets2Closed],
+  );
+
+  const openWidgets2Promote = useCallback(
+    (item: Widgets2Card['item']) => {
+      const payload = [
+        { nmId: item.nmId, productName: item.name, imageUrl: item.image, category: 'Товары' },
+      ];
+      if (onNavigateToCreationWithProducts) onNavigateToCreationWithProducts(payload);
+      else onNavigateToCreation();
+    },
+    [onNavigateToCreation, onNavigateToCreationWithProducts],
+  );
+
+  const openWidgets2BudgetHint = useCallback(() => {
+    const match = profileCampaigns.find((c) => c.type === 'CPC');
+    if (!match) return;
+    setSelectedCampaignForRefill(match);
+    setIsBudgetRefillModalOpen(true);
+  }, [profileCampaigns]);
 
   useEffect(() => {
     if (!insightFilter) return;
@@ -4422,6 +4588,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           {isCampaignsWithWidgetsPage && (
             <div className="w-full min-w-0">
               <OverviewMiniWidgetsForCampaignsList listTab={listTab} />
+            </div>
+          )}
+
+          {isCampaignsWithWidgets2Page && widgets2VisibleCards.length > 0 && (
+            <div className="w-full min-w-0">
+              <Widgets2Strip
+                items={widgets2VisibleCards}
+                onCloseItem={closeWidgets2Card}
+                onPromoteItem={openWidgets2Promote}
+                onOpenBudgetHint={openWidgets2BudgetHint}
+              />
             </div>
           )}
 

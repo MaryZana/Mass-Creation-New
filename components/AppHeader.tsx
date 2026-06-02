@@ -65,6 +65,15 @@ export function AppHeader({
               Кампании с виджетами
             </NavLink>
             <NavLink
+              to="/campaigns-with-widgets-2"
+              onClick={onNavigate}
+              className={({ isActive }) =>
+                `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
+              }
+            >
+              Кампании с виджетами 2
+            </NavLink>
+            <NavLink
               to="/campaigns"
               end
               onClick={onNavigate}
