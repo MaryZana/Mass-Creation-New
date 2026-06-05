@@ -8,14 +8,6 @@ import {
 
 const MAX_SELECT = 50;
 
-const PROSPECT_PICK_REASONS = [
-  'Конверсия выше 20%',
-  'Рейтинг выше 4.9',
-  'Товары в акциях',
-  'Товары с А/Б тестом',
-  'Сезонный спрос выше 100%',
-] as const;
-
 export type SingleCampaignSelectableProduct = {
   nmId: number;
   productName: string;
@@ -109,24 +101,7 @@ export function SingleCampaignAddProductsModal({
     return options.filter((p) => p.category === category);
   }, [options, category]);
 
-  const prospectProducts = useMemo(() => {
-    if (category) return [];
-    const base = options.filter((p) => !alreadyAddedNmIds.has(p.nmId) && !(isCpcMode && !p.cpcCompatible));
-    const hasConv = base.some((p) => typeof p.conversionRate === 'number');
-    const sorted = base
-      .slice()
-      .sort((a, b) => {
-        if (hasConv) {
-          const av = a.conversionRate ?? -1;
-          const bv = b.conversionRate ?? -1;
-          if (bv !== av) return bv - av;
-        }
-        return b.nmId - a.nmId;
-      });
-    return sorted.slice(0, 20);
-  }, [options, alreadyAddedNmIds, isCpcMode, category]);
-
-  const baseProducts = category ? categoryProducts : prospectProducts;
+  const baseProducts = category ? categoryProducts : [];
 
   const filteredProducts = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
@@ -363,15 +338,6 @@ export function SingleCampaignAddProductsModal({
   const searchPlaceholder =
     baseProducts.length > 0 ? `Поиск среди ${baseProducts.length} товаров` : 'Поиск';
 
-  const fmtPct = (value: number, digits = 1) =>
-    `${(value * 100).toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
-
-  const fmtChange = (value: number) => {
-    const sign = value > 0 ? '+' : value < 0 ? '−' : '';
-    const abs = Math.abs(value);
-    return `${sign}${abs.toLocaleString('ru-RU', { maximumFractionDigits: 0 })}%`;
-  };
-
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
@@ -434,7 +400,8 @@ export function SingleCampaignAddProductsModal({
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder={category ? searchPlaceholder : 'Поиск по перспективным товарам'}
+                placeholder={category ? searchPlaceholder : 'Сначала выберите категорию'}
+                disabled={!category}
                 className="h-11 w-full rounded-lg border border-gray-200 bg-white pr-10 pl-3 text-sm outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 disabled:bg-gray-50 disabled:text-gray-400"
               />
               <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -623,92 +590,8 @@ export function SingleCampaignAddProductsModal({
               </div>
             </>
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-gray-100">
-              <div className="sticky top-0 z-[1] border-b border-gray-100 bg-white px-3 py-2">
-                <p className="text-sm font-semibold text-gray-900">Перспективные товары</p>
-              </div>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 text-left text-xs font-normal text-gray-400">
-                    <th className="w-10 px-3 py-2">
-                      <Checkbox
-                        checked={allInViewSelected}
-                        indeterminate={someInViewSelected}
-                        disabled={selectableInView.length === 0}
-                        onChange={toggleSelectAllInView}
-                      />
-                    </th>
-                    <th className="w-[52px] px-2 py-2">Фото</th>
-                    <th className="px-3 py-2">Бренд · Артикул · Название</th>
-                    <th className="w-[140px] px-3 py-2">Категория</th>
-                    <th className="w-[152px] px-3 py-2 text-right" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {sortedFilteredProducts.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-3 py-8 text-center text-sm text-gray-400">
-                        Перспективные товары не найдены
-                      </td>
-                    </tr>
-                  ) : (
-                    sortedFilteredProducts.map((product, index) => {
-                      const isAdded = alreadyAddedNmIds.has(product.nmId);
-                      const isIncompatible = isCpcMode && !product.cpcCompatible;
-                      const disabled = isAdded || isIncompatible;
-                      const isChecked = pending.some((p) => p.nmId === product.nmId);
-                      const atCap = pending.length >= MAX_SELECT && !isChecked;
-                      return (
-                        <tr
-                          key={product.nmId}
-                          className={`${disabled ? 'opacity-50' : 'hover:bg-gray-50/80'} ${isChecked ? 'bg-purple-50/30' : ''}`}
-                        >
-                          <td className="px-3 py-3 align-middle">
-                            <Checkbox
-                              checked={isChecked}
-                              disabled={disabled || atCap}
-                              onChange={() => toggleProduct(product)}
-                            />
-                          </td>
-                          <td className="px-2 py-3 align-middle">
-                            <ProductThumb
-                              nmId={product.nmId}
-                              imageUrl={product.imageUrl}
-                              category={product.category}
-                              alt={product.productName}
-                            />
-                          </td>
-                          <td className="px-3 py-3 align-middle">
-                            <div className="flex items-center gap-1 text-sm text-gray-900">
-                              <span className="text-gray-400">·</span>
-                              <span className="tabular-nums text-gray-600">{product.nmId}</span>
-                            </div>
-                            <p className="mt-0.5 text-sm font-medium text-gray-900">
-                              {product.productName}
-                            </p>
-                            {isAdded && (
-                              <p className="mt-0.5 text-xs text-gray-500">Уже в кампании</p>
-                            )}
-                            {isIncompatible && !isAdded && (
-                              <p className="mt-0.5 text-xs text-red-600">Не продвигается по CPC</p>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 align-middle">
-                            <span className="block text-xs font-medium leading-snug text-gray-700">
-                              {product.category}
-                            </span>
-                          </td>
-                          <td className="px-3 py-3 align-middle text-right">
-                            <span className="block text-left text-xs font-medium leading-snug text-gray-700">
-                              {PROSPECT_PICK_REASONS[index % PROSPECT_PICK_REASONS.length]}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+            <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-gray-100 bg-gray-50/40 px-6 py-12 text-center">
+              <p className="text-sm text-gray-500">Выберите категорию, чтобы показать список товаров</p>
             </div>
           )}
         </div>

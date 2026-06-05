@@ -293,85 +293,6 @@ function CopyNmIdButton({ nmId }: { nmId: number }) {
   );
 }
 
-type ProductRecommendationsTab = 'growth' | 'ab' | 'promo';
-
-const PRODUCT_RECOMMENDATIONS_TAB_COUNTS: Record<ProductRecommendationsTab, number> = {
-  growth: 5,
-  ab: 3,
-  promo: 3,
-};
-
-function computeProspectsPickNmIds(params: {
-  products: CampaignProductRow[];
-  selectedRecommendationCategory: string | null;
-  recommendationsTab: ProductRecommendationsTab;
-}): number[] {
-  const { products, selectedRecommendationCategory, recommendationsTab } = params;
-  const alreadyAdded = new Set(products.map((p) => p.nmId));
-  const inCategory = MOCK_PRODUCTS.filter(
-    (p) => (selectedRecommendationCategory ? p.category === selectedRecommendationCategory : true),
-  );
-
-  const notAdded = inCategory.filter((p) => !alreadyAdded.has(p.nmId));
-  const byNmDesc = (a: CampaignProductRow, b: CampaignProductRow) => b.nmId - a.nmId;
-  const inPromo = (p: CampaignProductRow) => p.nmId % 7 === 0;
-  const inAbTest = (p: CampaignProductRow) => p.nmId % 9 === 0;
-  const orders = (p: CampaignProductRow) => ((p.nmId % 180) + 40) | 0; // deterministic demo
-
-  const sorted = (() => {
-    switch (recommendationsTab) {
-      case 'promo':
-        return notAdded.filter(inPromo).slice().sort(byNmDesc);
-      case 'ab':
-        return notAdded.filter(inAbTest).slice().sort(byNmDesc);
-      case 'growth':
-      default:
-        return notAdded.slice().sort((a, b) => orders(b) - orders(a) || byNmDesc(a, b));
-    }
-  })();
-
-  const limit = PRODUCT_RECOMMENDATIONS_TAB_COUNTS[recommendationsTab] ?? 3;
-  return sorted.slice(0, limit).map((p) => p.nmId);
-}
-
-function ProductRecommendationsTabToggle({
-  value,
-  onChange,
-  items,
-  ariaLabel = 'Подборки товаров',
-  className = '',
-}: {
-  value: ProductRecommendationsTab;
-  onChange: (tab: ProductRecommendationsTab) => void;
-  items: { id: ProductRecommendationsTab; label: string; count: number }[];
-  ariaLabel?: string;
-  className?: string;
-}) {
-  return (
-    <div
-      className={`inline-flex max-w-full flex-wrap rounded-xl bg-[#F2F2F7] p-0.5 text-xs font-semibold text-[#4A4D57] ${className}`}
-      role="tablist"
-      aria-label={ariaLabel}
-    >
-      {items.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          role="tab"
-          aria-selected={value === tab.id}
-          onClick={() => onChange(tab.id)}
-          className={`whitespace-nowrap rounded-[10px] px-2.5 py-1.5 transition-colors ${
-            value === tab.id ? 'bg-white text-gray-900 shadow-sm' : 'hover:text-gray-900'
-          }`}
-        >
-          {tab.label}{' '}
-          <span className="font-semibold tabular-nums text-gray-400">{tab.count}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function BidHistogramButton({ onClick }: { onClick?: () => void }) {
   return (
     <button
@@ -479,21 +400,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
   const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
   const [actionsMenuNmId, setActionsMenuNmId] = useState<number | null>(null);
-  const [recommendationsTab, setRecommendationsTab] = useState<ProductRecommendationsTab>('growth');
-  const [recommendationsCategoryOpen, setRecommendationsCategoryOpen] = useState(false);
-  const [prospectsPickNmIds, setProspectsPickNmIds] = useState<number[]>(() =>
-    computeProspectsPickNmIds({
-      products: [],
-      selectedRecommendationCategory: null,
-      recommendationsTab: 'growth',
-    }),
-  );
-  const recommendationsCategoryRef = useRef<HTMLDivElement>(null);
-  const recommendationCategories = useMemo(
-    () => Array.from(new Set(MOCK_PRODUCTS.map((p) => p.category))).sort((a, b) => a.localeCompare(b, 'ru')),
-    [],
-  );
-  const [selectedRecommendationCategory, setSelectedRecommendationCategory] = useState<string | null>(null);
   const uploadMenuRef = useRef<HTMLDivElement>(null);
   const excelInputRef = useRef<HTMLInputElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
@@ -508,16 +414,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [isUploadMenuOpen]);
-
-  useEffect(() => {
-    if (!recommendationsCategoryOpen) return;
-    const onDocMouseDown = (event: MouseEvent) => {
-      if (recommendationsCategoryRef.current?.contains(event.target as Node)) return;
-      setRecommendationsCategoryOpen(false);
-    };
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [recommendationsCategoryOpen]);
 
   useEffect(() => {
     if (actionsMenuNmId === null) return;
@@ -636,55 +532,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
       ].filter(Boolean),
     );
     return categories.size <= 1;
-  };
-
-  const recommendationItems = useMemo(
-    () => [
-      {
-        id: 'growth' as const,
-        label: 'Рост заказов',
-        count: PRODUCT_RECOMMENDATIONS_TAB_COUNTS.growth,
-      },
-      { id: 'ab' as const, label: 'А/Б тест', count: PRODUCT_RECOMMENDATIONS_TAB_COUNTS.ab },
-      { id: 'promo' as const, label: 'В акциях', count: PRODUCT_RECOMMENDATIONS_TAB_COUNTS.promo },
-    ],
-    [],
-  );
-
-  useEffect(() => {
-    // When category/sort changes, rebuild the pick (3 items max).
-    setProspectsPickNmIds(
-      computeProspectsPickNmIds({
-        products,
-        selectedRecommendationCategory,
-        recommendationsTab,
-      }),
-    );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedRecommendationCategory, recommendationsTab]);
-
-  useEffect(() => {
-    // If products are added via other paths (modal), keep pick in sync (remove added).
-    setProspectsPickNmIds((prev) => prev.filter((id) => !alreadyAddedNmIds.has(id)));
-  }, [alreadyAddedNmIds]);
-
-  const recommendedProducts = useMemo(() => {
-    if (prospectsPickNmIds.length === 0) return [];
-    const byId = new Map(MOCK_PRODUCTS.map((p) => [p.nmId, p] as const));
-    return prospectsPickNmIds.map((id) => byId.get(id)).filter(Boolean) as CampaignProductRow[];
-  }, [prospectsPickNmIds]);
-
-  const addFromRecommendations = (p: CampaignProductRow) => {
-    if (alreadyAddedNmIds.has(p.nmId)) return;
-    if (!isSingleCategoryAdditionAllowed(products, [p])) {
-      setIsMultiCategoryWarningOpen(true);
-      return;
-    }
-    replaceProducts([...products, p]);
-    // Remove from current pick without refilling.
-    setProspectsPickNmIds((prev) => prev.filter((id) => id !== p.nmId));
-    setToastMessage('Товар добавлен');
-    setShowToast(true);
   };
 
   const renderProductBidCell = (nmId: number) => {
@@ -1245,141 +1092,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           )}
         </div>
 
-        {/* Рекомендации / перспективные товары */}
-        {(
-          <section className="flex w-full max-w-[1200px] flex-col gap-6 mx-auto">
-            <div className="bg-white rounded-2xl p-6 w-full">
-              <div className="flex items-center justify-between gap-3 mb-4">
-                <div className="flex min-w-0 items-center gap-3">
-                  <h3 className="font-heading min-w-0 text-[22px] font-[680] leading-7 text-gray-900">
-                    Рекомендуем перспективные
-                  </h3>
-                  <ProductRecommendationsTabToggle
-                    value={recommendationsTab}
-                    onChange={setRecommendationsTab}
-                    items={recommendationItems}
-                    className="scale-[0.92] origin-left"
-                    ariaLabel="Подборки товаров"
-                  />
-                </div>
-                <div className="relative" ref={recommendationsCategoryRef}>
-                  <button
-                    type="button"
-                    onClick={() => setRecommendationsCategoryOpen((o) => !o)}
-                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-sm font-medium text-gray-900 hover:border-gray-300"
-                    aria-label="Категории"
-                    aria-haspopup="menu"
-                    aria-expanded={recommendationsCategoryOpen}
-                  >
-                    {selectedRecommendationCategory ?? 'Все категории'}
-                    <ChevronDown
-                      className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
-                        recommendationsCategoryOpen ? 'rotate-180' : ''
-                      }`}
-                      aria-hidden
-                    />
-                  </button>
-                  {recommendationsCategoryOpen && (
-                    <div
-                      role="menu"
-                      className="absolute right-0 top-[calc(100%+6px)] z-30 w-64 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-                    >
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                          selectedRecommendationCategory === null
-                            ? 'bg-purple-50 font-medium text-purple-700'
-                            : 'text-gray-800'
-                        }`}
-                        onClick={() => {
-                          setSelectedRecommendationCategory(null);
-                          setRecommendationsCategoryOpen(false);
-                        }}
-                      >
-                        Все категории
-                      </button>
-                      <div className="my-1 h-px bg-gray-100" />
-                      <div className="max-h-56 overflow-y-auto">
-                        {recommendationCategories.map((cat) => {
-                          const selected = selectedRecommendationCategory === cat;
-                          return (
-                            <button
-                              key={cat}
-                              type="button"
-                              role="menuitem"
-                              className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                                selected ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'
-                              }`}
-                              onClick={() => {
-                                setSelectedRecommendationCategory(cat);
-                                setRecommendationsCategoryOpen(false);
-                              }}
-                            >
-                              {cat}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain">
-                <div className="mb-3 rounded-lg bg-emerald-50 px-3 py-2">
-                  <span className="text-sm font-semibold text-emerald-800">
-                    Лучшие для продвижения
-                  </span>
-                </div>
-                <div className="overflow-x-auto rounded-lg border border-gray-100">
-                  <table className="w-full min-w-[720px] text-sm">
-                    <thead>
-                      <tr className="border-b border-gray-100 text-left text-xs font-normal text-gray-400">
-                        <th className="w-[52px] px-2 py-2">Фото</th>
-                        <th className="px-3 py-2">Товар</th>
-                        <th className="w-[160px] px-3 py-2">Категория</th>
-                        <th className="w-[120px] px-3 py-2 text-right"></th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {recommendedProducts.map((p) => (
-                        <tr key={p.nmId} className="transition-colors hover:bg-gray-50/70">
-                          <td className="px-2 py-2 align-middle">
-                            <CampaignProductThumb
-                              nmId={p.nmId}
-                              imageUrl={p.imageUrl}
-                              category={p.category}
-                              alt={p.productName}
-                            />
-                          </td>
-                          <td className="px-3 py-2 align-middle">
-                            <p className="mb-0 text-sm font-medium text-gray-900">{p.productName}</p>
-                            <p className="mt-[2px] text-xs text-gray-500">
-                              {p.brand} · {p.nmId}
-                            </p>
-                          </td>
-                          <td className="px-3 py-2 align-middle text-sm text-gray-500">
-                            {p.category}
-                          </td>
-                          <td className="px-3 py-2 align-middle text-right">
-                            <button
-                              type="button"
-                              onClick={() => addFromRecommendations(p)}
-                              className="rounded-lg bg-[#F2F2F7] px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-[#e8e8ed]"
-                            >
-                              Добавить
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-          </section>
-        )}
       </main>
 
       {/* Toast */}

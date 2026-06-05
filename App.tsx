@@ -24,6 +24,7 @@ import { useProfile, type RepeatLaunchPreset } from './components/ProfileContext
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignsWithWidgetsPage from './pages/CampaignsWithWidgetsPage';
 import CampaignsWithWidgets2Page from './pages/CampaignsWithWidgets2Page';
+import ProductPromotionConceptPage from './pages/ProductPromotionConceptPage';
 import StatsPage from './pages/StatsPage';
 import FinancePage from './pages/FinancePage';
 import BonusesPage from './pages/BonusesPage';
@@ -2917,11 +2918,19 @@ export default function App() {
                   </CampaignsWithWidgets2Page>
                 }
               />
+              <Route
+                path="/product-promotion-concept"
+                element={
+                  <ProductPromotionConceptPage>
+                    <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                  </ProductPromotionConceptPage>
+                }
+              />
               <Route path="/overview" element={<OverviewPage />} />
               <Route path="/stats" element={<StatsPage />} />
               <Route path="/finance" element={<FinancePage />} />
               <Route path="/bonuses" element={<BonusesPage />} />
-              <Route path="/" element={<Navigate to="/campaigns" replace />} />
+              <Route path="/" element={<Navigate to="/campaigns-with-widgets-2" replace />} />
             </Routes>
           </OverviewBridgeProvider>
         </CampaignsInsightFilterProvider>

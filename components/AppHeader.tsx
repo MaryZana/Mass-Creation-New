@@ -1,5 +1,9 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+import {
+  CAMPAIGNS_WITH_WIDGETS_V1_PATH,
+  PRODUCT_PROMOTION_CONCEPT_PATH,
+} from '../constants/campaignListRoutes';
 import { Check, ChevronDown } from './Icons';
 import { PROFILES, useProfile, type ProfileId } from './ProfileContext';
 
@@ -24,6 +28,17 @@ const TASKS_DROPDOWN_NEW_COUNT: Record<ProfileId, number> = {
 
 const TASKS_DROPDOWN_EARN_MORE = 12_400;
 
+const CAMPAIGNS_NAV_ITEMS = [
+  { to: CAMPAIGNS_WITH_WIDGETS_V1_PATH, label: 'Кампании с виджетами 1' },
+  { to: '/campaigns-with-widgets', label: 'Кампании с виджетами 2' },
+  { to: '/campaigns', label: 'Кампании с виджетами 3' },
+  { to: PRODUCT_PROMOTION_CONCEPT_PATH, label: 'Концепт товарного продвижения' },
+] as const;
+
+function isCampaignsNavPath(pathname: string): boolean {
+  return CAMPAIGNS_NAV_ITEMS.some((item) => item.to === pathname);
+}
+
 export function AppHeader({
   onNavigate,
   onLaunchPromotion,
@@ -32,8 +47,10 @@ export function AppHeader({
   onLaunchPromotion?: () => void;
 }) {
   const { profileId, setProfileId, activeProfile } = useProfile();
+  const location = useLocation();
   const promoBonusTotal = PROMO_BONUS_TOTAL_BY_PROFILE[profileId];
   const newTasksCount = TASKS_DROPDOWN_NEW_COUNT[profileId];
+  const campaignsNavActive = isCampaignsNavPath(location.pathname);
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -55,34 +72,47 @@ export function AppHeader({
             >
               Обзор
             </NavLink>
-            <NavLink
-              to="/campaigns-with-widgets"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
-              }
-            >
-              Кампании с виджетами
-            </NavLink>
-            <NavLink
-              to="/campaigns-with-widgets-2"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
-              }
-            >
-              Кампании с виджетами 2
-            </NavLink>
-            <NavLink
-              to="/campaigns"
-              end
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`
-              }
-            >
-              Кампании
-            </NavLink>
+            <div className="relative group/campaigns">
+              <NavLink
+                to={CAMPAIGNS_WITH_WIDGETS_V1_PATH}
+                onClick={onNavigate}
+                className={`inline-flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
+                  campaignsNavActive
+                    ? 'bg-gray-100 text-black'
+                    : 'text-black group-hover/campaigns:bg-gray-100 hover:bg-gray-50'
+                }`}
+              >
+                Кампании
+                <ChevronDown className="h-4 w-4 text-gray-500 transition-transform group-hover/campaigns:rotate-180" />
+              </NavLink>
+
+              <div className="invisible absolute left-0 top-full z-[60] pt-1.5 opacity-0 transition-all group-hover/campaigns:visible group-hover/campaigns:opacity-100 group-focus-within/campaigns:visible group-focus-within/campaigns:opacity-100">
+                <ul
+                  className="min-w-[240px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                  role="menu"
+                  aria-label="Разделы кампаний"
+                >
+                  {CAMPAIGNS_NAV_ITEMS.map((item) => {
+                    const active = location.pathname === item.to;
+                    return (
+                      <li key={item.to} role="none">
+                        <NavLink
+                          to={item.to}
+                          role="menuitem"
+                          onClick={onNavigate}
+                          className={`flex items-center justify-between gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
+                            active ? 'bg-violet-50/80 font-medium text-gray-900' : 'text-gray-800'
+                          }`}
+                        >
+                          <span>{item.label}</span>
+                          {active && <Check className="h-4 w-4 shrink-0 text-[#9a41fe]" aria-hidden />}
+                        </NavLink>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </div>
             <NavLink
               to="/stats"
               onClick={onNavigate}

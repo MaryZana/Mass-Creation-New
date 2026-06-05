@@ -1,5 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
+import {
+  CAMPAIGNS_WITH_WIDGETS_V1_PATH,
+  isCampaignsWidgetsV1Layout,
+  PRODUCT_PROMOTION_CONCEPT_PATH,
+} from '../constants/campaignListRoutes';
 import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
@@ -331,6 +336,22 @@ const PRODUCTS_MIDDLE_COLUMN_IDS = [
   { id: 'dailyLimit', label: 'Дневной лимит' },
   { id: 'tags', label: 'Ярлыки' },
 ] as const;
+
+type ProductsPickTab = 'all' | 'not_promoted' | 'promoted' | 'growth' | 'ab' | 'promo';
+
+const PRODUCTS_PICK_TABS: { id: ProductsPickTab; label: string }[] = [
+  { id: 'all', label: 'Все' },
+  { id: 'not_promoted', label: 'Не продвигаются' },
+  { id: 'promoted', label: 'Продвигаются' },
+  { id: 'growth', label: 'Рост заказов' },
+  { id: 'ab', label: 'А/Б тест' },
+  { id: 'promo', label: 'В акциях' },
+];
+
+function productRowNmId(product: ProductRow): number {
+  const nmId = Number.parseInt(product.articleWb, 10) || Number.parseInt(product.article, 10);
+  return Number.isFinite(nmId) ? nmId : 0;
+}
 
 function productsStatColumnId(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number]): string {
   return `stat:${label}`;
@@ -676,6 +697,7 @@ const PRODUCTS_TABLE_PRODUCT_COL_CLASS = 'w-[520px] min-w-[520px] max-w-[520px]'
 
 /** Закреплённые слева при горизонтальном скролле (порядок важен). */
 const PRODUCTS_PINNED_COLUMNS = [
+  { id: 'select' as const, width: 48, widthClass: 'w-12 min-w-[48px] max-w-[48px]' },
   { id: 'product' as const, width: 520, widthClass: PRODUCTS_TABLE_PRODUCT_COL_CLASS },
   { id: 'campaignType' as const, width: 160, widthClass: 'w-[160px] min-w-[160px] max-w-[160px]' },
   { id: 'budgetRemainder' as const, width: 180, widthClass: 'w-[180px] min-w-[180px] max-w-[180px]' },
@@ -687,6 +709,7 @@ const PRODUCTS_PINNED_COLUMNS = [
 ];
 
 const PRODUCTS_PINNED_HEAD_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['id'], string> = {
+  select: 'z-[21]',
   product: 'z-20',
   campaignType: 'z-[19]',
   budgetRemainder: 'z-[18]',
@@ -694,11 +717,28 @@ const PRODUCTS_PINNED_HEAD_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['i
 };
 
 const PRODUCTS_PINNED_BODY_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['id'], string> = {
+  select: 'z-[11]',
   product: 'z-10',
   campaignType: 'z-[9]',
   budgetRemainder: 'z-[8]',
   dailyLimit: 'z-[7]',
 };
+
+function productRowToCreationItem(product: ProductRow): {
+  nmId: number;
+  productName: string;
+  imageUrl: string;
+  category: string;
+} {
+  const nmId =
+    Number.parseInt(product.articleWb, 10) || Number.parseInt(product.article, 10);
+  return {
+    nmId: Number.isFinite(nmId) ? nmId : 0,
+    productName: product.name,
+    imageUrl: product.image,
+    category: product.category || 'Товары',
+  };
+}
 
 function productsPinnedLeftPx(columnId: string, visibility: Record<string, boolean>): number {
   let left = 0;
@@ -4012,7 +4052,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   );
 
   // Вкладки списка: Кампании | Товары
-  const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
+  const [listTab, setListTab] = useState<'campaigns' | 'products'>('products');
 
   useEffect(() => {
     if (listTab !== 'products') setIsProductsColumnSettingsOpen(false);
@@ -4025,7 +4065,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const location = useLocation();
   const isCampaignsWithWidgetsPage = location.pathname === '/campaigns-with-widgets';
-  const isCampaignsWithWidgets2Page = location.pathname === '/campaigns-with-widgets-2';
+  const isCampaignsWithWidgets2Page = isCampaignsWidgetsV1Layout(location.pathname);
+  const isProductPromotionConceptPage =
+    location.pathname === PRODUCT_PROMOTION_CONCEPT_PATH;
+  const isCampaignsWidgetsV1OnlyPage =
+    location.pathname === CAMPAIGNS_WITH_WIDGETS_V1_PATH;
   const isCampaignsPage = location.pathname === '/campaigns';
   const insightFilterCtx = useCampaignsInsightFilterOptional();
   const insightFilter =
@@ -4162,6 +4206,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   // Раскрытые строки товаров (вкладка Товары)
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
+  const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>('all');
   // Дропдаун тегов: открыт для productId
   const [openTagProductId, setOpenTagProductId] = useState<string | null>(null);
   const tagDropdownAnchorRef = useRef<HTMLElement | null>(null);
@@ -4182,6 +4228,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setAllCampaigns(buildAllCampaignsForProfile(profileId));
     setCurrentPage(1);
     onSelectionChange([]);
+    setSelectedProductIds([]);
+    setProductsPickTab('all');
     setExpandedProductIds(new Set());
     setProductTagsOverride({});
     setProductCampaignStatusOverride({});
@@ -4543,6 +4591,71 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     });
   }, [filteredProducts, searchQuery]);
 
+  const productsForTable = useMemo(() => {
+    if (productsPickTab === 'all') return filteredProductsBySearch;
+    return filteredProductsBySearch.filter((product) => {
+      const nmId = productRowNmId(product);
+      const hasActiveCampaign = product.campaigns.some((camp) => {
+        const effectiveStatus =
+          camp.status === 'draft' || camp.status === 'error'
+            ? camp.status
+            : (productCampaignStatusOverride[camp.id] ?? camp.status);
+        return effectiveStatus === 'active';
+      });
+      if (productsPickTab === 'not_promoted') {
+        if (product.campaigns.length === 0) return true;
+        return !hasActiveCampaign;
+      }
+      if (productsPickTab === 'promoted') {
+        return hasActiveCampaign;
+      }
+      if (productsPickTab === 'growth') return nmId > 0 && nmId % 5 === 0;
+      if (productsPickTab === 'ab') return nmId > 0 && nmId % 9 === 0;
+      if (productsPickTab === 'promo') return nmId > 0 && nmId % 7 === 0;
+      return true;
+    });
+  }, [filteredProductsBySearch, productsPickTab, productCampaignStatusOverride]);
+
+  const visibleProductIds = useMemo(
+    () => productsForTable.map((p) => p.id),
+    [productsForTable],
+  );
+
+  const isAllProductsSelected =
+    visibleProductIds.length > 0 &&
+    visibleProductIds.every((id) => selectedProductIds.includes(id));
+
+  const handleSelectAllProducts = (isChecked: boolean) => {
+    if (isChecked) {
+      setSelectedProductIds((prev) => [...new Set([...prev, ...visibleProductIds])]);
+    } else {
+      setSelectedProductIds((prev) => prev.filter((id) => !visibleProductIds.includes(id)));
+    }
+  };
+
+  const handleSelectSingleProduct = (id: string, isChecked: boolean) => {
+    if (isChecked) {
+      setSelectedProductIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    } else {
+      setSelectedProductIds((prev) => prev.filter((pid) => pid !== id));
+    }
+  };
+
+  const handleBulkCreateCampaignFromProducts = useCallback(() => {
+    const items = productsForTable
+      .filter((p) => selectedProductIds.includes(p.id))
+      .map(productRowToCreationItem);
+    if (items.length === 0) return;
+    if (onNavigateToCreationWithProducts) onNavigateToCreationWithProducts(items);
+    else onNavigateToCreation();
+    setSelectedProductIds([]);
+  }, [
+    productsForTable,
+    selectedProductIds,
+    onNavigateToCreationWithProducts,
+    onNavigateToCreation,
+  ]);
+
   const paginatedCampaigns = campaigns.slice(
     (currentPage - 1) * CAMPAIGNS_PAGE_SIZE,
     currentPage * CAMPAIGNS_PAGE_SIZE
@@ -4773,19 +4886,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={listTab === 'campaigns'}
-                    onClick={() => setListTab('campaigns')}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                      listTab === 'campaigns'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
-                  >
-                    Кампании
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={listTab === 'products'}
                     onClick={() => setListTab('products')}
                     className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -4795,6 +4895,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     }`}
                   >
                     Товары
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'campaigns'}
+                    onClick={() => setListTab('campaigns')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'campaigns'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Кампании
                   </button>
                 </div>
 
@@ -4951,19 +5064,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={listTab === 'campaigns'}
-                    onClick={() => setListTab('campaigns')}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                      listTab === 'campaigns'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
-                  >
-                    Кампании
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={listTab === 'products'}
                     onClick={() => setListTab('products')}
                     className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -4973,6 +5073,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     }`}
                   >
                     Товары
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'campaigns'}
+                    onClick={() => setListTab('campaigns')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'campaigns'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Кампании
                   </button>
                 </div>
 
@@ -4992,35 +5105,37 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
               <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
 
-              <div className="relative min-w-[200px] flex-1">
-                <Search
-                  className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
-                  aria-hidden
-                />
-                <input
-                  type="text"
-                  placeholder={
-                    listTab === 'campaigns'
-                      ? 'Поиск по ID кампании или названию'
-                      : 'Поиск по товару, артикулу или кампании'
-                  }
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white pl-10 pr-3 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
-                />
-              </div>
+              {!(isProductPromotionConceptPage && listTab === 'products') && (
+                <div className="relative min-w-[200px] flex-1">
+                  <Search
+                    className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
+                    aria-hidden
+                  />
+                  <input
+                    type="text"
+                    placeholder={
+                      listTab === 'campaigns'
+                        ? 'Поиск по ID кампании или названию'
+                        : 'Поиск по товару, артикулу или кампании'
+                    }
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white pl-10 pr-3 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
+                  />
+                </div>
+              )}
 
-              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
-                    className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
-                  >
-                    <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
-                    <span>Фильтр</span>
-                  </button>
-                  {(listTab === 'campaigns' || listTab === 'products') && (
+              {(listTab !== 'products' || isCampaignsWidgetsV1OnlyPage) && (
+                <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                      className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
+                    >
+                      <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                      <span>Фильтр</span>
+                    </button>
                     <FilterDropdown
                       variant={listTab === 'products' ? 'products' : 'campaigns'}
                       isOpen={isFilterDropdownOpen}
@@ -5069,40 +5184,40 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
                       availableTags={availableTags}
                     />
-                  )}
-                </div>
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (listTab === 'products') {
-                        setIsProductsColumnSettingsOpen((prev) => !prev);
-                      }
-                    }}
-                    className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
-                      listTab === 'products' && isProductsColumnSettingsOpen
-                        ? 'ring-2 ring-[#9a41fe]/30'
-                        : ''
-                    }`}
-                    title={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
-                    aria-label={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
-                    aria-expanded={listTab === 'products' ? isProductsColumnSettingsOpen : undefined}
-                  >
-                    <Settings className="h-5 w-5 text-gray-700" aria-hidden />
-                  </button>
-                  {listTab === 'products' && (
-                    <ProductsColumnSettingsDropdown
-                      open={isProductsColumnSettingsOpen}
-                      onClose={() => setIsProductsColumnSettingsOpen(false)}
-                      visibility={productsColumnVisibility}
-                      onToggle={(columnId, visible) => {
-                        setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                  </div>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (listTab === 'products') {
+                          setIsProductsColumnSettingsOpen((prev) => !prev);
+                        }
                       }}
-                      onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
-                    />
-                  )}
+                      className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
+                        listTab === 'products' && isProductsColumnSettingsOpen
+                          ? 'ring-2 ring-[#9a41fe]/30'
+                          : ''
+                      }`}
+                      title={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                      aria-label={listTab === 'products' ? 'Настройки колонок' : 'Настройки'}
+                      aria-expanded={listTab === 'products' ? isProductsColumnSettingsOpen : undefined}
+                    >
+                      <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                    </button>
+                    {listTab === 'products' && (
+                      <ProductsColumnSettingsDropdown
+                        open={isProductsColumnSettingsOpen}
+                        onClose={() => setIsProductsColumnSettingsOpen(false)}
+                        visibility={productsColumnVisibility}
+                        onToggle={(columnId, visible) => {
+                          setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                        }}
+                        onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           ) : null}
 
@@ -5274,19 +5389,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={listTab === 'campaigns'}
-                    onClick={() => setListTab('campaigns')}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                      listTab === 'campaigns'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
-                  >
-                    Кампании
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={listTab === 'products'}
                     onClick={() => setListTab('products')}
                     className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -5296,6 +5398,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     }`}
                   >
                     Товары
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'campaigns'}
+                    onClick={() => setListTab('campaigns')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'campaigns'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Кампании
                   </button>
                 </div>
 
@@ -5876,6 +5991,116 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </div>
             )}
 
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-6">
+              <div
+                className="inline-flex max-w-full flex-wrap rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1 text-sm font-medium"
+                role="tablist"
+                aria-label="Подборки товаров"
+              >
+                {PRODUCTS_PICK_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={productsPickTab === tab.id}
+                    onClick={() => setProductsPickTab(tab.id)}
+                    className={`whitespace-nowrap rounded-lg px-4 py-2 transition-all ${
+                      productsPickTab === tab.id
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              {isProductPromotionConceptPage && (
+                <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                      className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
+                    >
+                      <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                      <span>Фильтр</span>
+                    </button>
+                    <FilterDropdown
+                      variant="products"
+                      isOpen={isFilterDropdownOpen}
+                      onClose={handleCancelFilters}
+                      onApply={handleApplyFilters}
+                      productCategoryOptions={productFilterCategoryOptions}
+                      productsSection={tempProductsFilterSection}
+                      onProductsSectionChange={setTempProductsFilterSection}
+                      tempProductCategories={tempFilterProductCategories}
+                      onTempProductCategoriesChange={setTempFilterProductCategories}
+                      tempConflictOnly={tempFilterConflictOnly}
+                      onTempConflictOnlyChange={setTempFilterConflictOnly}
+                      tempCampaignTypes={tempFilterCampaignTypes}
+                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                      category={filterCategory}
+                      onCategoryChange={setFilterCategory}
+                      status={filterStatus}
+                      onStatusChange={setFilterStatus}
+                      autorefill={filterAutorefill}
+                      onAutorefillChange={setFilterAutorefill}
+                      payment={filterPayment}
+                      onPaymentChange={setFilterPayment}
+                      sort={filterSort}
+                      onSortChange={setFilterSort}
+                      filterByCategory={filterByCategory}
+                      onFilterByCategoryChange={setFilterByCategory}
+                      tempCategory={tempFilterCategory}
+                      onTempCategoryChange={setTempFilterCategory}
+                      tempStatus={tempFilterStatus}
+                      onTempStatusChange={setTempFilterStatus}
+                      tempAutorefill={tempFilterAutorefill}
+                      onTempAutorefillChange={setTempFilterAutorefill}
+                      tempPayment={tempFilterPayment}
+                      onTempPaymentChange={setTempFilterPayment}
+                      tempSort={tempFilterSort}
+                      onTempSortChange={setTempFilterSort}
+                      tempFilterByCategory={tempFilterByCategory}
+                      onTempFilterByCategoryChange={setTempFilterByCategory}
+                      tempTags={tempTags}
+                      onTempTagsChange={setTempTags}
+                      tempTagsSearch={tempTagsSearch}
+                      onTempTagsSearchChange={setTempTagsSearch}
+                      tempTagsCategory={tempTagsCategory}
+                      onTempTagsCategoryChange={setTempTagsCategory}
+                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                      availableTags={availableTags}
+                    />
+                  </div>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setIsProductsColumnSettingsOpen((prev) => !prev)}
+                      className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
+                        isProductsColumnSettingsOpen ? 'ring-2 ring-[#9a41fe]/30' : ''
+                      }`}
+                      title="Настройки колонок"
+                      aria-label="Настройки колонок"
+                      aria-expanded={isProductsColumnSettingsOpen}
+                    >
+                      <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                    </button>
+                    <ProductsColumnSettingsDropdown
+                      open={isProductsColumnSettingsOpen}
+                      onClose={() => setIsProductsColumnSettingsOpen(false)}
+                      visibility={productsColumnVisibility}
+                      onToggle={(columnId, visible) => {
+                        setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                      }}
+                      onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div
               className="relative overflow-x-auto"
               onScroll={(e) => {
@@ -5887,6 +6112,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               <table className="relative w-full text-sm min-w-[2800px]">
                 <thead className="bg-gray-50 text-gray-500 font-normal">
                   <tr>
+                    <th
+                      {...productsPinnedProps('select', 'head', 'px-3 py-4 text-center')}
+                    >
+                      <Checkbox
+                        checked={isAllProductsSelected}
+                        onChange={(e) => handleSelectAllProducts(e.target.checked)}
+                        className="w-4 h-4 text-purple-600"
+                      />
+                    </th>
                     {productsColVisible('product') ? (
                       <th
                         {...productsPinnedProps(
@@ -5895,7 +6129,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           PRODUCTS_PINNED_TH_PRODUCT_CLASS,
                         )}
                       >
-                        <span className="block text-left">Товар</span>
+                        {isProductPromotionConceptPage ? (
+                          <label className="flex min-w-0 items-center gap-2 text-left font-normal text-gray-500">
+                            <Search
+                              className="h-4 w-4 shrink-0 text-[#767386]"
+                              aria-hidden
+                            />
+                            <input
+                              type="search"
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                              placeholder="Поиск"
+                              aria-label="Поиск по товару, артикулу или кампании"
+                              className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-normal text-gray-900 placeholder:text-[#767386] focus:outline-none focus:ring-0"
+                            />
+                          </label>
+                        ) : (
+                          <span className="block text-left">Товар</span>
+                        )}
                       </th>
                     ) : null}
                     {productsColVisible('campaignType') ? (
@@ -5954,10 +6205,28 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredProductsBySearch.map((product) => (
+                  {productsForTable.map((product) => (
                     <React.Fragment key={product.id}>
                       {/* Строка товара */}
-                      <tr className="hover:bg-gray-50/80 transition-colors">
+                      <tr
+                        className={`transition-colors ${
+                          selectedProductIds.includes(product.id)
+                            ? 'bg-purple-50/80'
+                            : 'hover:bg-gray-50/80'
+                        }`}
+                      >
+                        <td
+                          {...productsPinnedProps('select', 'body', 'px-3 py-4 align-middle')}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Checkbox
+                            checked={selectedProductIds.includes(product.id)}
+                            onChange={(e) =>
+                              handleSelectSingleProduct(product.id, e.target.checked)
+                            }
+                            className="w-4 h-4 text-purple-600"
+                          />
+                        </td>
                         {productsColVisible('product') ? (
                           <td
                             {...productsPinnedProps(
@@ -6089,6 +6358,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         return (
                         <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                            <td {...productsPinnedProps('select', 'bodyNested', 'px-3 py-3')} />
                             {/* Товар / кампания */}
                             {productsColVisible('product') ? (
                             <td
@@ -6224,6 +6494,37 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </div>
             </div>
           </div>
+
+          {selectedProductIds.length > 0 && (
+            <div className="fixed bottom-6 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-gray-200 bg-white/90 p-2 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4 fade-in">
+              <span className="whitespace-nowrap px-3 text-sm font-medium text-gray-800">
+                Выбрано: {selectedProductIds.length}{' '}
+                {getPlural(
+                  selectedProductIds.length,
+                  'товар',
+                  'товара',
+                  'товаров',
+                )}
+              </span>
+              <div className="h-6 w-px bg-gray-200" />
+              <button
+                type="button"
+                onClick={handleBulkCreateCampaignFromProducts}
+                className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
+              >
+                <Plus className="h-4 w-4" />
+                Создать кампанию
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedProductIds([])}
+                className="ml-1 rounded-full p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                aria-label="Снять выделение"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+          )}
         </>
       )}
 
