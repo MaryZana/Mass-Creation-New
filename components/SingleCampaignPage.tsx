@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Wallet, HelpCircle, X, ChevronDown, Plus, Bell, MoreVertical } from './Icons';
+import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical } from './Icons';
 import { SingleCampaignAddProductsModal } from './SingleCampaignAddProductsModal';
 import { AppHeader } from './AppHeader';
 import { ReferralInviteCreationBanner } from './ReferralInviteCreationBanner';
@@ -398,22 +398,9 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
   const [productBidsByNmId, setProductBidsByNmId] = useState<Record<number, string>>({});
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
-  const [isUploadMenuOpen, setIsUploadMenuOpen] = useState(false);
   const [actionsMenuNmId, setActionsMenuNmId] = useState<number | null>(null);
-  const uploadMenuRef = useRef<HTMLDivElement>(null);
-  const excelInputRef = useRef<HTMLInputElement>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [referralCode, setReferralCode] = useState('');
-
-  useEffect(() => {
-    if (!isUploadMenuOpen) return;
-    const onDocMouseDown = (event: MouseEvent) => {
-      if (uploadMenuRef.current?.contains(event.target as Node)) return;
-      setIsUploadMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [isUploadMenuOpen]);
 
   useEffect(() => {
     if (actionsMenuNmId === null) return;
@@ -515,9 +502,11 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const bidColumnTitle =
     paymentModel === 'CPC' ? 'Ставка (CPC)' : 'Ставка (CPM)';
 
+  const hasCampaignProduct = products.length > 0;
+
   const alreadyAddedNmIds = useMemo(
-    () => new Set(products.map((p) => p.nmId)),
-    [products],
+    () => (hasCampaignProduct ? new Set<number>() : new Set(products.map((p) => p.nmId))),
+    [products, hasCampaignProduct],
   );
 
   const isSingleCategoryAdditionAllowed = (
@@ -551,50 +540,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
       </div>
     );
   };
-
-  const uploadMenu = (
-    <div className="relative" ref={uploadMenuRef}>
-      <button
-        type="button"
-        onClick={() => setIsUploadMenuOpen((open) => !open)}
-        className="inline-flex items-center gap-2 rounded-xl bg-[#F2F2F7] px-4 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
-      >
-        Загрузить
-        <ChevronDown
-          className={`h-4 w-4 shrink-0 text-gray-600 transition-transform ${isUploadMenuOpen ? 'rotate-180' : ''}`}
-          aria-hidden
-        />
-      </button>
-      {isUploadMenuOpen && (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-20 min-w-[12rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-          <button
-            type="button"
-            className="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
-            onClick={() => {
-              setIsUploadMenuOpen(false);
-              excelInputRef.current?.click();
-            }}
-          >
-            Загрузить Excel
-          </button>
-        </div>
-      )}
-      <input
-        ref={excelInputRef}
-        type="file"
-        accept=".xlsx,.csv"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = '';
-          if (!file) return;
-          replaceProducts(MOCK_PRODUCTS.slice(0, 2));
-          setToastMessage('Товары загружены из файла');
-          setShowToast(true);
-        }}
-      />
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-[#F7F7FA] font-sans text-gray-900" style={{ background: '#F7F7FA' }}>
@@ -902,7 +847,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           {products.length === 0 ? (
             <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
               <p className="mb-6 max-w-lg text-sm leading-relaxed text-gray-500">
-                Выберите товары для продвижения или загрузите с помощью Excel
+                Выберите товар для продвижения
               </p>
               <div className="flex flex-wrap items-center justify-center gap-3">
                 <button
@@ -913,47 +858,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
                   <Plus className="h-4 w-4 shrink-0" aria-hidden />
                   Добавить товары
                 </button>
-                <div className="relative" ref={uploadMenuRef}>
-                  <button
-                    type="button"
-                    onClick={() => setIsUploadMenuOpen((open) => !open)}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#F2F2F7] px-5 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
-                  >
-                    Загрузить
-                    <ChevronDown
-                      className={`h-4 w-4 shrink-0 text-gray-600 transition-transform ${isUploadMenuOpen ? 'rotate-180' : ''}`}
-                      aria-hidden
-                    />
-                  </button>
-                  {isUploadMenuOpen && (
-                    <div className="absolute left-0 top-[calc(100%+8px)] z-20 min-w-[12rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg">
-                      <button
-                        type="button"
-                        className="block w-full px-4 py-2.5 text-left text-sm text-gray-700 hover:bg-gray-50"
-                        onClick={() => {
-                          setIsUploadMenuOpen(false);
-                          excelInputRef.current?.click();
-                        }}
-                      >
-                        Загрузить Excel
-                      </button>
-                    </div>
-                  )}
-                  <input
-                    ref={excelInputRef}
-                    type="file"
-                    accept=".xlsx,.csv"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = '';
-                      if (!file) return;
-                      replaceProducts(MOCK_PRODUCTS.slice(0, 2));
-                      setToastMessage('Товары загружены из файла');
-                      setShowToast(true);
-                    }}
-                  />
-                </div>
               </div>
             </div>
           ) : (
@@ -971,10 +875,11 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
                     onClick={() => setIsAddProductsModalOpen(true)}
                     className="inline-flex items-center gap-1.5 rounded-xl bg-[#F2F2F7] px-4 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
                   >
-                    <Plus className="h-4 w-4 shrink-0" aria-hidden />
-                    Добавить товары
+                    {!hasCampaignProduct ? (
+                      <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                    ) : null}
+                    {hasCampaignProduct ? 'Заменить товар' : 'Добавить товары'}
                   </button>
-                  {uploadMenu}
                 </div>
               </div>
               <div className="overflow-x-auto">
@@ -1104,7 +1009,18 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
         options={MOCK_PRODUCTS}
         alreadyAddedNmIds={alreadyAddedNmIds}
         isCpcMode={paymentModel === 'CPC'}
+        maxSelect={1}
+        title={hasCampaignProduct ? 'Заменить товар' : 'Добавление товаров'}
+        confirmLabel={hasCampaignProduct ? 'Заменить' : 'Добавить'}
         onConfirm={(added) => {
+          if (hasCampaignProduct) {
+            const next = added.slice(0, 1);
+            if (next.length === 0) return false;
+            replaceProducts(next);
+            setToastMessage('Товар заменён');
+            setShowToast(true);
+            return true;
+          }
           if (!isSingleCategoryAdditionAllowed(products, added)) {
             setIsMultiCategoryWarningOpen(true);
             return false;
@@ -1113,11 +1029,9 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           for (const p of added) {
             if (!merged.some((m) => m.nmId === p.nmId)) merged.push(p);
           }
-          replaceProducts(merged);
-          const n = added.length;
-          setToastMessage(
-            n === 1 ? 'Товар добавлен' : `Добавлено ${n} товаров`,
-          );
+          replaceProducts(merged.slice(0, 1));
+          const n = Math.min(added.length, 1);
+          setToastMessage(n === 1 ? 'Товар добавлен' : `Добавлено ${n} товаров`);
           setShowToast(true);
           return true;
         }}

@@ -431,22 +431,48 @@ function ProductBulkBidField({
   );
 }
 
+function isProductCampaignCpmManual(camp: ProductCampaign): boolean {
+  return camp.type === 'CPM' && /ручн/i.test(camp.typeDetails);
+}
+
+function formatProductCampaignTypeLabel(camp: ProductCampaign): string {
+  const details = camp.typeDetails?.trim();
+  if (!details) return camp.type;
+  return `${camp.type} · ${details}`;
+}
+
 function defaultProductCampaignBid(camp: ProductCampaign): number {
   return camp.type === 'CPC' ? 10 + (camp.campaignId % 11) : 150 + (camp.campaignId % 351);
+}
+
+function defaultProductCampaignSearchBid(camp: ProductCampaign): number {
+  return 150 + (camp.campaignId % 200);
+}
+
+function defaultProductCampaignRecommendationsBid(camp: ProductCampaign): number {
+  return 160 + (camp.campaignId % 190);
 }
 
 function productCampaignBidMin(camp: ProductCampaign): number {
   return camp.type === 'CPC' ? 10 : 150;
 }
 
+type ProductCampaignBidOverride = {
+  unified?: number;
+  search?: number;
+  recommendations?: number;
+};
+
 function ProductCampaignBidInput({
   camp,
   value,
   onChange,
+  compact = false,
 }: {
   camp: ProductCampaign;
   value: number;
   onChange: (value: number) => void;
+  compact?: boolean;
 }) {
   const min = productCampaignBidMin(camp);
   const [inputValue, setInputValue] = useState(String(value || ''));
@@ -462,7 +488,11 @@ function ProductCampaignBidInput({
   };
 
   return (
-    <div className="relative w-full max-w-[112px] overflow-hidden rounded-lg border border-gray-300 bg-white shadow-sm">
+    <div
+      className={`relative shrink-0 overflow-hidden rounded-md border border-gray-300 bg-white shadow-sm ${
+        compact ? 'w-[76px]' : 'w-[88px]'
+      }`}
+    >
       <input
         type="text"
         value={inputValue}
@@ -470,12 +500,70 @@ function ProductCampaignBidInput({
         onChange={(e) => setInputValue(e.target.value)}
         onBlur={() => commit(inputValue)}
         onClick={(e) => e.stopPropagation()}
-        className="hide-arrows w-full bg-transparent py-2 pl-2 pr-7 text-left text-sm font-medium outline-none"
+        className={`hide-arrows w-full bg-transparent text-left font-medium outline-none ${
+          compact ? 'py-1.5 pl-1.5 pr-5 text-xs' : 'py-2 pl-2 pr-6 text-sm'
+        }`}
       />
-      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
+      <span
+        className={`pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 font-medium text-gray-500 ${
+          compact ? 'text-xs' : 'text-sm'
+        }`}
+      >
         ₽
       </span>
     </div>
+  );
+}
+
+function ProductCampaignBidCell({
+  camp,
+  overrides,
+  onChange,
+}: {
+  camp: ProductCampaign;
+  overrides?: ProductCampaignBidOverride;
+  onChange: (next: ProductCampaignBidOverride) => void;
+}) {
+  if (isProductCampaignCpmManual(camp)) {
+    const searchVal = overrides?.search ?? defaultProductCampaignSearchBid(camp);
+    const recVal =
+      overrides?.recommendations ?? defaultProductCampaignRecommendationsBid(camp);
+    return (
+      <div className="flex flex-col gap-2">
+        <div>
+          <p className="mb-0.5 text-[11px] leading-tight text-gray-500">В поиске</p>
+          <ProductCampaignBidInput
+            camp={camp}
+            value={searchVal}
+            compact
+            onChange={(val) =>
+              onChange({ ...overrides, search: val, recommendations: recVal })
+            }
+          />
+        </div>
+        <div>
+          <p className="mb-0.5 text-[11px] leading-tight text-gray-500">В рекомендациях</p>
+          <ProductCampaignBidInput
+            camp={camp}
+            value={recVal}
+            compact
+            onChange={(val) =>
+              onChange({ ...overrides, search: searchVal, recommendations: val })
+            }
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const unified = overrides?.unified ?? defaultProductCampaignBid(camp);
+  return (
+    <ProductCampaignBidInput
+      camp={camp}
+      value={unified}
+      compact
+      onChange={(val) => onChange({ unified: val })}
+    />
   );
 }
 
@@ -980,7 +1068,7 @@ const PRODUCTS_PINNED_COLUMNS = [
   { id: 'select' as const, width: 48, widthClass: 'w-12 min-w-[48px] max-w-[48px]' },
   { id: 'product' as const, width: 520, widthClass: PRODUCTS_TABLE_PRODUCT_COL_CLASS },
   { id: 'campaignType' as const, width: 160, widthClass: 'w-[160px] min-w-[160px] max-w-[160px]' },
-  { id: 'bid' as const, width: 128, widthClass: 'w-[128px] min-w-[128px] max-w-[128px]' },
+  { id: 'bid' as const, width: 132, widthClass: 'w-[132px] min-w-[132px] max-w-[132px]' },
   { id: 'budgetRemainder' as const, width: 180, widthClass: 'w-[180px] min-w-[180px] max-w-[180px]' },
   {
     id: 'dailyLimit' as const,
@@ -1074,7 +1162,7 @@ function productsPinnedCellProps(
 }
 
 const PRODUCTS_PINNED_TH_CLASS = 'px-4 py-4 text-left font-normal align-middle';
-const PRODUCTS_PINNED_TH_PRODUCT_CLASS = 'px-5 py-4 text-left font-normal align-middle';
+const PRODUCTS_PINNED_TH_PRODUCT_CLASS = 'pl-[5px] pr-5 py-4 text-left font-normal align-middle';
 
 const PRODUCT_TABLE_THUMB_CLASS =
   'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
@@ -3734,7 +3822,7 @@ const FilterDropdown = ({
     return (
       <div
         ref={dropdownRef}
-        className="absolute top-full right-0 z-20 mt-2 flex max-h-[600px] w-[800px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-100"
+        className="absolute left-0 top-full z-[100] mt-2 flex max-h-[min(600px,calc(100vh-12rem))] w-[min(800px,calc(100vw-3rem))] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-100"
       >
         <div className="flex flex-1 overflow-hidden">
           <div className="flex w-56 shrink-0 flex-col gap-1 border-r border-gray-100 p-3">
@@ -4498,10 +4586,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     () => ({
       ...productsColumnVisibility,
       bid: isProductPromotionConceptPage && productsColumnVisibility.bid !== false,
+      campaignType:
+        !isProductPromotionConceptPage && productsColumnVisibility.campaignType !== false,
     }),
     [productsColumnVisibility, isProductPromotionConceptPage],
   );
   const showProductsBidColumn = productsPinVisibility.bid === true;
+  const showProductsCampaignTypeColumn = productsPinVisibility.campaignType === true;
 
   const productsPinnedProps = useCallback(
     (
@@ -4682,7 +4773,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [deletedTags, setDeletedTags] = useState<string[]>([]);
   // Включение/выключение кампании на вкладке «Товары» (id кампании в дереве → 'active' | 'paused')
   const [productCampaignStatusOverride, setProductCampaignStatusOverride] = useState<Record<string, 'active' | 'paused'>>({});
-  const [productCampaignBidOverride, setProductCampaignBidOverride] = useState<Record<string, number>>({});
+  const [productCampaignBidOverride, setProductCampaignBidOverride] = useState<
+    Record<string, ProductCampaignBidOverride>
+  >({});
 
   const isFirstProfileMount = useRef(true);
   useEffect(() => {
@@ -5192,6 +5285,26 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [onOpenCpcCampaign, profileId],
   );
 
+  const openProductNestedCampaign = useCallback(
+    (camp: ProductCampaign) => {
+      if (camp.type !== 'CPC') return;
+      const display = allCampaigns.find((c) => c.campaignId === camp.campaignId);
+      if (display) {
+        openListCpcCampaign(display);
+        return;
+      }
+      onOpenCpcCampaign({
+        campaignId: camp.campaignId,
+        name: camp.name,
+        remainingBudget: camp.remainingBudget,
+        dailyLimit: camp.dailyLimit ?? null,
+        scheduledDailyLimit: null,
+        dailyLimitExhausted: camp.dailyLimitExhausted,
+      });
+    },
+    [allCampaigns, openListCpcCampaign, onOpenCpcCampaign],
+  );
+
   const resolveVariant4BonusRefillCampaigns = useCallback((): DisplayCampaign[] => {
     const byName = allCampaigns.filter((c) =>
       LIST_HEADER_V4_BONUS_REFILL_CAMPAIGN_NAMES.some(
@@ -5570,7 +5683,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           )}
 
-          {isCampaignsWithWidgets2Page && (
+          {isCampaignsWidgetsV1OnlyPage && (
             <div className="w-full min-w-0">
               <Widgets2Strip
                 profileId={profileId}
@@ -5584,7 +5697,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           )}
 
           {isCampaignsWithWidgets2Page ? (
-            <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+            <div
+              className={
+                isProductPromotionConceptPage
+                  ? 'w-full rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm'
+                  : undefined
+              }
+            >
+            <div
+              className={`flex flex-wrap items-center gap-3 lg:flex-nowrap ${
+                isProductPromotionConceptPage ? 'w-full' : ''
+              }`}
+            >
               <div className="flex shrink-0 items-center gap-2">
                 <div
                   className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
@@ -5633,9 +5757,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
               />
 
-              {isProductPromotionConceptPage ? (
-                <DateFilterSegmentedToolbar />
-              ) : (
+              {!isProductPromotionConceptPage && (
                 <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
               )}
 
@@ -5658,6 +5780,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   />
                 </div>
               )}
+
+              {isProductPromotionConceptPage ? (
+                <div className="ml-auto shrink-0">
+                  <DateFilterSegmentedToolbar />
+                </div>
+              ) : null}
 
               {(listTab !== 'products' || isCampaignsWidgetsV1OnlyPage) && (
                 <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
@@ -5752,6 +5880,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </div>
                 </div>
               )}
+            </div>
             </div>
           ) : null}
 
@@ -6386,7 +6515,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
       {listTab === 'products' && (
         <>
-          <div className="w-full max-w-[1920px] bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          <div
+            className={`w-full max-w-[1920px] bg-white rounded-xl shadow-sm border border-gray-100 ${
+              isProductPromotionConceptPage ? 'overflow-visible' : 'overflow-hidden'
+            }`}
+          >
             {isProductsPromoModalOpen && (
               <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">
                 <div className="relative bg-white w-[740px] h-[406px] max-w-[92vw] rounded-2xl shadow-2xl overflow-hidden">
@@ -6525,7 +6658,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-6">
+            <div
+              className={`flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3 sm:px-6 ${
+                isProductPromotionConceptPage ? 'relative z-40 w-full' : 'justify-between'
+              }`}
+            >
               <div
                 className="inline-flex max-w-full flex-wrap rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1 text-sm font-medium"
                 role="tablist"
@@ -6548,95 +6685,102 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </button>
                 ))}
               </div>
-              {isProductPromotionConceptPage && (
-                <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
-                      className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
-                    >
-                      <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
-                      <span>Фильтр</span>
-                    </button>
-                    <FilterDropdown
-                      variant="products"
-                      isOpen={isFilterDropdownOpen}
-                      onClose={handleCancelFilters}
-                      onApply={handleApplyFilters}
-                      productCategoryOptions={productFilterCategoryOptions}
-                      productsSection={tempProductsFilterSection}
-                      onProductsSectionChange={setTempProductsFilterSection}
-                      tempProductCategories={tempFilterProductCategories}
-                      onTempProductCategoriesChange={setTempFilterProductCategories}
-                      tempConflictOnly={tempFilterConflictOnly}
-                      onTempConflictOnlyChange={setTempFilterConflictOnly}
-                      tempCampaignTypes={tempFilterCampaignTypes}
-                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
-                      category={filterCategory}
-                      onCategoryChange={setFilterCategory}
-                      status={filterStatus}
-                      onStatusChange={setFilterStatus}
-                      autorefill={filterAutorefill}
-                      onAutorefillChange={setFilterAutorefill}
-                      payment={filterPayment}
-                      onPaymentChange={setFilterPayment}
-                      sort={filterSort}
-                      onSortChange={setFilterSort}
-                      filterByCategory={filterByCategory}
-                      onFilterByCategoryChange={setFilterByCategory}
-                      tempCategory={tempFilterCategory}
-                      onTempCategoryChange={setTempFilterCategory}
-                      tempStatus={tempFilterStatus}
-                      onTempStatusChange={setTempFilterStatus}
-                      tempAutorefill={tempFilterAutorefill}
-                      onTempAutorefillChange={setTempFilterAutorefill}
-                      tempPayment={tempFilterPayment}
-                      onTempPaymentChange={setTempFilterPayment}
-                      tempSort={tempFilterSort}
-                      onTempSortChange={setTempFilterSort}
-                      tempFilterByCategory={tempFilterByCategory}
-                      onTempFilterByCategoryChange={setTempFilterByCategory}
-                      tempTags={tempTags}
-                      onTempTagsChange={setTempTags}
-                      tempTagsSearch={tempTagsSearch}
-                      onTempTagsSearchChange={setTempTagsSearch}
-                      tempTagsCategory={tempTagsCategory}
-                      onTempTagsCategoryChange={setTempTagsCategory}
-                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
-                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
-                      availableTags={availableTags}
-                    />
-                  </div>
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setIsProductsColumnSettingsOpen((prev) => !prev)}
-                      className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
-                        isProductsColumnSettingsOpen ? 'ring-2 ring-[#9a41fe]/30' : ''
+              {isProductPromotionConceptPage ? (
+                <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                    className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
+                    aria-expanded={isFilterDropdownOpen}
+                    aria-haspopup="dialog"
+                  >
+                    <span>Все фильтры</span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-gray-600 transition-transform ${
+                        isFilterDropdownOpen ? 'rotate-180' : ''
                       }`}
-                      title="Настройки колонок"
-                      aria-label="Настройки колонок"
-                      aria-expanded={isProductsColumnSettingsOpen}
-                    >
-                      <Settings className="h-5 w-5 text-gray-700" aria-hidden />
-                    </button>
-                    <ProductsColumnSettingsDropdown
-                      open={isProductsColumnSettingsOpen}
-                      onClose={() => setIsProductsColumnSettingsOpen(false)}
-                      visibility={productsColumnVisibility}
-                      onToggle={(columnId, visible) => {
-                        setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
-                      }}
-                      onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                      aria-hidden
                     />
-                  </div>
+                  </button>
+                  <FilterDropdown
+                    variant="products"
+                    isOpen={isFilterDropdownOpen}
+                    onClose={handleCancelFilters}
+                    onApply={handleApplyFilters}
+                    productCategoryOptions={productFilterCategoryOptions}
+                    productsSection={tempProductsFilterSection}
+                    onProductsSectionChange={setTempProductsFilterSection}
+                    tempProductCategories={tempFilterProductCategories}
+                    onTempProductCategoriesChange={setTempFilterProductCategories}
+                    tempConflictOnly={tempFilterConflictOnly}
+                    onTempConflictOnlyChange={setTempFilterConflictOnly}
+                    tempCampaignTypes={tempFilterCampaignTypes}
+                    onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                    category={filterCategory}
+                    onCategoryChange={setFilterCategory}
+                    status={filterStatus}
+                    onStatusChange={setFilterStatus}
+                    autorefill={filterAutorefill}
+                    onAutorefillChange={setFilterAutorefill}
+                    payment={filterPayment}
+                    onPaymentChange={setFilterPayment}
+                    sort={filterSort}
+                    onSortChange={setFilterSort}
+                    filterByCategory={filterByCategory}
+                    onFilterByCategoryChange={setFilterByCategory}
+                    tempCategory={tempFilterCategory}
+                    onTempCategoryChange={setTempFilterCategory}
+                    tempStatus={tempFilterStatus}
+                    onTempStatusChange={setTempFilterStatus}
+                    tempAutorefill={tempFilterAutorefill}
+                    onTempAutorefillChange={setTempFilterAutorefill}
+                    tempPayment={tempFilterPayment}
+                    onTempPaymentChange={setTempFilterPayment}
+                    tempSort={tempFilterSort}
+                    onTempSortChange={setTempFilterSort}
+                    tempFilterByCategory={tempFilterByCategory}
+                    onTempFilterByCategoryChange={setTempFilterByCategory}
+                    tempTags={tempTags}
+                    onTempTagsChange={setTempTags}
+                    tempTagsSearch={tempTagsSearch}
+                    onTempTagsSearchChange={setTempTagsSearch}
+                    tempTagsCategory={tempTagsCategory}
+                    onTempTagsCategoryChange={setTempTagsCategory}
+                    tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                    onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                    availableTags={availableTags}
+                  />
                 </div>
-              )}
+              ) : null}
+              {isProductPromotionConceptPage ? (
+                <div className="relative ml-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setIsProductsColumnSettingsOpen((prev) => !prev)}
+                    className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
+                      isProductsColumnSettingsOpen ? 'ring-2 ring-[#9a41fe]/30' : ''
+                    }`}
+                    title="Настройки колонок"
+                    aria-label="Настройки колонок"
+                    aria-expanded={isProductsColumnSettingsOpen}
+                  >
+                    <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                  </button>
+                  <ProductsColumnSettingsDropdown
+                    open={isProductsColumnSettingsOpen}
+                    onClose={() => setIsProductsColumnSettingsOpen(false)}
+                    visibility={productsColumnVisibility}
+                    onToggle={(columnId, visible) => {
+                      setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                    }}
+                    onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                  />
+                </div>
+              ) : null}
             </div>
 
             <div
-              className="relative overflow-x-auto"
+              className="relative z-0 overflow-x-auto"
               onScroll={(e) => {
                 const target = e.currentTarget;
                 setHasProductsScrollShadow(target.scrollLeft > 0);
@@ -6683,7 +6827,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         )}
                       </th>
                     ) : null}
-                    {productsColVisible('campaignType') ? (
+                    {showProductsCampaignTypeColumn ? (
                       <th
                         {...productsPinnedProps(
                           'campaignType',
@@ -6698,7 +6842,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     ) : null}
                     {showProductsBidColumn ? (
                       <th
-                        {...productsPinnedProps('bid', 'head', PRODUCTS_PINNED_TH_CLASS)}
+                        {...productsPinnedProps(
+                          'bid',
+                          'head',
+                          'px-2 py-4 text-left font-normal align-middle',
+                        )}
                       >
                         <span className="inline-flex items-center justify-start gap-1 text-left">
                           Ставка <HelpCircle className="w-4 h-4 text-gray-400" />
@@ -6775,7 +6923,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             {...productsPinnedProps(
                               'product',
                               'body',
-                              'px-5 py-4 align-middle',
+                              'pl-0 pr-5 py-4 align-middle',
                             )}
                           >
                             <ProductCollapsedRowCell
@@ -6785,7 +6933,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             />
                           </td>
                         ) : null}
-                        {productsColVisible('campaignType') ? (
+                        {showProductsCampaignTypeColumn ? (
                           <td
                             {...productsPinnedProps(
                               'campaignType',
@@ -6795,7 +6943,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           />
                         ) : null}
                         {showProductsBidColumn ? (
-                          <td {...productsPinnedProps('bid', 'body', 'p-4 align-top')} />
+                          <td {...productsPinnedProps('bid', 'body', 'px-2 py-3 align-top')} />
                         ) : null}
                         {productsColVisible('budgetRemainder') ? (
                           <td
@@ -6922,18 +7070,38 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               />
                               <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
                                 <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-medium text-gray-800" title={camp.name}>
-                                  {camp.name}
-                                </p>
+                                {camp.type === 'CPC' ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openProductNestedCampaign(camp);
+                                    }}
+                                    className="block w-full min-w-0 truncate text-left text-sm font-medium text-gray-800 transition-colors hover:text-[#9A41FE]"
+                                    title={camp.name}
+                                  >
+                                    {camp.name}
+                                  </button>
+                                ) : (
+                                  <p
+                                    className="truncate text-sm font-medium text-gray-800"
+                                    title={camp.name}
+                                  >
+                                    {camp.name}
+                                  </p>
+                                )}
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-none text-gray-500">
                                   <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
+                                  {isProductPromotionConceptPage ? (
+                                    <span>{formatProductCampaignTypeLabel(camp)}</span>
+                                  ) : null}
                                   <span>ID {camp.campaignId}</span>
                                 </div>
                               </div>
                             </div>
                           </td>
                             ) : null}
-                            {productsColVisible('campaignType') ? (
+                            {showProductsCampaignTypeColumn ? (
                             <td
                               {...productsPinnedProps(
                                 'campaignType',
@@ -6956,19 +7124,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             ) : null}
                             {showProductsBidColumn ? (
                             <td
-                              {...productsPinnedProps('bid', 'bodyNested', 'p-4 align-top')}
+                              {...productsPinnedProps('bid', 'bodyNested', 'px-2 py-3 align-top')}
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <ProductCampaignBidInput
+                              <ProductCampaignBidCell
                                 camp={camp}
-                                value={
-                                  productCampaignBidOverride[camp.id] ??
-                                  defaultProductCampaignBid(camp)
-                                }
-                                onChange={(val) =>
+                                overrides={productCampaignBidOverride[camp.id]}
+                                onChange={(next) =>
                                   setProductCampaignBidOverride((prev) => ({
                                     ...prev,
-                                    [camp.id]: val,
+                                    [camp.id]: next,
                                   }))
                                 }
                               />

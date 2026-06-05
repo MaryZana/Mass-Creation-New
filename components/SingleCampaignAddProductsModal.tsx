@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Checkbox } from 'antd';
+import { Checkbox, Radio } from 'antd';
 import { Search, X, ChevronDown } from './Icons';
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
@@ -60,6 +60,9 @@ export function SingleCampaignAddProductsModal({
   alreadyAddedNmIds,
   onConfirm,
   isCpcMode,
+  maxSelect = MAX_SELECT,
+  title = 'Добавление товаров',
+  confirmLabel = 'Добавить',
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -68,6 +71,9 @@ export function SingleCampaignAddProductsModal({
   /** return true to close modal, false to keep open */
   onConfirm: (selected: SingleCampaignSelectableProduct[]) => boolean;
   isCpcMode: boolean;
+  maxSelect?: number;
+  title?: string;
+  confirmLabel?: string;
 }) {
   const categories = useMemo(() => {
     const set = new Set(options.map((p) => p.category));
@@ -301,14 +307,26 @@ export function SingleCampaignAddProductsModal({
   const someInViewSelected =
     selectableInView.some((p) => pending.some((s) => s.nmId === p.nmId)) && !allInViewSelected;
 
+  const singleSelectMode = maxSelect <= 1;
+
+  const selectSingleProduct = (product: SingleCampaignSelectableProduct) => {
+    if (isCpcMode && !product.cpcCompatible) return;
+    if (alreadyAddedNmIds.has(product.nmId)) return;
+    setPending([product]);
+  };
+
   const toggleProduct = (product: SingleCampaignSelectableProduct) => {
+    if (singleSelectMode) {
+      selectSingleProduct(product);
+      return;
+    }
     if (isCpcMode && !product.cpcCompatible) return;
     if (alreadyAddedNmIds.has(product.nmId)) return;
     setPending((prev) => {
       if (prev.some((p) => p.nmId === product.nmId)) {
         return prev.filter((p) => p.nmId !== product.nmId);
       }
-      if (prev.length >= MAX_SELECT) return prev;
+      if (prev.length >= maxSelect) return prev;
       return [...prev, product];
     });
   };
@@ -321,7 +339,7 @@ export function SingleCampaignAddProductsModal({
     }
     setPending((prev) => {
       const existing = new Set(prev.map((p) => p.nmId));
-      const room = MAX_SELECT - prev.length;
+      const room = maxSelect - prev.length;
       const toAdd = selectableInView.filter((p) => !existing.has(p.nmId)).slice(0, room);
       return [...prev, ...toAdd];
     });
@@ -348,7 +366,7 @@ export function SingleCampaignAddProductsModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-gray-100 px-6 py-5">
-          <h2 className="text-xl font-bold text-gray-900">Добавление товаров</h2>
+          <h2 className="text-xl font-bold text-gray-900">{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -521,12 +539,14 @@ export function SingleCampaignAddProductsModal({
                   <thead>
                     <tr className="border-b border-gray-100 text-left text-xs font-normal text-gray-400">
                       <th className="w-10 px-3 py-2">
-                        <Checkbox
-                          checked={allInViewSelected}
-                          indeterminate={someInViewSelected}
-                          disabled={!category || selectableInView.length === 0}
-                          onChange={toggleSelectAllInView}
-                        />
+                        {!singleSelectMode ? (
+                          <Checkbox
+                            checked={allInViewSelected}
+                            indeterminate={someInViewSelected}
+                            disabled={!category || selectableInView.length === 0}
+                            onChange={toggleSelectAllInView}
+                          />
+                        ) : null}
                       </th>
                       <th className="w-[52px] px-2 py-2">Фото</th>
                       <th className="px-3 py-2">Бренд · Артикул · Название</th>
@@ -545,18 +565,36 @@ export function SingleCampaignAddProductsModal({
                         const isIncompatible = isCpcMode && !product.cpcCompatible;
                         const disabled = isAdded || isIncompatible;
                         const isChecked = pending.some((p) => p.nmId === product.nmId);
-                        const atCap = pending.length >= MAX_SELECT && !isChecked;
+                        const atCap =
+                          !singleSelectMode && pending.length >= maxSelect && !isChecked;
                         return (
                           <tr
                             key={product.nmId}
-                            className={`${disabled ? 'opacity-50' : 'hover:bg-gray-50/80'} ${isChecked ? 'bg-purple-50/30' : ''}`}
+                            className={`${disabled ? 'opacity-50' : 'hover:bg-gray-50/80 cursor-pointer'} ${isChecked ? 'bg-purple-50/30' : ''}`}
+                            onClick={
+                              singleSelectMode && !disabled
+                                ? () => selectSingleProduct(product)
+                                : undefined
+                            }
                           >
-                            <td className="px-3 py-3 align-middle">
-                              <Checkbox
-                                checked={isChecked}
-                                disabled={disabled || atCap}
-                                onChange={() => toggleProduct(product)}
-                              />
+                            <td
+                              className="px-3 py-3 align-middle"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {singleSelectMode ? (
+                                <Radio
+                                  checked={isChecked}
+                                  disabled={disabled}
+                                  onChange={() => selectSingleProduct(product)}
+                                  className="[&_.ant-radio-inner]:border-[#BBB7C9] [&_.ant-radio-checked_.ant-radio-inner]:border-[#9A41FE] [&_.ant-radio-checked_.ant-radio-inner]:bg-[#9A41FE]"
+                                />
+                              ) : (
+                                <Checkbox
+                                  checked={isChecked}
+                                  disabled={disabled || atCap}
+                                  onChange={() => toggleProduct(product)}
+                                />
+                              )}
                             </td>
                             <td className="px-2 py-3 align-middle">
                               <ProductThumb
@@ -604,7 +642,7 @@ export function SingleCampaignAddProductsModal({
               onClick={handleConfirm}
               className="rounded-xl px-5 py-2.5 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:bg-[#E8D4FF] enabled:bg-[#9A41FE] enabled:hover:bg-[#8840e5]"
             >
-              Добавить
+              {confirmLabel}
             </button>
             <button
               type="button"
@@ -618,8 +656,12 @@ export function SingleCampaignAddProductsModal({
             <span>
               Выбрано: <span className="font-medium text-gray-900">{pending.length}</span>
             </span>
-            <span className="mx-2 text-gray-300">·</span>
-            <span className="text-gray-500">Максимум — {MAX_SELECT}</span>
+            {!singleSelectMode ? (
+              <>
+                <span className="mx-2 text-gray-300">·</span>
+                <span className="text-gray-500">Максимум — {maxSelect}</span>
+              </>
+            ) : null}
           </div>
         </div>
       </div>

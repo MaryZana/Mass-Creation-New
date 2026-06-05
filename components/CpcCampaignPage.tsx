@@ -647,24 +647,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         </section>
 
         <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-            <h2 className="text-lg font-bold text-gray-900">Ставки по товарам</h2>
-            <div className="flex flex-wrap items-center gap-3">
-              {!fromReadyToRepeat && (
-                <button
-                  type="button"
-                  className="px-3 py-1.5 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900"
-                >
-                  Добавить товары
-                </button>
-              )}
-              <input
-                type="text"
-                placeholder="Поиск по товарам"
-                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-purple-500 focus:border-purple-500 outline-none"
-              />
-            </div>
-          </div>
+          <h2 className="mb-4 text-lg font-bold text-gray-900">Ставки по товарам</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 text-gray-500 font-medium">
