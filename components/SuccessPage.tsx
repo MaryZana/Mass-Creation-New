@@ -329,6 +329,7 @@ const PRODUCTS_STAT_COLUMN_LABELS = [
 const PRODUCTS_PRIMARY_COLUMN_IDS = [
   { id: 'product', label: 'Товар' },
   { id: 'campaignType', label: 'Тип кампании' },
+  { id: 'bid', label: 'Ставка' },
   { id: 'budgetRemainder', label: 'Остаток бюджета' },
 ] as const;
 
@@ -347,6 +348,285 @@ const PRODUCTS_PICK_TABS: { id: ProductsPickTab; label: string }[] = [
   { id: 'ab', label: 'А/Б тест' },
   { id: 'promo', label: 'В акциях' },
 ];
+
+const PRODUCT_BID_BULK_ACTIONS = [
+  { id: 'cpc', label: 'Изменить ставку за клик' },
+  { id: 'search', label: 'Изменить ставку в поиске' },
+  { id: 'recommendations', label: 'Изменить ставку в рекомендациях' },
+] as const;
+
+type ProductBidBulkModalKind = (typeof PRODUCT_BID_BULK_ACTIONS)[number]['id'];
+
+const PRODUCT_BID_MODAL_TITLES: Record<ProductBidBulkModalKind, string> = {
+  cpc: 'Изменить ставку за клик',
+  search: 'Изменить ставку в поиске',
+  recommendations: 'Изменить ставку в рекомендациях',
+};
+
+function productBidPresets(kind: ProductBidBulkModalKind): number[] {
+  return kind === 'cpc' ? [10, 15, 20] : [150, 300, 500];
+}
+
+function productBidMin(kind: ProductBidBulkModalKind): number {
+  return kind === 'cpc' ? 10 : 150;
+}
+
+function ProductBulkBidField({
+  value,
+  onChange,
+  presets,
+  min,
+}: {
+  value: number;
+  onChange: (value: number) => void;
+  presets: number[];
+  min: number;
+}) {
+  const [inputValue, setInputValue] = useState(String(value || ''));
+  useEffect(() => {
+    setInputValue(String(value || ''));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    let numericValue = parseDisplayValue(raw);
+    if (Number.isNaN(numericValue) || numericValue < min) numericValue = min;
+    onChange(numericValue);
+    setInputValue(String(numericValue));
+  };
+
+  return (
+    <div className="w-full overflow-hidden rounded-lg border border-gray-300 shadow-sm">
+      <div className="relative bg-white">
+        <input
+          type="text"
+          value={inputValue}
+          placeholder="Ставка"
+          onChange={(e) => setInputValue(e.target.value)}
+          onBlur={() => commit(inputValue)}
+          className="hide-arrows w-full bg-transparent px-2 py-2 text-left text-sm font-medium outline-none"
+        />
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
+          ₽
+        </span>
+      </div>
+      <div className="flex h-2 w-full border-t border-gray-200">
+        {presets.map((p, index) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => {
+              setInputValue(String(p));
+              onChange(p);
+            }}
+            title={`Установить ставку ${p} ₽`}
+            className={`relative h-full flex-1 transition-colors ${
+              Number(value) === p ? 'bg-green-300' : 'bg-gray-100 hover:bg-gray-200'
+            }`}
+          >
+            {index > 0 ? <div className="absolute bottom-0 left-0 top-0 w-px bg-white" /> : null}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function defaultProductCampaignBid(camp: ProductCampaign): number {
+  return camp.type === 'CPC' ? 10 + (camp.campaignId % 11) : 150 + (camp.campaignId % 351);
+}
+
+function productCampaignBidMin(camp: ProductCampaign): number {
+  return camp.type === 'CPC' ? 10 : 150;
+}
+
+function ProductCampaignBidInput({
+  camp,
+  value,
+  onChange,
+}: {
+  camp: ProductCampaign;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const min = productCampaignBidMin(camp);
+  const [inputValue, setInputValue] = useState(String(value || ''));
+  useEffect(() => {
+    setInputValue(String(value || ''));
+  }, [value]);
+
+  const commit = (raw: string) => {
+    let numericValue = parseDisplayValue(raw);
+    if (Number.isNaN(numericValue) || numericValue < min) numericValue = min;
+    onChange(numericValue);
+    setInputValue(String(numericValue));
+  };
+
+  return (
+    <div className="relative w-full max-w-[112px] overflow-hidden rounded-lg border border-gray-300 bg-white shadow-sm">
+      <input
+        type="text"
+        value={inputValue}
+        placeholder="Ставка"
+        onChange={(e) => setInputValue(e.target.value)}
+        onBlur={() => commit(inputValue)}
+        onClick={(e) => e.stopPropagation()}
+        className="hide-arrows w-full bg-transparent py-2 pl-2 pr-7 text-left text-sm font-medium outline-none"
+      />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">
+        ₽
+      </span>
+    </div>
+  );
+}
+
+function ProductBidBulkModal({
+  kind,
+  isOpen,
+  onClose,
+  categories,
+  campaignCount,
+  productCount,
+  onApply,
+}: {
+  kind: ProductBidBulkModalKind;
+  isOpen: boolean;
+  onClose: () => void;
+  categories: string[];
+  campaignCount: number;
+  productCount: number;
+  onApply: () => void;
+}) {
+  const presets = productBidPresets(kind);
+  const min = productBidMin(kind);
+  const multiCategory = categories.length > 1;
+  const [singleBid, setSingleBid] = useState(min);
+  const [bidsByCategory, setBidsByCategory] = useState<Record<string, number>>({});
+  const [activeCategory, setActiveCategory] = useState(categories[0] ?? '');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSingleBid(min);
+    const next: Record<string, number> = {};
+    for (const cat of categories) next[cat] = min;
+    setBidsByCategory(next);
+    setActiveCategory(categories[0] ?? '');
+  }, [isOpen, kind, categories, min]);
+
+  if (!isOpen) return null;
+
+  const title = PRODUCT_BID_MODAL_TITLES[kind];
+
+  const handleApply = () => {
+    onApply();
+    onClose();
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-labelledby="product-bid-bulk-modal-title"
+      >
+        <div className="mb-1 flex items-start justify-between gap-3">
+          <h2 id="product-bid-bulk-modal-title" className="text-lg font-bold text-gray-900">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            aria-label="Закрыть"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <p className="mb-4 text-sm text-gray-500">
+          {productCount} {getPlural(productCount, 'товар', 'товара', 'товаров')} ·{' '}
+          {campaignCount} {getPlural(campaignCount, 'кампания', 'кампании', 'кампаний')}
+        </p>
+
+        {multiCategory ? (
+          <div className="space-y-4">
+            <p className="text-sm font-medium text-gray-700">Категории</p>
+            <div
+              className="inline-flex max-w-full flex-wrap gap-1 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
+              role="tablist"
+              aria-label="Фильтр по категориям"
+            >
+              {categories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeCategory === cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className={`max-w-[200px] truncate rounded-lg px-3 py-1.5 text-sm font-medium transition-all ${
+                    activeCategory === cat
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-[#767386] hover:text-gray-900'
+                  }`}
+                  title={cat}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+            {categories.map((cat) =>
+              activeCategory === cat ? (
+                <div key={cat}>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">{cat}</label>
+                  <ProductBulkBidField
+                    value={bidsByCategory[cat] ?? min}
+                    onChange={(val) =>
+                      setBidsByCategory((prev) => ({ ...prev, [cat]: val }))
+                    }
+                    presets={presets}
+                    min={min}
+                  />
+                </div>
+              ) : null,
+            )}
+          </div>
+        ) : (
+          <div>
+            {categories[0] ? (
+              <p className="mb-2 text-sm text-gray-500">Категория: {categories[0]}</p>
+            ) : null}
+            <label className="mb-2 block text-sm font-medium text-gray-700">Новая ставка (₽)</label>
+            <ProductBulkBidField
+              value={singleBid}
+              onChange={setSingleBid}
+              presets={presets}
+              min={min}
+            />
+          </div>
+        )}
+
+        <div className="mt-6 flex justify-end gap-3 border-t border-gray-100 pt-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={handleApply}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700"
+          >
+            Применить
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function productRowNmId(product: ProductRow): number {
   const nmId = Number.parseInt(product.articleWb, 10) || Number.parseInt(product.article, 10);
@@ -700,6 +980,7 @@ const PRODUCTS_PINNED_COLUMNS = [
   { id: 'select' as const, width: 48, widthClass: 'w-12 min-w-[48px] max-w-[48px]' },
   { id: 'product' as const, width: 520, widthClass: PRODUCTS_TABLE_PRODUCT_COL_CLASS },
   { id: 'campaignType' as const, width: 160, widthClass: 'w-[160px] min-w-[160px] max-w-[160px]' },
+  { id: 'bid' as const, width: 128, widthClass: 'w-[128px] min-w-[128px] max-w-[128px]' },
   { id: 'budgetRemainder' as const, width: 180, widthClass: 'w-[180px] min-w-[180px] max-w-[180px]' },
   {
     id: 'dailyLimit' as const,
@@ -712,16 +993,18 @@ const PRODUCTS_PINNED_HEAD_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['i
   select: 'z-[21]',
   product: 'z-20',
   campaignType: 'z-[19]',
-  budgetRemainder: 'z-[18]',
-  dailyLimit: 'z-[17]',
+  bid: 'z-[18]',
+  budgetRemainder: 'z-[17]',
+  dailyLimit: 'z-[16]',
 };
 
 const PRODUCTS_PINNED_BODY_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['id'], string> = {
   select: 'z-[11]',
   product: 'z-10',
   campaignType: 'z-[9]',
-  budgetRemainder: 'z-[8]',
-  dailyLimit: 'z-[7]',
+  bid: 'z-[8]',
+  budgetRemainder: 'z-[7]',
+  dailyLimit: 'z-[6]',
 };
 
 function productRowToCreationItem(product: ProductRow): {
@@ -2666,6 +2949,173 @@ const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () =>
 );
 
 
+type DateFilterPreset = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'custom';
+
+function formatDateFilterRangePart(d: Date): string {
+  const parts = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }).split(' ');
+  if (parts.length >= 2) {
+    const month = parts[1];
+    return `${parts[0]} ${month.charAt(0).toLowerCase()}${month.slice(1)}`;
+  }
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+}
+
+function formatDateFilterRangeLabel(start: Date, end: Date): string {
+  return `${formatDateFilterRangePart(start)} — ${formatDateFilterRangePart(end)}`;
+}
+
+function dateToInputValue(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function rangeForDateFilterPreset(preset: Exclude<DateFilterPreset, 'custom'>): { start: Date; end: Date } {
+  const end = new Date();
+  end.setHours(0, 0, 0, 0);
+  const start = new Date(end);
+  if (preset === 'today') return { start, end };
+  if (preset === 'yesterday') {
+    start.setDate(start.getDate() - 1);
+    const yesterday = new Date(start);
+    return { start: yesterday, end: yesterday };
+  }
+  if (preset === 'week') {
+    start.setDate(start.getDate() - 6);
+    return { start, end };
+  }
+  if (preset === 'month') {
+    start.setDate(start.getDate() - 29);
+    return { start, end };
+  }
+  const month = end.getMonth();
+  const quarterStartMonth = Math.floor(month / 3) * 3;
+  start.setMonth(quarterStartMonth, 1);
+  return { start, end };
+}
+
+const DATE_FILTER_SEGMENT_PRESETS: { id: Exclude<DateFilterPreset, 'custom'>; label: string }[] = [
+  { id: 'today', label: 'Сегодня' },
+  { id: 'yesterday', label: 'Вчера' },
+  { id: 'week', label: 'Неделя' },
+  { id: 'month', label: 'Месяц' },
+  { id: 'quarter', label: 'Квартал' },
+];
+
+const DateFilterSegmentedToolbar = () => {
+  const [activePreset, setActivePreset] = useState<DateFilterPreset>('month');
+  const [rangeStart, setRangeStart] = useState(() => rangeForDateFilterPreset('month').start);
+  const [rangeEnd, setRangeEnd] = useState(() => rangeForDateFilterPreset('month').end);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [draftStart, setDraftStart] = useState('');
+  const [draftEnd, setDraftEnd] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!customOpen) return;
+    const onMouseDown = (event: MouseEvent) => {
+      if (ref.current?.contains(event.target as Node)) return;
+      setCustomOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [customOpen]);
+
+  const applyPreset = (preset: Exclude<DateFilterPreset, 'custom'>) => {
+    const { start, end } = rangeForDateFilterPreset(preset);
+    setActivePreset(preset);
+    setRangeStart(start);
+    setRangeEnd(end);
+    setCustomOpen(false);
+  };
+
+  const openCustomPicker = () => {
+    setDraftStart(dateToInputValue(rangeStart));
+    setDraftEnd(dateToInputValue(rangeEnd));
+    setCustomOpen((o) => !o);
+  };
+
+  const applyCustomRange = () => {
+    if (!draftStart || !draftEnd) return;
+    const start = new Date(draftStart);
+    const end = new Date(draftEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
+    setRangeStart(start);
+    setRangeEnd(end);
+    setActivePreset('custom');
+    setCustomOpen(false);
+  };
+
+  const rangeLabel = formatDateFilterRangeLabel(rangeStart, rangeEnd);
+
+  return (
+    <div
+      className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1 text-sm font-medium"
+      role="group"
+      aria-label="Период статистики"
+    >
+      {DATE_FILTER_SEGMENT_PRESETS.map((preset) => (
+        <button
+          key={preset.id}
+          type="button"
+          onClick={() => applyPreset(preset.id)}
+          className={`whitespace-nowrap rounded-lg px-3 py-2 transition-all ${
+            activePreset === preset.id
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-[#767386] hover:text-gray-900'
+          }`}
+        >
+          {preset.label}
+        </button>
+      ))}
+      <div className="relative" ref={ref}>
+        <button
+          type="button"
+          onClick={openCustomPicker}
+          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 transition-all ${
+            activePreset === 'custom'
+              ? 'bg-white text-gray-900 shadow-sm'
+              : 'text-gray-900 hover:text-gray-900'
+          }`}
+        >
+          <span className="tabular-nums">{rangeLabel}</span>
+          <ChevronDown
+            className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${customOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+        {customOpen && (
+          <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-xl border border-gray-200 bg-white p-4 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+            <p className="mb-2 text-sm font-medium text-gray-900">Выбрать период</p>
+            <div className="space-y-2">
+              <input
+                type="date"
+                value={draftStart}
+                onChange={(e) => setDraftStart(e.target.value)}
+                className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
+              />
+              <input
+                type="date"
+                value={draftEnd}
+                onChange={(e) => setDraftEnd(e.target.value)}
+                className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={applyCustomRange}
+              className="mt-3 w-full rounded-lg bg-purple-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
+            >
+              Применить
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const DateFilter = ({ defaultLabel, variant = 'default' }: { defaultLabel: string; variant?: 'default' | 'toolbar' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [label, setLabel] = useState(defaultLabel);
@@ -4035,6 +4485,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     (columnId: string) => productsColumnVisibility[columnId] !== false,
     [productsColumnVisibility],
   );
+
+  const location = useLocation();
+  const isCampaignsWithWidgetsPage = location.pathname === '/campaigns-with-widgets';
+  const isCampaignsWithWidgets2Page = isCampaignsWidgetsV1Layout(location.pathname);
+  const isProductPromotionConceptPage =
+    location.pathname === PRODUCT_PROMOTION_CONCEPT_PATH;
+  const isCampaignsWidgetsV1OnlyPage =
+    location.pathname === CAMPAIGNS_WITH_WIDGETS_V1_PATH;
+
+  const productsPinVisibility = useMemo(
+    () => ({
+      ...productsColumnVisibility,
+      bid: isProductPromotionConceptPage && productsColumnVisibility.bid !== false,
+    }),
+    [productsColumnVisibility, isProductPromotionConceptPage],
+  );
+  const showProductsBidColumn = productsPinVisibility.bid === true;
+
   const productsPinnedProps = useCallback(
     (
       columnId: (typeof PRODUCTS_PINNED_COLUMNS)[number]['id'],
@@ -4043,12 +4511,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     ) =>
       productsPinnedCellProps(
         columnId,
-        productsColumnVisibility,
+        productsPinVisibility,
         variant,
         extraClass,
         hasProductsScrollShadow,
       ),
-    [productsColumnVisibility, hasProductsScrollShadow],
+    [productsPinVisibility, hasProductsScrollShadow],
   );
 
   // Вкладки списка: Кампании | Товары
@@ -4063,13 +4531,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   // Поиск: по названию товара, названию кампании, артикулу товара, ID кампании
   const [searchQuery, setSearchQuery] = useState('');
 
-  const location = useLocation();
-  const isCampaignsWithWidgetsPage = location.pathname === '/campaigns-with-widgets';
-  const isCampaignsWithWidgets2Page = isCampaignsWidgetsV1Layout(location.pathname);
-  const isProductPromotionConceptPage =
-    location.pathname === PRODUCT_PROMOTION_CONCEPT_PATH;
-  const isCampaignsWidgetsV1OnlyPage =
-    location.pathname === CAMPAIGNS_WITH_WIDGETS_V1_PATH;
   const isCampaignsPage = location.pathname === '/campaigns';
   const insightFilterCtx = useCampaignsInsightFilterOptional();
   const insightFilter =
@@ -4208,6 +4669,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>('all');
+  const [productBulkNotice, setProductBulkNotice] = useState<string | null>(null);
+  const [productBidBulkModalKind, setProductBidBulkModalKind] =
+    useState<ProductBidBulkModalKind | null>(null);
   // Дропдаун тегов: открыт для productId
   const [openTagProductId, setOpenTagProductId] = useState<string | null>(null);
   const tagDropdownAnchorRef = useRef<HTMLElement | null>(null);
@@ -4218,6 +4682,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [deletedTags, setDeletedTags] = useState<string[]>([]);
   // Включение/выключение кампании на вкладке «Товары» (id кампании в дереве → 'active' | 'paused')
   const [productCampaignStatusOverride, setProductCampaignStatusOverride] = useState<Record<string, 'active' | 'paused'>>({});
+  const [productCampaignBidOverride, setProductCampaignBidOverride] = useState<Record<string, number>>({});
 
   const isFirstProfileMount = useRef(true);
   useEffect(() => {
@@ -4656,6 +5121,49 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onNavigateToCreation,
   ]);
 
+  const selectedProductsForBulk = useMemo(
+    () => productsForTable.filter((p) => selectedProductIds.includes(p.id)),
+    [productsForTable, selectedProductIds],
+  );
+
+  const selectedProductsCampaignCount = useMemo(() => {
+    return selectedProductsForBulk.reduce((sum, p) => sum + p.campaigns.length, 0);
+  }, [selectedProductsForBulk]);
+
+  const selectedProductCategories = useMemo(() => {
+    const set = new Set(
+      selectedProductsForBulk.map((p) => p.category).filter((c): c is string => Boolean(c)),
+    );
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'));
+  }, [selectedProductsForBulk]);
+
+  useEffect(() => {
+    if (selectedProductIds.length === 0) {
+      setProductBidBulkModalKind(null);
+    }
+  }, [selectedProductIds.length]);
+
+  const openProductBidBulkModal = (kind: ProductBidBulkModalKind) => {
+    if (selectedProductsCampaignCount === 0) {
+      setProductBulkNotice('У выбранных товаров нет кампаний для изменения ставки');
+      return;
+    }
+    setProductBidBulkModalKind(kind);
+  };
+
+  const handleProductBidBulkApply = () => {
+    if (!productBidBulkModalKind) return;
+    const title = PRODUCT_BID_MODAL_TITLES[productBidBulkModalKind];
+    setProductBulkNotice(
+      `${title}: обновлено ${selectedProductsCampaignCount} ${getPlural(
+        selectedProductsCampaignCount,
+        'кампания',
+        'кампании',
+        'кампаний',
+      )}`,
+    );
+  };
+
   const paginatedCampaigns = campaigns.slice(
     (currentPage - 1) * CAMPAIGNS_PAGE_SIZE,
     currentPage * CAMPAIGNS_PAGE_SIZE
@@ -4863,6 +5371,28 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           isError
           durationMs={2000}
           aboveOverlay
+        />
+      )}
+
+      {productBulkNotice && (
+        <Toast
+          show={!!productBulkNotice}
+          message={productBulkNotice}
+          onClose={() => setProductBulkNotice(null)}
+          durationMs={2500}
+          aboveOverlay
+        />
+      )}
+
+      {isProductPromotionConceptPage && productBidBulkModalKind && (
+        <ProductBidBulkModal
+          kind={productBidBulkModalKind}
+          isOpen
+          onClose={() => setProductBidBulkModalKind(null)}
+          categories={selectedProductCategories}
+          campaignCount={selectedProductsCampaignCount}
+          productCount={selectedProductIds.length}
+          onApply={handleProductBidBulkApply}
         />
       )}
 
@@ -5103,7 +5633,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
               />
 
-              <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
+              {isProductPromotionConceptPage ? (
+                <DateFilterSegmentedToolbar />
+              ) : (
+                <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
+              )}
 
               {!(isProductPromotionConceptPage && listTab === 'products') && (
                 <div className="relative min-w-[200px] flex-1">
@@ -6162,6 +6696,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         </span>
                       </th>
                     ) : null}
+                    {showProductsBidColumn ? (
+                      <th
+                        {...productsPinnedProps('bid', 'head', PRODUCTS_PINNED_TH_CLASS)}
+                      >
+                        <span className="inline-flex items-center justify-start gap-1 text-left">
+                          Ставка <HelpCircle className="w-4 h-4 text-gray-400" />
+                        </span>
+                      </th>
+                    ) : null}
                     {productsColVisible('budgetRemainder') ? (
                       <th
                         {...productsPinnedProps(
@@ -6250,6 +6793,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               'p-4 align-top',
                             )}
                           />
+                        ) : null}
+                        {showProductsBidColumn ? (
+                          <td {...productsPinnedProps('bid', 'body', 'p-4 align-top')} />
                         ) : null}
                         {productsColVisible('budgetRemainder') ? (
                           <td
@@ -6408,6 +6954,26 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             </div>
                           </td>
                             ) : null}
+                            {showProductsBidColumn ? (
+                            <td
+                              {...productsPinnedProps('bid', 'bodyNested', 'p-4 align-top')}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <ProductCampaignBidInput
+                                camp={camp}
+                                value={
+                                  productCampaignBidOverride[camp.id] ??
+                                  defaultProductCampaignBid(camp)
+                                }
+                                onChange={(val) =>
+                                  setProductCampaignBidOverride((prev) => ({
+                                    ...prev,
+                                    [camp.id]: val,
+                                  }))
+                                }
+                              />
+                            </td>
+                            ) : null}
                             {productsColVisible('budgetRemainder') ? (
                             <td
                               {...productsPinnedProps(
@@ -6515,6 +7081,45 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 <Plus className="h-4 w-4" />
                 Создать кампанию
               </button>
+              {isProductPromotionConceptPage && (
+                <div
+                  className={`relative group/product-bid ${selectedProductsCampaignCount === 0 ? 'pointer-events-none opacity-50' : ''}`}
+                >
+                  <button
+                    type="button"
+                    disabled={selectedProductsCampaignCount === 0}
+                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors group-hover/product-bid:bg-gray-50 hover:bg-gray-50 disabled:cursor-not-allowed"
+                    aria-haspopup="menu"
+                  >
+                    Работать со ставкой
+                    <ChevronDown
+                      className="h-4 w-4 shrink-0 text-gray-500 transition-transform group-hover/product-bid:rotate-180 group-focus-within/product-bid:rotate-180"
+                      aria-hidden
+                    />
+                  </button>
+                  {selectedProductsCampaignCount > 0 && (
+                    <div className="invisible absolute bottom-full left-0 z-[90] pt-2 opacity-0 transition-all group-hover/product-bid:visible group-hover/product-bid:opacity-100 group-focus-within/product-bid:visible group-focus-within/product-bid:opacity-100">
+                      <ul
+                        role="menu"
+                        className="min-w-[280px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                      >
+                        {PRODUCT_BID_BULK_ACTIONS.map((action) => (
+                          <li key={action.id} role="none">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => openProductBidBulkModal(action.id)}
+                              className="block w-full px-3 py-2.5 text-left text-sm text-gray-800 transition-colors hover:bg-gray-50"
+                            >
+                              {action.label}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedProductIds([])}
