@@ -1897,16 +1897,21 @@ function ProductTableThumb({
   src,
   category,
   alt = '',
+  allTabListRowIndex,
 }: {
   productId: string;
   src: string;
   category?: string;
   alt?: string;
+  /** Вкладка «Все»: позиция в отсортированном списке (первые 15 — разные фото). */
+  allTabListRowIndex?: number;
 }) {
-  const [url, setUrl] = useState(() => resolveProductTableThumbSrc(productId, src, category));
+  const [url, setUrl] = useState(() =>
+    resolveProductTableThumbSrc(productId, src, category, allTabListRowIndex),
+  );
   useEffect(() => {
-    setUrl(resolveProductTableThumbSrc(productId, src, category));
-  }, [src, productId, category]);
+    setUrl(resolveProductTableThumbSrc(productId, src, category, allTabListRowIndex));
+  }, [src, productId, category, allTabListRowIndex]);
   return (
     <img
       src={url}
@@ -1919,12 +1924,17 @@ function ProductTableThumb({
       referrerPolicy="no-referrer"
       onError={() => {
         const picsum = productTableThumbFallbackUrl(productId);
-        if (url !== PRODUCT_TABLE_THUMB_FALLBACK) {
-          setUrl(PRODUCT_TABLE_THUMB_FALLBACK);
-          return;
-        }
+        const byProduct = productTableThumbUrl(productId, category);
         if (url !== picsum) {
           setUrl(picsum);
+          return;
+        }
+        if (url !== byProduct) {
+          setUrl(byProduct);
+          return;
+        }
+        if (url !== PRODUCT_TABLE_THUMB_FALLBACK) {
+          setUrl(PRODUCT_TABLE_THUMB_FALLBACK);
         }
       }}
     />
@@ -2028,6 +2038,7 @@ function ProductCollapsedRowCell({
   reserveExpandGutter = false,
   showPromoteUnderPhoto = false,
   onPromote,
+  allTabListRowIndex,
 }: {
   product: ProductRow;
   expanded: boolean;
@@ -2037,6 +2048,7 @@ function ProductCollapsedRowCell({
   reserveExpandGutter?: boolean;
   showPromoteUnderPhoto?: boolean;
   onPromote?: (product: ProductRow) => void;
+  allTabListRowIndex?: number;
 }) {
   const campaignCount = product.campaigns.length;
   const showConflict = productHasCampaignConflict(product);
@@ -2091,7 +2103,12 @@ function ProductCollapsedRowCell({
               : 'transition-[padding] duration-150 group-hover/product-row:pr-28 group-focus-within/product-row:pr-28'
           }`}
         >
-          <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
+          <ProductTableThumb
+            productId={product.id}
+            src={product.image}
+            category={product.category}
+            allTabListRowIndex={allTabListRowIndex}
+          />
           {productMeta}
           <button
             type="button"
@@ -2106,7 +2123,12 @@ function ProductCollapsedRowCell({
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
+          <ProductTableThumb
+            productId={product.id}
+            src={product.image}
+            category={product.category}
+            allTabListRowIndex={allTabListRowIndex}
+          />
           {productMeta}
         </div>
       )}
@@ -8294,7 +8316,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {sortedProductsForTable.map((product) => {
+                  {sortedProductsForTable.map((product, productListIndex) => {
+                    const allTabThumbRowIndex = conceptAllProductsPick
+                      ? productListIndex
+                      : undefined;
                     const rowUsesOrganicProductStats =
                       conceptNotPromotedProductsList ||
                       (conceptAllProductsPick &&
@@ -8348,6 +8373,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               }
                               showPromoteUnderPhoto={rowShowPromoteUnderPhoto}
                               onPromote={handlePromoteNotPromotedProduct}
+                              allTabListRowIndex={allTabThumbRowIndex}
                             />
                           </td>
                         ) : null}

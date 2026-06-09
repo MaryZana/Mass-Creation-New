@@ -37,18 +37,27 @@ export interface CampaignSpec {
 
 /** Те же источники превью, что на странице «Обзор» (Unsplash). */
 const UNSPLASH_THUMB = (photoId: string) =>
-  `https://images.unsplash.com/photo-${photoId}?w=60&h=76&fit=crop&auto=format&q=80`;
+  `https://images.unsplash.com/photo-${photoId}?w=60&h=76&fit=crop&q=80`;
 
 const PRODUCT_THUMB_PHOTO = {
   shirt: '1521572163474-6864f9cf17ab',
-  dress: '1595777457583-95e059d58199',
+  dress: '1515372039744-b8f02a3ae446',
   office: '1566174053879-31528523f8ae',
   sarafan: '1496747611176-843222e1e57c',
   bag: '1553062407-98eeb64c6a62',
   shoes: '1549298916-b41d501d3772',
   shoesAlt: '1542291026-7eec264c27ff',
-  cosmetic: '1596462502279-27bf8ecc9bac',
-  home: '1586023493485-953447295a39',
+  cosmetic: '1571019613454-1cb2f99b2d8b',
+  home: '1445205170230-053b83016050',
+} as const;
+
+const PRODUCT_THUMB_PHOTO_EXTRA = {
+  shirtAlt: '1551028719-00167b16eac5',
+  shirtAlt2: '1505740420928-5e560c06d30e',
+  shirtAlt3: '1539109136881-3be0616acf4b',
+  dressAlt: '1434389677669-e08b4cac3105',
+  dressAlt2: '1469334031218-e382a71b716b',
+  dressAlt3: '1460353581641-37baddab0fa2',
 } as const;
 
 export const PRODUCT_TABLE_THUMB_FALLBACK = UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt);
@@ -64,10 +73,10 @@ const PRODUCT_THUMB_BY_CATEGORY: Record<string, readonly string[]> = {
   ],
   Футболки: [
     UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
-    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
-    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
-    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
-    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt2),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt3),
+    UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO_EXTRA.dressAlt),
   ],
   Кроссовки: [
     UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoes),
@@ -111,24 +120,48 @@ const PRODUCT_THUMB_URLS_BY_INDEX: readonly string[] = Array.from({ length: 30 }
   return UNSPLASH_THUMB(pool[i % pool.length]!);
 });
 
-/** Уникальные превью для pr1–pr15 (вкладка «Все» и таблица товаров). */
-const PRODUCT_THUMB_UNIQUE_FIRST_15: readonly string[] = [
-  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.dress),
-  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.sarafan),
-  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.office),
-  UNSPLASH_THUMB('1515886657491-62f052f140e4'),
-  UNSPLASH_THUMB('1434389677669-e08b4cac3105'),
-  UNSPLASH_THUMB('1469334031218-e382a71b716b'),
-  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
-  UNSPLASH_THUMB('1483986765277-84621e9714aa'),
-  UNSPLASH_THUMB('1503342217505-991d8f54af29'),
-  UNSPLASH_THUMB('1551028719-00167b16eac5'),
-  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoes),
-  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoesAlt),
-  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.bag),
-  UNSPLASH_THUMB('1606107557195-0e29a4b5b4aa'),
-  UNSPLASH_THUMB('1608231380042-66d9d3924fe6'),
+/** Уникальное превью на каждый pr1…pr30 (по индексу id); только рабочие Unsplash id. */
+const PRODUCT_THUMB_UNIQUE_PHOTO_IDS: readonly string[] = [
+  PRODUCT_THUMB_PHOTO.sarafan,
+  PRODUCT_THUMB_PHOTO.office,
+  PRODUCT_THUMB_PHOTO.dress,
+  PRODUCT_THUMB_PHOTO_EXTRA.dressAlt,
+  PRODUCT_THUMB_PHOTO_EXTRA.dressAlt2,
+  PRODUCT_THUMB_PHOTO_EXTRA.dressAlt3,
+  PRODUCT_THUMB_PHOTO.shirt,
+  PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt,
+  PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt2,
+  PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt3,
+  PRODUCT_THUMB_PHOTO.shoes,
+  PRODUCT_THUMB_PHOTO.shoesAlt,
+  PRODUCT_THUMB_PHOTO.bag,
+  '1606107557195-0e29a4b5b4aa',
+  '1594633312681-425c7b97ccd1',
+  '1618354691373-d851c5c3a990',
+  '1556909114-f6e7ad7d3136',
+  '1591047139829-d91aecb6caea',
+  '1590874103328-eac38a683ce7',
+  '1556228720-195a672e8a03',
+  '1541643600914-78b084683601',
+  '1512496015851-a90fb38ba796',
+  '1490481651871-ab68de25d43d',
+  '1543163521-1bf539c55dd2',
+  '1539533018447-63fcce2678e3',
+  PRODUCT_THUMB_PHOTO.home,
+  PRODUCT_THUMB_PHOTO.cosmetic,
+  '1558618666-fcd25c85cd64',
+  PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt2,
+  PRODUCT_THUMB_PHOTO_EXTRA.shirtAlt3,
 ];
+
+const PRODUCT_THUMB_UNIQUE_BY_PRODUCT_INDEX: readonly string[] =
+  PRODUCT_THUMB_UNIQUE_PHOTO_IDS.map((id) => UNSPLASH_THUMB(id));
+
+/** Первые 15 строк на вкладке «Все» — гарантированно разные кадры (по позиции в списке). */
+export const PRODUCT_THUMB_UNIQUE_ALL_TAB_FIRST_ROWS = 15;
+
+const PRODUCT_THUMB_UNIQUE_FIRST_15: readonly string[] =
+  PRODUCT_THUMB_UNIQUE_BY_PRODUCT_INDEX.slice(0, PRODUCT_THUMB_UNIQUE_ALL_TAB_FIRST_ROWS);
 
 function productIndexFromId(productId: string): number {
   const n = Number.parseInt(productId.replace(/\D/g, ''), 10);
@@ -149,8 +182,8 @@ export function productTableThumbFallbackUrl(productId: string): string {
 
 export function productTableThumbUrl(productId: string, category?: string): string {
   const idx = productIndexFromId(productId);
-  if (idx >= 0 && idx < PRODUCT_THUMB_UNIQUE_FIRST_15.length) {
-    return PRODUCT_THUMB_UNIQUE_FIRST_15[idx]!;
+  if (idx >= 0 && idx < PRODUCT_THUMB_UNIQUE_BY_PRODUCT_INDEX.length) {
+    return PRODUCT_THUMB_UNIQUE_BY_PRODUCT_INDEX[idx]!;
   }
   if (category && PRODUCT_THUMB_BY_CATEGORY[category]?.length) {
     const list = PRODUCT_THUMB_BY_CATEGORY[category]!;
@@ -159,7 +192,31 @@ export function productTableThumbUrl(productId: string, category?: string): stri
   return PRODUCT_THUMB_URLS_BY_INDEX[idx] ?? PRODUCT_TABLE_THUMB_FALLBACK;
 }
 
-export function resolveProductTableThumbSrc(productId: string, src?: string, category?: string): string {
+/** Вкладка «Все»: первые 15 видимых строк — свои URL, независимо от сортировки. */
+export function productTableThumbUrlForAllTabListRow(
+  listRowIndex: number,
+  productId: string,
+  category?: string,
+): string {
+  if (listRowIndex >= 0 && listRowIndex < PRODUCT_THUMB_UNIQUE_FIRST_15.length) {
+    return PRODUCT_THUMB_UNIQUE_FIRST_15[listRowIndex]!;
+  }
+  return productTableThumbUrl(productId, category);
+}
+
+export function resolveProductTableThumbSrc(
+  productId: string,
+  src?: string,
+  category?: string,
+  allTabListRowIndex?: number,
+): string {
+  if (
+    allTabListRowIndex !== undefined &&
+    allTabListRowIndex >= 0 &&
+    allTabListRowIndex < PRODUCT_THUMB_UNIQUE_FIRST_15.length
+  ) {
+    return PRODUCT_THUMB_UNIQUE_FIRST_15[allTabListRowIndex]!;
+  }
   const catalog = productTableThumbUrl(productId, category);
   if (isProductTablePlaceholderImage(src)) return catalog;
   return src!;
