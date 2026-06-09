@@ -514,7 +514,13 @@ function ProductStockRemainderHoverCard({
   );
 }
 
-function ProductStockRemainderCell({ product }: { product: ProductRow }) {
+function ProductStockRemainderCell({
+  product,
+  compact = false,
+}: {
+  product: ProductRow;
+  compact?: boolean;
+}) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [hovered, setHovered] = useState(false);
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
@@ -544,7 +550,9 @@ function ProductStockRemainderCell({ product }: { product: ProductRow }) {
     <>
       <span
         ref={anchorRef}
-        className={`cursor-default text-sm font-semibold tabular-nums underline decoration-dotted decoration-gray-300 underline-offset-4 ${toneClass}`}
+        className={`cursor-default font-semibold tabular-nums underline decoration-dotted decoration-gray-300 underline-offset-4 ${
+          compact ? 'text-xs' : 'text-sm'
+        } ${toneClass}`}
         onMouseEnter={() => {
           syncAnchorRect();
           setHovered(true);
@@ -1572,7 +1580,7 @@ function ConceptJamLockedImpressionsMetricCell({
   const change = productsStatChangeForLabel('Показы', productId, changes);
   return (
     <div className="flex flex-col gap-0.5 leading-none tabular-nums">
-      <span className="text-sm font-semibold text-gray-900 blur-[5px] select-none" aria-hidden>
+      <span className="text-xs font-semibold text-gray-900 blur-[5px] select-none" aria-hidden>
         {formatProductsStatValue('Показы', stats)}
       </span>
       <span className="inline-block blur-[4px] select-none" aria-hidden>
@@ -1594,11 +1602,13 @@ function ProductsStatMetricCell({
   stats,
   productId,
   changes,
+  compact = false,
 }: {
   label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number];
   stats: ProductStatsExtended;
   productId: string;
   changes?: ProductStatsChanges;
+  compact?: boolean;
 }) {
   const change = productsStatChangeForLabel(label, productId, changes);
   const lowerIsBetter =
@@ -1612,7 +1622,11 @@ function ProductsStatMetricCell({
 
   return (
     <div className="flex flex-col gap-0.5 leading-none tabular-nums">
-      <span className="text-sm font-semibold text-gray-900">{formatProductsStatValue(label, stats)}</span>
+      <span
+        className={`font-semibold text-gray-900 ${compact ? 'text-xs' : 'text-sm'}`}
+      >
+        {formatProductsStatValue(label, stats)}
+      </span>
       <ProductsStatTrendBadge
         change={change}
         positiveIsGood={productsStatPositiveIsGood(label)}
@@ -1624,6 +1638,47 @@ function ProductsStatMetricCell({
 
 const PRODUCTS_STAT_TH_CLASS = 'p-4 text-left font-normal w-[130px] min-w-[120px]';
 const PRODUCTS_STAT_TD_CLASS = 'p-4 align-top w-[130px] min-w-[120px]';
+
+const CONCEPT_NOT_PROMOTED_STAT_TH_CLASS =
+  'px-1.5 py-2.5 text-left align-top text-[11px] font-normal leading-tight text-[#767386]';
+const CONCEPT_NOT_PROMOTED_STAT_TD_CLASS = 'px-1.5 py-2.5 align-top text-left';
+const CONCEPT_NOT_PROMOTED_TAGS_TH_CLASS =
+  'px-2 py-2.5 text-left text-[11px] font-normal leading-tight text-[#767386] w-[1%]';
+const CONCEPT_NOT_PROMOTED_TAGS_TD_CLASS = 'px-2 py-2.5 align-middle w-[1%] max-w-[7.5rem]';
+const CONCEPT_NOT_PROMOTED_STOCK_TH_CLASS =
+  'px-1.5 py-2.5 text-left text-[11px] font-normal leading-tight text-[#767386] whitespace-nowrap';
+const CONCEPT_NOT_PROMOTED_STOCK_TD_CLASS =
+  'px-1.5 py-2.5 align-middle text-left whitespace-nowrap tabular-nums text-xs';
+
+/** Узкая колонка «Товар» на «Без продвижения», чтобы влезала вся статистика без горизонтального скролла. */
+const CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX = 236;
+const CONCEPT_NOT_PROMOTED_PRODUCT_COL_CLASS =
+  'w-[236px] min-w-0 max-w-[236px]';
+
+function conceptNotPromotedStatColumnTitle(
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+): React.ReactNode {
+  switch (label) {
+    case 'Добавления в корзину':
+      return (
+        <>
+          Добавления
+          <br />
+          в корзину
+        </>
+      );
+    case 'Сумма заказов':
+      return (
+        <>
+          Сумма
+          <br />
+          заказов
+        </>
+      );
+    default:
+      return label;
+  }
+}
 
 /** Ширина колонки «Товар» — как при раскрытых кампаниях, чтобы влезала мета-строка. */
 const PRODUCTS_TABLE_PRODUCT_COL_CLASS = 'w-[520px] min-w-[520px] max-w-[520px]';
@@ -1690,11 +1745,27 @@ function buildPromoteNotPromotedProductPreset(product: ProductRow): RepeatLaunch
   };
 }
 
-function productsPinnedLeftPx(columnId: string, visibility: Record<string, boolean>): number {
+function productsPinnedColumnWidthPx(
+  col: (typeof PRODUCTS_PINNED_COLUMNS)[number],
+  compactProductColumn: boolean,
+): number {
+  if (compactProductColumn && col.id === 'product') {
+    return CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX;
+  }
+  return col.width;
+}
+
+function productsPinnedLeftPx(
+  columnId: string,
+  visibility: Record<string, boolean>,
+  compactProductColumn = false,
+): number {
   let left = 0;
   for (const col of PRODUCTS_PINNED_COLUMNS) {
     if (col.id === columnId) return left;
-    if (visibility[col.id] !== false) left += col.width;
+    if (visibility[col.id] !== false) {
+      left += productsPinnedColumnWidthPx(col, compactProductColumn);
+    }
   }
   return left;
 }
@@ -1726,8 +1797,13 @@ function productsPinnedCellProps(
   extraClass = '',
   showPinnedEdgeShadow = false,
   conceptWhiteHead = false,
+  compactProductColumn = false,
 ): { className: string; style: React.CSSProperties } {
   const meta = PRODUCTS_PINNED_COLUMNS.find((c) => c.id === columnId)!;
+  const widthClass =
+    compactProductColumn && columnId === 'product'
+      ? CONCEPT_NOT_PROMOTED_PRODUCT_COL_CLASS
+      : meta.widthClass;
   const z = variant === 'head' ? PRODUCTS_PINNED_HEAD_Z[columnId] : PRODUCTS_PINNED_BODY_Z[columnId];
   const bg =
     variant === 'head'
@@ -1742,8 +1818,8 @@ function productsPinnedCellProps(
       ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS
       : '';
   return {
-    className: [`sticky`, z, meta.widthClass, bg, edgeShadow, extraClass].filter(Boolean).join(' '),
-    style: { left: productsPinnedLeftPx(columnId, visibility) },
+    className: [`sticky`, z, widthClass, bg, edgeShadow, extraClass].filter(Boolean).join(' '),
+    style: { left: productsPinnedLeftPx(columnId, visibility, compactProductColumn) },
   };
 }
 
@@ -5321,7 +5397,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           return false;
         }
         if (columnId === PRODUCTS_STAT_SPACER_COLUMN_ID) {
-          return true;
+          return false;
         }
         if (columnId === PRODUCTS_REVENUE_SHARE_COLUMN_ID) {
           return true;
@@ -5375,13 +5451,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
     if (!conceptNotPromotedProductsList) return undefined;
-    let width = 48 + 520;
-    if (productsColumnVisibility.tags !== false) width += 220;
-    width += 120;
-    width += CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.length * 130;
-    width += 108;
-    return { width: '100%', minWidth: width };
-  }, [conceptNotPromotedProductsList, productsColumnVisibility.tags]);
+    return { width: '100%' };
+  }, [conceptNotPromotedProductsList]);
+
+  const conceptNotPromotedShowTagsColumn =
+    conceptNotPromotedProductsList && productsColumnVisibility.tags !== false;
   const showProductsBidColumn = productsPinVisibility.bid === true;
   const showProductsCampaignTypeColumn = productsPinVisibility.campaignType === true;
 
@@ -5398,8 +5472,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         extraClass,
         hasProductsScrollShadow,
         isProductPromotionConceptPage,
+        conceptNotPromotedProductsList,
       ),
-    [productsPinVisibility, hasProductsScrollShadow, isProductPromotionConceptPage],
+    [
+      productsPinVisibility,
+      hasProductsScrollShadow,
+      isProductPromotionConceptPage,
+      conceptNotPromotedProductsList,
+    ],
   );
 
   const [notificationCardVariant, setNotificationCardVariant] =
@@ -7997,7 +8077,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ) : null}
 
             <div
-              className="relative z-0 overflow-x-auto"
+              className={`relative z-0 ${conceptNotPromotedProductsList ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
               onScroll={(e) => {
                 const target = e.currentTarget;
                 setHasProductsScrollShadow(target.scrollLeft > 0);
@@ -8010,6 +8090,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 }`}
                 style={productsTableMinWidthStyle}
               >
+                {conceptNotPromotedProductsList ? (
+                  <colgroup>
+                    <col className="w-[3%]" />
+                    <col className={conceptNotPromotedShowTagsColumn ? 'w-[22%]' : 'w-[27%]'} />
+                    {conceptNotPromotedShowTagsColumn ? <col className="w-[9%]" /> : null}
+                    <col className="w-[8%]" />
+                    {CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.map((label) => (
+                      <col key={label} className="w-[8%]" />
+                    ))}
+                    <col className="w-[7%]" />
+                  </colgroup>
+                ) : null}
                 <thead
                   className={`text-gray-500 font-normal ${
                     isProductPromotionConceptPage ? 'bg-white' : 'bg-gray-50'
@@ -8017,7 +8109,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 >
                   <tr>
                     <th
-                      {...productsPinnedProps('select', 'head', 'px-3 py-4 text-center')}
+                      {...productsPinnedProps(
+                        'select',
+                        'head',
+                        conceptNotPromotedProductsList
+                          ? 'px-2 py-2.5 text-center'
+                          : 'px-3 py-4 text-center',
+                      )}
                     >
                       <Checkbox
                         checked={isAllProductsSelected}
@@ -8030,7 +8128,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         {...productsPinnedProps(
                           'product',
                           'head',
-                          PRODUCTS_PINNED_TH_PRODUCT_CLASS,
+                          conceptNotPromotedProductsList
+                            ? 'pl-1 pr-2 py-2.5 text-left font-normal align-middle'
+                            : PRODUCTS_PINNED_TH_PRODUCT_CLASS,
                         )}
                       >
                         {isProductPromotionConceptPage ? (
@@ -8109,7 +8209,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       </th>
                     ) : null}
                     {productsColVisible('tags') ? (
-                      <th className="p-4 text-left font-normal w-[220px] min-w-[220px] max-w-[240px]">
+                      <th
+                        className={
+                          conceptNotPromotedProductsList
+                            ? CONCEPT_NOT_PROMOTED_TAGS_TH_CLASS
+                            : 'p-4 text-left font-normal w-[220px] min-w-[220px] max-w-[240px]'
+                        }
+                      >
                         Ярлыки
                       </th>
                     ) : null}
@@ -8117,9 +8223,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       <th className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
                     ) : null}
                     {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
-                      <th className={PRODUCTS_STAT_TH_CLASS}>
-                        <span className="inline-flex items-center gap-1">
-                          Доля в выручке
+                      <th
+                        className={
+                          conceptNotPromotedProductsList
+                            ? CONCEPT_NOT_PROMOTED_STAT_TH_CLASS
+                            : PRODUCTS_STAT_TH_CLASS
+                        }
+                      >
+                        <span className="inline-flex items-start gap-0.5">
+                          <span>
+                            {conceptNotPromotedProductsList ? (
+                              <>
+                                Доля
+                                <br />в выручке
+                              </>
+                            ) : (
+                              'Доля в выручке'
+                            )}
+                          </span>
                           <button
                             type="button"
                             onClick={() =>
@@ -8139,7 +8260,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             }`}
                           >
                             <ArrowUp
-                              className={`h-4 w-4 shrink-0 transition-transform ${
+                              className={`${
+                                conceptNotPromotedProductsList ? 'h-3 w-3' : 'h-4 w-4'
+                              } shrink-0 transition-transform ${
                                 productStatSort?.label ===
                                   CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY &&
                                 productStatSort.direction === 'asc'
@@ -8149,15 +8272,28 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               aria-hidden
                             />
                           </button>
-                          <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                          {!conceptNotPromotedProductsList ? (
+                            <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                          ) : null}
                         </span>
                       </th>
                     ) : null}
                     {PRODUCTS_STAT_COLUMN_LABELS.map((label) =>
                       productsColVisible(productsStatColumnId(label)) ? (
-                        <th key={label} className={PRODUCTS_STAT_TH_CLASS}>
-                          <span className="inline-flex items-center gap-1">
-                            {label}
+                        <th
+                          key={label}
+                          className={
+                            conceptNotPromotedProductsList
+                              ? CONCEPT_NOT_PROMOTED_STAT_TH_CLASS
+                              : PRODUCTS_STAT_TH_CLASS
+                          }
+                        >
+                          <span className="inline-flex items-start gap-0.5">
+                            <span>
+                              {conceptNotPromotedProductsList
+                                ? conceptNotPromotedStatColumnTitle(label)
+                                : label}
+                            </span>
                             {isConceptNotPromotedStatSortLabel(label) ? (
                               <button
                                 type="button"
@@ -8176,7 +8312,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 }`}
                               >
                                 <ArrowUp
-                                  className={`h-4 w-4 shrink-0 transition-transform ${
+                                  className={`${
+                                    conceptNotPromotedProductsList ? 'h-3 w-3' : 'h-4 w-4'
+                                  } shrink-0 transition-transform ${
                                     productStatSort?.label === label &&
                                     productStatSort.direction === 'asc'
                                       ? ''
@@ -8188,18 +8326,26 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             ) : null}
                             {conceptNotPromotedProductsList && label === 'Показы' ? (
                               <ConceptJamSubscriptionHint />
-                            ) : (
+                            ) : !conceptNotPromotedProductsList ? (
                               <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
-                            )}
+                            ) : null}
                           </span>
                         </th>
                       ) : null,
                     )}
                     {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
-                      <th className={PRODUCTS_STOCK_TH_CLASS}>
+                      <th
+                        className={
+                          conceptNotPromotedProductsList
+                            ? CONCEPT_NOT_PROMOTED_STOCK_TH_CLASS
+                            : PRODUCTS_STOCK_TH_CLASS
+                        }
+                      >
                         <span className="inline-flex items-center gap-1">
                           Остатки
-                          <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                          {!conceptNotPromotedProductsList ? (
+                            <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                          ) : null}
                         </span>
                       </th>
                     ) : null}
@@ -8211,7 +8357,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       {/* Строка товара */}
                       <tr className="group/product-row transition-colors hover:bg-gray-50/80">
                         <td
-                          {...productsPinnedProps('select', 'body', 'px-3 py-4 align-middle')}
+                          {...productsPinnedProps(
+                            'select',
+                            'body',
+                            conceptNotPromotedProductsList
+                              ? 'px-2 py-2.5 align-middle'
+                              : 'px-3 py-4 align-middle',
+                          )}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <Checkbox
@@ -8227,7 +8379,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             {...productsPinnedProps(
                               'product',
                               'body',
-                              'pl-0 pr-5 py-4 align-middle',
+                              conceptNotPromotedProductsList
+                                ? 'pl-0 pr-2 py-2.5 align-middle'
+                                : 'pl-0 pr-5 py-4 align-middle',
                             )}
                           >
                             <ProductCollapsedRowCell
@@ -8271,9 +8425,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           />
                         ) : null}
                         {productsColVisible('tags') ? (
-                        <td className="p-4 align-top w-[220px] min-w-[220px] max-w-[240px]">
+                        <td
+                          className={
+                            conceptNotPromotedProductsList
+                              ? CONCEPT_NOT_PROMOTED_TAGS_TD_CLASS
+                              : 'p-4 align-top w-[220px] min-w-[220px] max-w-[240px]'
+                          }
+                        >
                           <div
-                            className="flex items-center gap-1.5 mt-1.5 flex-wrap"
+                            className={`flex flex-wrap items-center gap-1 ${
+                              conceptNotPromotedProductsList ? 'mt-0' : 'mt-1.5 gap-1.5'
+                            }`}
                             ref={openTagProductId === product.id && getProductTags(product).length > 0 ? tagDropdownAnchorRef : undefined}
                           >
                                 {getProductTags(product).length > 0 ? (
@@ -8336,8 +8498,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           <td className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
                         ) : null}
                         {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
-                          <td className={PRODUCTS_STAT_TD_CLASS}>
-                            <span className="text-sm font-semibold tabular-nums text-gray-900">
+                          <td
+                            className={
+                              conceptNotPromotedProductsList
+                                ? CONCEPT_NOT_PROMOTED_STAT_TD_CLASS
+                                : PRODUCTS_STAT_TD_CLASS
+                            }
+                          >
+                            <span
+                              className={`font-semibold tabular-nums text-gray-900 ${
+                                conceptNotPromotedProductsList ? 'text-xs' : 'text-sm'
+                              }`}
+                            >
                               {formatProductRevenueSharePercent(
                                 notPromotedRevenueShareByProductId[product.id] ?? 0,
                               )}
@@ -8352,7 +8524,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           );
                           const stats = rowAgg ? buildExtendedProductStats(rowAgg) : null;
                           return (
-                            <td key={label} className={PRODUCTS_STAT_TD_CLASS}>
+                            <td
+                              key={label}
+                              className={
+                                conceptNotPromotedProductsList
+                                  ? CONCEPT_NOT_PROMOTED_STAT_TD_CLASS
+                                  : PRODUCTS_STAT_TD_CLASS
+                              }
+                            >
                               {stats ? (
                                 conceptNotPromotedProductsList && label === 'Показы' ? (
                                   <ConceptJamLockedImpressionsMetricCell
@@ -8366,17 +8545,33 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                     stats={stats}
                                     productId={product.id}
                                     changes={rowAgg}
+                                    compact={conceptNotPromotedProductsList}
                                   />
                                 )
                               ) : (
-                                <span className="text-sm font-semibold text-gray-400">Н/Д</span>
+                                <span
+                                  className={`font-semibold text-gray-400 ${
+                                    conceptNotPromotedProductsList ? 'text-xs' : 'text-sm'
+                                  }`}
+                                >
+                                  Н/Д
+                                </span>
                               )}
                             </td>
                           );
                         })}
                         {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
-                          <td className={PRODUCTS_STOCK_TD_CLASS}>
-                            <ProductStockRemainderCell product={product} />
+                          <td
+                            className={
+                              conceptNotPromotedProductsList
+                                ? CONCEPT_NOT_PROMOTED_STOCK_TD_CLASS
+                                : PRODUCTS_STOCK_TD_CLASS
+                            }
+                          >
+                            <ProductStockRemainderCell
+                              product={product}
+                              compact={conceptNotPromotedProductsList}
+                            />
                           </td>
                         ) : null}
                       </tr>
