@@ -415,7 +415,10 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   useEffect(() => {
     if (!singleCampaignSeed || repeatSeedAppliedRef.current) return;
     repeatSeedAppliedRef.current = true;
-    const seeded = [singleCampaignSeed.product];
+    const seeded =
+      singleCampaignSeed.products && singleCampaignSeed.products.length > 0
+        ? singleCampaignSeed.products
+        : [singleCampaignSeed.product];
     setProducts(seeded);
     setProductBidsByNmId((prev) =>
       seedBidsForProducts(seeded, prev, paymentModel === 'CPM' ? unifiedBid : unifiedBid),

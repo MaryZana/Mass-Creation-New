@@ -35,7 +35,8 @@ import {
     MoreVertical,
     Trash2,
     Edit2,
-    Check
+    Check,
+    Sparkles,
 } from './Icons';
 import { CampaignRecord } from '../types';
 import {
@@ -305,8 +306,262 @@ type ProductCampaign = {
 type ProductRow = {
   id: string; image: string; name: string; article: string; articleWb: string; articleSeller: string; category: string; campaignCount: number; tags: string[];
   campaigns: ProductCampaign[];
+  /** Остаток на складе (шт.), для вкладки «Не продвигаются». */
+  stockLeft: number;
   agg?: { spend: number; impressions: number; ctr: number; orders: number; spendShare: number; changeSpend?: number; changeImpressions?: number; changeCtr?: number; changeOrders?: number; changeShare?: number };
 };
+
+const PRODUCTS_STOCK_COLUMN_ID = 'stock';
+const PRODUCTS_REVENUE_SHARE_COLUMN_ID = 'revenueShare';
+/** Пустая колонка: на широком экране отталкивает блок статистики вправо. */
+const PRODUCTS_STAT_SPACER_COLUMN_ID = 'statSpacer';
+const PRODUCTS_STAT_SPACER_CELL_CLASS = 'w-full min-w-0 p-0';
+const PRODUCTS_STOCK_TH_CLASS = 'p-4 text-left font-normal whitespace-nowrap min-w-[108px]';
+const PRODUCTS_STOCK_TD_CLASS = 'p-4 align-middle text-left whitespace-nowrap tabular-nums';
+function formatProductRevenueSharePercent(value: number): string {
+  return `${value.toLocaleString('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
+  })} %`;
+}
+
+function buildNotPromotedRevenueShareByProductId(products: ProductRow[]): Record<string, number> {
+  const rows = products.map((product) => {
+    const agg = productRowStatsAgg(product, true);
+    const stats = agg ? buildExtendedProductStats(agg) : null;
+    return { id: product.id, orderSum: stats?.orderSum ?? 0 };
+  });
+  const total = rows.reduce((sum, row) => sum + row.orderSum, 0);
+  const map: Record<string, number> = {};
+  if (total <= 0) {
+    const even = rows.length > 0 ? 100 / rows.length : 0;
+    rows.forEach((row) => {
+      map[row.id] = even;
+    });
+    return map;
+  }
+  rows.forEach((row) => {
+    map[row.id] = (row.orderSum / total) * 100;
+  });
+  return map;
+}
+
+const PRODUCT_STOCK_SIZE_LABELS = ['XS / 40', 'S / 44', 'M / 46', 'L / 48', 'XL / 50'] as const;
+
+type ProductStockSizeRow = { label: string; qty: number };
+
+type ProductStockBreakdown = {
+  displayTotal: number;
+  wb: { total: number; sizes: ProductStockSizeRow[] };
+  seller: { total: number; sizes: ProductStockSizeRow[] };
+};
+
+function demoProductStockLeft(source: Pick<ProductSource, 'id' | 'article' | 'category'>): number {
+  return buildProductStockBreakdownFromSource(source).displayTotal;
+}
+
+function buildProductStockBreakdownFromSource(
+  source: Pick<ProductSource, 'id' | 'article' | 'category'>,
+): ProductStockBreakdown {
+  const seed =
+    Number.parseInt(source.article, 10) ||
+    [...source.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  const bucket = seed % 20;
+  const baseStock =
+    bucket === 0 ? 0 : bucket <= 2 ? 1 + (seed % 8) : 20 + (seed % 480);
+  return buildProductStockBreakdownValues(seed, source.category, baseStock);
+}
+
+function buildProductStockBreakdown(product: ProductRow): ProductStockBreakdown {
+  const seed = productRowNmId(product) || 1;
+  return buildProductStockBreakdownValues(seed, product.category, product.stockLeft);
+}
+
+function buildProductStockBreakdownValues(
+  seed: number,
+  category: string,
+  baseStock: number,
+): ProductStockBreakdown {
+  const sized = ['Платья', 'Футболки', 'Кроссовки', 'Сумки'].includes(category);
+  const richSizedDemo = sized && baseStock > 0 && seed % 3 === 1;
+
+  let wbSizes: ProductStockSizeRow[];
+  if (!sized) {
+    wbSizes = [{ label: 'Всего', qty: baseStock }];
+  } else if (richSizedDemo) {
+    wbSizes = [
+      { label: 'XS / 40', qty: 100_000 },
+      { label: 'S / 44', qty: 0 },
+      { label: 'M / 46', qty: 100 },
+      { label: 'L / 48', qty: 20 },
+      { label: 'XL / 50', qty: 1_240 },
+    ];
+  } else if (baseStock === 0) {
+    wbSizes = PRODUCT_STOCK_SIZE_LABELS.map((label) => ({ label, qty: 0 }));
+  } else {
+    const weights = PRODUCT_STOCK_SIZE_LABELS.map((_, i) => (seed + i * 17) % 11 + 1);
+    const weightSum = weights.reduce((a, b) => a + b, 0);
+    let allocated = 0;
+    wbSizes = PRODUCT_STOCK_SIZE_LABELS.map((label, i) => {
+      const isLast = i === PRODUCT_STOCK_SIZE_LABELS.length - 1;
+      const qty = isLast
+        ? Math.max(0, baseStock - allocated)
+        : Math.floor((baseStock * weights[i]!) / weightSum);
+      allocated += qty;
+      return { label, qty };
+    });
+  }
+
+  const wbTotal = wbSizes.reduce((sum, row) => sum + row.qty, 0);
+  const sellerTotal = sized && seed % 11 === 0 ? (seed % 90) + 5 : 0;
+  const sellerSizes: ProductStockSizeRow[] = sized
+    ? PRODUCT_STOCK_SIZE_LABELS.map((label, i) => ({
+        label,
+        qty: sellerTotal === 0 ? 0 : Math.floor((sellerTotal * ((seed + i) % 5)) / 10),
+      }))
+    : [{ label: 'Всего', qty: sellerTotal }];
+  const sellerSum = sellerSizes.reduce((sum, row) => sum + row.qty, 0);
+
+  return {
+    displayTotal: wbTotal + sellerSum,
+    wb: { total: wbTotal, sizes: wbSizes },
+    seller: { total: sellerSum, sizes: sellerSizes },
+  };
+}
+
+function ProductStockBreakdownColumn({
+  title,
+  total,
+  sizes,
+  totalClassName,
+}: {
+  title: string;
+  total: number;
+  sizes: ProductStockSizeRow[];
+  totalClassName: string;
+}) {
+  return (
+    <div className="min-w-[168px] flex-1">
+      <div className="text-sm leading-snug text-gray-500">{title}</div>
+      <div className={`mt-1 text-[28px] font-bold leading-none tabular-nums tracking-tight ${totalClassName}`}>
+        {total.toLocaleString('ru-RU')} шт
+      </div>
+      <div className="mt-4 flex flex-col gap-2.5">
+        {sizes.map((row) => (
+          <div key={row.label} className="flex items-baseline gap-2 text-sm leading-none">
+            <span className="shrink-0 text-gray-600">{row.label}</span>
+            <span
+              className="min-h-[1px] min-w-[12px] flex-1 border-b border-dotted border-gray-300"
+              aria-hidden
+            />
+            <span
+              className={`shrink-0 tabular-nums font-medium ${
+                row.qty === 0 ? 'text-gray-400' : 'text-gray-900'
+              }`}
+            >
+              {row.qty.toLocaleString('ru-RU')}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProductStockRemainderHoverCard({
+  breakdown,
+  anchorRect,
+}: {
+  breakdown: ProductStockBreakdown;
+  anchorRect: DOMRect;
+}) {
+  const cardWidth = 420;
+  const gap = 14;
+  const top = anchorRect.top + anchorRect.height / 2;
+  const left = anchorRect.left - gap;
+
+  return (
+    <div
+      className="pointer-events-none fixed z-[220]"
+      style={{
+        top,
+        left,
+        transform: 'translate(-100%, -50%)',
+        width: cardWidth,
+      }}
+    >
+      <div className="relative rounded-[20px] border border-gray-100 bg-white px-5 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.14)]">
+        <div
+          className="absolute right-0 top-1/2 h-3 w-3 translate-x-1/2 -translate-y-1/2 rotate-45 border-r border-t border-gray-100 bg-white"
+          aria-hidden
+        />
+        <div className="flex gap-6">
+          <ProductStockBreakdownColumn
+            title="На складах WB"
+            total={breakdown.wb.total}
+            sizes={breakdown.wb.sizes}
+            totalClassName="text-gray-900"
+          />
+          <ProductStockBreakdownColumn
+            title="На ваших складах"
+            total={breakdown.seller.total}
+            sizes={breakdown.seller.sizes}
+            totalClassName={breakdown.seller.total === 0 ? 'text-gray-400' : 'text-gray-900'}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProductStockRemainderCell({ product }: { product: ProductRow }) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const breakdown = useMemo(() => buildProductStockBreakdown(product), [product]);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!hovered) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hovered, syncAnchorRect]);
+
+  const toneClass = breakdown.displayTotal === 0 ? 'text-gray-400' : 'text-gray-900';
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className={`cursor-default text-sm font-semibold tabular-nums underline decoration-dotted decoration-gray-300 underline-offset-4 ${toneClass}`}
+        onMouseEnter={() => {
+          syncAnchorRect();
+          setHovered(true);
+        }}
+        onMouseLeave={() => setHovered(false)}
+      >
+        {breakdown.displayTotal.toLocaleString('ru-RU')} шт
+      </span>
+      {hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <ProductStockRemainderHoverCard breakdown={breakdown} anchorRect={anchorRect} />,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
 
 /** Столбцы статистики на вкладке «Товары» (слева направо после служебных колонок). */
 const PRODUCTS_STAT_COLUMN_LABELS = [
@@ -338,16 +593,81 @@ const PRODUCTS_MIDDLE_COLUMN_IDS = [
   { id: 'tags', label: 'Ярлыки' },
 ] as const;
 
-type ProductsPickTab = 'all' | 'not_promoted' | 'promoted' | 'growth' | 'ab' | 'promo';
+type ProductsPickTab =
+  | 'not_promoted'
+  | 'promoted'
+  | 'growth'
+  | 'high_conversion'
+  | 'ab'
+  | 'promo';
 
 const PRODUCTS_PICK_TABS: { id: ProductsPickTab; label: string }[] = [
-  { id: 'all', label: 'Все' },
-  { id: 'not_promoted', label: 'Не продвигаются' },
   { id: 'promoted', label: 'Продвигаются' },
+  { id: 'not_promoted', label: 'Не продвигаются' },
   { id: 'growth', label: 'Рост заказов' },
+  { id: 'high_conversion', label: 'Высокая конверсия' },
   { id: 'ab', label: 'А/Б тест' },
   { id: 'promo', label: 'В акциях' },
 ];
+
+type ProductsSecondaryPickTab = 'all' | 'high_conversion' | 'ab';
+
+const PRODUCTS_PICK_SECONDARY_TABS: { id: ProductsSecondaryPickTab; label: string }[] = [
+  { id: 'all', label: 'Все' },
+  { id: 'high_conversion', label: 'Высокая конверсия' },
+  { id: 'ab', label: 'А/Б тест' },
+];
+
+type ProductsPickCtaTab = 'growth' | 'high_conversion' | 'ab';
+
+const PRODUCTS_PICK_PROMOTION_CTA_CONFIG: Record<
+  ProductsPickCtaTab,
+  {
+    message: string;
+    iconWrapClass: string;
+    Icon: React.FC<{ className?: string }>;
+  }
+> = {
+  growth: {
+    message: 'Заказы растут. Получите больше охват с продвижением',
+    iconWrapClass: 'bg-emerald-100 text-emerald-600',
+    Icon: ArrowUp,
+  },
+  high_conversion: {
+    message: 'Вашими товарами интересуются. Получите больше заказов с продвижением',
+    iconWrapClass: 'bg-violet-100 text-violet-600',
+    Icon: ThumbsUp,
+  },
+  ab: {
+    message: 'Товары тестируют креативы. Получите больше охват с продвижением',
+    iconWrapClass: 'bg-sky-100 text-sky-600',
+    Icon: Sparkles,
+  },
+};
+
+function productsPickPromotionCtaTab(
+  tab: ProductsPickTab | ProductsSecondaryPickTab,
+): ProductsPickCtaTab | null {
+  if (tab === 'growth' || tab === 'high_conversion' || tab === 'ab') {
+    return tab;
+  }
+  return null;
+}
+
+function ProductsPickPromotionCtaBanner({ tab }: { tab: ProductsPickCtaTab }) {
+  const { message, iconWrapClass, Icon } = PRODUCTS_PICK_PROMOTION_CTA_CONFIG[tab];
+  return (
+    <div className="mx-4 flex items-center gap-3 px-4 py-3 sm:mx-6" role="note">
+      <span
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${iconWrapClass}`}
+        aria-hidden
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <p className="mb-0 text-sm font-medium leading-snug text-gray-900">{message}</p>
+    </div>
+  );
+}
 
 const PRODUCT_BID_BULK_ACTIONS = [
   { id: 'cpc', label: 'Изменить ставку за клик' },
@@ -721,8 +1041,122 @@ function productRowNmId(product: ProductRow): number {
   return Number.isFinite(nmId) ? nmId : 0;
 }
 
+function productRecencySortKey(product: ProductRow): number {
+  const nmId = productRowNmId(product);
+  if (nmId > 0) return nmId;
+  const fromId = /^pr(\d+)$/i.exec(product.id);
+  if (fromId) return Number.parseInt(fromId[1]!, 10);
+  return 0;
+}
+
+type ProductsInsightPickTab = 'growth' | 'high_conversion' | 'ab' | 'promo';
+
+/** Демо: в каждой подборке есть хотя бы один товар (продвигается и без продвижения). */
+const PRODUCTS_INSIGHT_PICK_GUARANTEED_IDS: Record<ProductsInsightPickTab, readonly string[]> = {
+  growth: ['pr5', 'pr7', 'pr2'],
+  high_conversion: ['pr8', 'pr14', 'pr18'],
+  ab: ['pr12', 'pr19', 'pr2'],
+  promo: ['pr22', 'pr26', 'pr18'],
+};
+
+function productMatchesInsightPickTab(product: ProductRow, tab: ProductsInsightPickTab): boolean {
+  if (PRODUCTS_INSIGHT_PICK_GUARANTEED_IDS[tab].includes(product.id)) return true;
+  const nmId = productRowNmId(product);
+  if (nmId <= 0) return false;
+  if (tab === 'growth') return nmId % 5 === 0;
+  if (tab === 'high_conversion') return nmId % 13 === 0;
+  if (tab === 'ab') return nmId % 9 === 0;
+  return nmId % 7 === 0;
+}
+
+function productMatchesProductsPickTab(
+  product: ProductRow,
+  tab: ProductsPickTab,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+): boolean {
+  const hasActiveCampaign = product.campaigns.some((camp) => {
+    const effectiveStatus =
+      camp.status === 'draft' || camp.status === 'error'
+        ? camp.status
+        : (productCampaignStatusOverride[camp.id] ?? camp.status);
+    return effectiveStatus === 'active';
+  });
+  if (tab === 'not_promoted') {
+    if (product.campaigns.length === 0) return true;
+    return !hasActiveCampaign;
+  }
+  if (tab === 'promoted') return hasActiveCampaign;
+  if (tab === 'growth' || tab === 'high_conversion' || tab === 'ab' || tab === 'promo') {
+    return productMatchesInsightPickTab(product, tab);
+  }
+  return true;
+}
+
+function getConceptPromotionScope(pickTab: ProductsPickTab): 'promoted' | 'not_promoted' {
+  return pickTab === 'not_promoted' ? 'not_promoted' : 'promoted';
+}
+
+function productMatchesSecondaryPickTab(product: ProductRow, tab: ProductsSecondaryPickTab): boolean {
+  if (tab === 'all') return true;
+  return productMatchesInsightPickTab(product, tab);
+}
+
 function productsStatColumnId(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number]): string {
   return `stat:${label}`;
+}
+
+/** Концепт товарного продвижения → вкладка «Без продвижения»: колонки статистики в таблице товаров. */
+const CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS: readonly (typeof PRODUCTS_STAT_COLUMN_LABELS)[number][] =
+  ['Показы', 'Заказы', 'Добавления в корзину', 'Сумма заказов'];
+
+const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_TITLE = 'Данные доступны с подпиской «Джем»';
+const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_BODY =
+  'Оформите подписку, чтобы увидеть эти и другие данные в отчёте';
+
+type ConceptNotPromotedStatSortLabel = (typeof CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS)[number];
+
+const CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY = 'revenueShare' as const;
+
+type ConceptNotPromotedListSort = 'newest' | 'best_card_rating';
+
+const CONCEPT_NOT_PROMOTED_LIST_SORT_OPTIONS: {
+  id: ConceptNotPromotedListSort;
+  label: string;
+}[] = [
+  { id: 'newest', label: 'Сначала новые' },
+  { id: 'best_card_rating', label: 'Сначала лучшие по рейтингу карточки' },
+];
+
+type ConceptNotPromotedProductSortKey =
+  | ConceptNotPromotedStatSortLabel
+  | typeof CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY;
+
+function isConceptNotPromotedStatSortLabel(
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+): label is ConceptNotPromotedStatSortLabel {
+  return (CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS as readonly string[]).includes(label);
+}
+
+function productStatSortNumericValue(
+  product: ProductRow,
+  label: ConceptNotPromotedStatSortLabel,
+  useOrganicWhenMissing: boolean,
+): number {
+  const agg = productRowStatsAgg(product, useOrganicWhenMissing);
+  if (!agg) return Number.NEGATIVE_INFINITY;
+  const stats = buildExtendedProductStats(agg);
+  switch (label) {
+    case 'Показы':
+      return stats.impressions;
+    case 'Заказы':
+      return stats.orders;
+    case 'Добавления в корзину':
+      return stats.cartAdds;
+    case 'Сумма заказов':
+      return stats.orderSum;
+    default:
+      return 0;
+  }
 }
 
 function defaultProductsColumnVisibility(): Record<string, boolean> {
@@ -970,6 +1404,33 @@ function derivedProductsStatChange(productId: string, label: string): number {
   return pool[Math.abs(h) % pool.length]!;
 }
 
+/** Демо-агрегат для товаров без кампаний на вкладке «Без продвижения». */
+function organicProductStatsAgg(product: ProductRow): NonNullable<ProductRow['agg']> {
+  const nm = productRowNmId(product) || product.id.length;
+  const orders = 8 + (Math.abs(nm) % 94);
+  const impressions = orders * (38 + (nm % 12));
+  const spend = Math.round(orders * (95 + (nm % 70)));
+  return {
+    spend,
+    impressions,
+    ctr: impressions > 0 ? Math.round((orders / impressions) * 1000 * 10) / 10 : 0,
+    orders,
+    spendShare: 0,
+    changeOrders: derivedProductsStatChange(product.id, 'Заказы'),
+    changeImpressions: derivedProductsStatChange(product.id, 'Показы'),
+    changeCtr: derivedProductsStatChange(product.id, 'CTR'),
+  };
+}
+
+function productRowStatsAgg(
+  product: ProductRow,
+  useOrganicWhenMissing: boolean,
+): ProductRow['agg'] | undefined {
+  if (product.agg) return product.agg;
+  if (useOrganicWhenMissing) return organicProductStatsAgg(product);
+  return undefined;
+}
+
 function productsStatChangeForLabel(
   label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
   productId: string,
@@ -1021,6 +1482,110 @@ function ProductsStatTrendBadge({
       <span aria-hidden>{isZero ? '▼' : isUp ? '▲' : '▼'}</span>
       {formatProductsStatTrendPercent(change)}
     </span>
+  );
+}
+
+function ConceptJamSubscriptionHint() {
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!hovered) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hovered, syncAnchorRect]);
+
+  return (
+    <>
+      <button
+        ref={anchorRef}
+        type="button"
+        className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-400/60"
+        aria-label={CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_TITLE}
+        onMouseEnter={() => {
+          syncAnchorRect();
+          setHovered(true);
+        }}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => {
+          syncAnchorRect();
+          setHovered(true);
+        }}
+        onBlur={() => setHovered(false)}
+      >
+        <span className="h-2 w-2 rounded-full bg-[#FF8A00]" aria-hidden />
+      </button>
+      {hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <div
+              role="tooltip"
+              className="fixed z-[220] w-[min(300px,calc(100vw-24px))] rounded-xl border border-gray-200 bg-white p-4 text-left shadow-xl"
+              style={{
+                top: anchorRect.bottom + 8,
+                left: Math.min(anchorRect.left, window.innerWidth - 316),
+              }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              <p className="text-sm font-semibold text-gray-900">
+                {CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_TITLE}
+              </p>
+              <p className="mt-1 text-sm leading-snug text-gray-600">
+                {CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_BODY}
+              </p>
+              <button
+                type="button"
+                className="mt-3 text-sm font-semibold text-[#9a41fe] transition-colors hover:text-[#8840e5]"
+              >
+                О подписке
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
+function ConceptJamLockedImpressionsMetricCell({
+  stats,
+  productId,
+  changes,
+}: {
+  stats: ProductStatsExtended;
+  productId: string;
+  changes?: ProductStatsChanges;
+}) {
+  const change = productsStatChangeForLabel('Показы', productId, changes);
+  return (
+    <div className="flex flex-col gap-0.5 leading-none tabular-nums">
+      <span className="text-sm font-semibold text-gray-900 blur-[5px] select-none" aria-hidden>
+        {formatProductsStatValue('Показы', stats)}
+      </span>
+      <span className="inline-block blur-[4px] select-none" aria-hidden>
+        <ProductsStatTrendBadge
+          change={change}
+          positiveIsGood={productsStatPositiveIsGood('Показы')}
+          lowerIsBetter={false}
+        />
+      </span>
+      <span className="sr-only">
+        {CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_TITLE}. {CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_BODY}
+      </span>
+    </div>
   );
 }
 
@@ -1111,6 +1676,20 @@ function productRowToCreationItem(product: ProductRow): {
   };
 }
 
+function productRowToSingleCampaignSeed(product: ProductRow): SingleCampaignSeedProduct {
+  const item = productRowToCreationItem(product);
+  return { ...item, cpcCompatible: true };
+}
+
+function buildPromoteNotPromotedProductPreset(product: ProductRow): RepeatLaunchPreset {
+  const seed = productRowToSingleCampaignSeed(product);
+  const dateLabel = new Date().toLocaleDateString('ru-RU');
+  return {
+    product: seed,
+    campaignName: `${product.name} CPC ${dateLabel}`,
+  };
+}
+
 function productsPinnedLeftPx(columnId: string, visibility: Record<string, boolean>): number {
   let left = 0;
   for (const col of PRODUCTS_PINNED_COLUMNS) {
@@ -1146,11 +1725,18 @@ function productsPinnedCellProps(
   variant: 'head' | 'body' | 'bodyNested',
   extraClass = '',
   showPinnedEdgeShadow = false,
+  conceptWhiteHead = false,
 ): { className: string; style: React.CSSProperties } {
   const meta = PRODUCTS_PINNED_COLUMNS.find((c) => c.id === columnId)!;
   const z = variant === 'head' ? PRODUCTS_PINNED_HEAD_Z[columnId] : PRODUCTS_PINNED_BODY_Z[columnId];
   const bg =
-    variant === 'head' ? 'bg-gray-50' : variant === 'bodyNested' ? 'bg-gray-50/80' : 'bg-white';
+    variant === 'head'
+      ? conceptWhiteHead
+        ? 'bg-white'
+        : 'bg-gray-50'
+      : variant === 'bodyNested'
+        ? 'bg-gray-50/80'
+        : 'bg-white group-hover/product-row:bg-gray-50/80';
   const edgeShadow =
     showPinnedEdgeShadow && lastVisibleProductsPinnedColumnId(visibility) === columnId
       ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS
@@ -1215,49 +1801,161 @@ function formatProductCampaignCount(count: number): string {
   return `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
 }
 
+const PRODUCT_CARD_RATING_TOOLTIP_BASE =
+  'Рейтинг карточки влияет на позицию товара в поиске';
+
+const PRODUCT_CARD_RATING_ISSUES_HINT =
+  'Нет ТН ВЭД, Вес не заполнен, Заблокирован';
+
+function productCardRatingTooltipText(rating: number): string {
+  if (rating >= 10) return PRODUCT_CARD_RATING_TOOLTIP_BASE;
+  return `${PRODUCT_CARD_RATING_TOOLTIP_BASE}. ${PRODUCT_CARD_RATING_ISSUES_HINT}`;
+}
+
+function demoProductCardRating(product: ProductRow): number {
+  const nmId = productRowNmId(product);
+  if (nmId <= 0) return 5;
+  return (nmId % 10) + 1;
+}
+
+function ProductCardRatingTag({ rating }: { rating: number }) {
+  const clamped = Math.min(10, Math.max(1, rating));
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const tooltipText = productCardRatingTooltipText(clamped);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!hovered) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hovered, syncAnchorRect]);
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className="inline-flex shrink-0 cursor-default items-center rounded-md bg-[rgba(74,74,89,0.08)] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums leading-none text-gray-700"
+        tabIndex={0}
+        onMouseEnter={() => {
+          syncAnchorRect();
+          setHovered(true);
+        }}
+        onMouseLeave={() => setHovered(false)}
+        onFocus={() => {
+          syncAnchorRect();
+          setHovered(true);
+        }}
+        onBlur={() => setHovered(false)}
+      >
+        {clamped}/10
+      </span>
+      {hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <div
+              role="tooltip"
+              className="pointer-events-none fixed z-[220] w-max max-w-[300px] rounded-lg bg-gray-900 px-2.5 py-2 text-[11px] font-normal leading-snug text-white shadow-lg"
+              style={{
+                top: anchorRect.bottom + 6,
+                left: anchorRect.left,
+              }}
+            >
+              {tooltipText}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 function ProductCollapsedRowCell({
   product,
   expanded,
   onToggleExpand,
+  showExpandControl = true,
+  showPromoteUnderPhoto = false,
+  onPromote,
 }: {
   product: ProductRow;
   expanded: boolean;
   onToggleExpand: () => void;
+  showExpandControl?: boolean;
+  showPromoteUnderPhoto?: boolean;
+  onPromote?: (product: ProductRow) => void;
 }) {
   const campaignCount = product.campaigns.length;
   const showConflict = productHasCampaignConflict(product);
+  const promoteBtnClass =
+    'inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-[10px] bg-[rgba(74,74,89,0.08)] px-3 text-sm font-medium text-gray-700 opacity-0 transition-opacity duration-150 pointer-events-none group-hover/product-row:opacity-100 group-hover/product-row:pointer-events-auto group-focus-within/product-row:opacity-100 group-focus-within/product-row:pointer-events-auto hover:bg-[rgba(74,74,89,0.12)]';
+
+  const productMeta = (
+    <div className="min-w-0 flex-1">
+      <p className="mb-0 truncate pb-1.5 text-sm font-semibold leading-none text-gray-900">{product.name}</p>
+      <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-2 text-xs leading-none text-gray-500">
+        <span className="shrink-0 whitespace-nowrap">Арт. {product.articleWb}</span>
+        <ProductCardRatingTag rating={demoProductCardRating(product)} />
+        {showExpandControl && campaignCount > 0 ? (
+          <span className="shrink-0 whitespace-nowrap">{formatProductCampaignCount(campaignCount)}</span>
+        ) : null}
+        {showConflict ? (
+          <span className="inline-flex min-w-0 shrink items-center gap-1 whitespace-nowrap text-gray-600">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
+            <span className="truncate">Конфликт кампаний</span>
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="flex items-center gap-2.5">
-      <button
-        type="button"
-        onClick={onToggleExpand}
-        className={`inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 transition-colors ${
-          expanded ? 'text-violet-600' : 'text-gray-400 hover:text-gray-600'
-        }`}
-        aria-expanded={expanded}
-        aria-label={expanded ? 'Свернуть кампании' : 'Развернуть кампании'}
-      >
-        {expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
-      </button>
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold leading-none text-gray-900">{product.name}</p>
-          <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-2 overflow-hidden text-xs leading-none text-gray-500">
-            <span className="shrink-0 whitespace-nowrap">Арт. {product.articleWb}</span>
-            {campaignCount > 0 ? (
-              <span className="shrink-0 whitespace-nowrap">{formatProductCampaignCount(campaignCount)}</span>
-            ) : null}
-            {showConflict ? (
-              <span className="inline-flex min-w-0 shrink items-center gap-1 whitespace-nowrap text-gray-600">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
-                <span className="truncate">Конфликт кампаний</span>
-              </span>
-            ) : null}
-          </div>
+    <div className={`flex gap-2.5 ${showPromoteUnderPhoto ? 'items-center' : 'items-start'}`}>
+      {showExpandControl ? (
+        <button
+          type="button"
+          onClick={onToggleExpand}
+          className={`mt-0.5 inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 transition-colors ${
+            expanded ? 'text-violet-600' : 'text-gray-400 hover:text-gray-600'
+          }`}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Свернуть кампании' : 'Развернуть кампании'}
+        >
+          {expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
+        </button>
+      ) : null}
+      {showPromoteUnderPhoto ? (
+        <div className="relative flex min-w-0 flex-1 items-center gap-3 transition-[padding] duration-150 group-hover/product-row:pr-28 group-focus-within/product-row:pr-28">
+          <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
+          {productMeta}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onPromote?.(product);
+            }}
+            className={`absolute right-0 top-1/2 z-[1] -translate-y-1/2 ${promoteBtnClass}`}
+          >
+            Продвигать
+          </button>
         </div>
-      </div>
+      ) : (
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
+          {productMeta}
+        </div>
+      )}
     </div>
   );
 }
@@ -1383,6 +2081,7 @@ function buildCampaignsAndProductTree(sources: ProductSource[]): { campaigns: Di
       campaignCount: p.campaigns.length,
       tags: (p.tags ?? []).map(normalizeTagName),
       campaigns: productCampaigns,
+      stockLeft: demoProductStockLeft(p),
       agg,
     });
   }
@@ -3083,16 +3782,13 @@ function rangeForDateFilterPreset(preset: Exclude<DateFilterPreset, 'custom'>): 
   return { start, end };
 }
 
-const DATE_FILTER_SEGMENT_PRESETS: { id: Exclude<DateFilterPreset, 'custom'>; label: string }[] = [
-  { id: 'today', label: 'Сегодня' },
-  { id: 'yesterday', label: 'Вчера' },
-  { id: 'week', label: 'Неделя' },
-  { id: 'month', label: 'Месяц' },
-  { id: 'quarter', label: 'Квартал' },
-];
+/** Concept table toolbar: same footprint as date range control, no border */
+const conceptToolbarControlBgClass =
+  'bg-[rgba(74,74,89,0.08)] hover:bg-[rgba(74,74,89,0.12)]';
+const conceptToolbarTextControlClass = `inline-flex h-11 w-auto max-w-full items-center gap-2 rounded-[10px] px-4 text-sm font-medium leading-5 text-gray-900 transition-colors ${conceptToolbarControlBgClass}`;
+const conceptToolbarIconControlClass = `inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] transition-colors ${conceptToolbarControlBgClass}`;
 
 const DateFilterSegmentedToolbar = () => {
-  const [activePreset, setActivePreset] = useState<DateFilterPreset>('month');
   const [rangeStart, setRangeStart] = useState(() => rangeForDateFilterPreset('month').start);
   const [rangeEnd, setRangeEnd] = useState(() => rangeForDateFilterPreset('month').end);
   const [customOpen, setCustomOpen] = useState(false);
@@ -3110,14 +3806,6 @@ const DateFilterSegmentedToolbar = () => {
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [customOpen]);
 
-  const applyPreset = (preset: Exclude<DateFilterPreset, 'custom'>) => {
-    const { start, end } = rangeForDateFilterPreset(preset);
-    setActivePreset(preset);
-    setRangeStart(start);
-    setRangeEnd(end);
-    setCustomOpen(false);
-  };
-
   const openCustomPicker = () => {
     setDraftStart(dateToInputValue(rangeStart));
     setDraftEnd(dateToInputValue(rangeEnd));
@@ -3131,75 +3819,52 @@ const DateFilterSegmentedToolbar = () => {
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
     setRangeStart(start);
     setRangeEnd(end);
-    setActivePreset('custom');
     setCustomOpen(false);
   };
 
   const rangeLabel = formatDateFilterRangeLabel(rangeStart, rangeEnd);
 
   return (
-    <div
-      className="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1 text-sm font-medium"
-      role="group"
-      aria-label="Период статистики"
-    >
-      {DATE_FILTER_SEGMENT_PRESETS.map((preset) => (
-        <button
-          key={preset.id}
-          type="button"
-          onClick={() => applyPreset(preset.id)}
-          className={`whitespace-nowrap rounded-lg px-3 py-2 transition-all ${
-            activePreset === preset.id
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-[#767386] hover:text-gray-900'
-          }`}
-        >
-          {preset.label}
-        </button>
-      ))}
-      <div className="relative" ref={ref}>
-        <button
-          type="button"
-          onClick={openCustomPicker}
-          className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg px-3 py-2 transition-all ${
-            activePreset === 'custom'
-              ? 'bg-white text-gray-900 shadow-sm'
-              : 'text-gray-900 hover:text-gray-900'
-          }`}
-        >
-          <span className="tabular-nums">{rangeLabel}</span>
-          <ChevronDown
-            className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${customOpen ? 'rotate-180' : ''}`}
-            aria-hidden
-          />
-        </button>
-        {customOpen && (
-          <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-xl border border-gray-200 bg-white p-4 shadow-lg animate-in fade-in zoom-in-95 duration-100">
-            <p className="mb-2 text-sm font-medium text-gray-900">Выбрать период</p>
-            <div className="space-y-2">
-              <input
-                type="date"
-                value={draftStart}
-                onChange={(e) => setDraftStart(e.target.value)}
-                className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
-              />
-              <input
-                type="date"
-                value={draftEnd}
-                onChange={(e) => setDraftEnd(e.target.value)}
-                className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={applyCustomRange}
-              className="mt-3 w-full rounded-lg bg-purple-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
-            >
-              Применить
-            </button>
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={openCustomPicker}
+        aria-label="Период статистики"
+        aria-expanded={customOpen}
+        className={conceptToolbarTextControlClass}
+      >
+        <span className="tabular-nums whitespace-nowrap">{rangeLabel}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${customOpen ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {customOpen && (
+        <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-xl border border-gray-200 bg-white p-4 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+          <p className="mb-2 text-sm font-medium text-gray-900">Выбрать период</p>
+          <div className="space-y-2">
+            <input
+              type="date"
+              value={draftStart}
+              onChange={(e) => setDraftStart(e.target.value)}
+              className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
+            />
+            <input
+              type="date"
+              value={draftEnd}
+              onChange={(e) => setDraftEnd(e.target.value)}
+              className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
+            />
           </div>
-        )}
-      </div>
+          <button
+            type="button"
+            onClick={applyCustomRange}
+            className="mt-3 w-full rounded-lg bg-purple-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
+          >
+            Применить
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -3350,6 +4015,62 @@ const LIST_HEADER_STAT_LABEL_CLASS = 'm-0 block text-[11px] leading-[11px] text-
 const LIST_HEADER_STAT_VALUE_CLASS =
   'm-0 text-[22px] font-bold leading-none tabular-nums tracking-tight text-gray-900';
 
+function ListHeaderCompactStatsPanel({
+  className = 'h-24 flex-1',
+  alignStatsCenter = false,
+  variant = 'card',
+  statsJustify = 'start',
+}: {
+  className?: string;
+  alignStatsCenter?: boolean;
+  variant?: 'card' | 'inline';
+  statsJustify?: 'start' | 'end';
+}) {
+  const shellClass =
+    variant === 'card'
+      ? `flex min-w-0 items-stretch overflow-hidden rounded-[12px] bg-white px-5 shadow-sm ${className}`
+      : `flex min-w-0 items-stretch overflow-hidden ${className}`;
+
+  const statBlock = (
+    label: string,
+    value: string,
+    trend?: { text: string; down?: boolean },
+  ) => (
+    <div key={label} className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
+      <p className={`${LIST_HEADER_STAT_LABEL_CLASS} text-left`}>{label}</p>
+      {trend ? (
+        <div className="m-0 flex items-baseline justify-end gap-2 leading-none">
+          <p className={LIST_HEADER_STAT_VALUE_CLASS}>{value}</p>
+          <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
+            <ArrowUp
+              className={`h-2.5 w-2.5 ${trend.down ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+            {trend.text}
+          </p>
+        </div>
+      ) : (
+        <p className={`${LIST_HEADER_STAT_VALUE_CLASS} text-right`}>{value}</p>
+      )}
+    </div>
+  );
+
+  return (
+    <div className={shellClass}>
+      <div
+        className={`flex w-full flex-1 items-stretch gap-6 sm:gap-8 ${
+          statsJustify === 'end' ? 'justify-end' : 'justify-start'
+        } ${alignStatsCenter ? 'min-h-full items-center' : ''}`}
+      >
+        {statBlock('Доля затрат', '9,7 %', { text: '5.8%', down: true })}
+        {statBlock('Сумма заказов', '196 000 ₽', { text: '1.9%' })}
+        {statBlock('Заказы', '127', { text: '12.6%' })}
+        {statBlock('CTR', '2,45 %')}
+      </div>
+    </div>
+  );
+}
+
 const CLOTHING_STACK_PREVIEW_IMAGES: [string, string, string] = [
   'https://images.unsplash.com/photo-1496747611176-843222e1e57c?w=96&h=96&fit=crop&q=80',
   'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=96&h=96&fit=crop&q=80',
@@ -3499,8 +4220,7 @@ const CreateCampaignDropdown = ({
                 onClick={() => onOpenSingleCampaign?.()}
                 className="flex items-center justify-center gap-1.5 shrink-0 h-11 px-4 rounded-[10px] bg-[#9a41fe] hover:bg-[#8840e5] text-white text-sm font-medium leading-5 transition-colors"
             >
-                <Plus className="w-5 h-5 shrink-0" aria-hidden />
-                <span>Создать</span>
+                <span className="whitespace-nowrap">Создать кампанию</span>
                 <ChevronDown className={`w-5 h-5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
             </button>
             {isOpen && (
@@ -3514,7 +4234,7 @@ const CreateCampaignDropdown = ({
                             }}
                             className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                         >
-                            Одну кампанию
+                            Одну
                         </button>
                         <button
                             type="button"
@@ -3818,14 +4538,14 @@ const FilterDropdown = ({
     </button>
   );
 
+  const filterDropdownViewportClass =
+    'absolute right-0 top-full z-[100] mt-2 flex w-[min(800px,calc(100vw-2rem))] max-h-[min(560px,calc(100dvh-7rem))] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-100';
+
   if (variant === 'products') {
     return (
-      <div
-        ref={dropdownRef}
-        className="absolute left-0 top-full z-[100] mt-2 flex max-h-[min(600px,calc(100vh-12rem))] w-[min(800px,calc(100vw-3rem))] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-100"
-      >
-        <div className="flex flex-1 overflow-hidden">
-          <div className="flex w-56 shrink-0 flex-col gap-1 border-r border-gray-100 p-3">
+      <div ref={dropdownRef} className={filterDropdownViewportClass}>
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="flex w-56 min-h-0 shrink-0 flex-col gap-1 overflow-y-auto overscroll-contain border-r border-gray-100 p-3">
             {productsNavBtn('categories', 'Категории')}
             {productsNavBtn('conflicts', 'Конфликты кампаний')}
             <p className="px-4 pt-3 pb-1 text-xs font-medium text-gray-400">Кампании</p>
@@ -3835,8 +4555,8 @@ const FilterDropdown = ({
             {productsNavBtn('sort', 'Тип сортировки кампаний')}
             {productsNavBtn('campaignTypes', 'Типы кампании')}
           </div>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
               <h3 className="text-lg font-bold text-gray-900">Товары</h3>
               {productsSection === 'categories' && (
                 <button
@@ -3848,7 +4568,7 @@ const FilterDropdown = ({
                 </button>
               )}
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4">
               {productsSection === 'categories' && (
                 <>
                   <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
@@ -3990,7 +4710,7 @@ const FilterDropdown = ({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3 border-t border-gray-100 px-6 py-4">
+        <div className="flex shrink-0 items-center gap-3 border-t border-gray-100 px-6 py-4">
           <button
             type="button"
             onClick={onApply}
@@ -4011,14 +4731,11 @@ const FilterDropdown = ({
   }
 
   return (
-    <div 
-      ref={dropdownRef}
-      className="absolute top-full right-0 mt-2 w-[800px] bg-white rounded-2xl shadow-2xl max-h-[600px] overflow-hidden flex flex-col z-20 animate-in fade-in zoom-in-95 duration-100"
-    >
-      <div className="flex flex-1 overflow-hidden">
+    <div ref={dropdownRef} className={`${filterDropdownViewportClass} z-20`}>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
         {/* Left Column - Categories */}
-        <div className="w-64 bg-gray-50 border-r border-gray-200 p-4 flex flex-col">
-          <h3 className="text-sm font-semibold text-gray-700 mb-4">Фильтр</h3>
+        <div className="flex w-64 min-h-0 shrink-0 flex-col overflow-y-auto overscroll-contain border-r border-gray-200 bg-gray-50 p-4">
+          <h3 className="mb-4 shrink-0 text-sm font-semibold text-gray-700">Фильтр</h3>
           <div className="flex flex-col gap-1">
             <button 
               onClick={() => onTempCategoryChange('category')} 
@@ -4084,7 +4801,7 @@ const FilterDropdown = ({
         </div>
 
         {/* Right Column - Options */}
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
           {tempCategory === 'status' && (
             <>
               <div className="space-y-3">
@@ -4348,7 +5065,7 @@ const FilterDropdown = ({
       </div>
 
       {/* Footer with buttons */}
-      <div className="border-t border-gray-200 p-4 flex items-center justify-end gap-3">
+      <div className="flex shrink-0 items-center justify-end gap-3 border-t border-gray-200 p-4">
         <button 
           onClick={onClose} 
           className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
@@ -4515,6 +5232,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }, [onRegisterUpdateFn]); // Removed handleUpdateCampaignData from dependencies to avoid infinite loop
   const [currentPage, setCurrentPage] = useState(1);
   const CAMPAIGNS_PAGE_SIZE = 10;
+  const PRODUCTS_PAGINATION_MIN_ITEMS = 20;
   const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
   const [selectedCampaignForRefill, setSelectedCampaignForRefill] = useState<DisplayCampaign | null>(null);
   const [isMassBudgetRefillModalOpen, setIsMassBudgetRefillModalOpen] = useState(false);
@@ -4569,10 +5287,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [productsColumnVisibility, setProductsColumnVisibility] = useState<Record<string, boolean>>(
     defaultProductsColumnVisibility,
   );
-  const productsColVisible = useCallback(
-    (columnId: string) => productsColumnVisibility[columnId] !== false,
-    [productsColumnVisibility],
-  );
 
   const location = useLocation();
   const isCampaignsWithWidgetsPage = location.pathname === '/campaigns-with-widgets';
@@ -4582,15 +5296,92 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const isCampaignsWidgetsV1OnlyPage =
     location.pathname === CAMPAIGNS_WITH_WIDGETS_V1_PATH;
 
-  const productsPinVisibility = useMemo(
-    () => ({
+  const [listTab, setListTab] = useState<'campaigns' | 'products'>('products');
+  const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>('promoted');
+
+  const conceptNotPromotedProductsList =
+    isProductPromotionConceptPage && listTab === 'products' && productsPickTab === 'not_promoted';
+
+  const productsColVisible = useCallback(
+    (columnId: string) => {
+      if (conceptNotPromotedProductsList) {
+        if (
+          columnId === 'select' ||
+          columnId === 'product' ||
+          columnId === 'tags'
+        ) {
+          return productsColumnVisibility[columnId] !== false;
+        }
+        if (
+          columnId === 'bid' ||
+          columnId === 'budgetRemainder' ||
+          columnId === 'dailyLimit' ||
+          columnId === 'campaignType'
+        ) {
+          return false;
+        }
+        if (columnId === PRODUCTS_STAT_SPACER_COLUMN_ID) {
+          return true;
+        }
+        if (columnId === PRODUCTS_REVENUE_SHARE_COLUMN_ID) {
+          return true;
+        }
+        if (columnId === PRODUCTS_STOCK_COLUMN_ID) {
+          return true;
+        }
+        if (columnId.startsWith('stat:')) {
+          const label = columnId.slice('stat:'.length);
+          return CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.includes(
+            label as (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+          );
+        }
+      }
+      if (
+        columnId === PRODUCTS_STOCK_COLUMN_ID ||
+        columnId === PRODUCTS_REVENUE_SHARE_COLUMN_ID ||
+        columnId === PRODUCTS_STAT_SPACER_COLUMN_ID
+      ) {
+        return false;
+      }
+      return productsColumnVisibility[columnId] !== false;
+    },
+    [productsColumnVisibility, conceptNotPromotedProductsList],
+  );
+
+  const productsPinVisibility = useMemo(() => {
+    if (conceptNotPromotedProductsList) {
+      return {
+        ...productsColumnVisibility,
+        select: true,
+        product: true,
+        campaignType: false,
+        bid: false,
+        budgetRemainder: false,
+        dailyLimit: false,
+      };
+    }
+    return {
       ...productsColumnVisibility,
-      bid: isProductPromotionConceptPage && productsColumnVisibility.bid !== false,
+      bid:
+        isProductPromotionConceptPage && productsColumnVisibility.bid !== false,
       campaignType:
         !isProductPromotionConceptPage && productsColumnVisibility.campaignType !== false,
-    }),
-    [productsColumnVisibility, isProductPromotionConceptPage],
-  );
+    };
+  }, [
+    productsColumnVisibility,
+    isProductPromotionConceptPage,
+    conceptNotPromotedProductsList,
+  ]);
+
+  const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
+    if (!conceptNotPromotedProductsList) return undefined;
+    let width = 48 + 520;
+    if (productsColumnVisibility.tags !== false) width += 220;
+    width += 120;
+    width += CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.length * 130;
+    width += 108;
+    return { width: '100%', minWidth: width };
+  }, [conceptNotPromotedProductsList, productsColumnVisibility.tags]);
   const showProductsBidColumn = productsPinVisibility.bid === true;
   const showProductsCampaignTypeColumn = productsPinVisibility.campaignType === true;
 
@@ -4606,16 +5397,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         variant,
         extraClass,
         hasProductsScrollShadow,
+        isProductPromotionConceptPage,
       ),
-    [productsPinVisibility, hasProductsScrollShadow],
+    [productsPinVisibility, hasProductsScrollShadow, isProductPromotionConceptPage],
   );
 
-  // Вкладки списка: Кампании | Товары
-  const [listTab, setListTab] = useState<'campaigns' | 'products'>('products');
-
-  useEffect(() => {
-    if (listTab !== 'products') setIsProductsColumnSettingsOpen(false);
-  }, [listTab]);
   const [notificationCardVariant, setNotificationCardVariant] =
     useState<BonusNotificationCardVariant>(1);
   const [showMoreViewsPromoCard, setShowMoreViewsPromoCard] = useState(true);
@@ -4759,7 +5545,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   // Раскрытые строки товаров (вкладка Товары)
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-  const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>('all');
+  const [productStatSort, setProductStatSort] = useState<{
+    label: ConceptNotPromotedProductSortKey;
+    direction: 'asc' | 'desc';
+  } | null>(null);
+  const [conceptNotPromotedListSort, setConceptNotPromotedListSort] =
+    useState<ConceptNotPromotedListSort>('newest');
+  const [isConceptNotPromotedListSortOpen, setIsConceptNotPromotedListSortOpen] = useState(false);
+  const conceptNotPromotedListSortButtonRef = useRef<HTMLButtonElement>(null);
+  const conceptNotPromotedListSortMenuRef = useRef<HTMLDivElement>(null);
+  const [productsSecondaryPickTab, setProductsSecondaryPickTab] =
+    useState<ProductsSecondaryPickTab>('all');
   const [productBulkNotice, setProductBulkNotice] = useState<string | null>(null);
   const [productBidBulkModalKind, setProductBidBulkModalKind] =
     useState<ProductBidBulkModalKind | null>(null);
@@ -4777,6 +5573,37 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     Record<string, ProductCampaignBidOverride>
   >({});
 
+  useEffect(() => {
+    if (listTab !== 'products') setIsProductsColumnSettingsOpen(false);
+  }, [listTab]);
+
+  useEffect(() => {
+    if (conceptNotPromotedProductsList) setExpandedProductIds(new Set());
+  }, [conceptNotPromotedProductsList]);
+
+  useEffect(() => {
+    if (!conceptNotPromotedProductsList) {
+      setProductStatSort(null);
+      setIsConceptNotPromotedListSortOpen(false);
+    }
+  }, [conceptNotPromotedProductsList]);
+
+  useEffect(() => {
+    if (!isConceptNotPromotedListSortOpen) return;
+    const onDocMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        conceptNotPromotedListSortMenuRef.current?.contains(target) ||
+        conceptNotPromotedListSortButtonRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setIsConceptNotPromotedListSortOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [isConceptNotPromotedListSortOpen]);
+
   const isFirstProfileMount = useRef(true);
   useEffect(() => {
     if (isFirstProfileMount.current) {
@@ -4787,7 +5614,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setCurrentPage(1);
     onSelectionChange([]);
     setSelectedProductIds([]);
-    setProductsPickTab('all');
+    setProductsPickTab('promoted');
+    setProductsSecondaryPickTab('all');
     setExpandedProductIds(new Set());
     setProductTagsOverride({});
     setProductCampaignStatusOverride({});
@@ -5149,30 +5977,132 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     });
   }, [filteredProducts, searchQuery]);
 
-  const productsForTable = useMemo(() => {
-    if (productsPickTab === 'all') return filteredProductsBySearch;
-    return filteredProductsBySearch.filter((product) => {
-      const nmId = productRowNmId(product);
-      const hasActiveCampaign = product.campaigns.some((camp) => {
-        const effectiveStatus =
-          camp.status === 'draft' || camp.status === 'error'
-            ? camp.status
-            : (productCampaignStatusOverride[camp.id] ?? camp.status);
-        return effectiveStatus === 'active';
-      });
-      if (productsPickTab === 'not_promoted') {
-        if (product.campaigns.length === 0) return true;
-        return !hasActiveCampaign;
-      }
-      if (productsPickTab === 'promoted') {
-        return hasActiveCampaign;
-      }
-      if (productsPickTab === 'growth') return nmId > 0 && nmId % 5 === 0;
-      if (productsPickTab === 'ab') return nmId > 0 && nmId % 9 === 0;
-      if (productsPickTab === 'promo') return nmId > 0 && nmId % 7 === 0;
-      return true;
-    });
+  const productsPickTabCounts = useMemo(() => {
+    const counts = {} as Record<ProductsPickTab, number>;
+    for (const tab of PRODUCTS_PICK_TABS) {
+      counts[tab.id] = filteredProductsBySearch.filter((product) =>
+        productMatchesProductsPickTab(product, tab.id, productCampaignStatusOverride),
+      ).length;
+    }
+    return counts;
+  }, [filteredProductsBySearch, productCampaignStatusOverride]);
+
+  const productsSecondaryPickTabCounts = useMemo(() => {
+    const scope = getConceptPromotionScope(productsPickTab);
+    const scopedProducts = filteredProductsBySearch.filter((product) =>
+      productMatchesProductsPickTab(product, scope, productCampaignStatusOverride),
+    );
+    const counts = {} as Record<ProductsSecondaryPickTab, number>;
+    for (const tab of PRODUCTS_PICK_SECONDARY_TABS) {
+      counts[tab.id] = scopedProducts.filter((product) =>
+        productMatchesSecondaryPickTab(product, tab.id),
+      ).length;
+    }
+    return counts;
   }, [filteredProductsBySearch, productsPickTab, productCampaignStatusOverride]);
+
+  const productsForTable = useMemo(() => {
+    if (isProductPromotionConceptPage && listTab === 'products') {
+      const scope = getConceptPromotionScope(productsPickTab);
+      return filteredProductsBySearch.filter((product) => {
+        if (
+          !productMatchesProductsPickTab(product, scope, productCampaignStatusOverride)
+        ) {
+          return false;
+        }
+        return productMatchesSecondaryPickTab(product, productsSecondaryPickTab);
+      });
+    }
+    return filteredProductsBySearch.filter((product) =>
+      productMatchesProductsPickTab(product, productsPickTab, productCampaignStatusOverride),
+    );
+  }, [
+    filteredProductsBySearch,
+    productsPickTab,
+    productsSecondaryPickTab,
+    productCampaignStatusOverride,
+    isProductPromotionConceptPage,
+    listTab,
+  ]);
+
+  const notPromotedRevenueShareByProductId = useMemo(() => {
+    if (!conceptNotPromotedProductsList) return {} as Record<string, number>;
+    return buildNotPromotedRevenueShareByProductId(productsForTable);
+  }, [conceptNotPromotedProductsList, productsForTable]);
+
+  const activeProductsPickPromotionCtaTab = useMemo((): ProductsPickCtaTab | null => {
+    if (listTab !== 'products') return null;
+    if (isProductPromotionConceptPage) {
+      return productsPickPromotionCtaTab(productsSecondaryPickTab);
+    }
+    return productsPickPromotionCtaTab(productsPickTab);
+  }, [
+    listTab,
+    isProductPromotionConceptPage,
+    productsSecondaryPickTab,
+    productsPickTab,
+  ]);
+
+  const sortedProductsForTable = useMemo(() => {
+    const useOrganic = conceptNotPromotedProductsList;
+    let list = productsForTable;
+
+    if (conceptNotPromotedProductsList && !productStatSort) {
+      list = [...list].sort((a, b) => {
+        const diff =
+          conceptNotPromotedListSort === 'best_card_rating'
+            ? demoProductCardRating(b) - demoProductCardRating(a)
+            : productRecencySortKey(b) - productRecencySortKey(a);
+        if (diff !== 0) return diff;
+        return a.id.localeCompare(b.id);
+      });
+    }
+
+    if (!productStatSort) return list;
+    const { label, direction } = productStatSort;
+    const sign = direction === 'asc' ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const diff =
+        label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
+          ? sign *
+            ((notPromotedRevenueShareByProductId[a.id] ?? 0) -
+              (notPromotedRevenueShareByProductId[b.id] ?? 0))
+          : sign *
+            (productStatSortNumericValue(a, label, useOrganic) -
+              productStatSortNumericValue(b, label, useOrganic));
+      if (diff !== 0) return diff;
+      return a.id.localeCompare(b.id);
+    });
+  }, [
+    productsForTable,
+    productStatSort,
+    conceptNotPromotedProductsList,
+    conceptNotPromotedListSort,
+    notPromotedRevenueShareByProductId,
+  ]);
+
+  const conceptNotPromotedListSortLabel = useMemo(() => {
+    if (productStatSort) {
+      const columnLabel =
+        productStatSort.label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
+          ? 'Доля в выручке'
+          : productStatSort.label;
+      return `по «${columnLabel}»`;
+    }
+    return (
+      CONCEPT_NOT_PROMOTED_LIST_SORT_OPTIONS.find((o) => o.id === conceptNotPromotedListSort)
+        ?.label ?? 'Сначала новые'
+    );
+  }, [productStatSort, conceptNotPromotedListSort]);
+
+  const handleProductStatColumnSort = (label: ConceptNotPromotedProductSortKey) => {
+    setProductStatSort((prev) => {
+      if (prev?.label === label) {
+        return { label, direction: prev.direction === 'desc' ? 'asc' : 'desc' };
+      }
+      return { label, direction: 'desc' };
+    });
+  };
 
   const visibleProductIds = useMemo(
     () => productsForTable.map((p) => p.id),
@@ -5199,17 +6129,39 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     }
   };
 
+  const handlePromoteNotPromotedProduct = useCallback(
+    (product: ProductRow) => {
+      beginRepeatLaunchFlow(buildPromoteNotPromotedProductPreset(product));
+    },
+    [beginRepeatLaunchFlow],
+  );
+
   const handleBulkCreateCampaignFromProducts = useCallback(() => {
-    const items = productsForTable
-      .filter((p) => selectedProductIds.includes(p.id))
-      .map(productRowToCreationItem);
-    if (items.length === 0) return;
+    const selected = productsForTable.filter((p) => selectedProductIds.includes(p.id));
+    if (selected.length === 0) return;
+    if (conceptNotPromotedProductsList) {
+      const seeds = selected.map(productRowToSingleCampaignSeed);
+      const first = seeds[0]!;
+      beginRepeatLaunchFlow({
+        product: first,
+        products: seeds.length > 1 ? seeds : undefined,
+        campaignName:
+          seeds.length === 1
+            ? `${first.productName} CPC ${new Date().toLocaleDateString('ru-RU')}`
+            : undefined,
+      });
+      setSelectedProductIds([]);
+      return;
+    }
+    const items = selected.map(productRowToCreationItem);
     if (onNavigateToCreationWithProducts) onNavigateToCreationWithProducts(items);
     else onNavigateToCreation();
     setSelectedProductIds([]);
   }, [
     productsForTable,
     selectedProductIds,
+    conceptNotPromotedProductsList,
+    beginRepeatLaunchFlow,
     onNavigateToCreationWithProducts,
     onNavigateToCreation,
   ]);
@@ -5424,6 +6376,71 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         })
     );
   };
+
+  const conceptMainSectionTabs = isProductPromotionConceptPage ? (
+    <div
+      className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
+      role="tablist"
+      aria-label="Раздел списка"
+    >
+      {(
+        [
+          {
+            id: 'promoted' as const,
+            label: 'Товары продвигаются',
+            count: productsPickTabCounts.promoted,
+            selected: listTab === 'products' && productsPickTab === 'promoted',
+            onSelect: () => {
+              setListTab('products');
+              setProductsPickTab('promoted');
+              setProductsSecondaryPickTab('all');
+            },
+          },
+          {
+            id: 'not_promoted' as const,
+            label: 'Без продвижения',
+            count: productsPickTabCounts.not_promoted,
+            selected: listTab === 'products' && productsPickTab === 'not_promoted',
+            onSelect: () => {
+              setListTab('products');
+              setProductsPickTab('not_promoted');
+              setProductsSecondaryPickTab('all');
+            },
+          },
+          {
+            id: 'campaigns' as const,
+            label: 'Кампании',
+            count: campaigns.length,
+            selected: listTab === 'campaigns',
+            onSelect: () => setListTab('campaigns'),
+          },
+        ] as const
+      ).map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={tab.selected}
+          aria-label={`${tab.label}, ${tab.count}`}
+          onClick={tab.onSelect}
+          className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 text-sm transition-all ${
+            tab.selected
+              ? 'bg-white font-semibold text-gray-900 shadow-sm'
+              : 'font-medium text-[#767386] hover:text-gray-900'
+          }`}
+        >
+          <span>{tab.label}</span>
+          <span
+            className={`tabular-nums text-[13px] ${
+              tab.selected ? 'font-medium text-[#767386]' : 'text-[#9b9aa8]'
+            }`}
+          >
+            {tab.count}
+          </span>
+        </button>
+      ))}
+    </div>
+  ) : null;
 
   return (
     <div
@@ -5700,68 +6717,82 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             <div
               className={
                 isProductPromotionConceptPage
-                  ? 'w-full rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm'
+                  ? 'flex h-20 w-full min-w-0 items-stretch gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm'
                   : undefined
               }
             >
             <div
-              className={`flex flex-wrap items-center gap-3 lg:flex-nowrap ${
-                isProductPromotionConceptPage ? 'w-full' : ''
-              }`}
+              className={
+                isProductPromotionConceptPage
+                  ? 'flex min-w-0 shrink-0 items-center'
+                  : undefined
+              }
             >
-              <div className="flex shrink-0 items-center gap-2">
-                <div
-                  className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
-                  role="tablist"
-                  aria-label="Раздел списка"
-                >
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={listTab === 'products'}
-                    onClick={() => setListTab('products')}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                      listTab === 'products'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
+            <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
+              {!isProductPromotionConceptPage ? (
+                <div className="flex shrink-0 items-center gap-2">
+                  <div
+                    className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
+                    role="tablist"
+                    aria-label="Раздел списка"
                   >
-                    Товары
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={listTab === 'campaigns'}
-                    onClick={() => setListTab('campaigns')}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                      listTab === 'campaigns'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
-                  >
-                    Кампании
-                  </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={listTab === 'products'}
+                      onClick={() => setListTab('products')}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                        listTab === 'products'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-[#767386] hover:text-gray-900'
+                      }`}
+                    >
+                      Товары
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={listTab === 'campaigns'}
+                      onClick={() => setListTab('campaigns')}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                        listTab === 'campaigns'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-[#767386] hover:text-gray-900'
+                      }`}
+                    >
+                      Кампании
+                    </button>
+                  </div>
+                  <ExcelActionsDropdown
+                    onOpenUpload={onOpenUploadEditsModal}
+                    onOpenHistory={onOpenHistoryModal}
+                    showUploadHint={showUploadHint}
+                    onDismissUploadHint={onDismissUploadHint}
+                  />
                 </div>
+              ) : null}
 
-                <ExcelActionsDropdown
-                  onOpenUpload={onOpenUploadEditsModal}
-                  onOpenHistory={onOpenHistoryModal}
-                  showUploadHint={showUploadHint}
-                  onDismissUploadHint={onDismissUploadHint}
+              <div className="flex shrink-0 items-center gap-2">
+                <CreateCampaignDropdown
+                  onNavigateToCreation={onNavigateToCreation}
+                  onOpenSingleCampaign={onOpenSingleCampaign}
+                  onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
                 />
+                {isProductPromotionConceptPage ? (
+                  <ExcelActionsDropdown
+                    onOpenUpload={onOpenUploadEditsModal}
+                    onOpenHistory={onOpenHistoryModal}
+                    showUploadHint={showUploadHint}
+                    onDismissUploadHint={onDismissUploadHint}
+                  />
+                ) : null}
               </div>
-
-              <CreateCampaignDropdown
-                onNavigateToCreation={onNavigateToCreation}
-                onOpenSingleCampaign={onOpenSingleCampaign}
-                onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
-              />
 
               {!isProductPromotionConceptPage && (
                 <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
               )}
 
-              {!(isProductPromotionConceptPage && listTab === 'products') && (
+              {!isProductPromotionConceptPage && (
                 <div className="relative min-w-[200px] flex-1">
                   <Search
                     className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
@@ -5781,13 +6812,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 </div>
               )}
 
-              {isProductPromotionConceptPage ? (
-                <div className="ml-auto shrink-0">
-                  <DateFilterSegmentedToolbar />
-                </div>
-              ) : null}
-
-              {(listTab !== 'products' || isCampaignsWidgetsV1OnlyPage) && (
+              {(listTab !== 'products' || isCampaignsWidgetsV1OnlyPage) &&
+                !isProductPromotionConceptPage && (
                 <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
                   <div className="relative">
                     <button
@@ -5882,6 +6908,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               )}
             </div>
             </div>
+            {isProductPromotionConceptPage ? (
+              <ListHeaderCompactStatsPanel
+                variant="inline"
+                className="h-full min-w-0 flex-1 pl-1"
+                statsJustify="end"
+              />
+            ) : null}
+            </div>
           ) : null}
 
           {insightFilter && (
@@ -5947,50 +6981,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 )}
               </>
             ) : (
-              <div
-                className={`flex min-w-0 items-stretch overflow-hidden rounded-[12px] bg-white px-5 shadow-sm ${
+              <ListHeaderCompactStatsPanel
+                className={
                   notificationCardVariant === 3
                     ? 'min-w-0 flex-1 basis-0 grow self-stretch'
                     : 'h-24 flex-1'
-                }`}
-              >
-                <div
-                  className={`flex w-full flex-1 items-stretch justify-start gap-6 sm:gap-8 ${
-                    notificationCardVariant === 3 ? 'min-h-full items-center' : ''
-                  }`}
-                >
-                  <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
-                    <p className={LIST_HEADER_STAT_LABEL_CLASS}>Доля затрат</p>
-                    <div className="m-0 flex items-baseline gap-2 leading-none">
-                      <p className={LIST_HEADER_STAT_VALUE_CLASS}>9,7 %</p>
-                      <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
-                        <ArrowUp className="h-2.5 w-2.5 rotate-180" aria-hidden />
-                        5.8%
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
-                    <p className={LIST_HEADER_STAT_LABEL_CLASS}>Сумма заказов</p>
-                    <div className="m-0 flex items-baseline gap-2 leading-none">
-                      <p className={LIST_HEADER_STAT_VALUE_CLASS}>196 000 ₽</p>
-                      <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
-                        <ArrowUp className="h-2.5 w-2.5" aria-hidden />
-                        1.9%
-                      </p>
-                    </div>
-                  </div>
-                  <div className={`shrink-0 ${LIST_HEADER_COMPACT_STAT}`}>
-                    <p className={LIST_HEADER_STAT_LABEL_CLASS}>Заказы</p>
-                    <div className="m-0 flex items-baseline gap-2 leading-none">
-                      <p className={LIST_HEADER_STAT_VALUE_CLASS}>127</p>
-                      <p className="m-0 flex items-center gap-0.5 text-[11px] font-medium leading-none text-emerald-600">
-                        <ArrowUp className="h-2.5 w-2.5" aria-hidden />
-                        12.6%
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+                }
+                alignStatsCenter={notificationCardVariant === 3}
+                statsJustify={isProductPromotionConceptPage ? 'end' : 'start'}
+              />
             )}
 
             {profileId !== '2' &&
@@ -6210,7 +7209,88 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
       {listTab === 'campaigns' && (
       <div className="w-full max-w-[1920px]">
-          <div className="w-full bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
+          <div
+            className={`w-full bg-white rounded-xl shadow-sm border border-gray-100 ${
+              isProductPromotionConceptPage ? 'overflow-visible' : 'overflow-hidden'
+            }`}
+          >
+          {isProductPromotionConceptPage ? (
+            <div className="relative z-40 border-b border-gray-100">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3 sm:px-6">
+                {conceptMainSectionTabs}
+                <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
+                  <div className="inline-flex shrink-0 items-center gap-1.5">
+                    <DateFilterSegmentedToolbar />
+                    <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
+                      <button
+                        type="button"
+                        onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                        className={conceptToolbarTextControlClass}
+                        aria-expanded={isFilterDropdownOpen}
+                        aria-haspopup="dialog"
+                      >
+                        <span>Фильтры</span>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${
+                            isFilterDropdownOpen ? 'rotate-180' : ''
+                          }`}
+                          aria-hidden
+                        />
+                      </button>
+                      <FilterDropdown
+                        variant="campaigns"
+                      isOpen={isFilterDropdownOpen}
+                      onClose={handleCancelFilters}
+                      onApply={handleApplyFilters}
+                      productCategoryOptions={productFilterCategoryOptions}
+                      productsSection={tempProductsFilterSection}
+                      onProductsSectionChange={setTempProductsFilterSection}
+                      tempProductCategories={tempFilterProductCategories}
+                      onTempProductCategoriesChange={setTempFilterProductCategories}
+                      tempConflictOnly={tempFilterConflictOnly}
+                      onTempConflictOnlyChange={setTempFilterConflictOnly}
+                      tempCampaignTypes={tempFilterCampaignTypes}
+                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                      category={filterCategory}
+                      onCategoryChange={setFilterCategory}
+                      status={filterStatus}
+                      onStatusChange={setFilterStatus}
+                      autorefill={filterAutorefill}
+                      onAutorefillChange={setFilterAutorefill}
+                      payment={filterPayment}
+                      onPaymentChange={setFilterPayment}
+                      sort={filterSort}
+                      onSortChange={setFilterSort}
+                      filterByCategory={filterByCategory}
+                      onFilterByCategoryChange={setFilterByCategory}
+                      tempCategory={tempFilterCategory}
+                      onTempCategoryChange={setTempFilterCategory}
+                      tempStatus={tempFilterStatus}
+                      onTempStatusChange={setTempFilterStatus}
+                      tempAutorefill={tempFilterAutorefill}
+                      onTempAutorefillChange={setTempFilterAutorefill}
+                      tempPayment={tempFilterPayment}
+                      onTempPaymentChange={setTempFilterPayment}
+                      tempSort={tempFilterSort}
+                      onTempSortChange={setTempFilterSort}
+                      tempFilterByCategory={tempFilterByCategory}
+                      onTempFilterByCategoryChange={setTempFilterByCategory}
+                      tempTags={tempTags}
+                      onTempTagsChange={setTempTags}
+                      tempTagsSearch={tempTagsSearch}
+                      onTempTagsSearchChange={setTempTagsSearch}
+                      tempTagsCategory={tempTagsCategory}
+                      onTempTagsCategoryChange={setTempTagsCategory}
+                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                        availableTags={availableTags}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
           {isProductsPromoModalOpen && (
             <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40">
               <div className="relative bg-white w-[740px] h-[406px] max-w-[92vw] rounded-2xl shadow-2xl overflow-hidden">
@@ -6365,13 +7445,32 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           </th>
                           <th className="sticky left-[52px] z-20 p-4 w-10 bg-gray-50"></th>
                           <th
-                            className={`sticky left-[100px] z-20 p-4 text-left font-medium min-w-[300px] bg-gray-50 ${
+                            className={`sticky left-[100px] z-20 p-4 text-left min-w-[300px] bg-gray-50 ${
+                              isProductPromotionConceptPage ? 'font-normal' : 'font-medium'
+                            } ${
                               hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
                             }`}
                           >
-                                <div className="flex items-center gap-1">
-                                    Товар/Кампания <ArrowUp className="w-4 h-4" />
-                                </div>
+                            {isProductPromotionConceptPage ? (
+                              <label className="flex min-w-0 items-center gap-2 text-left font-normal text-gray-500">
+                                <Search
+                                  className="h-4 w-4 shrink-0 text-[#767386]"
+                                  aria-hidden
+                                />
+                                <input
+                                  type="search"
+                                  value={searchQuery}
+                                  onChange={(e) => setSearchQuery(e.target.value)}
+                                  placeholder="Поиск"
+                                  aria-label="Поиск по ID кампании или названию"
+                                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-normal text-gray-900 placeholder:text-[#767386] focus:outline-none focus:ring-0"
+                                />
+                              </label>
+                            ) : (
+                              <div className="flex items-center gap-1 font-medium">
+                                Товар/Кампания <ArrowUp className="w-4 h-4" />
+                              </div>
+                            )}
                             </th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
@@ -6421,7 +7520,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                         alt={c.name}
                                       />
                                       <div>
-                                          <p className="font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
+                                          <p className="mb-1 font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
                                               <StatusBadge status={c.status} text={c.statusText} />
                                               <span>ID {c.campaignId}</span>
@@ -6658,126 +7757,244 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </div>
             )}
 
-            <div
-              className={`flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3 sm:px-6 ${
-                isProductPromotionConceptPage ? 'relative z-40 w-full' : 'justify-between'
-              }`}
-            >
-              <div
-                className="inline-flex max-w-full flex-wrap rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1 text-sm font-medium"
-                role="tablist"
-                aria-label="Подборки товаров"
-              >
-                {PRODUCTS_PICK_TABS.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={productsPickTab === tab.id}
-                    onClick={() => setProductsPickTab(tab.id)}
-                    className={`whitespace-nowrap rounded-lg px-4 py-2 transition-all ${
-                      productsPickTab === tab.id
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
+            {isProductPromotionConceptPage ? (
+              <div className="relative z-40">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3 sm:px-6">
+                  {conceptMainSectionTabs}
+                  <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
+                    <div className="inline-flex shrink-0 items-center gap-1.5">
+                      <DateFilterSegmentedToolbar />
+                      <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
+                        <button
+                          type="button"
+                          onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                          className={conceptToolbarTextControlClass}
+                          aria-expanded={isFilterDropdownOpen}
+                          aria-haspopup="dialog"
+                        >
+                          <span>Фильтры</span>
+                          <ChevronDown
+                            className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${
+                              isFilterDropdownOpen ? 'rotate-180' : ''
+                            }`}
+                            aria-hidden
+                          />
+                        </button>
+                        <FilterDropdown
+                          variant="products"
+                        isOpen={isFilterDropdownOpen}
+                        onClose={handleCancelFilters}
+                        onApply={handleApplyFilters}
+                        productCategoryOptions={productFilterCategoryOptions}
+                        productsSection={tempProductsFilterSection}
+                        onProductsSectionChange={setTempProductsFilterSection}
+                        tempProductCategories={tempFilterProductCategories}
+                        onTempProductCategoriesChange={setTempFilterProductCategories}
+                        tempConflictOnly={tempFilterConflictOnly}
+                        onTempConflictOnlyChange={setTempFilterConflictOnly}
+                        tempCampaignTypes={tempFilterCampaignTypes}
+                        onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                        category={filterCategory}
+                        onCategoryChange={setFilterCategory}
+                        status={filterStatus}
+                        onStatusChange={setFilterStatus}
+                        autorefill={filterAutorefill}
+                        onAutorefillChange={setFilterAutorefill}
+                        payment={filterPayment}
+                        onPaymentChange={setFilterPayment}
+                        sort={filterSort}
+                        onSortChange={setFilterSort}
+                        filterByCategory={filterByCategory}
+                        onFilterByCategoryChange={setFilterByCategory}
+                        tempCategory={tempFilterCategory}
+                        onTempCategoryChange={setTempFilterCategory}
+                        tempStatus={tempFilterStatus}
+                        onTempStatusChange={setTempFilterStatus}
+                        tempAutorefill={tempFilterAutorefill}
+                        onTempAutorefillChange={setTempFilterAutorefill}
+                        tempPayment={tempFilterPayment}
+                        onTempPaymentChange={setTempFilterPayment}
+                        tempSort={tempFilterSort}
+                        onTempSortChange={setTempFilterSort}
+                        tempFilterByCategory={tempFilterByCategory}
+                        onTempFilterByCategoryChange={setTempFilterByCategory}
+                        tempTags={tempTags}
+                        onTempTagsChange={setTempTags}
+                        tempTagsSearch={tempTagsSearch}
+                        onTempTagsSearchChange={setTempTagsSearch}
+                        tempTagsCategory={tempTagsCategory}
+                        onTempTagsCategoryChange={setTempTagsCategory}
+                        tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                        onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                          availableTags={availableTags}
+                        />
+                      </div>
+                    </div>
+                    <div className="relative shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsProductsColumnSettingsOpen((prev) => !prev)}
+                        className={`${conceptToolbarIconControlClass} ${
+                          isProductsColumnSettingsOpen ? 'ring-2 ring-[#9a41fe]/30' : ''
+                        }`}
+                        title="Настройки колонок"
+                        aria-label="Настройки колонок"
+                        aria-expanded={isProductsColumnSettingsOpen}
+                      >
+                        <Settings className="h-4 w-4 text-gray-600" aria-hidden />
+                      </button>
+                      <ProductsColumnSettingsDropdown
+                        open={isProductsColumnSettingsOpen}
+                        onClose={() => setIsProductsColumnSettingsOpen(false)}
+                        visibility={productsColumnVisibility}
+                        onToggle={(columnId, visible) => {
+                          setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                        }}
+                        onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 bg-white px-4 py-2.5 sm:px-6">
+                  <div
+                    className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-x-1"
+                    role="tablist"
+                    aria-label="Подборки товаров"
                   >
-                    {tab.label}
-                  </button>
-                ))}
+                    {PRODUCTS_PICK_SECONDARY_TABS.map((tab, index) => {
+                      const count = productsSecondaryPickTabCounts[tab.id];
+                      const isSelected = productsSecondaryPickTab === tab.id;
+                      return (
+                        <span key={tab.id} className="inline-flex items-center">
+                          {index > 0 ? (
+                            <span className="mx-2 text-base text-[#D1D1D8] leading-none" aria-hidden>
+                              ·
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-selected={isSelected}
+                            aria-label={`${tab.label}, ${count} товаров`}
+                            onClick={() => setProductsSecondaryPickTab(tab.id)}
+                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-1 py-0.5 text-sm leading-5 transition-colors ${
+                              isSelected
+                                ? 'font-semibold text-gray-900'
+                                : 'font-medium text-[#767386] hover:text-gray-900'
+                            }`}
+                          >
+                            <span>{tab.label}</span>
+                            <span
+                              className={`tabular-nums text-[13px] ${
+                                isSelected ? 'text-[#767386]' : 'text-[#9b9aa8]'
+                              }`}
+                            >
+                              {count}
+                            </span>
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {conceptNotPromotedProductsList ? (
+                    <div className="relative ml-auto shrink-0 text-sm leading-5 text-[#767386]">
+                      Сортировка{' '}
+                      <button
+                        ref={conceptNotPromotedListSortButtonRef}
+                        type="button"
+                        onClick={() => setIsConceptNotPromotedListSortOpen((open) => !open)}
+                        className="inline-flex items-center gap-0.5 font-medium text-gray-900 transition-colors hover:text-[#9a41fe]"
+                        aria-haspopup="menu"
+                        aria-expanded={isConceptNotPromotedListSortOpen}
+                        aria-label={`Сортировка: ${conceptNotPromotedListSortLabel}`}
+                      >
+                        <span>{conceptNotPromotedListSortLabel}</span>
+                        <ChevronDown
+                          className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${
+                            isConceptNotPromotedListSortOpen ? 'rotate-180' : ''
+                          }`}
+                          aria-hidden
+                        />
+                      </button>
+                      {isConceptNotPromotedListSortOpen ? (
+                        <div
+                          ref={conceptNotPromotedListSortMenuRef}
+                          role="menu"
+                          className="absolute right-0 top-[calc(100%+4px)] z-50 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+                        >
+                          {CONCEPT_NOT_PROMOTED_LIST_SORT_OPTIONS.map((option) => {
+                            const selected =
+                              !productStatSort && conceptNotPromotedListSort === option.id;
+                            return (
+                              <button
+                                key={option.id}
+                                type="button"
+                                role="menuitem"
+                                onClick={() => {
+                                  setConceptNotPromotedListSort(option.id);
+                                  setProductStatSort(null);
+                                  setIsConceptNotPromotedListSortOpen(false);
+                                }}
+                                className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
+                                  selected
+                                    ? 'bg-purple-50 font-medium text-[#9a41fe]'
+                                    : 'text-gray-800'
+                                }`}
+                              >
+                                {option.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
               </div>
-              {isProductPromotionConceptPage ? (
-                <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
-                  <button
-                    type="button"
-                    onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
-                    className="flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 hover:bg-[rgba(74,74,89,0.12)] transition-colors"
-                    aria-expanded={isFilterDropdownOpen}
-                    aria-haspopup="dialog"
-                  >
-                    <span>Все фильтры</span>
-                    <ChevronDown
-                      className={`h-4 w-4 shrink-0 text-gray-600 transition-transform ${
-                        isFilterDropdownOpen ? 'rotate-180' : ''
-                      }`}
-                      aria-hidden
-                    />
-                  </button>
-                  <FilterDropdown
-                    variant="products"
-                    isOpen={isFilterDropdownOpen}
-                    onClose={handleCancelFilters}
-                    onApply={handleApplyFilters}
-                    productCategoryOptions={productFilterCategoryOptions}
-                    productsSection={tempProductsFilterSection}
-                    onProductsSectionChange={setTempProductsFilterSection}
-                    tempProductCategories={tempFilterProductCategories}
-                    onTempProductCategoriesChange={setTempFilterProductCategories}
-                    tempConflictOnly={tempFilterConflictOnly}
-                    onTempConflictOnlyChange={setTempFilterConflictOnly}
-                    tempCampaignTypes={tempFilterCampaignTypes}
-                    onTempCampaignTypesChange={setTempFilterCampaignTypes}
-                    category={filterCategory}
-                    onCategoryChange={setFilterCategory}
-                    status={filterStatus}
-                    onStatusChange={setFilterStatus}
-                    autorefill={filterAutorefill}
-                    onAutorefillChange={setFilterAutorefill}
-                    payment={filterPayment}
-                    onPaymentChange={setFilterPayment}
-                    sort={filterSort}
-                    onSortChange={setFilterSort}
-                    filterByCategory={filterByCategory}
-                    onFilterByCategoryChange={setFilterByCategory}
-                    tempCategory={tempFilterCategory}
-                    onTempCategoryChange={setTempFilterCategory}
-                    tempStatus={tempFilterStatus}
-                    onTempStatusChange={setTempFilterStatus}
-                    tempAutorefill={tempFilterAutorefill}
-                    onTempAutorefillChange={setTempFilterAutorefill}
-                    tempPayment={tempFilterPayment}
-                    onTempPaymentChange={setTempFilterPayment}
-                    tempSort={tempFilterSort}
-                    onTempSortChange={setTempFilterSort}
-                    tempFilterByCategory={tempFilterByCategory}
-                    onTempFilterByCategoryChange={setTempFilterByCategory}
-                    tempTags={tempTags}
-                    onTempTagsChange={setTempTags}
-                    tempTagsSearch={tempTagsSearch}
-                    onTempTagsSearchChange={setTempTagsSearch}
-                    tempTagsCategory={tempTagsCategory}
-                    onTempTagsCategoryChange={setTempTagsCategory}
-                    tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
-                    onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
-                    availableTags={availableTags}
-                  />
+            ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-6">
+                <div
+                  className="inline-flex max-w-full flex-wrap rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1 text-sm font-medium"
+                  role="tablist"
+                  aria-label="Подборки товаров"
+                >
+                  {PRODUCTS_PICK_TABS.map((tab) => {
+                    const count = productsPickTabCounts[tab.id];
+                    const isSelected = productsPickTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        aria-label={`${tab.label}, ${count} товаров`}
+                        onClick={() => setProductsPickTab(tab.id)}
+                        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-4 py-2 transition-all ${
+                          isSelected
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-[#767386] hover:text-gray-900'
+                        }`}
+                      >
+                        <span>{tab.label}</span>
+                        <span
+                          className={`tabular-nums ${
+                            isSelected ? 'text-[#767386]' : 'text-[#9b9aa8]'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : null}
-              {isProductPromotionConceptPage ? (
-                <div className="relative ml-auto shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setIsProductsColumnSettingsOpen((prev) => !prev)}
-                    className={`flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)] ${
-                      isProductsColumnSettingsOpen ? 'ring-2 ring-[#9a41fe]/30' : ''
-                    }`}
-                    title="Настройки колонок"
-                    aria-label="Настройки колонок"
-                    aria-expanded={isProductsColumnSettingsOpen}
-                  >
-                    <Settings className="h-5 w-5 text-gray-700" aria-hidden />
-                  </button>
-                  <ProductsColumnSettingsDropdown
-                    open={isProductsColumnSettingsOpen}
-                    onClose={() => setIsProductsColumnSettingsOpen(false)}
-                    visibility={productsColumnVisibility}
-                    onToggle={(columnId, visible) => {
-                      setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
-                    }}
-                    onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
-                  />
-                </div>
-              ) : null}
             </div>
+            )}
+
+            {activeProductsPickPromotionCtaTab ? (
+              <div className="border-b border-gray-100 px-0 pb-3 pt-2">
+                <ProductsPickPromotionCtaBanner tab={activeProductsPickPromotionCtaTab} />
+              </div>
+            ) : null}
 
             <div
               className="relative z-0 overflow-x-auto"
@@ -6787,8 +8004,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               }}
             >
               {/* Тень справа от закреплённого столбца товара */}
-              <table className="relative w-full text-sm min-w-[2800px]">
-                <thead className="bg-gray-50 text-gray-500 font-normal">
+              <table
+                className={`relative w-full text-sm ${
+                  conceptNotPromotedProductsList ? 'min-w-0 table-fixed' : 'min-w-[2800px]'
+                }`}
+                style={productsTableMinWidthStyle}
+              >
+                <thead
+                  className={`text-gray-500 font-normal ${
+                    isProductPromotionConceptPage ? 'bg-white' : 'bg-gray-50'
+                  }`}
+                >
                   <tr>
                     <th
                       {...productsPinnedProps('select', 'head', 'px-3 py-4 text-center')}
@@ -6848,8 +8074,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           'px-2 py-4 text-left font-normal align-middle',
                         )}
                       >
-                        <span className="inline-flex items-center justify-start gap-1 text-left">
-                          Ставка <HelpCircle className="w-4 h-4 text-gray-400" />
+                        <span className="inline-flex items-center justify-start gap-1 text-left leading-tight">
+                          {isProductPromotionConceptPage && productsPickTab === 'not_promoted'
+                            ? 'Рекомендуемая ставка'
+                            : 'Ставка'}{' '}
+                          <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
                         </span>
                       </th>
                     ) : null}
@@ -6884,28 +8113,103 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         Ярлыки
                       </th>
                     ) : null}
+                    {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
+                      <th className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
+                    ) : null}
+                    {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
+                      <th className={PRODUCTS_STAT_TH_CLASS}>
+                        <span className="inline-flex items-center gap-1">
+                          Доля в выручке
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleProductStatColumnSort(CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY)
+                            }
+                            className={`inline-flex shrink-0 rounded p-0.5 transition-colors hover:bg-gray-100 ${
+                              productStatSort?.label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
+                                ? 'text-gray-900'
+                                : 'text-gray-400'
+                            }`}
+                            aria-label={`Сортировать по «Доля в выручке»${
+                              productStatSort?.label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
+                                ? productStatSort.direction === 'desc'
+                                  ? ', по убыванию'
+                                  : ', по возрастанию'
+                                : ''
+                            }`}
+                          >
+                            <ArrowUp
+                              className={`h-4 w-4 shrink-0 transition-transform ${
+                                productStatSort?.label ===
+                                  CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY &&
+                                productStatSort.direction === 'asc'
+                                  ? ''
+                                  : 'rotate-180'
+                              }`}
+                              aria-hidden
+                            />
+                          </button>
+                          <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                        </span>
+                      </th>
+                    ) : null}
                     {PRODUCTS_STAT_COLUMN_LABELS.map((label) =>
                       productsColVisible(productsStatColumnId(label)) ? (
                         <th key={label} className={PRODUCTS_STAT_TH_CLASS}>
                           <span className="inline-flex items-center gap-1">
-                            {label} <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                            {label}
+                            {isConceptNotPromotedStatSortLabel(label) ? (
+                              <button
+                                type="button"
+                                onClick={() => handleProductStatColumnSort(label)}
+                                className={`inline-flex shrink-0 rounded p-0.5 transition-colors hover:bg-gray-100 ${
+                                  productStatSort?.label === label
+                                    ? 'text-gray-900'
+                                    : 'text-gray-400'
+                                }`}
+                                aria-label={`Сортировать по «${label}»${
+                                  productStatSort?.label === label
+                                    ? productStatSort.direction === 'desc'
+                                      ? ', по убыванию'
+                                      : ', по возрастанию'
+                                    : ''
+                                }`}
+                              >
+                                <ArrowUp
+                                  className={`h-4 w-4 shrink-0 transition-transform ${
+                                    productStatSort?.label === label &&
+                                    productStatSort.direction === 'asc'
+                                      ? ''
+                                      : 'rotate-180'
+                                  }`}
+                                  aria-hidden
+                                />
+                              </button>
+                            ) : null}
+                            {conceptNotPromotedProductsList && label === 'Показы' ? (
+                              <ConceptJamSubscriptionHint />
+                            ) : (
+                              <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                            )}
                           </span>
                         </th>
                       ) : null,
                     )}
+                    {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                      <th className={PRODUCTS_STOCK_TH_CLASS}>
+                        <span className="inline-flex items-center gap-1">
+                          Остатки
+                          <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                        </span>
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {productsForTable.map((product) => (
+                  {sortedProductsForTable.map((product) => (
                     <React.Fragment key={product.id}>
                       {/* Строка товара */}
-                      <tr
-                        className={`transition-colors ${
-                          selectedProductIds.includes(product.id)
-                            ? 'bg-purple-50/80'
-                            : 'hover:bg-gray-50/80'
-                        }`}
-                      >
+                      <tr className="group/product-row transition-colors hover:bg-gray-50/80">
                         <td
                           {...productsPinnedProps('select', 'body', 'px-3 py-4 align-middle')}
                           onClick={(e) => e.stopPropagation()}
@@ -6930,6 +8234,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               product={product}
                               expanded={expandedProductIds.has(product.id)}
                               onToggleExpand={() => toggleProductExpanded(product.id)}
+                              showExpandControl={!conceptNotPromotedProductsList}
+                              showPromoteUnderPhoto={conceptNotPromotedProductsList}
+                              onPromote={handlePromoteNotPromotedProduct}
                             />
                           </td>
                         ) : null}
@@ -7025,29 +8332,58 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           )}
                         </td>
                         ) : null}
+                        {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
+                          <td className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
+                        ) : null}
+                        {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
+                          <td className={PRODUCTS_STAT_TD_CLASS}>
+                            <span className="text-sm font-semibold tabular-nums text-gray-900">
+                              {formatProductRevenueSharePercent(
+                                notPromotedRevenueShareByProductId[product.id] ?? 0,
+                              )}
+                            </span>
+                          </td>
+                        ) : null}
                         {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
                           if (!productsColVisible(productsStatColumnId(label))) return null;
-                          const stats = product.agg
-                            ? buildExtendedProductStats(product.agg)
-                            : null;
+                          const rowAgg = productRowStatsAgg(
+                            product,
+                            conceptNotPromotedProductsList,
+                          );
+                          const stats = rowAgg ? buildExtendedProductStats(rowAgg) : null;
                           return (
                             <td key={label} className={PRODUCTS_STAT_TD_CLASS}>
                               {stats ? (
-                                <ProductsStatMetricCell
-                                  label={label}
-                                  stats={stats}
-                                  productId={product.id}
-                                  changes={product.agg}
-                                />
+                                conceptNotPromotedProductsList && label === 'Показы' ? (
+                                  <ConceptJamLockedImpressionsMetricCell
+                                    stats={stats}
+                                    productId={product.id}
+                                    changes={rowAgg ?? undefined}
+                                  />
+                                ) : (
+                                  <ProductsStatMetricCell
+                                    label={label}
+                                    stats={stats}
+                                    productId={product.id}
+                                    changes={rowAgg}
+                                  />
+                                )
                               ) : (
                                 <span className="text-sm font-semibold text-gray-400">Н/Д</span>
                               )}
                             </td>
                           );
                         })}
+                        {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                          <td className={PRODUCTS_STOCK_TD_CLASS}>
+                            <ProductStockRemainderCell product={product} />
+                          </td>
+                        ) : null}
                       </tr>
                       {/* Вложенные строки кампаний — вид как на вкладке «Кампании» */}
-                      {expandedProductIds.has(product.id) && product.campaigns.map((camp) => {
+                      {!conceptNotPromotedProductsList &&
+                        expandedProductIds.has(product.id) &&
+                        product.campaigns.map((camp) => {
                         const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         return (
@@ -7210,20 +8546,22 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
-              <span className="text-sm text-gray-500">Показать записей</span>
-              <div className="flex items-center gap-1">
-                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">‹</button>
-                <button className="px-2.5 py-1.5 text-sm bg-purple-600 text-white rounded font-medium">1</button>
-                <span className="px-1 text-gray-400">...</span>
-                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">5</button>
-                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">6</button>
-                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">7</button>
-                <span className="px-1 text-gray-400">...</span>
-                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">134</button>
-                <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">›</button>
+            {productsForTable.length >= PRODUCTS_PAGINATION_MIN_ITEMS ? (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-100">
+                <span className="text-sm text-gray-500">Показать записей</span>
+                <div className="flex items-center gap-1">
+                  <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">‹</button>
+                  <button className="px-2.5 py-1.5 text-sm bg-purple-600 text-white rounded font-medium">1</button>
+                  <span className="px-1 text-gray-400">...</span>
+                  <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">5</button>
+                  <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">6</button>
+                  <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">7</button>
+                  <span className="px-1 text-gray-400">...</span>
+                  <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">134</button>
+                  <button className="px-2.5 py-1.5 text-sm text-gray-600 hover:bg-gray-100 rounded">›</button>
+                </div>
               </div>
-            </div>
+            ) : null}
           </div>
 
           {selectedProductIds.length > 0 && (
@@ -7243,10 +8581,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 onClick={handleBulkCreateCampaignFromProducts}
                 className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
               >
-                <Plus className="h-4 w-4" />
-                Создать кампанию
+                {!conceptNotPromotedProductsList ? (
+                  <Plus className="h-4 w-4" aria-hidden />
+                ) : null}
+                {conceptNotPromotedProductsList ? 'Продвигать' : 'Создать кампанию'}
               </button>
-              {isProductPromotionConceptPage && (
+              {isProductPromotionConceptPage && !conceptNotPromotedProductsList && (
                 <div
                   className={`relative group/product-bid ${selectedProductsCampaignCount === 0 ? 'pointer-events-none opacity-50' : ''}`}
                 >

@@ -13,6 +13,8 @@ export type SingleCampaignSeedProduct = {
 
 export type RepeatLaunchPreset = {
   product: SingleCampaignSeedProduct;
+  /** Если задано — подставляются все товары (иначе только `product`). */
+  products?: SingleCampaignSeedProduct[];
   campaignName?: string;
 };
 
