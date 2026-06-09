@@ -605,6 +605,7 @@ const PRODUCTS_MIDDLE_COLUMN_IDS = [
 type ProductsPickTab =
   | 'not_promoted'
   | 'promoted'
+  | 'all_products'
   | 'growth'
   | 'high_conversion'
   | 'ab'
@@ -1095,6 +1096,12 @@ function productMatchesProductsPickTab(
     return !hasActiveCampaign;
   }
   if (tab === 'promoted') return hasActiveCampaign;
+  if (tab === 'all_products') {
+    return (
+      productMatchesProductsPickTab(product, 'promoted', productCampaignStatusOverride) ||
+      productMatchesProductsPickTab(product, 'not_promoted', productCampaignStatusOverride)
+    );
+  }
   if (tab === 'growth' || tab === 'high_conversion' || tab === 'ab' || tab === 'promo') {
     return productMatchesInsightPickTab(product, tab);
   }
@@ -1102,12 +1109,35 @@ function productMatchesProductsPickTab(
 }
 
 function getConceptPromotionScope(pickTab: ProductsPickTab): 'promoted' | 'not_promoted' {
-  return pickTab === 'not_promoted' ? 'not_promoted' : 'promoted';
+  if (pickTab === 'not_promoted') return 'not_promoted';
+  if (pickTab === 'all_products') return 'promoted';
+  return 'promoted';
 }
 
 function productMatchesSecondaryPickTab(product: ProductRow, tab: ProductsSecondaryPickTab): boolean {
   if (tab === 'all') return true;
   return productMatchesInsightPickTab(product, tab);
+}
+
+function productConceptIsNotPromoted(
+  product: ProductRow,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+): boolean {
+  return productMatchesProductsPickTab(product, 'not_promoted', productCampaignStatusOverride);
+}
+
+function interleaveConceptPromotedAndNotPromoted(
+  promoted: ProductRow[],
+  notPromoted: ProductRow[],
+): ProductRow[] {
+  const mixed: ProductRow[] = [];
+  let pi = 0;
+  let ni = 0;
+  while (pi < promoted.length || ni < notPromoted.length) {
+    if (pi < promoted.length) mixed.push(promoted[pi++]!);
+    if (ni < notPromoted.length) mixed.push(notPromoted[ni++]!);
+  }
+  return mixed;
 }
 
 function productsStatColumnId(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number]): string {
@@ -1118,9 +1148,31 @@ function productsStatColumnId(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number
 const CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS: readonly (typeof PRODUCTS_STAT_COLUMN_LABELS)[number][] =
   ['Показы', 'Заказы', 'Добавления в корзину', 'Сумма заказов'];
 
-const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_TITLE = 'Данные доступны с подпиской «Джем»';
+/** Вкладка «Все»: у товаров без продвижения нет рекламной статистики — только Н/Д. */
+const CONCEPT_ALL_TAB_NOT_PROMOTED_NA_STAT_LABELS: readonly (typeof PRODUCTS_STAT_COLUMN_LABELS)[number][] =
+  [
+    'Затраты',
+    'CTR',
+    'Доля затрат',
+    'Средняя позиция',
+    'Клики',
+    'Добавления в корзину',
+    'CPC',
+    'CPO',
+    'CR',
+    'CPM',
+    'Отмены технические',
+  ];
+
+function conceptAllTabNotPromotedStatIsNa(
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+): boolean {
+  return (CONCEPT_ALL_TAB_NOT_PROMOTED_NA_STAT_LABELS as readonly string[]).includes(label);
+}
+
+const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_TITLE = 'Показы недоступны';
 const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_BODY =
-  'Оформите подписку, чтобы увидеть эти и другие данные в отчёте';
+  'Данные доступны с подпиской «Джем» или после запуска продвижения';
 
 type ConceptNotPromotedStatSortLabel = (typeof CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS)[number];
 
@@ -1598,6 +1650,16 @@ function ConceptJamLockedImpressionsMetricCell({
   );
 }
 
+function ProductsStatNotAvailableCell({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      className={`font-semibold text-gray-400 ${compact ? 'text-xs' : 'text-sm'}`}
+    >
+      Н/Д
+    </span>
+  );
+}
+
 function ProductsStatMetricCell({
   label,
   stats,
@@ -1812,8 +1874,8 @@ function productsPinnedCellProps(
         ? 'bg-white'
         : 'bg-gray-50'
       : variant === 'bodyNested'
-        ? 'bg-gray-50/80'
-        : 'bg-white group-hover/product-row:bg-gray-50/80';
+        ? 'bg-gray-50'
+        : 'bg-white group-hover/product-row:bg-gray-50';
   const edgeShadow =
     showPinnedEdgeShadow && lastVisibleProductsPinnedColumnId(visibility) === columnId
       ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS
@@ -1963,6 +2025,7 @@ function ProductCollapsedRowCell({
   expanded,
   onToggleExpand,
   showExpandControl = true,
+  reserveExpandGutter = false,
   showPromoteUnderPhoto = false,
   onPromote,
 }: {
@@ -1970,6 +2033,8 @@ function ProductCollapsedRowCell({
   expanded: boolean;
   onToggleExpand: () => void;
   showExpandControl?: boolean;
+  /** Пустое место под стрелку раскрытия (выравнивание фото на вкладке «Все»). */
+  reserveExpandGutter?: boolean;
   showPromoteUnderPhoto?: boolean;
   onPromote?: (product: ProductRow) => void;
 }) {
@@ -1997,13 +2062,17 @@ function ProductCollapsedRowCell({
     </div>
   );
 
+  const expandGutterClass = 'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center';
+
+  const alignRowStart = !showPromoteUnderPhoto || reserveExpandGutter;
+
   return (
-    <div className={`flex gap-2.5 ${showPromoteUnderPhoto ? 'items-center' : 'items-start'}`}>
+    <div className={`flex gap-2.5 ${alignRowStart ? 'items-start' : 'items-center'}`}>
       {showExpandControl ? (
         <button
           type="button"
           onClick={onToggleExpand}
-          className={`mt-0.5 inline-flex shrink-0 items-center justify-center border-0 bg-transparent p-0 transition-colors ${
+          className={`${expandGutterClass} border-0 bg-transparent p-0 transition-colors ${
             expanded ? 'text-violet-600' : 'text-gray-400 hover:text-gray-600'
           }`}
           aria-expanded={expanded}
@@ -2011,9 +2080,17 @@ function ProductCollapsedRowCell({
         >
           {expanded ? <ChevronDown className="h-5 w-5" /> : <ChevronRight className="h-5 w-5" />}
         </button>
+      ) : reserveExpandGutter ? (
+        <span className={expandGutterClass} aria-hidden />
       ) : null}
       {showPromoteUnderPhoto ? (
-        <div className="relative flex min-w-0 flex-1 items-center gap-3 transition-[padding] duration-150 group-hover/product-row:pr-28 group-focus-within/product-row:pr-28">
+        <div
+          className={`relative flex min-w-0 flex-1 items-center gap-3 ${
+            reserveExpandGutter
+              ? ''
+              : 'transition-[padding] duration-150 group-hover/product-row:pr-28 group-focus-within/product-row:pr-28'
+          }`}
+        >
           <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
           {productMeta}
           <button
@@ -5168,13 +5245,30 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const [listTab, setListTab] = useState<'campaigns' | 'products'>('products');
   const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>('promoted');
+  const [productsSecondaryPickTab, setProductsSecondaryPickTab] =
+    useState<ProductsSecondaryPickTab>('all');
 
   const conceptNotPromotedProductsList =
     isProductPromotionConceptPage && listTab === 'products' && productsPickTab === 'not_promoted';
 
+  const conceptAllProductsPick =
+    isProductPromotionConceptPage &&
+    listTab === 'products' &&
+    productsPickTab === 'all_products';
+
+  const conceptCompactProductsTable =
+    isProductPromotionConceptPage &&
+    listTab === 'products' &&
+    productsPickTab === 'not_promoted';
+
+  const conceptProductsListSortToolbar =
+    isProductPromotionConceptPage &&
+    listTab === 'products' &&
+    (productsPickTab === 'not_promoted' || productsPickTab === 'all_products');
+
   const productsColVisible = useCallback(
     (columnId: string) => {
-      if (conceptNotPromotedProductsList) {
+      if (conceptCompactProductsTable) {
         if (
           columnId === 'select' ||
           columnId === 'product' ||
@@ -5215,11 +5309,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       }
       return productsColumnVisibility[columnId] !== false;
     },
-    [productsColumnVisibility, conceptNotPromotedProductsList],
+    [productsColumnVisibility, conceptCompactProductsTable],
   );
 
   const productsPinVisibility = useMemo(() => {
-    if (conceptNotPromotedProductsList) {
+    if (conceptCompactProductsTable) {
       return {
         ...productsColumnVisibility,
         select: true,
@@ -5240,16 +5334,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }, [
     productsColumnVisibility,
     isProductPromotionConceptPage,
-    conceptNotPromotedProductsList,
+    conceptCompactProductsTable,
   ]);
 
   const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
-    if (!conceptNotPromotedProductsList) return undefined;
+    if (!conceptCompactProductsTable) return undefined;
     return { width: '100%' };
-  }, [conceptNotPromotedProductsList]);
+  }, [conceptCompactProductsTable]);
 
   const conceptNotPromotedShowTagsColumn =
-    conceptNotPromotedProductsList && productsColumnVisibility.tags !== false;
+    conceptCompactProductsTable && productsColumnVisibility.tags !== false;
   const showProductsBidColumn = productsPinVisibility.bid === true;
   const showProductsCampaignTypeColumn = productsPinVisibility.campaignType === true;
 
@@ -5266,13 +5360,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         extraClass,
         hasProductsScrollShadow,
         isProductPromotionConceptPage,
-        conceptNotPromotedProductsList,
+        conceptCompactProductsTable,
       ),
     [
       productsPinVisibility,
       hasProductsScrollShadow,
       isProductPromotionConceptPage,
-      conceptNotPromotedProductsList,
+      conceptCompactProductsTable,
     ],
   );
 
@@ -5428,8 +5522,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [isConceptNotPromotedListSortOpen, setIsConceptNotPromotedListSortOpen] = useState(false);
   const conceptNotPromotedListSortButtonRef = useRef<HTMLButtonElement>(null);
   const conceptNotPromotedListSortMenuRef = useRef<HTMLDivElement>(null);
-  const [productsSecondaryPickTab, setProductsSecondaryPickTab] =
-    useState<ProductsSecondaryPickTab>('all');
   const [productBulkNotice, setProductBulkNotice] = useState<string | null>(null);
   const [productBidBulkModalKind, setProductBidBulkModalKind] =
     useState<ProductBidBulkModalKind | null>(null);
@@ -5452,15 +5544,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }, [listTab]);
 
   useEffect(() => {
-    if (conceptNotPromotedProductsList) setExpandedProductIds(new Set());
-  }, [conceptNotPromotedProductsList]);
+    if (conceptCompactProductsTable) setExpandedProductIds(new Set());
+  }, [conceptCompactProductsTable]);
 
   useEffect(() => {
-    if (!conceptNotPromotedProductsList) {
+    if (!conceptProductsListSortToolbar) {
       setProductStatSort(null);
       setIsConceptNotPromotedListSortOpen(false);
     }
-  }, [conceptNotPromotedProductsList]);
+  }, [conceptProductsListSortToolbar]);
 
   useEffect(() => {
     if (!isConceptNotPromotedListSortOpen) return;
@@ -5858,14 +5950,25 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         productMatchesProductsPickTab(product, tab.id, productCampaignStatusOverride),
       ).length;
     }
+    counts.all_products = filteredProductsBySearch.filter((product) =>
+      productMatchesProductsPickTab(product, 'all_products', productCampaignStatusOverride),
+    ).length;
     return counts;
   }, [filteredProductsBySearch, productCampaignStatusOverride]);
 
   const productsSecondaryPickTabCounts = useMemo(() => {
-    const scope = getConceptPromotionScope(productsPickTab);
-    const scopedProducts = filteredProductsBySearch.filter((product) =>
-      productMatchesProductsPickTab(product, scope, productCampaignStatusOverride),
-    );
+    const scopedProducts =
+      productsPickTab === 'all_products'
+        ? filteredProductsBySearch.filter((product) =>
+            productMatchesProductsPickTab(product, 'all_products', productCampaignStatusOverride),
+          )
+        : filteredProductsBySearch.filter((product) =>
+            productMatchesProductsPickTab(
+              product,
+              getConceptPromotionScope(productsPickTab),
+              productCampaignStatusOverride,
+            ),
+          );
     const counts = {} as Record<ProductsSecondaryPickTab, number>;
     for (const tab of PRODUCTS_PICK_SECONDARY_TABS) {
       counts[tab.id] = scopedProducts.filter((product) =>
@@ -5877,6 +5980,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const productsForTable = useMemo(() => {
     if (isProductPromotionConceptPage && listTab === 'products') {
+      if (productsPickTab === 'all_products') {
+        const promoted = filteredProductsBySearch.filter((product) =>
+          productMatchesProductsPickTab(product, 'promoted', productCampaignStatusOverride),
+        );
+        const notPromoted = filteredProductsBySearch.filter((product) =>
+          productMatchesProductsPickTab(product, 'not_promoted', productCampaignStatusOverride),
+        );
+        const mixed = interleaveConceptPromotedAndNotPromoted(promoted, notPromoted);
+        return mixed.filter((product) =>
+          productMatchesSecondaryPickTab(product, productsSecondaryPickTab),
+        );
+      }
       const scope = getConceptPromotionScope(productsPickTab);
       return filteredProductsBySearch.filter((product) => {
         if (
@@ -5900,9 +6015,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   ]);
 
   const notPromotedRevenueShareByProductId = useMemo(() => {
-    if (!conceptNotPromotedProductsList) return {} as Record<string, number>;
-    return buildNotPromotedRevenueShareByProductId(productsForTable);
-  }, [conceptNotPromotedProductsList, productsForTable]);
+    if (!conceptCompactProductsTable) return {} as Record<string, number>;
+    const notPromotedOnly = productsForTable.filter((product) =>
+      productConceptIsNotPromoted(product, productCampaignStatusOverride),
+    );
+    return buildNotPromotedRevenueShareByProductId(notPromotedOnly);
+  }, [conceptCompactProductsTable, productsForTable, productCampaignStatusOverride]);
 
   const activeProductsPickPromotionCtaTab = useMemo((): ProductsPickCtaTab | null => {
     if (listTab !== 'products') return null;
@@ -5918,10 +6036,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   ]);
 
   const sortedProductsForTable = useMemo(() => {
-    const useOrganic = conceptNotPromotedProductsList;
+    const organicStatsForProduct = (product: ProductRow) =>
+      conceptNotPromotedProductsList ||
+      (conceptAllProductsPick &&
+        productConceptIsNotPromoted(product, productCampaignStatusOverride));
     let list = productsForTable;
 
-    if (conceptNotPromotedProductsList && !productStatSort) {
+    if (
+      (conceptNotPromotedProductsList || conceptAllProductsPick) &&
+      !productStatSort
+    ) {
       list = [...list].sort((a, b) => {
         const diff =
           conceptNotPromotedListSort === 'best_card_rating'
@@ -5942,8 +6066,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ((notPromotedRevenueShareByProductId[a.id] ?? 0) -
               (notPromotedRevenueShareByProductId[b.id] ?? 0))
           : sign *
-            (productStatSortNumericValue(a, label, useOrganic) -
-              productStatSortNumericValue(b, label, useOrganic));
+            (productStatSortNumericValue(a, label, organicStatsForProduct(a)) -
+              productStatSortNumericValue(b, label, organicStatsForProduct(b)));
       if (diff !== 0) return diff;
       return a.id.localeCompare(b.id);
     });
@@ -5951,6 +6075,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     productsForTable,
     productStatSort,
     conceptNotPromotedProductsList,
+    conceptAllProductsPick,
+    productCampaignStatusOverride,
     conceptNotPromotedListSort,
     notPromotedRevenueShareByProductId,
   ]);
@@ -6013,8 +6139,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const handleBulkCreateCampaignFromProducts = useCallback(() => {
     const selected = productsForTable.filter((p) => selectedProductIds.includes(p.id));
     if (selected.length === 0) return;
-    if (conceptNotPromotedProductsList) {
-      const seeds = selected.map(productRowToSingleCampaignSeed);
+    const toPromote =
+      conceptCompactProductsTable || conceptAllProductsPick
+        ? selected.filter((p) =>
+            productConceptIsNotPromoted(p, productCampaignStatusOverride),
+          )
+        : [];
+    if (toPromote.length > 0) {
+      const seeds = toPromote.map(productRowToSingleCampaignSeed);
       const first = seeds[0]!;
       beginRepeatLaunchFlow({
         product: first,
@@ -6034,7 +6166,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }, [
     productsForTable,
     selectedProductIds,
-    conceptNotPromotedProductsList,
+    conceptCompactProductsTable,
+    conceptAllProductsPick,
+    productCampaignStatusOverride,
     beginRepeatLaunchFlow,
     onNavigateToCreationWithProducts,
     onNavigateToCreation,
@@ -6278,6 +6412,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             onSelect: () => {
               setListTab('products');
               setProductsPickTab('not_promoted');
+              setProductsSecondaryPickTab('all');
+            },
+          },
+          {
+            id: 'all_products' as const,
+            label: 'Все',
+            count: productsPickTabCounts.all_products,
+            selected: listTab === 'products' && productsPickTab === 'all_products',
+            onSelect: () => {
+              setListTab('products');
+              setProductsPickTab('all_products');
               setProductsSecondaryPickTab('all');
             },
           },
@@ -7730,6 +7875,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-2 bg-white px-4 py-2.5 sm:px-6">
+                  {listTab === 'products' ? (
                   <div
                     className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-x-1"
                     role="tablist"
@@ -7770,7 +7916,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       );
                     })}
                   </div>
-                  {conceptNotPromotedProductsList ? (
+                  ) : null}
+                  {listTab === 'products' && conceptProductsListSortToolbar ? (
                     <div className="relative ml-auto shrink-0 text-sm leading-5 text-[#767386]">
                       Сортировка{' '}
                       <button
@@ -7871,7 +8018,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ) : null}
 
             <div
-              className={`relative z-0 ${conceptNotPromotedProductsList ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
+              className={`relative z-0 ${conceptCompactProductsTable ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
               onScroll={(e) => {
                 const target = e.currentTarget;
                 setHasProductsScrollShadow(target.scrollLeft > 0);
@@ -7880,11 +8027,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               {/* Тень справа от закреплённого столбца товара */}
               <table
                 className={`relative w-full text-sm ${
-                  conceptNotPromotedProductsList ? 'min-w-0 table-fixed' : 'min-w-[2800px]'
+                  conceptCompactProductsTable ? 'min-w-0 table-fixed' : 'min-w-[2800px]'
                 }`}
                 style={productsTableMinWidthStyle}
               >
-                {conceptNotPromotedProductsList ? (
+                {conceptCompactProductsTable ? (
                   <colgroup>
                     <col className="w-[3%]" />
                     <col className={conceptNotPromotedShowTagsColumn ? 'w-[22%]' : 'w-[27%]'} />
@@ -7906,7 +8053,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       {...productsPinnedProps(
                         'select',
                         'head',
-                        conceptNotPromotedProductsList
+                        conceptCompactProductsTable
                           ? 'px-2 py-2.5 text-center'
                           : 'px-3 py-4 text-center',
                       )}
@@ -7922,7 +8069,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         {...productsPinnedProps(
                           'product',
                           'head',
-                          conceptNotPromotedProductsList
+                          conceptCompactProductsTable
                             ? 'pl-1 pr-2 py-2.5 text-left font-normal align-middle'
                             : PRODUCTS_PINNED_TH_PRODUCT_CLASS,
                         )}
@@ -8005,7 +8152,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     {productsColVisible('tags') ? (
                       <th
                         className={
-                          conceptNotPromotedProductsList
+                          conceptCompactProductsTable
                             ? CONCEPT_NOT_PROMOTED_TAGS_TH_CLASS
                             : 'p-4 text-left font-normal w-[220px] min-w-[220px] max-w-[240px]'
                         }
@@ -8019,14 +8166,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
                       <th
                         className={
-                          conceptNotPromotedProductsList
+                          conceptCompactProductsTable
                             ? CONCEPT_NOT_PROMOTED_STAT_TH_CLASS
                             : PRODUCTS_STAT_TH_CLASS
                         }
                       >
                         <span className="inline-flex items-start gap-0.5">
                           <span>
-                            {conceptNotPromotedProductsList ? (
+                            {conceptCompactProductsTable ? (
                               <>
                                 Доля
                                 <br />в выручке
@@ -8055,7 +8202,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           >
                             <ArrowUp
                               className={`${
-                                conceptNotPromotedProductsList ? 'h-3 w-3' : 'h-4 w-4'
+                                conceptCompactProductsTable ? 'h-3 w-3' : 'h-4 w-4'
                               } shrink-0 transition-transform ${
                                 productStatSort?.label ===
                                   CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY &&
@@ -8066,7 +8213,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               aria-hidden
                             />
                           </button>
-                          {!conceptNotPromotedProductsList ? (
+                          {!conceptCompactProductsTable ? (
                             <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
                           ) : null}
                         </span>
@@ -8077,14 +8224,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         <th
                           key={label}
                           className={
-                            conceptNotPromotedProductsList
+                            conceptCompactProductsTable
                               ? CONCEPT_NOT_PROMOTED_STAT_TH_CLASS
                               : PRODUCTS_STAT_TH_CLASS
                           }
                         >
                           <span className="inline-flex items-start gap-0.5">
                             <span>
-                              {conceptNotPromotedProductsList
+                              {conceptCompactProductsTable
                                 ? conceptNotPromotedStatColumnTitle(label)
                                 : label}
                             </span>
@@ -8107,7 +8254,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               >
                                 <ArrowUp
                                   className={`${
-                                    conceptNotPromotedProductsList ? 'h-3 w-3' : 'h-4 w-4'
+                                    conceptCompactProductsTable ? 'h-3 w-3' : 'h-4 w-4'
                                   } shrink-0 transition-transform ${
                                     productStatSort?.label === label &&
                                     productStatSort.direction === 'asc'
@@ -8118,9 +8265,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 />
                               </button>
                             ) : null}
-                            {conceptNotPromotedProductsList && label === 'Показы' ? (
+                            {(conceptCompactProductsTable || conceptAllProductsPick) &&
+                            label === 'Показы' ? (
                               <ConceptJamSubscriptionHint />
-                            ) : !conceptNotPromotedProductsList ? (
+                            ) : !conceptCompactProductsTable ? (
                               <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
                             ) : null}
                           </span>
@@ -8130,14 +8278,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
                       <th
                         className={
-                          conceptNotPromotedProductsList
+                          conceptCompactProductsTable
                             ? CONCEPT_NOT_PROMOTED_STOCK_TH_CLASS
                             : PRODUCTS_STOCK_TH_CLASS
                         }
                       >
                         <span className="inline-flex items-center gap-1">
                           Остатки
-                          {!conceptNotPromotedProductsList ? (
+                          {!conceptCompactProductsTable ? (
                             <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
                           ) : null}
                         </span>
@@ -8146,7 +8294,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {sortedProductsForTable.map((product) => (
+                  {sortedProductsForTable.map((product) => {
+                    const rowUsesOrganicProductStats =
+                      conceptNotPromotedProductsList ||
+                      (conceptAllProductsPick &&
+                        productConceptIsNotPromoted(product, productCampaignStatusOverride));
+                    const rowShowsPromotedProductUi =
+                      !conceptNotPromotedProductsList &&
+                      (!conceptAllProductsPick || !rowUsesOrganicProductStats);
+                    const rowCompactNotPromotedStyle = conceptCompactProductsTable;
+                    const rowShowPromoteUnderPhoto =
+                      conceptNotPromotedProductsList ||
+                      (conceptAllProductsPick && rowUsesOrganicProductStats);
+                    return (
                     <React.Fragment key={product.id}>
                       {/* Строка товара */}
                       <tr className="group/product-row transition-colors hover:bg-gray-50/80">
@@ -8154,7 +8314,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           {...productsPinnedProps(
                             'select',
                             'body',
-                            conceptNotPromotedProductsList
+                            rowCompactNotPromotedStyle
                               ? 'px-2 py-2.5 align-middle'
                               : 'px-3 py-4 align-middle',
                           )}
@@ -8173,7 +8333,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             {...productsPinnedProps(
                               'product',
                               'body',
-                              conceptNotPromotedProductsList
+                              rowCompactNotPromotedStyle
                                 ? 'pl-0 pr-2 py-2.5 align-middle'
                                 : 'pl-0 pr-5 py-4 align-middle',
                             )}
@@ -8182,8 +8342,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               product={product}
                               expanded={expandedProductIds.has(product.id)}
                               onToggleExpand={() => toggleProductExpanded(product.id)}
-                              showExpandControl={!conceptNotPromotedProductsList}
-                              showPromoteUnderPhoto={conceptNotPromotedProductsList}
+                              showExpandControl={rowShowsPromotedProductUi}
+                              reserveExpandGutter={
+                                conceptAllProductsPick && rowUsesOrganicProductStats
+                              }
+                              showPromoteUnderPhoto={rowShowPromoteUnderPhoto}
                               onPromote={handlePromoteNotPromotedProduct}
                             />
                           </td>
@@ -8221,14 +8384,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         {productsColVisible('tags') ? (
                         <td
                           className={
-                            conceptNotPromotedProductsList
+                            rowCompactNotPromotedStyle
                               ? CONCEPT_NOT_PROMOTED_TAGS_TD_CLASS
                               : 'p-4 align-top w-[220px] min-w-[220px] max-w-[240px]'
                           }
                         >
                           <div
                             className={`flex flex-wrap items-center gap-1 ${
-                              conceptNotPromotedProductsList ? 'mt-0' : 'mt-1.5 gap-1.5'
+                              rowCompactNotPromotedStyle ? 'mt-0' : 'mt-1.5 gap-1.5'
                             }`}
                             ref={openTagProductId === product.id && getProductTags(product).length > 0 ? tagDropdownAnchorRef : undefined}
                           >
@@ -8294,40 +8457,58 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
                           <td
                             className={
-                              conceptNotPromotedProductsList
+                              rowCompactNotPromotedStyle
                                 ? CONCEPT_NOT_PROMOTED_STAT_TD_CLASS
                                 : PRODUCTS_STAT_TD_CLASS
                             }
                           >
-                            <span
-                              className={`font-semibold tabular-nums text-gray-900 ${
-                                conceptNotPromotedProductsList ? 'text-xs' : 'text-sm'
-                              }`}
-                            >
-                              {formatProductRevenueSharePercent(
-                                notPromotedRevenueShareByProductId[product.id] ?? 0,
-                              )}
-                            </span>
+                            {rowUsesOrganicProductStats ? (
+                              <span
+                                className={`font-semibold tabular-nums text-gray-900 ${
+                                  rowCompactNotPromotedStyle ? 'text-xs' : 'text-sm'
+                                }`}
+                              >
+                                {formatProductRevenueSharePercent(
+                                  notPromotedRevenueShareByProductId[product.id] ?? 0,
+                                )}
+                              </span>
+                            ) : (
+                              <span
+                                className={`font-semibold text-gray-400 ${
+                                  rowCompactNotPromotedStyle ? 'text-xs' : 'text-sm'
+                                }`}
+                              >
+                                —
+                              </span>
+                            )}
                           </td>
                         ) : null}
                         {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
                           if (!productsColVisible(productsStatColumnId(label))) return null;
                           const rowAgg = productRowStatsAgg(
                             product,
-                            conceptNotPromotedProductsList,
+                            rowUsesOrganicProductStats,
                           );
                           const stats = rowAgg ? buildExtendedProductStats(rowAgg) : null;
+                          const allTabNotPromotedNa =
+                            conceptAllProductsPick &&
+                            rowUsesOrganicProductStats &&
+                            conceptAllTabNotPromotedStatIsNa(label);
                           return (
                             <td
                               key={label}
                               className={
-                                conceptNotPromotedProductsList
+                                rowCompactNotPromotedStyle
                                   ? CONCEPT_NOT_PROMOTED_STAT_TD_CLASS
                                   : PRODUCTS_STAT_TD_CLASS
                               }
                             >
-                              {stats ? (
-                                conceptNotPromotedProductsList && label === 'Показы' ? (
+                              {allTabNotPromotedNa ? (
+                                <ProductsStatNotAvailableCell
+                                  compact={rowCompactNotPromotedStyle}
+                                />
+                              ) : stats ? (
+                                rowUsesOrganicProductStats && label === 'Показы' ? (
                                   <ConceptJamLockedImpressionsMetricCell
                                     stats={stats}
                                     productId={product.id}
@@ -8339,17 +8520,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                     stats={stats}
                                     productId={product.id}
                                     changes={rowAgg}
-                                    compact={conceptNotPromotedProductsList}
+                                    compact={rowCompactNotPromotedStyle}
                                   />
                                 )
                               ) : (
-                                <span
-                                  className={`font-semibold text-gray-400 ${
-                                    conceptNotPromotedProductsList ? 'text-xs' : 'text-sm'
-                                  }`}
-                                >
-                                  Н/Д
-                                </span>
+                                <ProductsStatNotAvailableCell
+                                  compact={rowCompactNotPromotedStyle}
+                                />
                               )}
                             </td>
                           );
@@ -8357,20 +8534,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
                           <td
                             className={
-                              conceptNotPromotedProductsList
+                              rowCompactNotPromotedStyle
                                 ? CONCEPT_NOT_PROMOTED_STOCK_TD_CLASS
                                 : PRODUCTS_STOCK_TD_CLASS
                             }
                           >
                             <ProductStockRemainderCell
                               product={product}
-                              compact={conceptNotPromotedProductsList}
+                              compact={rowCompactNotPromotedStyle}
                             />
                           </td>
                         ) : null}
                       </tr>
                       {/* Вложенные строки кампаний — вид как на вкладке «Кампании» */}
-                      {!conceptNotPromotedProductsList &&
+                      {rowShowsPromotedProductUi &&
                         expandedProductIds.has(product.id) &&
                         product.campaigns.map((camp) => {
                         const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
@@ -8531,7 +8708,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         );
                       })}
                     </React.Fragment>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -8570,12 +8748,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 onClick={handleBulkCreateCampaignFromProducts}
                 className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
               >
-                {!conceptNotPromotedProductsList ? (
+                {!conceptCompactProductsTable && !conceptAllProductsPick ? (
                   <Plus className="h-4 w-4" aria-hidden />
                 ) : null}
-                {conceptNotPromotedProductsList ? 'Продвигать' : 'Создать кампанию'}
+                {conceptCompactProductsTable || conceptAllProductsPick
+                  ? 'Продвигать'
+                  : 'Создать кампанию'}
               </button>
-              {isProductPromotionConceptPage && !conceptNotPromotedProductsList && (
+              {isProductPromotionConceptPage &&
+                !conceptCompactProductsTable &&
+                !conceptAllProductsPick && (
                 <div
                   className={`relative group/product-bid ${selectedProductsCampaignCount === 0 ? 'pointer-events-none opacity-50' : ''}`}
                 >

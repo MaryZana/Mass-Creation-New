@@ -111,6 +111,25 @@ const PRODUCT_THUMB_URLS_BY_INDEX: readonly string[] = Array.from({ length: 30 }
   return UNSPLASH_THUMB(pool[i % pool.length]!);
 });
 
+/** Уникальные превью для pr1–pr15 (вкладка «Все» и таблица товаров). */
+const PRODUCT_THUMB_UNIQUE_FIRST_15: readonly string[] = [
+  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.dress),
+  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.sarafan),
+  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.office),
+  UNSPLASH_THUMB('1515886657491-62f052f140e4'),
+  UNSPLASH_THUMB('1434389677669-e08b4cac3105'),
+  UNSPLASH_THUMB('1469334031218-e382a71b716b'),
+  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shirt),
+  UNSPLASH_THUMB('1483986765277-84621e9714aa'),
+  UNSPLASH_THUMB('1503342217505-991d8f54af29'),
+  UNSPLASH_THUMB('1551028719-00167b16eac5'),
+  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoes),
+  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.shoesAlt),
+  UNSPLASH_THUMB(PRODUCT_THUMB_PHOTO.bag),
+  UNSPLASH_THUMB('1606107557195-0e29a4b5b4aa'),
+  UNSPLASH_THUMB('1608231380042-66d9d3924fe6'),
+];
+
 function productIndexFromId(productId: string): number {
   const n = Number.parseInt(productId.replace(/\D/g, ''), 10);
   return Number.isFinite(n) && n > 0 ? n - 1 : 0;
@@ -130,6 +149,9 @@ export function productTableThumbFallbackUrl(productId: string): string {
 
 export function productTableThumbUrl(productId: string, category?: string): string {
   const idx = productIndexFromId(productId);
+  if (idx >= 0 && idx < PRODUCT_THUMB_UNIQUE_FIRST_15.length) {
+    return PRODUCT_THUMB_UNIQUE_FIRST_15[idx]!;
+  }
   if (category && PRODUCT_THUMB_BY_CATEGORY[category]?.length) {
     const list = PRODUCT_THUMB_BY_CATEGORY[category]!;
     return list[idx % list.length]!;
