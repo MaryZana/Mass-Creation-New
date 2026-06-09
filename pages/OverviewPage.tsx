@@ -9,7 +9,7 @@ import {
   useOverviewBridge,
   type OverviewInsightMassCreationItem,
 } from '../context/OverviewBridgeContext';
-import { BudgetRefillModal } from '../components/SuccessPage';
+import { BudgetRefillModal } from '../components/BudgetRefillModal';
 import { ArrowUp, ChevronDown, ChevronRight, Sparkles } from '../components/Icons';
 import { useProfile } from '../components/ProfileContext';
 
