@@ -10,6 +10,7 @@ import {
   type OverviewInsightMassCreationItem,
 } from '../context/OverviewBridgeContext';
 import { BudgetRefillModal } from '../components/BudgetRefillModal';
+import { ChannelBudgetOrdersSkew } from '../components/ChannelBudgetOrdersSkew';
 import { ArrowUp, ChevronDown, ChevronRight, Sparkles } from '../components/Icons';
 import { useProfile } from '../components/ProfileContext';
 
@@ -2972,6 +2973,8 @@ const OverviewPage: React.FC = () => {
                       />
                     ))}
                   </div>
+
+                  <ChannelBudgetOrdersSkew className={OV.mtStack} rows={channelRows} period={period} />
 
                   <div className={`${OV.mtStack} overflow-x-auto`}>
                     <table className="w-full min-w-[720px] text-left text-sm">

@@ -313,39 +313,13 @@ type ProductRow = {
 };
 
 const PRODUCTS_STOCK_COLUMN_ID = 'stock';
-const PRODUCTS_REVENUE_SHARE_COLUMN_ID = 'revenueShare';
+const PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID = 'averageBidCpm10k';
+const PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID = 'averageBidCpc';
 /** Пустая колонка: на широком экране отталкивает блок статистики вправо. */
 const PRODUCTS_STAT_SPACER_COLUMN_ID = 'statSpacer';
 const PRODUCTS_STAT_SPACER_CELL_CLASS = 'w-full min-w-0 p-0';
 const PRODUCTS_STOCK_TH_CLASS = 'p-4 text-left font-normal whitespace-nowrap min-w-[108px]';
 const PRODUCTS_STOCK_TD_CLASS = 'p-4 align-middle text-left whitespace-nowrap tabular-nums';
-function formatProductRevenueSharePercent(value: number): string {
-  return `${value.toLocaleString('ru-RU', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 1,
-  })} %`;
-}
-
-function buildNotPromotedRevenueShareByProductId(products: ProductRow[]): Record<string, number> {
-  const rows = products.map((product) => {
-    const agg = productRowStatsAgg(product, true);
-    const stats = agg ? buildExtendedProductStats(agg) : null;
-    return { id: product.id, orderSum: stats?.orderSum ?? 0 };
-  });
-  const total = rows.reduce((sum, row) => sum + row.orderSum, 0);
-  const map: Record<string, number> = {};
-  if (total <= 0) {
-    const even = rows.length > 0 ? 100 / rows.length : 0;
-    rows.forEach((row) => {
-      map[row.id] = even;
-    });
-    return map;
-  }
-  rows.forEach((row) => {
-    map[row.id] = (row.orderSum / total) * 100;
-  });
-  return map;
-}
 
 const PRODUCT_STOCK_SIZE_LABELS = ['XS / 40', 'S / 44', 'M / 46', 'L / 48', 'XL / 50'] as const;
 
@@ -605,7 +579,6 @@ const PRODUCTS_MIDDLE_COLUMN_IDS = [
 type ProductsPickTab =
   | 'not_promoted'
   | 'promoted'
-  | 'all_products'
   | 'growth'
   | 'high_conversion'
   | 'ab'
@@ -627,6 +600,31 @@ const PRODUCTS_PICK_SECONDARY_TABS: { id: ProductsSecondaryPickTab; label: strin
   { id: 'high_conversion', label: 'Высокая конверсия' },
   { id: 'ab', label: 'А/Б тест' },
 ];
+
+const PRODUCTS_PICK_SECONDARY_TAB_VISUAL: Record<
+  ProductsSecondaryPickTab,
+  {
+    Icon: React.FC<{ className?: string }>;
+    iconWrapIdle: string;
+    iconWrapActive: string;
+  }
+> = {
+  all: {
+    Icon: Package,
+    iconWrapIdle: 'bg-gray-200 text-gray-700',
+    iconWrapActive: 'bg-gray-800 text-white',
+  },
+  high_conversion: {
+    Icon: ThumbsUp,
+    iconWrapIdle: 'bg-violet-200 text-violet-700',
+    iconWrapActive: 'bg-violet-600 text-white',
+  },
+  ab: {
+    Icon: Sparkles,
+    iconWrapIdle: 'bg-sky-200 text-sky-700',
+    iconWrapActive: 'bg-sky-600 text-white',
+  },
+};
 
 type ProductsPickCtaTab = 'growth' | 'high_conversion' | 'ab';
 
@@ -785,6 +783,34 @@ function defaultProductCampaignRecommendationsBid(camp: ProductCampaign): number
 
 function productCampaignBidMin(camp: ProductCampaign): number {
   return camp.type === 'CPC' ? 10 : 150;
+}
+
+function demoProductAverageBids(product: ProductRow): { cpmPer10k: number; cpc: number } {
+  const fromArticle = Number.parseInt(String(product.articleWb ?? '').replace(/\D/g, ''), 10);
+  const seed =
+    Number.isFinite(fromArticle) && fromArticle > 0
+      ? fromArticle
+      : [...product.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return {
+    cpmPer10k: 120 + (seed % 280),
+    cpc: 8 + (seed % 45),
+  };
+}
+
+function ProductAverageBidAmountCell({
+  product,
+  kind,
+}: {
+  product: ProductRow;
+  kind: 'cpm10k' | 'cpc';
+}) {
+  const amount = useMemo(() => {
+    const { cpmPer10k, cpc } = demoProductAverageBids(product);
+    return kind === 'cpm10k' ? cpmPer10k : cpc;
+  }, [product, kind]);
+  return (
+    <span className="tabular-nums text-xs text-gray-900">{formatForDisplay(amount)} ₽</span>
+  );
 }
 
 type ProductCampaignBidOverride = {
@@ -1096,12 +1122,6 @@ function productMatchesProductsPickTab(
     return !hasActiveCampaign;
   }
   if (tab === 'promoted') return hasActiveCampaign;
-  if (tab === 'all_products') {
-    return (
-      productMatchesProductsPickTab(product, 'promoted', productCampaignStatusOverride) ||
-      productMatchesProductsPickTab(product, 'not_promoted', productCampaignStatusOverride)
-    );
-  }
   if (tab === 'growth' || tab === 'high_conversion' || tab === 'ab' || tab === 'promo') {
     return productMatchesInsightPickTab(product, tab);
   }
@@ -1109,9 +1129,7 @@ function productMatchesProductsPickTab(
 }
 
 function getConceptPromotionScope(pickTab: ProductsPickTab): 'promoted' | 'not_promoted' {
-  if (pickTab === 'not_promoted') return 'not_promoted';
-  if (pickTab === 'all_products') return 'promoted';
-  return 'promoted';
+  return pickTab === 'not_promoted' ? 'not_promoted' : 'promoted';
 }
 
 function productMatchesSecondaryPickTab(product: ProductRow, tab: ProductsSecondaryPickTab): boolean {
@@ -1126,49 +1144,13 @@ function productConceptIsNotPromoted(
   return productMatchesProductsPickTab(product, 'not_promoted', productCampaignStatusOverride);
 }
 
-function interleaveConceptPromotedAndNotPromoted(
-  promoted: ProductRow[],
-  notPromoted: ProductRow[],
-): ProductRow[] {
-  const mixed: ProductRow[] = [];
-  let pi = 0;
-  let ni = 0;
-  while (pi < promoted.length || ni < notPromoted.length) {
-    if (pi < promoted.length) mixed.push(promoted[pi++]!);
-    if (ni < notPromoted.length) mixed.push(notPromoted[ni++]!);
-  }
-  return mixed;
-}
-
 function productsStatColumnId(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number]): string {
   return `stat:${label}`;
 }
 
 /** Концепт товарного продвижения → вкладка «Без продвижения»: колонки статистики в таблице товаров. */
 const CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS: readonly (typeof PRODUCTS_STAT_COLUMN_LABELS)[number][] =
-  ['Показы', 'Заказы', 'Добавления в корзину', 'Сумма заказов'];
-
-/** Вкладка «Все»: у товаров без продвижения нет рекламной статистики — только Н/Д. */
-const CONCEPT_ALL_TAB_NOT_PROMOTED_NA_STAT_LABELS: readonly (typeof PRODUCTS_STAT_COLUMN_LABELS)[number][] =
-  [
-    'Затраты',
-    'CTR',
-    'Доля затрат',
-    'Средняя позиция',
-    'Клики',
-    'Добавления в корзину',
-    'CPC',
-    'CPO',
-    'CR',
-    'CPM',
-    'Отмены технические',
-  ];
-
-function conceptAllTabNotPromotedStatIsNa(
-  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
-): boolean {
-  return (CONCEPT_ALL_TAB_NOT_PROMOTED_NA_STAT_LABELS as readonly string[]).includes(label);
-}
+  ['Заказы', 'Добавления в корзину', 'Сумма заказов'];
 
 const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_TITLE = 'Показы недоступны';
 const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_BODY =
@@ -1176,21 +1158,26 @@ const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_BODY =
 
 type ConceptNotPromotedStatSortLabel = (typeof CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS)[number];
 
-const CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY = 'revenueShare' as const;
-
-type ConceptNotPromotedListSort = 'newest' | 'best_card_rating';
-
-const CONCEPT_NOT_PROMOTED_LIST_SORT_OPTIONS: {
-  id: ConceptNotPromotedListSort;
-  label: string;
-}[] = [
-  { id: 'newest', label: 'Сначала новые' },
-  { id: 'best_card_rating', label: 'Сначала лучшие по рейтингу карточки' },
-];
+type ConceptNotPromotedAverageBidSortKey =
+  | typeof PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID
+  | typeof PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID;
 
 type ConceptNotPromotedProductSortKey =
   | ConceptNotPromotedStatSortLabel
-  | typeof CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY;
+  | ConceptNotPromotedAverageBidSortKey;
+
+const CONCEPT_AVERAGE_BID_SORT_COLUMN_TITLES: Record<ConceptNotPromotedAverageBidSortKey, string> = {
+  [PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID]: 'Средняя ставка за 1000 показов в поиске (CPM)',
+  [PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID]: 'Средняя ставка за клик (CPC)',
+};
+
+function isConceptNotPromotedAverageBidSortKey(
+  key: ConceptNotPromotedProductSortKey,
+): key is ConceptNotPromotedAverageBidSortKey {
+  return (
+    key === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID || key === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
+  );
+}
 
 function isConceptNotPromotedStatSortLabel(
   label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
@@ -1207,8 +1194,6 @@ function productStatSortNumericValue(
   if (!agg) return Number.NEGATIVE_INFINITY;
   const stats = buildExtendedProductStats(agg);
   switch (label) {
-    case 'Показы':
-      return stats.impressions;
     case 'Заказы':
       return stats.orders;
     case 'Добавления в корзину':
@@ -1218,6 +1203,51 @@ function productStatSortNumericValue(
     default:
       return 0;
   }
+}
+
+function productAverageBidSortNumericValue(
+  product: ProductRow,
+  key: ConceptNotPromotedAverageBidSortKey,
+): number {
+  const { cpmPer10k, cpc } = demoProductAverageBids(product);
+  return key === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ? cpmPer10k : cpc;
+}
+
+function ConceptNotPromotedTableSortButton({
+  sortKey,
+  title,
+  activeSort,
+  onSort,
+}: {
+  sortKey: ConceptNotPromotedProductSortKey;
+  title: string;
+  activeSort: { label: ConceptNotPromotedProductSortKey; direction: 'asc' | 'desc' } | null;
+  onSort: (key: ConceptNotPromotedProductSortKey) => void;
+}) {
+  const isActive = activeSort?.label === sortKey;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(sortKey)}
+      className={`inline-flex shrink-0 items-center justify-center rounded p-0.5 transition-colors hover:bg-gray-100 ${
+        isActive ? 'text-gray-900' : 'text-gray-400'
+      }`}
+      aria-label={`Сортировать по «${title}»${
+        isActive
+          ? activeSort.direction === 'desc'
+            ? ', по убыванию'
+            : ', по возрастанию'
+          : ''
+      }`}
+    >
+      <ArrowUp
+        className={`h-3.5 w-3.5 shrink-0 stroke-[2.5] text-current transition-transform ${
+          isActive && activeSort.direction === 'asc' ? '' : 'rotate-180'
+        }`}
+        aria-hidden
+      />
+    </button>
+  );
 }
 
 function defaultProductsColumnVisibility(): Record<string, boolean> {
@@ -1465,8 +1495,19 @@ function derivedProductsStatChange(productId: string, label: string): number {
   return pool[Math.abs(h) % pool.length]!;
 }
 
+/** Демо: у части непродвигаемых товаров нет ассоциированных конверсий. */
+function conceptNotPromotedHasAssociatedConversions(product: ProductRow): boolean {
+  const nm = productRowNmId(product);
+  const seed =
+    nm > 0
+      ? nm
+      : [...product.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
+  return seed % 3 !== 0;
+}
+
 /** Демо-агрегат для товаров без кампаний на вкладке «Без продвижения». */
-function organicProductStatsAgg(product: ProductRow): NonNullable<ProductRow['agg']> {
+function organicProductStatsAgg(product: ProductRow): NonNullable<ProductRow['agg']> | null {
+  if (!conceptNotPromotedHasAssociatedConversions(product)) return null;
   const nm = productRowNmId(product) || product.id.length;
   const orders = 8 + (Math.abs(nm) % 94);
   const impressions = orders * (38 + (nm % 12));
@@ -1650,13 +1691,73 @@ function ConceptJamLockedImpressionsMetricCell({
   );
 }
 
-function ProductsStatNotAvailableCell({ compact = false }: { compact?: boolean }) {
+function ProductsStatNotAvailableCell({
+  compact = false,
+  hint,
+}: {
+  compact?: boolean;
+  hint?: string;
+}) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!hovered || !hint) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hovered, hint, syncAnchorRect]);
+
   return (
-    <span
-      className={`font-semibold text-gray-400 ${compact ? 'text-xs' : 'text-sm'}`}
-    >
-      Н/Д
-    </span>
+    <>
+      <span
+        ref={hint ? anchorRef : undefined}
+        className={`font-semibold text-gray-400 ${compact ? 'text-xs' : 'text-sm'} ${
+          hint ? 'cursor-help' : ''
+        }`}
+        aria-label={hint}
+        onMouseEnter={
+          hint
+            ? () => {
+                syncAnchorRect();
+                setHovered(true);
+              }
+            : undefined
+        }
+        onMouseLeave={hint ? () => setHovered(false) : undefined}
+      >
+        Н/Д
+      </span>
+      {hint && hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <div
+              role="tooltip"
+              className="fixed z-[220] w-[min(300px,calc(100vw-24px))] rounded-lg bg-gray-900 p-3 text-left text-xs leading-snug text-white shadow-lg"
+              style={{
+                top: anchorRect.bottom + 6,
+                left: Math.min(anchorRect.left, window.innerWidth - 316),
+              }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              {hint}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
@@ -1666,12 +1767,14 @@ function ProductsStatMetricCell({
   productId,
   changes,
   compact = false,
+  showTrend = true,
 }: {
   label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number];
   stats: ProductStatsExtended;
   productId: string;
   changes?: ProductStatsChanges;
   compact?: boolean;
+  showTrend?: boolean;
 }) {
   const change = productsStatChangeForLabel(label, productId, changes);
   const lowerIsBetter =
@@ -1690,11 +1793,13 @@ function ProductsStatMetricCell({
       >
         {formatProductsStatValue(label, stats)}
       </span>
-      <ProductsStatTrendBadge
-        change={change}
-        positiveIsGood={productsStatPositiveIsGood(label)}
-        lowerIsBetter={lowerIsBetter}
-      />
+      {showTrend ? (
+        <ProductsStatTrendBadge
+          change={change}
+          positiveIsGood={productsStatPositiveIsGood(label)}
+          lowerIsBetter={lowerIsBetter}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1703,7 +1808,7 @@ const PRODUCTS_STAT_TH_CLASS = 'p-4 text-left font-normal w-[130px] min-w-[120px
 const PRODUCTS_STAT_TD_CLASS = 'p-4 align-top w-[130px] min-w-[120px]';
 
 const CONCEPT_NOT_PROMOTED_STAT_TH_CLASS =
-  'px-1.5 py-2.5 text-left align-top text-[11px] font-normal leading-tight text-[#767386]';
+  'px-1.5 py-2.5 text-left align-top text-[11px] font-normal leading-tight text-[#767386] overflow-visible';
 const CONCEPT_NOT_PROMOTED_STAT_TD_CLASS = 'px-1.5 py-2.5 align-top text-left';
 const CONCEPT_NOT_PROMOTED_TAGS_TH_CLASS =
   'px-2 py-2.5 text-left text-[11px] font-normal leading-tight text-[#767386] w-[1%]';
@@ -1712,20 +1817,230 @@ const CONCEPT_NOT_PROMOTED_STOCK_TH_CLASS =
   'px-1.5 py-2.5 text-left text-[11px] font-normal leading-tight text-[#767386] whitespace-nowrap';
 const CONCEPT_NOT_PROMOTED_STOCK_TD_CLASS =
   'px-1.5 py-2.5 align-middle text-left whitespace-nowrap tabular-nums text-xs';
+const CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS =
+  'px-1.5 py-2.5 text-left align-top text-[11px] font-normal leading-tight text-[#767386] overflow-visible';
+const CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS =
+  'px-1.5 py-2.5 align-middle text-left whitespace-nowrap';
+
+const CONCEPT_AVERAGE_BID_HEADER_TOOLTIP_TEXT =
+  'Средняя ставка в категории этого товара. Ваша ставка может быть как ниже, так и выше.';
+
+function ConceptAverageBidColumnHeader({
+  titleLines,
+  sortKey,
+  activeSort,
+  onSort,
+}: {
+  titleLines: React.ReactNode;
+  sortKey: ConceptNotPromotedAverageBidSortKey;
+  activeSort: { label: ConceptNotPromotedProductSortKey; direction: 'asc' | 'desc' } | null;
+  onSort: (key: ConceptNotPromotedProductSortKey) => void;
+}) {
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!hovered) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hovered, syncAnchorRect]);
+
+  return (
+    <>
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-1">
+        <span
+          ref={titleRef}
+          className="col-start-1 min-w-0 cursor-help leading-tight"
+          aria-label={CONCEPT_AVERAGE_BID_HEADER_TOOLTIP_TEXT}
+          onMouseEnter={() => {
+            syncAnchorRect();
+            setHovered(true);
+          }}
+          onMouseLeave={() => setHovered(false)}
+        >
+          {titleLines}
+        </span>
+        <span className="col-start-2 flex shrink-0 items-center pt-px">
+          <ConceptNotPromotedTableSortButton
+            sortKey={sortKey}
+            title={CONCEPT_AVERAGE_BID_SORT_COLUMN_TITLES[sortKey]}
+            activeSort={activeSort}
+            onSort={onSort}
+          />
+        </span>
+      </div>
+      {hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <div
+              role="tooltip"
+              className="fixed z-[220] w-[min(280px,calc(100vw-24px))] rounded-lg bg-gray-900 p-3 text-left text-xs leading-snug text-white shadow-lg"
+              style={{
+                top: anchorRect.bottom + 6,
+                left: Math.min(anchorRect.left, window.innerWidth - 296),
+              }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              {CONCEPT_AVERAGE_BID_HEADER_TOOLTIP_TEXT}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
 
 /** Узкая колонка «Товар» на «Без продвижения», чтобы влезала вся статистика без горизонтального скролла. */
 const CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX = 236;
 const CONCEPT_NOT_PROMOTED_PRODUCT_COL_CLASS =
   'w-[236px] min-w-0 max-w-[236px]';
 
+const CONCEPT_ASSOCIATED_ORDERS_HEADER_TOOLTIP =
+  'Заказы, которые оформили, перейдя через другой ваш товар, который уже продвигается. Это не все заказы карточки. Н/Д — не было таких заказов за выбранный период.';
+
+const CONCEPT_ASSOCIATED_CART_HEADER_TOOLTIP =
+  'Добавления в корзину этого товара после перехода через другой ваш товар, который уже продвигается. Н/Д — не было таких добавлений за выбранный период.';
+
+const CONCEPT_ASSOCIATED_STAT_NA_TOOLTIP =
+  'Нет ассоциированных данных за период: не было перехода через продвигаемый товар или конверсии по этой цепочке.';
+
+function conceptNotPromotedAssociatedStatHeaderTooltip(
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+): string | null {
+  switch (label) {
+    case 'Заказы':
+      return CONCEPT_ASSOCIATED_ORDERS_HEADER_TOOLTIP;
+    case 'Добавления в корзину':
+      return CONCEPT_ASSOCIATED_CART_HEADER_TOOLTIP;
+    default:
+      return null;
+  }
+}
+
+function conceptNotPromotedAssociatedStatNaHint(
+  label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
+): string | undefined {
+  if (
+    label === 'Заказы' ||
+    label === 'Добавления в корзину' ||
+    label === 'Сумма заказов'
+  ) {
+    return CONCEPT_ASSOCIATED_STAT_NA_TOOLTIP;
+  }
+  return undefined;
+}
+
+function ConceptNotPromotedStatColumnHeader({
+  label,
+  activeSort,
+  onSort,
+}: {
+  label: ConceptNotPromotedStatSortLabel;
+  activeSort: { label: ConceptNotPromotedProductSortKey; direction: 'asc' | 'desc' } | null;
+  onSort: (key: ConceptNotPromotedProductSortKey) => void;
+}) {
+  const titleRef = useRef<HTMLSpanElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const tooltipText = conceptNotPromotedAssociatedStatHeaderTooltip(label);
+  const title = conceptNotPromotedStatColumnTitle(label);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!hovered || !tooltipText) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hovered, syncAnchorRect, tooltipText]);
+
+  return (
+    <>
+      <span className="inline-flex items-start gap-0.5">
+        <span
+          ref={tooltipText ? titleRef : undefined}
+          className={`min-w-0 leading-tight ${tooltipText ? 'cursor-help' : ''}`}
+          aria-label={tooltipText ?? undefined}
+          onMouseEnter={
+            tooltipText
+              ? () => {
+                  syncAnchorRect();
+                  setHovered(true);
+                }
+              : undefined
+          }
+          onMouseLeave={tooltipText ? () => setHovered(false) : undefined}
+        >
+          {title}
+        </span>
+        {isConceptNotPromotedStatSortLabel(label) ? (
+          <ConceptNotPromotedTableSortButton
+            sortKey={label}
+            title={label}
+            activeSort={activeSort}
+            onSort={onSort}
+          />
+        ) : null}
+      </span>
+      {tooltipText && hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <div
+              role="tooltip"
+              className="fixed z-[220] w-[min(300px,calc(100vw-24px))] rounded-lg bg-gray-900 p-3 text-left text-xs leading-snug text-white shadow-lg"
+              style={{
+                top: anchorRect.bottom + 6,
+                left: Math.min(anchorRect.left, window.innerWidth - 316),
+              }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              {tooltipText}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 function conceptNotPromotedStatColumnTitle(
   label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number],
 ): React.ReactNode {
   switch (label) {
+    case 'Заказы':
+      return (
+        <>
+          Ассоциированные
+          <br />
+          заказы
+        </>
+      );
     case 'Добавления в корзину':
       return (
         <>
-          Добавления
+          Ассоциированные добавления
           <br />
           в корзину
         </>
@@ -1889,6 +2204,12 @@ function productsPinnedCellProps(
 const PRODUCTS_PINNED_TH_CLASS = 'px-4 py-4 text-left font-normal align-middle';
 const PRODUCTS_PINNED_TH_PRODUCT_CLASS = 'pl-[5px] pr-5 py-4 text-left font-normal align-middle';
 
+/** Колонка чекбокса: выравнивание к правому краю ячейки (ближе к колонке «Товар»). */
+const PRODUCTS_SELECT_TH_CLASS = 'flex items-center justify-end pl-2 pr-3 py-4';
+const PRODUCTS_SELECT_TD_CLASS = 'flex items-center justify-end pl-2 pr-3 py-4 align-middle';
+const PRODUCTS_SELECT_TH_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-2.5 py-2.5';
+const PRODUCTS_SELECT_TD_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-2.5 py-2.5 align-middle';
+
 const PRODUCT_TABLE_THUMB_CLASS =
   'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
 
@@ -1950,86 +2271,6 @@ function formatProductCampaignCount(count: number): string {
   return `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
 }
 
-const PRODUCT_CARD_RATING_TOOLTIP_BASE =
-  'Рейтинг карточки влияет на позицию товара в поиске';
-
-const PRODUCT_CARD_RATING_ISSUES_HINT =
-  'Нет ТН ВЭД, Вес не заполнен, Заблокирован';
-
-function productCardRatingTooltipText(rating: number): string {
-  if (rating >= 10) return PRODUCT_CARD_RATING_TOOLTIP_BASE;
-  return `${PRODUCT_CARD_RATING_TOOLTIP_BASE}. ${PRODUCT_CARD_RATING_ISSUES_HINT}`;
-}
-
-function demoProductCardRating(product: ProductRow): number {
-  const nmId = productRowNmId(product);
-  if (nmId <= 0) return 5;
-  return (nmId % 10) + 1;
-}
-
-function ProductCardRatingTag({ rating }: { rating: number }) {
-  const clamped = Math.min(10, Math.max(1, rating));
-  const anchorRef = useRef<HTMLSpanElement>(null);
-  const [hovered, setHovered] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-  const tooltipText = productCardRatingTooltipText(clamped);
-
-  const syncAnchorRect = useCallback(() => {
-    const el = anchorRef.current;
-    if (!el) return;
-    setAnchorRect(el.getBoundingClientRect());
-  }, []);
-
-  useEffect(() => {
-    if (!hovered) return;
-    syncAnchorRect();
-    const onScrollOrResize = () => syncAnchorRect();
-    window.addEventListener('scroll', onScrollOrResize, true);
-    window.addEventListener('resize', onScrollOrResize);
-    return () => {
-      window.removeEventListener('scroll', onScrollOrResize, true);
-      window.removeEventListener('resize', onScrollOrResize);
-    };
-  }, [hovered, syncAnchorRect]);
-
-  return (
-    <>
-      <span
-        ref={anchorRef}
-        className="inline-flex shrink-0 cursor-default items-center rounded-md bg-[rgba(74,74,89,0.08)] px-1.5 py-0.5 text-[11px] font-semibold tabular-nums leading-none text-gray-700"
-        tabIndex={0}
-        onMouseEnter={() => {
-          syncAnchorRect();
-          setHovered(true);
-        }}
-        onMouseLeave={() => setHovered(false)}
-        onFocus={() => {
-          syncAnchorRect();
-          setHovered(true);
-        }}
-        onBlur={() => setHovered(false)}
-      >
-        {clamped}/10
-      </span>
-      {hovered && anchorRect && typeof document !== 'undefined'
-        ? ReactDOM.createPortal(
-            <div
-              role="tooltip"
-              className="pointer-events-none fixed z-[220] w-max max-w-[300px] rounded-lg bg-gray-900 px-2.5 py-2 text-[11px] font-normal leading-snug text-white shadow-lg"
-              style={{
-                top: anchorRect.bottom + 6,
-                left: anchorRect.left,
-              }}
-            >
-              {tooltipText}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
-
 function ProductCollapsedRowCell({
   product,
   expanded,
@@ -2060,7 +2301,6 @@ function ProductCollapsedRowCell({
       <p className="mb-0 truncate pb-1.5 text-sm font-semibold leading-none text-gray-900">{product.name}</p>
       <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-2 text-xs leading-none text-gray-500">
         <span className="shrink-0 whitespace-nowrap">Арт. {product.articleWb}</span>
-        <ProductCardRatingTag rating={demoProductCardRating(product)} />
         {showExpandControl && campaignCount > 0 ? (
           <span className="shrink-0 whitespace-nowrap">{formatProductCampaignCount(campaignCount)}</span>
         ) : null}
@@ -5273,20 +5513,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const conceptNotPromotedProductsList =
     isProductPromotionConceptPage && listTab === 'products' && productsPickTab === 'not_promoted';
 
-  const conceptAllProductsPick =
-    isProductPromotionConceptPage &&
-    listTab === 'products' &&
-    productsPickTab === 'all_products';
-
   const conceptCompactProductsTable =
     isProductPromotionConceptPage &&
     listTab === 'products' &&
     productsPickTab === 'not_promoted';
-
-  const conceptProductsListSortToolbar =
-    isProductPromotionConceptPage &&
-    listTab === 'products' &&
-    (productsPickTab === 'not_promoted' || productsPickTab === 'all_products');
 
   const productsColVisible = useCallback(
     (columnId: string) => {
@@ -5309,7 +5539,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         if (columnId === PRODUCTS_STAT_SPACER_COLUMN_ID) {
           return false;
         }
-        if (columnId === PRODUCTS_REVENUE_SHARE_COLUMN_ID) {
+        if (
+          columnId === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ||
+          columnId === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
+        ) {
           return true;
         }
         if (columnId === PRODUCTS_STOCK_COLUMN_ID) {
@@ -5324,8 +5557,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       }
       if (
         columnId === PRODUCTS_STOCK_COLUMN_ID ||
-        columnId === PRODUCTS_REVENUE_SHARE_COLUMN_ID ||
-        columnId === PRODUCTS_STAT_SPACER_COLUMN_ID
+        columnId === PRODUCTS_STAT_SPACER_COLUMN_ID ||
+        columnId === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ||
+        columnId === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
       ) {
         return false;
       }
@@ -5539,11 +5773,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     label: ConceptNotPromotedProductSortKey;
     direction: 'asc' | 'desc';
   } | null>(null);
-  const [conceptNotPromotedListSort, setConceptNotPromotedListSort] =
-    useState<ConceptNotPromotedListSort>('newest');
-  const [isConceptNotPromotedListSortOpen, setIsConceptNotPromotedListSortOpen] = useState(false);
-  const conceptNotPromotedListSortButtonRef = useRef<HTMLButtonElement>(null);
-  const conceptNotPromotedListSortMenuRef = useRef<HTMLDivElement>(null);
   const [productBulkNotice, setProductBulkNotice] = useState<string | null>(null);
   const [productBidBulkModalKind, setProductBidBulkModalKind] =
     useState<ProductBidBulkModalKind | null>(null);
@@ -5570,27 +5799,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }, [conceptCompactProductsTable]);
 
   useEffect(() => {
-    if (!conceptProductsListSortToolbar) {
+    if (!conceptNotPromotedProductsList) {
       setProductStatSort(null);
-      setIsConceptNotPromotedListSortOpen(false);
     }
-  }, [conceptProductsListSortToolbar]);
-
-  useEffect(() => {
-    if (!isConceptNotPromotedListSortOpen) return;
-    const onDocMouseDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (
-        conceptNotPromotedListSortMenuRef.current?.contains(target) ||
-        conceptNotPromotedListSortButtonRef.current?.contains(target)
-      ) {
-        return;
-      }
-      setIsConceptNotPromotedListSortOpen(false);
-    };
-    document.addEventListener('mousedown', onDocMouseDown);
-    return () => document.removeEventListener('mousedown', onDocMouseDown);
-  }, [isConceptNotPromotedListSortOpen]);
+  }, [conceptNotPromotedProductsList]);
 
   const isFirstProfileMount = useRef(true);
   useEffect(() => {
@@ -5972,25 +6184,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         productMatchesProductsPickTab(product, tab.id, productCampaignStatusOverride),
       ).length;
     }
-    counts.all_products = filteredProductsBySearch.filter((product) =>
-      productMatchesProductsPickTab(product, 'all_products', productCampaignStatusOverride),
-    ).length;
     return counts;
   }, [filteredProductsBySearch, productCampaignStatusOverride]);
 
   const productsSecondaryPickTabCounts = useMemo(() => {
-    const scopedProducts =
-      productsPickTab === 'all_products'
-        ? filteredProductsBySearch.filter((product) =>
-            productMatchesProductsPickTab(product, 'all_products', productCampaignStatusOverride),
-          )
-        : filteredProductsBySearch.filter((product) =>
-            productMatchesProductsPickTab(
-              product,
-              getConceptPromotionScope(productsPickTab),
-              productCampaignStatusOverride,
-            ),
-          );
+    const scopedProducts = filteredProductsBySearch.filter((product) =>
+      productMatchesProductsPickTab(
+        product,
+        getConceptPromotionScope(productsPickTab),
+        productCampaignStatusOverride,
+      ),
+    );
     const counts = {} as Record<ProductsSecondaryPickTab, number>;
     for (const tab of PRODUCTS_PICK_SECONDARY_TABS) {
       counts[tab.id] = scopedProducts.filter((product) =>
@@ -6002,18 +6206,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const productsForTable = useMemo(() => {
     if (isProductPromotionConceptPage && listTab === 'products') {
-      if (productsPickTab === 'all_products') {
-        const promoted = filteredProductsBySearch.filter((product) =>
-          productMatchesProductsPickTab(product, 'promoted', productCampaignStatusOverride),
-        );
-        const notPromoted = filteredProductsBySearch.filter((product) =>
-          productMatchesProductsPickTab(product, 'not_promoted', productCampaignStatusOverride),
-        );
-        const mixed = interleaveConceptPromotedAndNotPromoted(promoted, notPromoted);
-        return mixed.filter((product) =>
-          productMatchesSecondaryPickTab(product, productsSecondaryPickTab),
-        );
-      }
       const scope = getConceptPromotionScope(productsPickTab);
       return filteredProductsBySearch.filter((product) => {
         if (
@@ -6036,14 +6228,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     listTab,
   ]);
 
-  const notPromotedRevenueShareByProductId = useMemo(() => {
-    if (!conceptCompactProductsTable) return {} as Record<string, number>;
-    const notPromotedOnly = productsForTable.filter((product) =>
-      productConceptIsNotPromoted(product, productCampaignStatusOverride),
-    );
-    return buildNotPromotedRevenueShareByProductId(notPromotedOnly);
-  }, [conceptCompactProductsTable, productsForTable, productCampaignStatusOverride]);
-
   const activeProductsPickPromotionCtaTab = useMemo((): ProductsPickCtaTab | null => {
     if (listTab !== 'products') return null;
     if (isProductPromotionConceptPage) {
@@ -6058,21 +6242,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   ]);
 
   const sortedProductsForTable = useMemo(() => {
-    const organicStatsForProduct = (product: ProductRow) =>
-      conceptNotPromotedProductsList ||
-      (conceptAllProductsPick &&
-        productConceptIsNotPromoted(product, productCampaignStatusOverride));
+    const organicStatsForProduct = (product: ProductRow) => conceptNotPromotedProductsList;
     let list = productsForTable;
 
-    if (
-      (conceptNotPromotedProductsList || conceptAllProductsPick) &&
-      !productStatSort
-    ) {
+    if (conceptNotPromotedProductsList && !productStatSort) {
       list = [...list].sort((a, b) => {
-        const diff =
-          conceptNotPromotedListSort === 'best_card_rating'
-            ? demoProductCardRating(b) - demoProductCardRating(a)
-            : productRecencySortKey(b) - productRecencySortKey(a);
+        const diff = productRecencySortKey(b) - productRecencySortKey(a);
         if (diff !== 0) return diff;
         return a.id.localeCompare(b.id);
       });
@@ -6082,14 +6257,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     const { label, direction } = productStatSort;
     const sign = direction === 'asc' ? 1 : -1;
     return [...list].sort((a, b) => {
-      const diff =
-        label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
-          ? sign *
-            ((notPromotedRevenueShareByProductId[a.id] ?? 0) -
-              (notPromotedRevenueShareByProductId[b.id] ?? 0))
-          : sign *
-            (productStatSortNumericValue(a, label, organicStatsForProduct(a)) -
-              productStatSortNumericValue(b, label, organicStatsForProduct(b)));
+      const valA = isConceptNotPromotedAverageBidSortKey(label)
+        ? productAverageBidSortNumericValue(a, label)
+        : productStatSortNumericValue(a, label, organicStatsForProduct(a));
+      const valB = isConceptNotPromotedAverageBidSortKey(label)
+        ? productAverageBidSortNumericValue(b, label)
+        : productStatSortNumericValue(b, label, organicStatsForProduct(b));
+      const diff = sign * (valA - valB);
       if (diff !== 0) return diff;
       return a.id.localeCompare(b.id);
     });
@@ -6097,25 +6271,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     productsForTable,
     productStatSort,
     conceptNotPromotedProductsList,
-    conceptAllProductsPick,
     productCampaignStatusOverride,
-    conceptNotPromotedListSort,
-    notPromotedRevenueShareByProductId,
   ]);
-
-  const conceptNotPromotedListSortLabel = useMemo(() => {
-    if (productStatSort) {
-      const columnLabel =
-        productStatSort.label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
-          ? 'Доля в выручке'
-          : productStatSort.label;
-      return `по «${columnLabel}»`;
-    }
-    return (
-      CONCEPT_NOT_PROMOTED_LIST_SORT_OPTIONS.find((o) => o.id === conceptNotPromotedListSort)
-        ?.label ?? 'Сначала новые'
-    );
-  }, [productStatSort, conceptNotPromotedListSort]);
 
   const handleProductStatColumnSort = (label: ConceptNotPromotedProductSortKey) => {
     setProductStatSort((prev) => {
@@ -6161,8 +6318,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const handleBulkCreateCampaignFromProducts = useCallback(() => {
     const selected = productsForTable.filter((p) => selectedProductIds.includes(p.id));
     if (selected.length === 0) return;
-    const toPromote =
-      conceptCompactProductsTable || conceptAllProductsPick
+    const toPromote = conceptCompactProductsTable
         ? selected.filter((p) =>
             productConceptIsNotPromoted(p, productCampaignStatusOverride),
           )
@@ -6189,7 +6345,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     productsForTable,
     selectedProductIds,
     conceptCompactProductsTable,
-    conceptAllProductsPick,
     productCampaignStatusOverride,
     beginRepeatLaunchFlow,
     onNavigateToCreationWithProducts,
@@ -6434,17 +6589,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             onSelect: () => {
               setListTab('products');
               setProductsPickTab('not_promoted');
-              setProductsSecondaryPickTab('all');
-            },
-          },
-          {
-            id: 'all_products' as const,
-            label: 'Все',
-            count: productsPickTabCounts.all_products,
-            selected: listTab === 'products' && productsPickTab === 'all_products',
-            onSelect: () => {
-              setListTab('products');
-              setProductsPickTab('all_products');
               setProductsSecondaryPickTab('all');
             },
           },
@@ -7899,98 +8043,51 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-2 bg-white px-4 py-2.5 sm:px-6">
                   {listTab === 'products' ? (
                   <div
-                    className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-x-1"
+                    className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-2"
                     role="tablist"
                     aria-label="Подборки товаров"
                   >
-                    {PRODUCTS_PICK_SECONDARY_TABS.map((tab, index) => {
+                    {PRODUCTS_PICK_SECONDARY_TABS.map((tab) => {
                       const count = productsSecondaryPickTabCounts[tab.id];
                       const isSelected = productsSecondaryPickTab === tab.id;
+                      const visual = PRODUCTS_PICK_SECONDARY_TAB_VISUAL[tab.id];
+                      const TabIcon = visual.Icon;
                       return (
-                        <span key={tab.id} className="inline-flex items-center">
-                          {index > 0 ? (
-                            <span className="mx-2 text-base text-[#D1D1D8] leading-none" aria-hidden>
-                              ·
-                            </span>
-                          ) : null}
-                          <button
-                            type="button"
-                            role="tab"
-                            aria-selected={isSelected}
-                            aria-label={`${tab.label}, ${count} товаров`}
-                            onClick={() => setProductsSecondaryPickTab(tab.id)}
-                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-1 py-0.5 text-sm leading-5 transition-colors ${
+                        <button
+                          key={tab.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={isSelected}
+                          aria-label={`${tab.label}, ${count} товаров`}
+                          onClick={() => setProductsSecondaryPickTab(tab.id)}
+                          className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm leading-5 transition-colors ${
+                            isSelected
+                              ? 'bg-gray-100 font-semibold text-gray-900'
+                              : 'bg-transparent font-medium text-[#4A4D57] hover:bg-gray-50'
+                          }`}
+                        >
+                          <span
+                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
+                              isSelected ? visual.iconWrapActive : visual.iconWrapIdle
+                            }`}
+                            aria-hidden
+                          >
+                            <TabIcon className="h-4 w-4" />
+                          </span>
+                          <span>{tab.label}</span>
+                          <span
+                            className={`min-w-[1.25rem] rounded-md px-1.5 py-0.5 text-center tabular-nums text-xs font-semibold ${
                               isSelected
-                                ? 'font-semibold text-gray-900'
-                                : 'font-medium text-[#767386] hover:text-gray-900'
+                                ? 'bg-white text-[#767386]'
+                                : 'bg-gray-100 text-[#767386]'
                             }`}
                           >
-                            <span>{tab.label}</span>
-                            <span
-                              className={`tabular-nums text-[13px] ${
-                                isSelected ? 'text-[#767386]' : 'text-[#9b9aa8]'
-                              }`}
-                            >
-                              {count}
-                            </span>
-                          </button>
-                        </span>
+                            {count}
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
-                  ) : null}
-                  {listTab === 'products' && conceptProductsListSortToolbar ? (
-                    <div className="relative ml-auto shrink-0 text-sm leading-5 text-[#767386]">
-                      Сортировка{' '}
-                      <button
-                        ref={conceptNotPromotedListSortButtonRef}
-                        type="button"
-                        onClick={() => setIsConceptNotPromotedListSortOpen((open) => !open)}
-                        className="inline-flex items-center gap-0.5 font-medium text-gray-900 transition-colors hover:text-[#9a41fe]"
-                        aria-haspopup="menu"
-                        aria-expanded={isConceptNotPromotedListSortOpen}
-                        aria-label={`Сортировка: ${conceptNotPromotedListSortLabel}`}
-                      >
-                        <span>{conceptNotPromotedListSortLabel}</span>
-                        <ChevronDown
-                          className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${
-                            isConceptNotPromotedListSortOpen ? 'rotate-180' : ''
-                          }`}
-                          aria-hidden
-                        />
-                      </button>
-                      {isConceptNotPromotedListSortOpen ? (
-                        <div
-                          ref={conceptNotPromotedListSortMenuRef}
-                          role="menu"
-                          className="absolute right-0 top-[calc(100%+4px)] z-50 w-[min(320px,calc(100vw-2rem))] overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
-                        >
-                          {CONCEPT_NOT_PROMOTED_LIST_SORT_OPTIONS.map((option) => {
-                            const selected =
-                              !productStatSort && conceptNotPromotedListSort === option.id;
-                            return (
-                              <button
-                                key={option.id}
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                  setConceptNotPromotedListSort(option.id);
-                                  setProductStatSort(null);
-                                  setIsConceptNotPromotedListSortOpen(false);
-                                }}
-                                className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${
-                                  selected
-                                    ? 'bg-purple-50 font-medium text-[#9a41fe]'
-                                    : 'text-gray-800'
-                                }`}
-                              >
-                                {option.label}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : null}
-                    </div>
                   ) : null}
                 </div>
               </div>
@@ -8056,13 +8153,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 {conceptCompactProductsTable ? (
                   <colgroup>
                     <col className="w-[3%]" />
-                    <col className={conceptNotPromotedShowTagsColumn ? 'w-[22%]' : 'w-[27%]'} />
-                    {conceptNotPromotedShowTagsColumn ? <col className="w-[9%]" /> : null}
+                    <col className={conceptNotPromotedShowTagsColumn ? 'w-[19%]' : 'w-[23%]'} />
+                    {conceptNotPromotedShowTagsColumn ? <col className="w-[8%]" /> : null}
+                    <col className="w-[8%]" />
                     <col className="w-[8%]" />
                     {CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.map((label) => (
-                      <col key={label} className="w-[8%]" />
+                      <col key={label} className="w-[6.5%]" />
                     ))}
-                    <col className="w-[7%]" />
+                    <col className="w-[6%]" />
                   </colgroup>
                 ) : null}
                 <thead
@@ -8076,8 +8174,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         'select',
                         'head',
                         conceptCompactProductsTable
-                          ? 'px-2 py-2.5 text-center'
-                          : 'px-3 py-4 text-center',
+                          ? PRODUCTS_SELECT_TH_CLASS_COMPACT
+                          : PRODUCTS_SELECT_TH_CLASS,
                       )}
                     >
                       <Checkbox
@@ -8182,64 +8280,40 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         Ярлыки
                       </th>
                     ) : null}
+                    {productsColVisible(PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID) ? (
+                      <th className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS}>
+                        <ConceptAverageBidColumnHeader
+                          titleLines={
+                            <>
+                              Средняя ставка
+                              <br />
+                              за 1000 показов в поиске (CPM)
+                            </>
+                          }
+                          sortKey={PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID}
+                          activeSort={productStatSort}
+                          onSort={handleProductStatColumnSort}
+                        />
+                      </th>
+                    ) : null}
+                    {productsColVisible(PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID) ? (
+                      <th className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS}>
+                        <ConceptAverageBidColumnHeader
+                          titleLines={
+                            <>
+                              Средняя ставка
+                              <br />
+                              за клик (CPC)
+                            </>
+                          }
+                          sortKey={PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID}
+                          activeSort={productStatSort}
+                          onSort={handleProductStatColumnSort}
+                        />
+                      </th>
+                    ) : null}
                     {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
                       <th className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
-                    ) : null}
-                    {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
-                      <th
-                        className={
-                          conceptCompactProductsTable
-                            ? CONCEPT_NOT_PROMOTED_STAT_TH_CLASS
-                            : PRODUCTS_STAT_TH_CLASS
-                        }
-                      >
-                        <span className="inline-flex items-start gap-0.5">
-                          <span>
-                            {conceptCompactProductsTable ? (
-                              <>
-                                Доля
-                                <br />в выручке
-                              </>
-                            ) : (
-                              'Доля в выручке'
-                            )}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              handleProductStatColumnSort(CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY)
-                            }
-                            className={`inline-flex shrink-0 rounded p-0.5 transition-colors hover:bg-gray-100 ${
-                              productStatSort?.label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
-                                ? 'text-gray-900'
-                                : 'text-gray-400'
-                            }`}
-                            aria-label={`Сортировать по «Доля в выручке»${
-                              productStatSort?.label === CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY
-                                ? productStatSort.direction === 'desc'
-                                  ? ', по убыванию'
-                                  : ', по возрастанию'
-                                : ''
-                            }`}
-                          >
-                            <ArrowUp
-                              className={`${
-                                conceptCompactProductsTable ? 'h-3 w-3' : 'h-4 w-4'
-                              } shrink-0 transition-transform ${
-                                productStatSort?.label ===
-                                  CONCEPT_NOT_PROMOTED_REVENUE_SHARE_SORT_KEY &&
-                                productStatSort.direction === 'asc'
-                                  ? ''
-                                  : 'rotate-180'
-                              }`}
-                              aria-hidden
-                            />
-                          </button>
-                          {!conceptCompactProductsTable ? (
-                            <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
-                          ) : null}
-                        </span>
-                      </th>
                     ) : null}
                     {PRODUCTS_STAT_COLUMN_LABELS.map((label) =>
                       productsColVisible(productsStatColumnId(label)) ? (
@@ -8252,45 +8326,31 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           }
                         >
                           <span className="inline-flex items-start gap-0.5">
-                            <span>
-                              {conceptCompactProductsTable
-                                ? conceptNotPromotedStatColumnTitle(label)
-                                : label}
-                            </span>
-                            {isConceptNotPromotedStatSortLabel(label) ? (
-                              <button
-                                type="button"
-                                onClick={() => handleProductStatColumnSort(label)}
-                                className={`inline-flex shrink-0 rounded p-0.5 transition-colors hover:bg-gray-100 ${
-                                  productStatSort?.label === label
-                                    ? 'text-gray-900'
-                                    : 'text-gray-400'
-                                }`}
-                                aria-label={`Сортировать по «${label}»${
-                                  productStatSort?.label === label
-                                    ? productStatSort.direction === 'desc'
-                                      ? ', по убыванию'
-                                      : ', по возрастанию'
-                                    : ''
-                                }`}
-                              >
-                                <ArrowUp
-                                  className={`${
-                                    conceptCompactProductsTable ? 'h-3 w-3' : 'h-4 w-4'
-                                  } shrink-0 transition-transform ${
-                                    productStatSort?.label === label &&
-                                    productStatSort.direction === 'asc'
-                                      ? ''
-                                      : 'rotate-180'
-                                  }`}
-                                  aria-hidden
-                                />
-                              </button>
-                            ) : null}
-                            {(conceptCompactProductsTable || conceptAllProductsPick) &&
-                            label === 'Показы' ? (
-                              <ConceptJamSubscriptionHint />
-                            ) : !conceptCompactProductsTable ? (
+                            {conceptCompactProductsTable &&
+                            isConceptNotPromotedStatSortLabel(label) ? (
+                              <ConceptNotPromotedStatColumnHeader
+                                label={label}
+                                activeSort={productStatSort}
+                                onSort={handleProductStatColumnSort}
+                              />
+                            ) : (
+                              <>
+                                <span>
+                                  {conceptCompactProductsTable
+                                    ? conceptNotPromotedStatColumnTitle(label)
+                                    : label}
+                                </span>
+                                {isConceptNotPromotedStatSortLabel(label) ? (
+                                  <ConceptNotPromotedTableSortButton
+                                    sortKey={label}
+                                    title={label}
+                                    activeSort={productStatSort}
+                                    onSort={handleProductStatColumnSort}
+                                  />
+                                ) : null}
+                              </>
+                            )}
+                            {!conceptCompactProductsTable ? (
                               <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
                             ) : null}
                           </span>
@@ -8316,21 +8376,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {sortedProductsForTable.map((product, productListIndex) => {
-                    const allTabThumbRowIndex = conceptAllProductsPick
-                      ? productListIndex
-                      : undefined;
-                    const rowUsesOrganicProductStats =
-                      conceptNotPromotedProductsList ||
-                      (conceptAllProductsPick &&
-                        productConceptIsNotPromoted(product, productCampaignStatusOverride));
-                    const rowShowsPromotedProductUi =
-                      !conceptNotPromotedProductsList &&
-                      (!conceptAllProductsPick || !rowUsesOrganicProductStats);
+                  {sortedProductsForTable.map((product) => {
+                    const rowUsesOrganicProductStats = conceptNotPromotedProductsList;
+                    const rowShowsPromotedProductUi = !conceptNotPromotedProductsList;
                     const rowCompactNotPromotedStyle = conceptCompactProductsTable;
-                    const rowShowPromoteUnderPhoto =
-                      conceptNotPromotedProductsList ||
-                      (conceptAllProductsPick && rowUsesOrganicProductStats);
+                    const rowShowPromoteUnderPhoto = conceptNotPromotedProductsList;
                     return (
                     <React.Fragment key={product.id}>
                       {/* Строка товара */}
@@ -8340,8 +8390,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             'select',
                             'body',
                             rowCompactNotPromotedStyle
-                              ? 'px-2 py-2.5 align-middle'
-                              : 'px-3 py-4 align-middle',
+                              ? PRODUCTS_SELECT_TD_CLASS_COMPACT
+                              : PRODUCTS_SELECT_TD_CLASS,
                           )}
                           onClick={(e) => e.stopPropagation()}
                         >
@@ -8368,12 +8418,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               expanded={expandedProductIds.has(product.id)}
                               onToggleExpand={() => toggleProductExpanded(product.id)}
                               showExpandControl={rowShowsPromotedProductUi}
-                              reserveExpandGutter={
-                                conceptAllProductsPick && rowUsesOrganicProductStats
-                              }
+                              reserveExpandGutter={false}
                               showPromoteUnderPhoto={rowShowPromoteUnderPhoto}
                               onPromote={handlePromoteNotPromotedProduct}
-                              allTabListRowIndex={allTabThumbRowIndex}
                             />
                           </td>
                         ) : null}
@@ -8477,37 +8524,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           )}
                         </td>
                         ) : null}
+                        {productsColVisible(PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID) ? (
+                          <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS}>
+                            <ProductAverageBidAmountCell product={product} kind="cpm10k" />
+                          </td>
+                        ) : null}
+                        {productsColVisible(PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID) ? (
+                          <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS}>
+                            <ProductAverageBidAmountCell product={product} kind="cpc" />
+                          </td>
+                        ) : null}
                         {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
                           <td className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
-                        ) : null}
-                        {productsColVisible(PRODUCTS_REVENUE_SHARE_COLUMN_ID) ? (
-                          <td
-                            className={
-                              rowCompactNotPromotedStyle
-                                ? CONCEPT_NOT_PROMOTED_STAT_TD_CLASS
-                                : PRODUCTS_STAT_TD_CLASS
-                            }
-                          >
-                            {rowUsesOrganicProductStats ? (
-                              <span
-                                className={`font-semibold tabular-nums text-gray-900 ${
-                                  rowCompactNotPromotedStyle ? 'text-xs' : 'text-sm'
-                                }`}
-                              >
-                                {formatProductRevenueSharePercent(
-                                  notPromotedRevenueShareByProductId[product.id] ?? 0,
-                                )}
-                              </span>
-                            ) : (
-                              <span
-                                className={`font-semibold text-gray-400 ${
-                                  rowCompactNotPromotedStyle ? 'text-xs' : 'text-sm'
-                                }`}
-                              >
-                                —
-                              </span>
-                            )}
-                          </td>
                         ) : null}
                         {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
                           if (!productsColVisible(productsStatColumnId(label))) return null;
@@ -8516,10 +8544,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             rowUsesOrganicProductStats,
                           );
                           const stats = rowAgg ? buildExtendedProductStats(rowAgg) : null;
-                          const allTabNotPromotedNa =
-                            conceptAllProductsPick &&
-                            rowUsesOrganicProductStats &&
-                            conceptAllTabNotPromotedStatIsNa(label);
                           return (
                             <td
                               key={label}
@@ -8529,11 +8553,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   : PRODUCTS_STAT_TD_CLASS
                               }
                             >
-                              {allTabNotPromotedNa ? (
-                                <ProductsStatNotAvailableCell
-                                  compact={rowCompactNotPromotedStyle}
-                                />
-                              ) : stats ? (
+                              {stats ? (
                                 rowUsesOrganicProductStats && label === 'Показы' ? (
                                   <ConceptJamLockedImpressionsMetricCell
                                     stats={stats}
@@ -8547,11 +8567,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                     productId={product.id}
                                     changes={rowAgg}
                                     compact={rowCompactNotPromotedStyle}
+                                    showTrend={!rowUsesOrganicProductStats}
                                   />
                                 )
                               ) : (
                                 <ProductsStatNotAvailableCell
                                   compact={rowCompactNotPromotedStyle}
+                                  hint={
+                                    rowUsesOrganicProductStats
+                                      ? conceptNotPromotedAssociatedStatNaHint(label)
+                                      : undefined
+                                  }
                                 />
                               )}
                             </td>
@@ -8580,7 +8606,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         return (
                         <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
-                            <td {...productsPinnedProps('select', 'bodyNested', 'px-3 py-3')} />
+                            <td {...productsPinnedProps('select', 'bodyNested', PRODUCTS_SELECT_TD_CLASS)} />
                             {/* Товар / кампания */}
                             {productsColVisible('product') ? (
                             <td
@@ -8774,16 +8800,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 onClick={handleBulkCreateCampaignFromProducts}
                 className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
               >
-                {!conceptCompactProductsTable && !conceptAllProductsPick ? (
+                {!conceptCompactProductsTable ? (
                   <Plus className="h-4 w-4" aria-hidden />
                 ) : null}
-                {conceptCompactProductsTable || conceptAllProductsPick
-                  ? 'Продвигать'
-                  : 'Создать кампанию'}
+                {conceptCompactProductsTable ? 'Продвигать' : 'Создать кампанию'}
               </button>
-              {isProductPromotionConceptPage &&
-                !conceptCompactProductsTable &&
-                !conceptAllProductsPick && (
+              {isProductPromotionConceptPage && !conceptCompactProductsTable && (
                 <div
                   className={`relative group/product-bid ${selectedProductsCampaignCount === 0 ? 'pointer-events-none opacity-50' : ''}`}
                 >
