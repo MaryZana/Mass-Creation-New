@@ -577,12 +577,23 @@ const PRODUCTS_MIDDLE_COLUMN_IDS = [
 ] as const;
 
 type ProductsPickTab =
+  | 'all_products'
   | 'not_promoted'
   | 'promoted'
   | 'growth'
   | 'high_conversion'
   | 'ab'
   | 'promo';
+
+/** Вкладки товаров на концепте товарного продвижения. */
+const CONCEPT_PRODUCTS_PICK_TABS: {
+  id: Extract<ProductsPickTab, 'all_products' | 'promoted' | 'not_promoted'>;
+  label: string;
+}[] = [
+  { id: 'promoted', label: 'Продвигаются' },
+  { id: 'not_promoted', label: 'Без продвижения' },
+  { id: 'all_products', label: 'Мультикарточки' },
+];
 
 const PRODUCTS_PICK_TABS: { id: ProductsPickTab; label: string }[] = [
   { id: 'promoted', label: 'Продвигаются' },
@@ -1105,19 +1116,39 @@ function productMatchesInsightPickTab(product: ProductRow, tab: ProductsInsightP
   return nmId % 7 === 0;
 }
 
-function productMatchesProductsPickTab(
+function productHasActiveCampaign(
   product: ProductRow,
-  tab: ProductsPickTab,
   productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
 ): boolean {
-  const hasActiveCampaign = product.campaigns.some((camp) => {
+  return product.campaigns.some((camp) => {
     const effectiveStatus =
       camp.status === 'draft' || camp.status === 'error'
         ? camp.status
         : (productCampaignStatusOverride[camp.id] ?? camp.status);
     return effectiveStatus === 'active';
   });
+}
+
+function productMatchesProductsPickTab(
+  product: ProductRow,
+  tab: ProductsPickTab,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+  segmentation: 'concept' | 'default' = 'default',
+): boolean {
+  const hasActiveCampaign = productHasActiveCampaign(product, productCampaignStatusOverride);
+  if (tab === 'all_products') {
+    if (segmentation === 'concept') {
+      return (
+        hasActiveCampaign ||
+        product.campaigns.length === 0
+      );
+    }
+    return true;
+  }
   if (tab === 'not_promoted') {
+    if (segmentation === 'concept') {
+      return product.campaigns.length === 0;
+    }
     if (product.campaigns.length === 0) return true;
     return !hasActiveCampaign;
   }
@@ -1126,10 +1157,6 @@ function productMatchesProductsPickTab(
     return productMatchesInsightPickTab(product, tab);
   }
   return true;
-}
-
-function getConceptPromotionScope(pickTab: ProductsPickTab): 'promoted' | 'not_promoted' {
-  return pickTab === 'not_promoted' ? 'not_promoted' : 'promoted';
 }
 
 function productMatchesSecondaryPickTab(product: ProductRow, tab: ProductsSecondaryPickTab): boolean {
@@ -1141,7 +1168,12 @@ function productConceptIsNotPromoted(
   product: ProductRow,
   productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
 ): boolean {
-  return productMatchesProductsPickTab(product, 'not_promoted', productCampaignStatusOverride);
+  return productMatchesProductsPickTab(
+    product,
+    'not_promoted',
+    productCampaignStatusOverride,
+    'concept',
+  );
 }
 
 function productsStatColumnId(label: (typeof PRODUCTS_STAT_COLUMN_LABELS)[number]): string {
@@ -2065,6 +2097,11 @@ const PRODUCTS_TABLE_PRODUCT_COL_CLASS = 'w-[520px] min-w-[520px] max-w-[520px]'
 const PRODUCTS_PINNED_COLUMNS = [
   { id: 'select' as const, width: 48, widthClass: 'w-12 min-w-[48px] max-w-[48px]' },
   { id: 'product' as const, width: 520, widthClass: PRODUCTS_TABLE_PRODUCT_COL_CLASS },
+  {
+    id: 'glueLeader' as const,
+    width: 128,
+    widthClass: 'w-[128px] min-w-[128px] max-w-[128px]',
+  },
   { id: 'campaignType' as const, width: 160, widthClass: 'w-[160px] min-w-[160px] max-w-[160px]' },
   { id: 'bid' as const, width: 132, widthClass: 'w-[132px] min-w-[132px] max-w-[132px]' },
   { id: 'budgetRemainder' as const, width: 180, widthClass: 'w-[180px] min-w-[180px] max-w-[180px]' },
@@ -2078,19 +2115,21 @@ const PRODUCTS_PINNED_COLUMNS = [
 const PRODUCTS_PINNED_HEAD_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['id'], string> = {
   select: 'z-[21]',
   product: 'z-20',
-  campaignType: 'z-[19]',
-  bid: 'z-[18]',
-  budgetRemainder: 'z-[17]',
-  dailyLimit: 'z-[16]',
+  glueLeader: 'z-[19]',
+  campaignType: 'z-[18]',
+  bid: 'z-[17]',
+  budgetRemainder: 'z-[16]',
+  dailyLimit: 'z-[15]',
 };
 
 const PRODUCTS_PINNED_BODY_Z: Record<(typeof PRODUCTS_PINNED_COLUMNS)[number]['id'], string> = {
   select: 'z-[11]',
   product: 'z-10',
-  campaignType: 'z-[9]',
-  bid: 'z-[8]',
-  budgetRemainder: 'z-[7]',
-  dailyLimit: 'z-[6]',
+  glueLeader: 'z-[9]',
+  campaignType: 'z-[8]',
+  bid: 'z-[7]',
+  budgetRemainder: 'z-[6]',
+  dailyLimit: 'z-[5]',
 };
 
 function productRowToCreationItem(product: ProductRow): {
@@ -2210,6 +2249,18 @@ const PRODUCTS_SELECT_TD_CLASS = 'flex items-center justify-end pl-2 pr-3 py-4 a
 const PRODUCTS_SELECT_TH_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-2.5 py-2.5';
 const PRODUCTS_SELECT_TD_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-2.5 py-2.5 align-middle';
 
+/** Мультикарточки: чекбокс ближе к колонке «Товар». */
+const CONCEPT_MULTICARD_SELECT_TH_CLASS = 'flex items-center justify-end pl-1 pr-2.5 py-4';
+const CONCEPT_MULTICARD_SELECT_TD_CLASS =
+  'flex items-center justify-end pl-1 pr-0.5 py-4 align-middle';
+const CONCEPT_MULTICARD_SELECT_TD_CLASS_NESTED =
+  'flex items-center justify-start pl-1 pr-0.5 py-4 align-middle';
+
+/** Таблицы концепта (все вкладки товаров и кампаний): 18px, обводка как на «Мультикарточках», чуть светлее. */
+const CONCEPT_LIST_TABLE_CHECKBOX_INNER_CLASS =
+  '[&_.ant-checkbox-inner]:!h-[18px] [&_.ant-checkbox-inner]:!w-[18px] [&_.ant-checkbox-inner]:!border-2 [&_.ant-checkbox-inner]:!border-gray-300 [&_.ant-checkbox-checked_.ant-checkbox-inner]:!border-violet-500 [&_.ant-checkbox-checked_.ant-checkbox-inner]:!bg-violet-500 [&_.ant-checkbox-indeterminate_.ant-checkbox-inner]:!border-violet-500 [&_.ant-checkbox-indeterminate_.ant-checkbox-inner]:!bg-violet-500';
+const CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME = `w-[18px] shrink-0 text-purple-600 ${CONCEPT_LIST_TABLE_CHECKBOX_INNER_CLASS}`;
+
 const PRODUCT_TABLE_THUMB_CLASS =
   'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
 
@@ -2224,7 +2275,7 @@ function ProductTableThumb({
   src: string;
   category?: string;
   alt?: string;
-  /** Вкладка «Все»: позиция в отсортированном списке (первые 15 — разные фото). */
+  /** Вкладка «Мультикарточки»: позиция в отсортированном списке (первые 15 — разные фото). */
   allTabListRowIndex?: number;
 }) {
   const [url, setUrl] = useState(() =>
@@ -2271,6 +2322,621 @@ function formatProductCampaignCount(count: number): string {
   return `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
 }
 
+type ConceptAllTabMulticardRailPosition = 'first' | 'middle' | 'last';
+
+type ConceptAllTabTableRow = {
+  product: ProductRow;
+  multicardRail: ConceptAllTabMulticardRailPosition | null;
+  multicardGroupStartsSection: boolean;
+  multicardGroupMembers: ProductRow[] | null;
+};
+
+const CONCEPT_ALL_TAB_MULTICARD_RAIL_WIDTH_PX = 20;
+
+/** Визуальный зазор между группами мультикарточек (цвет фона страницы). */
+const CONCEPT_MULTICARD_GROUP_SECTION_GAP_CLASS = 'border-t-[24px] border-t-[#F3F5F8]';
+
+/** Единый сдвиг вправо для строк товаров внутри развёрнутой группы (полоса, чекбокс, «Товар»). */
+const CONCEPT_MULTICARD_GROUP_MEMBER_INDENT_PX = 32;
+const CONCEPT_MULTICARD_GROUP_MEMBER_CONTENT_INDENT_CLASS = 'ml-8';
+
+/** Демо-id мультикарточки (категория + начало названия). */
+function demoConceptMulticardGroupId(product: Pick<ProductRow, 'name' | 'category'>): string {
+  const stem = product.name.trim().split(/\s+/).slice(0, 2).join(' ').toLowerCase();
+  let h = 0;
+  const key = `${product.category}|${stem}`;
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0;
+  return `mk-${Math.abs(h) % 12}`;
+}
+
+function buildConceptMulticardMembershipIndex(
+  catalog: ProductRow[],
+): Map<string, ProductRow[]> {
+  const buckets = new Map<string, ProductRow[]>();
+  for (const product of catalog) {
+    const groupId = demoConceptMulticardGroupId(product);
+    const list = buckets.get(groupId);
+    if (list) list.push(product);
+    else buckets.set(groupId, [product]);
+  }
+  const index = new Map<string, ProductRow[]>();
+  for (const [groupId, members] of buckets) {
+    index.set(groupId, members);
+  }
+  return index;
+}
+
+function getConceptMulticardGroupIdForProduct(
+  product: ProductRow,
+  membershipIndex: Map<string, ProductRow[]>,
+): string | null {
+  const groupId = demoConceptMulticardGroupId(product);
+  return membershipIndex.has(groupId) ? groupId : null;
+}
+
+function buildConceptAllTabGroupedTableRows(
+  sortedProducts: ProductRow[],
+  membershipIndex: Map<string, ProductRow[]>,
+): ConceptAllTabTableRow[] {
+  const emittedGroups = new Set<string>();
+  const rows: ConceptAllTabTableRow[] = [];
+
+  for (const product of sortedProducts) {
+    const groupId = getConceptMulticardGroupIdForProduct(product, membershipIndex);
+    if (!groupId) {
+      rows.push({
+        product,
+        multicardRail: null,
+        multicardGroupStartsSection: false,
+        multicardGroupMembers: null,
+      });
+      continue;
+    }
+    if (emittedGroups.has(groupId)) continue;
+    emittedGroups.add(groupId);
+
+    const groupInView = sortedProducts.filter(
+      (candidate) =>
+        getConceptMulticardGroupIdForProduct(candidate, membershipIndex) === groupId,
+    );
+    const sectionStartsAfterGap = rows.length > 0;
+    const groupMembers = groupInView;
+
+    groupInView.forEach((member, memberIndex) => {
+      const multicardRail: ConceptAllTabMulticardRailPosition | null =
+        groupInView.length === 1
+          ? 'first'
+          : memberIndex === 0
+            ? 'first'
+            : memberIndex === groupInView.length - 1
+              ? 'last'
+              : 'middle';
+
+      rows.push({
+        product: member,
+        multicardRail,
+        multicardGroupStartsSection: memberIndex === 0 && sectionStartsAfterGap,
+        multicardGroupMembers: groupMembers,
+      });
+    });
+  }
+  return rows;
+}
+
+/** Демо на «Мультикарточки»: у 1-й / 2-й / 3-й группы в списке столько товаров без продвижения. */
+const CONCEPT_MULTICARD_TAB_DEMO_NOT_PROMOTED_COUNTS = [1, 2, 3] as const;
+
+function buildConceptMulticardTabDemoNotPromotedProductIds(
+  rows: ConceptAllTabTableRow[],
+): Set<string> {
+  const ids = new Set<string>();
+  let groupOrdinal = 0;
+  for (const row of rows) {
+    if (row.multicardRail !== 'first' || !row.multicardGroupMembers?.length) continue;
+    const notPromotedCount = CONCEPT_MULTICARD_TAB_DEMO_NOT_PROMOTED_COUNTS[groupOrdinal];
+    if (notPromotedCount !== undefined && notPromotedCount > 0) {
+      const members = row.multicardGroupMembers;
+      const start = Math.max(0, members.length - notPromotedCount);
+      for (let i = start; i < members.length; i++) {
+        ids.add(members[i]!.id);
+      }
+    }
+    groupOrdinal += 1;
+    if (groupOrdinal >= CONCEPT_MULTICARD_TAB_DEMO_NOT_PROMOTED_COUNTS.length) break;
+  }
+  return ids;
+}
+
+function conceptAllTabMulticardGroupRowSpan(
+  members: ProductRow[],
+  expandedProductIds: Set<string>,
+): number {
+  return members.reduce((rowCount, member) => {
+    let rowsForProduct = 1;
+    if (expandedProductIds.has(member.id)) {
+      rowsForProduct += member.campaigns.length;
+    }
+    return rowCount + rowsForProduct;
+  }, 0);
+}
+
+function conceptAllTabMemberNotPromotedForAggregate(
+  product: ProductRow,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+  demoNotPromotedProductIds: Set<string>,
+): boolean {
+  return (
+    productConceptIsNotPromoted(product, productCampaignStatusOverride) ||
+    demoNotPromotedProductIds.has(product.id)
+  );
+}
+
+function aggregateMulticardGroupStats(
+  members: ProductRow[],
+  demoNotPromotedProductIds: Set<string>,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+): { stats: ProductStatsExtended; groupKey: string } | null {
+  let spend = 0;
+  let impressions = 0;
+  let orders = 0;
+  let spendShare = 0;
+  let weightedCtr = 0;
+  let hasData = false;
+
+  for (const product of members) {
+    const useOrganic = conceptAllTabMemberNotPromotedForAggregate(
+      product,
+      productCampaignStatusOverride,
+      demoNotPromotedProductIds,
+    );
+    const agg = productRowStatsAgg(product, useOrganic);
+    if (!agg) continue;
+    hasData = true;
+    spend += agg.spend;
+    impressions += agg.impressions;
+    orders += agg.orders;
+    spendShare += agg.spendShare;
+    weightedCtr += agg.impressions * agg.ctr;
+  }
+
+  if (!hasData) return null;
+
+  const ctr = impressions > 0 ? weightedCtr / impressions : 0;
+  const stats = buildExtendedProductStats({
+    spend,
+    impressions,
+    ctr,
+    orders,
+    spendShare,
+  });
+  return { stats, groupKey: members.map((m) => m.id).join('|') };
+}
+
+function conceptMulticardGroupPromotedCount(
+  members: ProductRow[],
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+  demoNotPromotedProductIds: Set<string>,
+): number {
+  return members.filter(
+    (p) => !conceptAllTabMemberNotPromotedForAggregate(p, productCampaignStatusOverride, demoNotPromotedProductIds),
+  ).length;
+}
+
+/** Прототип: колонка «В склейке» на вкладке «Мультикарточки». */
+const MULTICARD_GLUE_LEADER_COLUMN_ID = 'glueLeader';
+const MULTICARD_GLUE_LEADER_TH_CLASS =
+  'px-2 py-4 text-left font-normal align-middle';
+const MULTICARD_GLUE_LEADER_TD_CLASS = 'px-2 py-3 align-middle text-left';
+
+type MulticardGlueLeaderRole = 'leader' | 'potential' | 'test' | 'neutral' | 'single';
+
+type MulticardGlueLeaderInsight = {
+  role: MulticardGlueLeaderRole;
+  productOrders: number;
+  leaderOrders: number;
+  leaderProduct: ProductRow | null;
+  tooltip: string;
+};
+
+function multicardMemberOrdersForGlueLeader(
+  product: ProductRow,
+  demoNotPromotedProductIds: Set<string>,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+): number {
+  const useOrganic = conceptAllTabMemberNotPromotedForAggregate(
+    product,
+    productCampaignStatusOverride,
+    demoNotPromotedProductIds,
+  );
+  return productRowStatsAgg(product, useOrganic)?.orders ?? 0;
+}
+
+function resolveMulticardGlueLeaderInsight(
+  product: ProductRow,
+  members: ProductRow[] | null,
+  demoNotPromotedProductIds: Set<string>,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+): MulticardGlueLeaderInsight | null {
+  if (!members || members.length === 0) return null;
+
+  if (members.length === 1) {
+    const orders = multicardMemberOrdersForGlueLeader(
+      product,
+      demoNotPromotedProductIds,
+      productCampaignStatusOverride,
+    );
+    return {
+      role: 'single',
+      productOrders: orders,
+      leaderOrders: orders,
+      leaderProduct: product,
+      tooltip: 'В склейке один товар',
+    };
+  }
+
+  const ranked = members.map((m) => ({
+    product: m,
+    orders: multicardMemberOrdersForGlueLeader(
+      m,
+      demoNotPromotedProductIds,
+      productCampaignStatusOverride,
+    ),
+    notPromoted: conceptAllTabMemberNotPromotedForAggregate(
+      m,
+      productCampaignStatusOverride,
+      demoNotPromotedProductIds,
+    ),
+  }));
+  const rankedPromotedWithOrders = ranked.filter((r) => !r.notPromoted && r.orders > 0);
+  const maxOrders =
+    rankedPromotedWithOrders.length > 0
+      ? Math.max(...rankedPromotedWithOrders.map((r) => r.orders))
+      : 0;
+  const leader =
+    maxOrders > 0
+      ? rankedPromotedWithOrders
+          .filter((r) => r.orders === maxOrders)
+          .sort((a, b) => a.product.id.localeCompare(b.product.id))[0]?.product ?? null
+      : null;
+  const current = ranked.find((r) => r.product.id === product.id);
+  if (!current) return null;
+
+  if (maxOrders <= 0) {
+    return {
+      role: 'neutral',
+      productOrders: current.orders,
+      leaderOrders: 0,
+      leaderProduct: null,
+      tooltip: 'Лидер — только среди продвигаемых товаров с заказами за период',
+    };
+  }
+
+  const notPromoted = current.notPromoted;
+  const isLeader = !notPromoted && leader?.id === product.id && current.orders > 0;
+  const leaderThreshold = maxOrders * 0.6;
+
+  let role: MulticardGlueLeaderRole = 'neutral';
+  if (isLeader) {
+    role = 'leader';
+  } else if (notPromoted) {
+    role = current.orders >= leaderThreshold ? 'potential' : 'test';
+  }
+
+  const leaderArt = leader?.articleWb ?? '—';
+  let tooltip: string;
+  if (role === 'leader') {
+    tooltip = `Лидер склейки среди продвигаемых: ${current.orders} зак. за период`;
+  } else if (role === 'potential') {
+    tooltip = `${current.orders} зак. — близко к лидеру (арт. ${leaderArt}, ${maxOrders}). Имеет смысл запустить продвижение.`;
+  } else if (role === 'test') {
+    tooltip = `${current.orders} зак. против ${maxOrders} у лидера (арт. ${leaderArt}). Протестируйте продвижение.`;
+  } else {
+    tooltip = `Лидер среди продвигаемых — арт. ${leaderArt}, ${maxOrders} зак.`;
+  }
+
+  return {
+    role,
+    productOrders: current.orders,
+    leaderOrders: maxOrders,
+    leaderProduct: leader,
+    tooltip,
+  };
+}
+
+function MulticardGlueLeaderCell({ insight }: { insight: MulticardGlueLeaderInsight | null }) {
+  if (!insight) {
+    return <span className="text-xs text-gray-300">—</span>;
+  }
+
+  if (insight.role === 'single' || insight.role === 'neutral') {
+    return (
+      <span className="text-xs text-gray-300" title={insight.tooltip}>
+        —
+      </span>
+    );
+  }
+
+  const labelByRole: Record<
+    Exclude<MulticardGlueLeaderRole, 'single' | 'neutral'>,
+    string
+  > = {
+    leader: 'Лидер',
+    potential: 'Потенциал',
+    test: 'Протестируйте',
+  };
+
+  return (
+    <span
+      className="block max-w-full text-xs font-normal leading-4 text-gray-700"
+      title={insight.tooltip}
+    >
+      {labelByRole[insight.role]}
+    </span>
+  );
+}
+
+function ConceptMulticardGroupMemberThumbnailStack({
+  members,
+  listRowIndexBase,
+}: {
+  members: ProductRow[];
+  listRowIndexBase: number;
+}) {
+  const shown = members.slice(0, 3);
+  if (shown.length === 0) return null;
+
+  return (
+    <div
+      className="flex h-[38px] w-[4.75rem] shrink-0 items-center justify-start overflow-visible"
+      aria-hidden
+    >
+      {shown.map((product, index) => (
+        <ConceptMulticardGroupStackThumb
+          key={product.id}
+          product={product}
+          index={index}
+          listRowIndex={listRowIndexBase + index}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ConceptMulticardGroupStackThumb({
+  product,
+  index,
+  listRowIndex,
+}: {
+  product: ProductRow;
+  index: number;
+  listRowIndex: number;
+}) {
+  const [url, setUrl] = useState(() =>
+    resolveProductTableThumbSrc(product.id, product.image, product.category, listRowIndex),
+  );
+  useEffect(() => {
+    setUrl(
+      resolveProductTableThumbSrc(product.id, product.image, product.category, listRowIndex),
+    );
+  }, [product.id, product.image, product.category, listRowIndex]);
+
+  return (
+    <img
+      src={url}
+      alt=""
+      className={`relative h-[38px] w-7 shrink-0 rounded-[6px] bg-gray-100 object-cover ring-2 ring-white ${
+        index > 0 ? '-ml-1.5' : ''
+      }`}
+      style={{ zIndex: index + 1 }}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={() => {
+        const fallback = productTableThumbFallbackUrl(product.id);
+        if (url !== fallback) setUrl(fallback);
+      }}
+    />
+  );
+}
+
+type ConceptAllTabMulticardGroupStatsRowProps = {
+  members: ProductRow[];
+  sectionGap: boolean;
+  demoNotPromotedProductIds: Set<string>;
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>;
+  selectedProductIds: string[];
+  onSelectGroup: (memberIds: string[], checked: boolean) => void;
+  productsTablePinnedCellProps: (
+    column:
+      | 'select'
+      | 'product'
+      | 'glueLeader'
+      | 'campaignType'
+      | 'bid'
+      | 'budgetRemainder'
+      | 'dailyLimit',
+    variant: 'head' | 'body' | 'bodyNested',
+    className: string,
+  ) => Record<string, unknown>;
+  productsColVisible: (columnId: string) => boolean;
+  showProductsCampaignTypeColumn: boolean;
+  showProductsBidColumn: boolean;
+  listRowIndexBase: number;
+  groupExpanded: boolean;
+  onToggleGroupExpanded: () => void;
+};
+
+function ConceptAllTabMulticardGroupStatsRow({
+  members,
+  sectionGap,
+  demoNotPromotedProductIds,
+  productCampaignStatusOverride,
+  selectedProductIds,
+  onSelectGroup,
+  productsTablePinnedCellProps,
+  productsColVisible,
+  showProductsCampaignTypeColumn,
+  showProductsBidColumn,
+  listRowIndexBase,
+  groupExpanded,
+  onToggleGroupExpanded,
+}: ConceptAllTabMulticardGroupStatsRowProps) {
+  const memberIds = members.map((m) => m.id);
+  const selectedInGroup = memberIds.filter((id) => selectedProductIds.includes(id)).length;
+  const allSelected = memberIds.length > 0 && selectedInGroup === memberIds.length;
+  const indeterminate = selectedInGroup > 0 && !allSelected;
+  const promoted = conceptMulticardGroupPromotedCount(
+    members,
+    productCampaignStatusOverride,
+    demoNotPromotedProductIds,
+  );
+  const countLabel = `${members.length} ${getPlural(members.length, 'товар', 'товара', 'товаров')}`;
+  const groupStats = aggregateMulticardGroupStats(
+    members,
+    demoNotPromotedProductIds,
+    productCampaignStatusOverride,
+  );
+  const groupStockTotal = members.reduce((sum, m) => sum + m.stockLeft, 0);
+
+  return (
+    <tr
+      className={`group/product-row bg-gray-50/40 transition-colors hover:bg-gray-50/80 ${
+        sectionGap ? CONCEPT_MULTICARD_GROUP_SECTION_GAP_CLASS : ''
+      }`}
+    >
+      <td
+        className="sticky left-0 z-[22] w-5 min-w-[20px] max-w-[20px] border-0 bg-white p-0 align-top group-hover/product-row:bg-gray-50"
+        aria-hidden
+      />
+      <td
+        {...productsTablePinnedCellProps('select', 'body', PRODUCTS_SELECT_TD_CLASS)}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox
+          checked={allSelected}
+          indeterminate={indeterminate}
+          onChange={(e) => onSelectGroup(memberIds, e.target.checked)}
+          className={CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME}
+          aria-label={`Выбрать все товары в группе: ${countLabel}`}
+        />
+      </td>
+      {productsColVisible('product') ? (
+        <td {...productsTablePinnedCellProps('product', 'body', 'pl-0 pr-5 py-3 align-middle')}>
+          <div className="flex min-w-0 items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onToggleGroupExpanded}
+              className="inline-flex h-5 w-5 shrink-0 items-center justify-center border-0 bg-transparent p-0 text-gray-400 transition-colors hover:text-gray-600"
+              aria-expanded={groupExpanded}
+              aria-label={groupExpanded ? 'Свернуть мультикарточку' : 'Развернуть мультикарточку'}
+            >
+              {groupExpanded ? (
+                <ChevronDown className="h-5 w-5" />
+              ) : (
+                <ChevronRight className="h-5 w-5" />
+              )}
+            </button>
+            <ConceptMulticardGroupMemberThumbnailStack
+              members={members}
+              listRowIndexBase={listRowIndexBase}
+            />
+            <div className="min-w-0">
+              <p className="mb-0 text-sm font-semibold leading-none text-gray-900">{countLabel}</p>
+              <p className="mt-1.5 text-xs leading-none text-gray-500">
+                Продвигаются {promoted} из {members.length}
+              </p>
+            </div>
+          </div>
+        </td>
+      ) : null}
+      {productsColVisible(MULTICARD_GLUE_LEADER_COLUMN_ID) ? (
+        <td
+          {...productsTablePinnedCellProps(
+            'glueLeader',
+            'body',
+            `${MULTICARD_GLUE_LEADER_TD_CLASS} bg-gray-50/40 group-hover/product-row:bg-gray-50/80`,
+          )}
+          aria-hidden
+        />
+      ) : null}
+      {showProductsCampaignTypeColumn ? (
+        <td {...productsTablePinnedCellProps('campaignType', 'body', 'p-4 align-top')} aria-hidden />
+      ) : null}
+      {showProductsBidColumn ? (
+        <td {...productsTablePinnedCellProps('bid', 'body', 'px-2 py-3 align-top')} aria-hidden />
+      ) : null}
+      {productsColVisible('budgetRemainder') ? (
+        <td
+          {...productsTablePinnedCellProps('budgetRemainder', 'body', 'p-4 align-top')}
+          aria-hidden
+        />
+      ) : null}
+      {productsColVisible('dailyLimit') ? (
+        <td
+          {...productsTablePinnedCellProps('dailyLimit', 'body', 'px-2 py-3 align-top')}
+          aria-hidden
+        />
+      ) : null}
+      {productsColVisible('tags') ? (
+        <td className="p-4 align-top w-[220px] min-w-[220px] max-w-[240px]" aria-hidden />
+      ) : null}
+      {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
+        if (!productsColVisible(productsStatColumnId(label))) return null;
+        return (
+          <td key={label} className={PRODUCTS_STAT_TD_CLASS}>
+            {groupStats ? (
+              <ProductsStatMetricCell
+                label={label}
+                stats={groupStats.stats}
+                productId={groupStats.groupKey}
+                showTrend
+              />
+            ) : (
+              <ProductsStatNotAvailableCell compact={false} />
+            )}
+          </td>
+        );
+      })}
+      {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+        <td className={PRODUCTS_STOCK_TD_CLASS}>
+          <span className="text-sm font-semibold tabular-nums text-gray-900">
+            {formatForDisplay(groupStockTotal)}
+          </span>
+        </td>
+      ) : null}
+    </tr>
+  );
+}
+
+function ConceptAllTabMulticardRailCell({
+  rowSpan,
+  memberIndentPx = 0,
+}: {
+  rowSpan: number;
+  memberIndentPx?: number;
+}) {
+  const barStyle: React.CSSProperties =
+    memberIndentPx > 0
+      ? {
+          left: CONCEPT_ALL_TAB_MULTICARD_RAIL_WIDTH_PX + Math.round(memberIndentPx / 2),
+        }
+      : {};
+  return (
+    <td
+      rowSpan={rowSpan}
+      className="relative sticky left-0 z-[22] h-px w-5 min-w-[20px] max-w-[20px] border-0 bg-white p-0 align-top group-hover/product-row:bg-gray-50"
+    >
+      <div
+        className={`pointer-events-none absolute bottom-2 top-2 w-1.5 rounded-full bg-[#d8dce2] ${
+          memberIndentPx > 0 ? '' : 'left-1/2 -translate-x-1/2'
+        }`}
+        style={barStyle}
+        aria-hidden
+      />
+    </td>
+  );
+}
+
 function ProductCollapsedRowCell({
   product,
   expanded,
@@ -2280,21 +2946,24 @@ function ProductCollapsedRowCell({
   showPromoteUnderPhoto = false,
   onPromote,
   allTabListRowIndex,
+  multicardGroupMemberNested = false,
 }: {
   product: ProductRow;
   expanded: boolean;
   onToggleExpand: () => void;
   showExpandControl?: boolean;
-  /** Пустое место под стрелку раскрытия (выравнивание фото на вкладке «Все»). */
+  /** Пустое место под стрелку раскрытия (выравнивание фото на вкладке «Мультикарточки»). */
   reserveExpandGutter?: boolean;
   showPromoteUnderPhoto?: boolean;
   onPromote?: (product: ProductRow) => void;
   allTabListRowIndex?: number;
+  multicardGroupMemberNested?: boolean;
 }) {
   const campaignCount = product.campaigns.length;
-  const showConflict = productHasCampaignConflict(product);
+  const showConflict =
+    !showPromoteUnderPhoto && productHasCampaignConflict(product);
   const promoteBtnClass =
-    'inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-[10px] bg-[rgba(74,74,89,0.08)] px-3 text-sm font-medium text-gray-700 opacity-0 transition-opacity duration-150 pointer-events-none group-hover/product-row:opacity-100 group-hover/product-row:pointer-events-auto group-focus-within/product-row:opacity-100 group-focus-within/product-row:pointer-events-auto hover:bg-[rgba(74,74,89,0.12)]';
+    'inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-[10px] bg-[rgba(74,74,89,0.08)] px-3 text-sm font-medium text-gray-700 hover:bg-[rgba(74,74,89,0.12)]';
 
   const productMeta = (
     <div className="min-w-0 flex-1">
@@ -2318,8 +2987,14 @@ function ProductCollapsedRowCell({
 
   const alignRowStart = !showPromoteUnderPhoto || reserveExpandGutter;
 
-  return (
-    <div className={`flex gap-2.5 ${alignRowStart ? 'items-start' : 'items-center'}`}>
+  const nestedIndentClass = multicardGroupMemberNested
+    ? CONCEPT_MULTICARD_GROUP_MEMBER_CONTENT_INDENT_CLASS
+    : '';
+
+  const rowMain = (
+    <div
+      className={`flex min-w-0 flex-1 gap-2.5 ${alignRowStart ? 'items-start' : 'items-center'} ${nestedIndentClass}`}
+    >
       {showExpandControl ? (
         <button
           type="button"
@@ -2338,9 +3013,7 @@ function ProductCollapsedRowCell({
       {showPromoteUnderPhoto ? (
         <div
           className={`relative flex min-w-0 flex-1 items-center gap-3 ${
-            reserveExpandGutter
-              ? ''
-              : 'transition-[padding] duration-150 group-hover/product-row:pr-28 group-focus-within/product-row:pr-28'
+            reserveExpandGutter ? '' : 'pr-28'
           }`}
         >
           <ProductTableThumb
@@ -2374,6 +3047,8 @@ function ProductCollapsedRowCell({
       )}
     </div>
   );
+
+  return rowMain;
 }
 
 const MAX_TAGS_PER_PRODUCT = 15;
@@ -5506,20 +6181,74 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     location.pathname === CAMPAIGNS_WITH_WIDGETS_V1_PATH;
 
   const [listTab, setListTab] = useState<'campaigns' | 'products'>('products');
-  const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>('promoted');
+  const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>(() =>
+    location.pathname === PRODUCT_PROMOTION_CONCEPT_PATH ? 'all_products' : 'promoted',
+  );
   const [productsSecondaryPickTab, setProductsSecondaryPickTab] =
     useState<ProductsSecondaryPickTab>('all');
 
   const conceptNotPromotedProductsList =
     isProductPromotionConceptPage && listTab === 'products' && productsPickTab === 'not_promoted';
 
+  const conceptAllProductsPickTab =
+    isProductPromotionConceptPage && listTab === 'products' && productsPickTab === 'all_products';
+
+  const conceptAllProductsTable = conceptAllProductsPickTab;
+
   const conceptCompactProductsTable =
     isProductPromotionConceptPage &&
     listTab === 'products' &&
     productsPickTab === 'not_promoted';
 
+  /** «Продвигаются» + подвкладки «Все» / «Высокая конверсия» / «А/Б» — широкая таблица с шевроном. */
+  const conceptPromotedProductsWideTable =
+    isProductPromotionConceptPage &&
+    listTab === 'products' &&
+    !conceptCompactProductsTable &&
+    !conceptAllProductsPickTab;
+
   const productsColVisible = useCallback(
     (columnId: string) => {
+      if (conceptAllProductsTable) {
+        if (columnId === MULTICARD_GLUE_LEADER_COLUMN_ID) {
+          return true;
+        }
+        if (
+          columnId === 'select' ||
+          columnId === 'product' ||
+          columnId === 'tags'
+        ) {
+          return productsColumnVisibility[columnId] !== false;
+        }
+        if (
+          columnId === 'bid' ||
+          columnId === 'campaignType'
+        ) {
+          return false;
+        }
+        if (columnId === PRODUCTS_STAT_SPACER_COLUMN_ID) {
+          return false;
+        }
+        if (columnId === PRODUCTS_STOCK_COLUMN_ID) {
+          return true;
+        }
+        if (
+          columnId === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ||
+          columnId === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
+        ) {
+          return false;
+        }
+        if (columnId.startsWith('stat:')) {
+          return productsColumnVisibility[columnId] !== false;
+        }
+        if (
+          columnId === 'budgetRemainder' ||
+          columnId === 'dailyLimit'
+        ) {
+          return productsColumnVisibility[columnId] !== false;
+        }
+        return false;
+      }
       if (conceptCompactProductsTable) {
         if (
           columnId === 'select' ||
@@ -5565,7 +6294,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       }
       return productsColumnVisibility[columnId] !== false;
     },
-    [productsColumnVisibility, conceptCompactProductsTable],
+    [productsColumnVisibility, conceptCompactProductsTable, conceptAllProductsTable],
   );
 
   const productsPinVisibility = useMemo(() => {
@@ -5578,12 +6307,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         bid: false,
         budgetRemainder: false,
         dailyLimit: false,
+        glueLeader: false,
+      };
+    }
+    if (conceptAllProductsTable) {
+      return {
+        ...productsColumnVisibility,
+        glueLeader: true,
+        select: true,
+        product: true,
+        campaignType: false,
+        bid: false,
       };
     }
     return {
       ...productsColumnVisibility,
+      glueLeader: false,
       bid:
-        isProductPromotionConceptPage && productsColumnVisibility.bid !== false,
+        !isProductPromotionConceptPage && productsColumnVisibility.bid !== false,
       campaignType:
         !isProductPromotionConceptPage && productsColumnVisibility.campaignType !== false,
     };
@@ -5591,6 +6332,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     productsColumnVisibility,
     isProductPromotionConceptPage,
     conceptCompactProductsTable,
+    conceptAllProductsTable,
   ]);
 
   const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
@@ -5624,6 +6366,42 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       isProductPromotionConceptPage,
       conceptCompactProductsTable,
     ],
+  );
+
+  const productsTablePinnedCellProps = useCallback(
+    (
+      columnId: (typeof PRODUCTS_PINNED_COLUMNS)[number]['id'],
+      variant: 'head' | 'body' | 'bodyNested',
+      extraClass = '',
+      memberIndentPx = 0,
+    ) => {
+      const props = productsPinnedProps(columnId, variant, extraClass);
+      if (!conceptAllProductsPickTab) {
+        return props;
+      }
+      let left = Number(props.style.left) || 0;
+      if (
+        columnId === 'select' ||
+        columnId === 'product' ||
+        columnId === 'glueLeader'
+      ) {
+        left += CONCEPT_ALL_TAB_MULTICARD_RAIL_WIDTH_PX;
+        if (memberIndentPx > 0) {
+          left += memberIndentPx;
+        }
+      }
+      if (left === (Number(props.style.left) || 0)) {
+        return props;
+      }
+      return {
+        ...props,
+        style: {
+          ...props.style,
+          left,
+        },
+      };
+    },
+    [productsPinnedProps, conceptAllProductsPickTab],
   );
 
   const [notificationCardVariant, setNotificationCardVariant] =
@@ -5768,6 +6546,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   // Раскрытые строки товаров (вкладка Товары)
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
+  const [collapsedConceptMulticardGroupIds, setCollapsedConceptMulticardGroupIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [productStatSort, setProductStatSort] = useState<{
     label: ConceptNotPromotedProductSortKey;
@@ -5814,7 +6595,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setCurrentPage(1);
     onSelectionChange([]);
     setSelectedProductIds([]);
-    setProductsPickTab('promoted');
+    setProductsPickTab(
+      location.pathname === PRODUCT_PROMOTION_CONCEPT_PATH ? 'all_products' : 'promoted',
+    );
     setProductsSecondaryPickTab('all');
     setExpandedProductIds(new Set());
     setProductTagsOverride({});
@@ -6184,6 +6967,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         productMatchesProductsPickTab(product, tab.id, productCampaignStatusOverride),
       ).length;
     }
+    for (const tab of CONCEPT_PRODUCTS_PICK_TABS) {
+      counts[tab.id] = filteredProductsBySearch.filter((product) =>
+        productMatchesProductsPickTab(
+          product,
+          tab.id,
+          productCampaignStatusOverride,
+          'concept',
+        ),
+      ).length;
+    }
     return counts;
   }, [filteredProductsBySearch, productCampaignStatusOverride]);
 
@@ -6191,8 +6984,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     const scopedProducts = filteredProductsBySearch.filter((product) =>
       productMatchesProductsPickTab(
         product,
-        getConceptPromotionScope(productsPickTab),
+        productsPickTab,
         productCampaignStatusOverride,
+        isProductPromotionConceptPage ? 'concept' : 'default',
       ),
     );
     const counts = {} as Record<ProductsSecondaryPickTab, number>;
@@ -6202,16 +6996,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       ).length;
     }
     return counts;
-  }, [filteredProductsBySearch, productsPickTab, productCampaignStatusOverride]);
+  }, [filteredProductsBySearch, productsPickTab, productCampaignStatusOverride, isProductPromotionConceptPage]);
 
   const productsForTable = useMemo(() => {
     if (isProductPromotionConceptPage && listTab === 'products') {
-      const scope = getConceptPromotionScope(productsPickTab);
       return filteredProductsBySearch.filter((product) => {
         if (
-          !productMatchesProductsPickTab(product, scope, productCampaignStatusOverride)
+          !productMatchesProductsPickTab(
+            product,
+            productsPickTab,
+            productCampaignStatusOverride,
+            'concept',
+          )
         ) {
           return false;
+        }
+        if (productsPickTab === 'all_products') {
+          return true;
         }
         return productMatchesSecondaryPickTab(product, productsSecondaryPickTab);
       });
@@ -6274,6 +7075,35 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     productCampaignStatusOverride,
   ]);
 
+  const conceptMulticardMembershipIndex = useMemo(
+    () => buildConceptMulticardMembershipIndex(profileProductTree),
+    [profileProductTree],
+  );
+
+  const conceptAllTabTableRows = useMemo((): ConceptAllTabTableRow[] => {
+    if (!conceptAllProductsPickTab) {
+      return sortedProductsForTable.map((product) => ({
+        product,
+        multicardRail: null,
+        multicardGroupStartsSection: false,
+        multicardGroupMembers: null,
+      }));
+    }
+    return buildConceptAllTabGroupedTableRows(
+      sortedProductsForTable,
+      conceptMulticardMembershipIndex,
+    );
+  }, [
+    sortedProductsForTable,
+    conceptAllProductsPickTab,
+    conceptMulticardMembershipIndex,
+  ]);
+
+  const conceptMulticardTabDemoNotPromotedProductIds = useMemo(() => {
+    if (!conceptAllProductsPickTab) return new Set<string>();
+    return buildConceptMulticardTabDemoNotPromotedProductIds(conceptAllTabTableRows);
+  }, [conceptAllProductsPickTab, conceptAllTabTableRows]);
+
   const handleProductStatColumnSort = (label: ConceptNotPromotedProductSortKey) => {
     setProductStatSort((prev) => {
       if (prev?.label === label) {
@@ -6307,6 +7137,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       setSelectedProductIds((prev) => prev.filter((pid) => pid !== id));
     }
   };
+
+  const handleSelectMulticardGroup = useCallback((memberIds: string[], isChecked: boolean) => {
+    if (isChecked) {
+      setSelectedProductIds((prev) => [...new Set([...prev, ...memberIds])]);
+    } else {
+      setSelectedProductIds((prev) => prev.filter((id) => !memberIds.includes(id)));
+    }
+  }, []);
+
+  const toggleConceptMulticardGroupExpanded = useCallback((groupId: string) => {
+    setCollapsedConceptMulticardGroupIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
+      return next;
+    });
+  }, []);
 
   const handlePromoteNotPromotedProduct = useCallback(
     (product: ProductRow) => {
@@ -6570,28 +7417,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     >
       {(
         [
-          {
-            id: 'promoted' as const,
-            label: 'Товары продвигаются',
-            count: productsPickTabCounts.promoted,
-            selected: listTab === 'products' && productsPickTab === 'promoted',
+          ...CONCEPT_PRODUCTS_PICK_TABS.map((pick) => ({
+            id: pick.id,
+            label: pick.label,
+            count: productsPickTabCounts[pick.id] ?? 0,
+            selected: listTab === 'products' && productsPickTab === pick.id,
             onSelect: () => {
               setListTab('products');
-              setProductsPickTab('promoted');
+              setProductsPickTab(pick.id);
               setProductsSecondaryPickTab('all');
             },
-          },
-          {
-            id: 'not_promoted' as const,
-            label: 'Без продвижения',
-            count: productsPickTabCounts.not_promoted,
-            selected: listTab === 'products' && productsPickTab === 'not_promoted',
-            onSelect: () => {
-              setListTab('products');
-              setProductsPickTab('not_promoted');
-              setProductsSecondaryPickTab('all');
-            },
-          },
+          })),
           {
             id: 'campaigns' as const,
             label: 'Кампании',
@@ -7625,7 +8461,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             <Checkbox
                               checked={isAllOnPageSelected}
                               onChange={(e) => handleSelectAll(e.target.checked)}
-                              className="w-4 h-4 text-purple-600"
+                              className={
+                                isProductPromotionConceptPage
+                                  ? CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME
+                                  : 'w-4 h-4 text-purple-600'
+                              }
                             />
                           </th>
                           <th className="sticky left-[52px] z-20 p-4 w-10 bg-gray-50"></th>
@@ -7682,7 +8522,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 <Checkbox
                                   checked={selectedCampaigns.includes(c.id)}
                                   onChange={(e) => handleSelectSingle(c.id, e.target.checked)}
-                                  className="w-4 h-4 text-purple-600"
+                                  className={
+                                    isProductPromotionConceptPage
+                                      ? CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME
+                                      : 'w-4 h-4 text-purple-600'
+                                  }
                                 />
                               </td>
                               <td className="sticky left-[52px] z-10 p-4 bg-white" onClick={(e) => e.stopPropagation()}>
@@ -8040,8 +8884,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     </div>
                   </div>
                 </div>
+                {listTab === 'products' && !conceptAllProductsPickTab ? (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-2 bg-white px-4 py-2.5 sm:px-6">
-                  {listTab === 'products' ? (
                   <div
                     className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-2"
                     role="tablist"
@@ -8088,8 +8932,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       );
                     })}
                   </div>
-                  ) : null}
                 </div>
+                ) : null}
               </div>
             ) : (
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-6">
@@ -8146,7 +8990,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               {/* Тень справа от закреплённого столбца товара */}
               <table
                 className={`relative w-full text-sm ${
-                  conceptCompactProductsTable ? 'min-w-0 table-fixed' : 'min-w-[2800px]'
+                  conceptCompactProductsTable
+                    ? 'min-w-0 table-fixed'
+                    : conceptAllProductsPickTab
+                      ? 'min-w-[2928px]'
+                      : 'min-w-[2800px]'
                 }`}
                 style={productsTableMinWidthStyle}
               >
@@ -8169,29 +9017,47 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   }`}
                 >
                   <tr>
+                    {conceptAllProductsPickTab ? (
+                      <th
+                        className="sticky left-0 z-[23] w-5 min-w-[20px] max-w-[20px] bg-white p-0"
+                        aria-hidden
+                      />
+                    ) : null}
                     <th
-                      {...productsPinnedProps(
+                      {...productsTablePinnedCellProps(
                         'select',
                         'head',
-                        conceptCompactProductsTable
-                          ? PRODUCTS_SELECT_TH_CLASS_COMPACT
-                          : PRODUCTS_SELECT_TH_CLASS,
+                        conceptAllProductsPickTab
+                          ? CONCEPT_MULTICARD_SELECT_TH_CLASS
+                          : conceptCompactProductsTable
+                            ? PRODUCTS_SELECT_TH_CLASS_COMPACT
+                            : conceptPromotedProductsWideTable
+                              ? CONCEPT_MULTICARD_SELECT_TH_CLASS
+                              : PRODUCTS_SELECT_TH_CLASS,
                       )}
                     >
                       <Checkbox
                         checked={isAllProductsSelected}
                         onChange={(e) => handleSelectAllProducts(e.target.checked)}
-                        className="w-4 h-4 text-purple-600"
+                        className={
+                          isProductPromotionConceptPage
+                            ? CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME
+                            : 'w-4 h-4 text-purple-600'
+                        }
                       />
                     </th>
                     {productsColVisible('product') ? (
                       <th
-                        {...productsPinnedProps(
+                        {...productsTablePinnedCellProps(
                           'product',
                           'head',
-                          conceptCompactProductsTable
-                            ? 'pl-1 pr-2 py-2.5 text-left font-normal align-middle'
-                            : PRODUCTS_PINNED_TH_PRODUCT_CLASS,
+                          conceptAllProductsPickTab
+                            ? 'pl-0 pr-5 pt-0 pb-4 text-left font-normal align-middle'
+                            : conceptCompactProductsTable
+                              ? 'pl-1 pr-2 py-2.5 text-left font-normal align-middle'
+                              : conceptPromotedProductsWideTable
+                                ? 'pl-0 pr-5 pt-0 pb-4 text-left font-normal align-middle'
+                                : PRODUCTS_PINNED_TH_PRODUCT_CLASS,
                         )}
                       >
                         {isProductPromotionConceptPage ? (
@@ -8214,9 +9080,26 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         )}
                       </th>
                     ) : null}
+                    {conceptAllProductsPickTab && productsColVisible(MULTICARD_GLUE_LEADER_COLUMN_ID) ? (
+                      <th
+                        {...productsTablePinnedCellProps(
+                          'glueLeader',
+                          'head',
+                          MULTICARD_GLUE_LEADER_TH_CLASS,
+                        )}
+                      >
+                        <span
+                          className="inline-flex items-start gap-0.5 text-left leading-tight"
+                          title="Роль товара относительно лидера склейки по заказам за период"
+                        >
+                          <span>В склейке</span>
+                          <HelpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
+                        </span>
+                      </th>
+                    ) : null}
                     {showProductsCampaignTypeColumn ? (
                       <th
-                        {...productsPinnedProps(
+                        {...productsTablePinnedCellProps(
                           'campaignType',
                           'head',
                           PRODUCTS_PINNED_TH_CLASS,
@@ -8229,7 +9112,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     ) : null}
                     {showProductsBidColumn ? (
                       <th
-                        {...productsPinnedProps(
+                        {...productsTablePinnedCellProps(
                           'bid',
                           'head',
                           'px-2 py-4 text-left font-normal align-middle',
@@ -8245,7 +9128,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     ) : null}
                     {productsColVisible('budgetRemainder') ? (
                       <th
-                        {...productsPinnedProps(
+                        {...productsTablePinnedCellProps(
                           'budgetRemainder',
                           'head',
                           PRODUCTS_PINNED_TH_CLASS,
@@ -8258,7 +9141,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     ) : null}
                     {productsColVisible('dailyLimit') ? (
                       <th
-                        {...productsPinnedProps(
+                        {...productsTablePinnedCellProps(
                           'dailyLimit',
                           'head',
                           PRODUCTS_PINNED_TH_CLASS,
@@ -8376,23 +9259,194 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {sortedProductsForTable.map((product) => {
-                    const rowUsesOrganicProductStats = conceptNotPromotedProductsList;
-                    const rowShowsPromotedProductUi = !conceptNotPromotedProductsList;
-                    const rowCompactNotPromotedStyle = conceptCompactProductsTable;
-                    const rowShowPromoteUnderPhoto = conceptNotPromotedProductsList;
+                  {conceptAllTabTableRows.map((tableRow, listRowIndex) => {
+                    const {
+                      product,
+                      multicardRail,
+                      multicardGroupStartsSection,
+                      multicardGroupMembers,
+                    } = tableRow;
+                    const rowIsConceptNotPromoted =
+                      isProductPromotionConceptPage &&
+                      (productConceptIsNotPromoted(product, productCampaignStatusOverride) ||
+                        (conceptAllProductsPickTab &&
+                          conceptMulticardTabDemoNotPromotedProductIds.has(product.id)));
+                    const rowUsesOrganicProductStats =
+                      conceptNotPromotedProductsList ||
+                      (conceptAllProductsPickTab && rowIsConceptNotPromoted);
+                    const rowShowsPromotedProductUi = conceptAllProductsPickTab
+                      ? !rowIsConceptNotPromoted
+                      : !conceptNotPromotedProductsList;
+                    const rowCompactNotPromotedStyle =
+                      conceptCompactProductsTable ||
+                      (conceptAllProductsPickTab && rowIsConceptNotPromoted);
+                    const rowShowPromoteUnderPhoto =
+                      conceptNotPromotedProductsList ||
+                      (conceptAllProductsPickTab && rowIsConceptNotPromoted);
+                    const rowReserveExpandGutter =
+                      conceptAllProductsPickTab && rowIsConceptNotPromoted;
+                    const rowAllTabListRowIndex = conceptAllProductsPickTab
+                      ? listRowIndex
+                      : undefined;
+                    const rowInMulticardGroup = multicardRail !== null;
+                    const productTdBaseClass = rowCompactNotPromotedStyle
+                      ? 'pl-0 pr-2 py-2.5 align-middle'
+                      : 'pl-0 pr-5 py-4 align-middle';
+                    const showMulticardGroupStatsRow =
+                      conceptAllProductsPickTab &&
+                      multicardRail === 'first' &&
+                      multicardGroupMembers !== null &&
+                      multicardGroupMembers.length >= 1;
+                    const multicardGroupId = rowInMulticardGroup
+                      ? demoConceptMulticardGroupId(product)
+                      : null;
+                    const multicardGroupExpanded =
+                      multicardGroupId === null ||
+                      !collapsedConceptMulticardGroupIds.has(multicardGroupId);
+                    const multicardMemberIndentPx =
+                      conceptAllProductsPickTab && rowInMulticardGroup && multicardGroupExpanded
+                        ? CONCEPT_MULTICARD_GROUP_MEMBER_INDENT_PX
+                        : 0;
+                    const conceptMulticardProductsSelectTdClass =
+                      multicardMemberIndentPx > 0
+                        ? CONCEPT_MULTICARD_SELECT_TD_CLASS_NESTED
+                        : CONCEPT_MULTICARD_SELECT_TD_CLASS;
+                    const productsSelectTdClass = conceptAllProductsPickTab
+                      ? conceptMulticardProductsSelectTdClass
+                      : conceptPromotedProductsWideTable
+                        ? CONCEPT_MULTICARD_SELECT_TD_CLASS
+                        : rowCompactNotPromotedStyle
+                          ? PRODUCTS_SELECT_TD_CLASS_COMPACT
+                          : PRODUCTS_SELECT_TD_CLASS;
+                    const rowGlueLeaderMembers =
+                      conceptAllProductsPickTab && multicardGroupMembers && multicardGroupMembers.length > 0
+                        ? multicardGroupMembers
+                        : conceptAllProductsPickTab
+                          ? [product]
+                          : null;
+                    const rowGlueLeaderInsight =
+                      rowGlueLeaderMembers && conceptAllProductsPickTab
+                        ? resolveMulticardGlueLeaderInsight(
+                            product,
+                            rowGlueLeaderMembers,
+                            conceptMulticardTabDemoNotPromotedProductIds,
+                            productCampaignStatusOverride,
+                          )
+                        : null;
+
+                    if (
+                      conceptAllProductsPickTab &&
+                      rowInMulticardGroup &&
+                      !multicardGroupExpanded &&
+                      multicardRail !== 'first'
+                    ) {
+                      return null;
+                    }
+
+                    const showMulticardRailCell =
+                      conceptAllProductsPickTab &&
+                      multicardRail === 'first' &&
+                      multicardGroupMembers !== null &&
+                      multicardGroupMembers.length >= 1 &&
+                      multicardGroupExpanded;
+                    const multicardRailRowSpan =
+                      showMulticardRailCell && multicardGroupMembers
+                        ? conceptAllTabMulticardGroupRowSpan(
+                            multicardGroupMembers,
+                            expandedProductIds,
+                          )
+                        : 0;
+
+                    if (showMulticardGroupStatsRow && !multicardGroupExpanded && multicardGroupMembers && multicardGroupId) {
+                      return (
+                        <ConceptAllTabMulticardGroupStatsRow
+                          key={`${multicardGroupId}-header-collapsed`}
+                          members={multicardGroupMembers}
+                          sectionGap={multicardGroupStartsSection}
+                          demoNotPromotedProductIds={conceptMulticardTabDemoNotPromotedProductIds}
+                          productCampaignStatusOverride={productCampaignStatusOverride}
+                          selectedProductIds={selectedProductIds}
+                          onSelectGroup={handleSelectMulticardGroup}
+                          productsTablePinnedCellProps={productsTablePinnedCellProps}
+                          productsColVisible={productsColVisible}
+                          showProductsCampaignTypeColumn={showProductsCampaignTypeColumn}
+                          showProductsBidColumn={showProductsBidColumn}
+                          listRowIndexBase={listRowIndex}
+                          groupExpanded={false}
+                          onToggleGroupExpanded={() =>
+                            toggleConceptMulticardGroupExpanded(multicardGroupId)
+                          }
+                        />
+                      );
+                    }
+
                     return (
                     <React.Fragment key={product.id}>
+                      {showMulticardGroupStatsRow && multicardGroupMembers ? (
+                        <ConceptAllTabMulticardGroupStatsRow
+                          members={multicardGroupMembers}
+                          sectionGap={multicardGroupStartsSection}
+                          demoNotPromotedProductIds={conceptMulticardTabDemoNotPromotedProductIds}
+                          productCampaignStatusOverride={productCampaignStatusOverride}
+                          selectedProductIds={selectedProductIds}
+                          onSelectGroup={handleSelectMulticardGroup}
+                          productsTablePinnedCellProps={productsTablePinnedCellProps}
+                          productsColVisible={productsColVisible}
+                          showProductsCampaignTypeColumn={showProductsCampaignTypeColumn}
+                          showProductsBidColumn={showProductsBidColumn}
+                          listRowIndexBase={listRowIndex}
+                          groupExpanded={multicardGroupExpanded}
+                          onToggleGroupExpanded={() =>
+                            toggleConceptMulticardGroupExpanded(multicardGroupId!)
+                          }
+                        />
+                      ) : null}
                       {/* Строка товара */}
-                      <tr className="group/product-row transition-colors hover:bg-gray-50/80">
+                      {multicardGroupExpanded ? (
+                      <>
+                      <tr
+                        className={`group/product-row transition-colors hover:bg-gray-50/80 ${
+                          !showMulticardGroupStatsRow && multicardGroupStartsSection
+                            ? CONCEPT_MULTICARD_GROUP_SECTION_GAP_CLASS
+                            : ''
+                        } ${
+                          rowInMulticardGroup &&
+                          (multicardRail !== 'first' || showMulticardGroupStatsRow)
+                            ? '!border-t-0'
+                            : ''
+                        } ${rowInMulticardGroup && multicardRail !== 'last' ? '!border-b-0' : ''}`}
+                      >
+                        {conceptAllProductsPickTab ? (
+                          showMulticardRailCell ? (
+                            <ConceptAllTabMulticardRailCell
+                              rowSpan={multicardRailRowSpan}
+                              memberIndentPx={multicardMemberIndentPx}
+                            />
+                          ) : multicardRail === null ? (
+                            <td
+                              className="sticky left-0 z-[22] w-5 min-w-[20px] max-w-[20px] border-0 bg-white p-0 align-top group-hover/product-row:bg-gray-50"
+                              aria-hidden
+                            />
+                          ) : null
+                        ) : null}
                         <td
-                          {...productsPinnedProps(
-                            'select',
-                            'body',
-                            rowCompactNotPromotedStyle
-                              ? PRODUCTS_SELECT_TD_CLASS_COMPACT
-                              : PRODUCTS_SELECT_TD_CLASS,
-                          )}
+                          {...(() => {
+                            const pinned = productsTablePinnedCellProps(
+                              'select',
+                              'body',
+                              productsSelectTdClass,
+                              multicardMemberIndentPx,
+                            );
+                            return {
+                              ...pinned,
+                              style: {
+                                ...pinned.style,
+                                ...(multicardMemberIndentPx > 0
+                                  ? { paddingLeft: multicardMemberIndentPx }
+                                  : {}),
+                              },
+                            };
+                          })()}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <Checkbox
@@ -8400,17 +9454,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             onChange={(e) =>
                               handleSelectSingleProduct(product.id, e.target.checked)
                             }
-                            className="w-4 h-4 text-purple-600"
+                            className={
+                              isProductPromotionConceptPage
+                                ? CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME
+                                : 'w-4 h-4 text-purple-600'
+                            }
                           />
                         </td>
                         {productsColVisible('product') ? (
                           <td
-                            {...productsPinnedProps(
+                            {...productsTablePinnedCellProps(
                               'product',
                               'body',
-                              rowCompactNotPromotedStyle
-                                ? 'pl-0 pr-2 py-2.5 align-middle'
-                                : 'pl-0 pr-5 py-4 align-middle',
+                              productTdBaseClass,
+                              multicardMemberIndentPx,
                             )}
                           >
                             <ProductCollapsedRowCell
@@ -8418,15 +9475,29 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               expanded={expandedProductIds.has(product.id)}
                               onToggleExpand={() => toggleProductExpanded(product.id)}
                               showExpandControl={rowShowsPromotedProductUi}
-                              reserveExpandGutter={false}
+                              reserveExpandGutter={rowReserveExpandGutter}
                               showPromoteUnderPhoto={rowShowPromoteUnderPhoto}
                               onPromote={handlePromoteNotPromotedProduct}
+                              allTabListRowIndex={rowAllTabListRowIndex}
+                              multicardGroupMemberNested={multicardMemberIndentPx > 0}
                             />
+                          </td>
+                        ) : null}
+                        {conceptAllProductsPickTab && productsColVisible(MULTICARD_GLUE_LEADER_COLUMN_ID) ? (
+                          <td
+                            {...productsTablePinnedCellProps(
+                              'glueLeader',
+                              'body',
+                              MULTICARD_GLUE_LEADER_TD_CLASS,
+                              multicardMemberIndentPx,
+                            )}
+                          >
+                            <MulticardGlueLeaderCell insight={rowGlueLeaderInsight} />
                           </td>
                         ) : null}
                         {showProductsCampaignTypeColumn ? (
                           <td
-                            {...productsPinnedProps(
+                            {...productsTablePinnedCellProps(
                               'campaignType',
                               'body',
                               'p-4 align-top',
@@ -8434,11 +9505,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           />
                         ) : null}
                         {showProductsBidColumn ? (
-                          <td {...productsPinnedProps('bid', 'body', 'px-2 py-3 align-top')} />
+                          <td {...productsTablePinnedCellProps('bid', 'body', 'px-2 py-3 align-top')} />
                         ) : null}
                         {productsColVisible('budgetRemainder') ? (
                           <td
-                            {...productsPinnedProps(
+                            {...productsTablePinnedCellProps(
                               'budgetRemainder',
                               'body',
                               'p-4 align-top',
@@ -8447,7 +9518,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         ) : null}
                         {productsColVisible('dailyLimit') ? (
                           <td
-                            {...productsPinnedProps(
+                            {...productsTablePinnedCellProps(
                               'dailyLimit',
                               'body',
                               'px-2 py-3 align-top',
@@ -8539,6 +9610,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         ) : null}
                         {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
                           if (!productsColVisible(productsStatColumnId(label))) return null;
+                          if (
+                            conceptAllProductsPickTab &&
+                            rowIsConceptNotPromoted &&
+                            !isConceptNotPromotedStatSortLabel(label)
+                          ) {
+                            return (
+                              <td
+                                key={label}
+                                className={
+                                  rowCompactNotPromotedStyle
+                                    ? CONCEPT_NOT_PROMOTED_STAT_TD_CLASS
+                                    : PRODUCTS_STAT_TD_CLASS
+                                }
+                                aria-hidden
+                              />
+                            );
+                          }
                           const rowAgg = productRowStatsAgg(
                             product,
                             rowUsesOrganicProductStats,
@@ -8606,17 +9694,52 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         return (
                         <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
-                            <td {...productsPinnedProps('select', 'bodyNested', PRODUCTS_SELECT_TD_CLASS)} />
+                            {conceptAllProductsPickTab && multicardRail === null ? (
+                              <td
+                                className="sticky left-0 z-[22] w-5 min-w-[20px] max-w-[20px] border-0 bg-gray-50 p-0 align-top"
+                                aria-hidden
+                              />
+                            ) : null}
+                            <td
+                              {...(() => {
+                                const pinned = productsTablePinnedCellProps(
+                                  'select',
+                                  'bodyNested',
+                                  conceptAllProductsPickTab
+                                    ? conceptMulticardProductsSelectTdClass
+                                    : conceptPromotedProductsWideTable
+                                      ? CONCEPT_MULTICARD_SELECT_TD_CLASS
+                                      : PRODUCTS_SELECT_TD_CLASS,
+                                  multicardMemberIndentPx,
+                                );
+                                return {
+                                  ...pinned,
+                                  style: {
+                                    ...pinned.style,
+                                    ...(multicardMemberIndentPx > 0
+                                      ? { paddingLeft: multicardMemberIndentPx }
+                                      : {}),
+                                  },
+                                };
+                              })()}
+                            />
                             {/* Товар / кампания */}
                             {productsColVisible('product') ? (
                             <td
-                              {...productsPinnedProps(
+                              {...productsTablePinnedCellProps(
                                 'product',
                                 'bodyNested',
                                 'px-4 py-3 pl-12 align-middle',
+                                multicardMemberIndentPx,
                               )}
                             >
-                            <div className="flex items-center gap-3">
+                            <div
+                              className={`flex items-center gap-3 ${
+                                multicardMemberIndentPx > 0
+                                  ? CONCEPT_MULTICARD_GROUP_MEMBER_CONTENT_INDENT_CLASS
+                                  : ''
+                              }`}
+                            >
                               <ToggleSwitch
                                 checked={effectiveStatus === 'active'}
                                 onChange={(checked) => setProductCampaignStatusOverride(prev => ({ ...prev, [camp.id]: checked ? 'active' : 'paused' }))}
@@ -8655,9 +9778,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             </div>
                           </td>
                             ) : null}
+                            {productsColVisible(MULTICARD_GLUE_LEADER_COLUMN_ID) ? (
+                              <td
+                                {...productsTablePinnedCellProps(
+                                  'glueLeader',
+                                  'bodyNested',
+                                  MULTICARD_GLUE_LEADER_TD_CLASS,
+                                  multicardMemberIndentPx,
+                                )}
+                                aria-hidden
+                              />
+                            ) : null}
                             {showProductsCampaignTypeColumn ? (
                             <td
-                              {...productsPinnedProps(
+                              {...productsTablePinnedCellProps(
                                 'campaignType',
                                 'bodyNested',
                                 'p-4 align-top',
@@ -8678,7 +9812,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             ) : null}
                             {showProductsBidColumn ? (
                             <td
-                              {...productsPinnedProps('bid', 'bodyNested', 'px-2 py-3 align-top')}
+                              {...productsTablePinnedCellProps('bid', 'bodyNested', 'px-2 py-3 align-top')}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <ProductCampaignBidCell
@@ -8695,7 +9829,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             ) : null}
                             {productsColVisible('budgetRemainder') ? (
                             <td
-                              {...productsPinnedProps(
+                              {...productsTablePinnedCellProps(
                                 'budgetRemainder',
                                 'bodyNested',
                                 'p-4 align-top',
@@ -8711,7 +9845,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             ) : null}
                             {productsColVisible('dailyLimit') ? (
                             <td
-                              {...productsPinnedProps(
+                              {...productsTablePinnedCellProps(
                                 'dailyLimit',
                                 'bodyNested',
                                 'px-2 py-3 align-top',
@@ -8759,6 +9893,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         </tr>
                         );
                       })}
+                      </>
+                      ) : null}
                     </React.Fragment>
                     );
                   })}

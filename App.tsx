@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate, NavLink } from 'react-router-dom';
+import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
@@ -61,6 +61,17 @@ const TOTAL_PROMO_BONUS = 226660517;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
 const SELLER_PASSWORD = 'Uy4b3n2';
+
+const SHELL_APP_PATHS = new Set([
+  '/campaigns',
+  '/campaigns-with-widgets',
+  '/campaigns-with-widgets-2',
+  '/product-promotion-concept',
+  '/overview',
+  '/stats',
+  '/finance',
+  '/bonuses',
+]);
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
@@ -1769,8 +1780,14 @@ export default function App() {
     pendingSingleCampaignNav,
     consumeSingleCampaignNav,
   } = useProfile();
+  const location = useLocation();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [appState, setAppState] = useState<'creation' | 'list' | 'editing' | 'single-campaign'>('list');
+
+  useEffect(() => {
+    if (!SHELL_APP_PATHS.has(location.pathname)) return;
+    setAppState((prev) => (prev === 'cpc-detail' ? prev : 'list'));
+  }, [location.pathname]);
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');

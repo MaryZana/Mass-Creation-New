@@ -157,7 +157,7 @@ const PRODUCT_THUMB_UNIQUE_PHOTO_IDS: readonly string[] = [
 const PRODUCT_THUMB_UNIQUE_BY_PRODUCT_INDEX: readonly string[] =
   PRODUCT_THUMB_UNIQUE_PHOTO_IDS.map((id) => UNSPLASH_THUMB(id));
 
-/** Первые 15 строк на вкладке «Все» — гарантированно разные кадры (по позиции в списке). */
+/** Первые 15 строк на вкладке «Мультикарточки» — гарантированно разные кадры (по позиции в списке). */
 export const PRODUCT_THUMB_UNIQUE_ALL_TAB_FIRST_ROWS = 15;
 
 const PRODUCT_THUMB_UNIQUE_FIRST_15: readonly string[] =
@@ -192,7 +192,7 @@ export function productTableThumbUrl(productId: string, category?: string): stri
   return PRODUCT_THUMB_URLS_BY_INDEX[idx] ?? PRODUCT_TABLE_THUMB_FALLBACK;
 }
 
-/** Вкладка «Все»: первые 15 видимых строк — свои URL, независимо от сортировки. */
+/** Вкладка «Мультикарточки»: первые 15 видимых строк — свои URL, независимо от сортировки. */
 export function productTableThumbUrlForAllTabListRow(
   listRowIndex: number,
   productId: string,
