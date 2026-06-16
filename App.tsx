@@ -61,6 +61,7 @@ const TOTAL_PROMO_BONUS = 226660517;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
 const SELLER_PASSWORD = 'Uy4b3n2';
+const AUTH_SESSION_KEY = 'mass_creation_authed_v1';
 
 const SHELL_APP_PATHS = new Set([
   '/campaigns',
@@ -1781,7 +1782,13 @@ export default function App() {
     consumeSingleCampaignNav,
   } = useProfile();
   const location = useLocation();
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem(AUTH_SESSION_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
   const [appState, setAppState] = useState<'creation' | 'list' | 'editing' | 'single-campaign'>('list');
 
   useEffect(() => {
@@ -2677,7 +2684,20 @@ export default function App() {
   const [showApplyToAllTooltipFor, setShowApplyToAllTooltipFor] = useState<string | null>(null);
   const hasActiveFilterTags = selectedSources.length > 0 || selectedCategories.length > 0;
 
-  if (!isAuthenticated) return <AuthScreen onAuth={() => setIsAuthenticated(true)} />;
+  if (!isAuthenticated) {
+    return (
+      <AuthScreen
+        onAuth={() => {
+          try {
+            sessionStorage.setItem(AUTH_SESSION_KEY, '1');
+          } catch {
+            /* ignore */
+          }
+          setIsAuthenticated(true);
+        }}
+      />
+    );
+  }
 
   if (appState === 'editing') {
     return (
