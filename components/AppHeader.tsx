@@ -39,6 +39,8 @@ function isCampaignsNavPath(pathname: string): boolean {
   return CAMPAIGNS_NAV_ITEMS.some((item) => item.to === pathname);
 }
 
+const OVERVIEW_PATH = '/overview';
+
 export function AppHeader({
   onNavigate,
   onLaunchPromotion,
@@ -64,7 +66,7 @@ export function AppHeader({
 
           <nav className="flex items-center gap-1 text-sm font-medium">
             <NavLink
-              to="/overview"
+              to={OVERVIEW_PATH}
               onClick={onNavigate}
               className={({ isActive }) =>
                 `px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'}`

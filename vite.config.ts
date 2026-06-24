@@ -5,11 +5,14 @@ import react from '@vitejs/plugin-react';
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     const base = process.env.BASE_PATH || '/';
+    const cursorPreview = process.env.CURSOR_PREVIEW === '1';
     return {
       base,
       server: {
         port: 3000,
-        host: '0.0.0.0',
+        host: true,
+        strictPort: true,
+        hmr: cursorPreview ? false : { host: 'localhost', port: 3000 },
       },
       plugins: [react()],
       define: {
