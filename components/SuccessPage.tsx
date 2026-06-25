@@ -37,6 +37,7 @@ import {
     Edit2,
     Check,
     Sparkles,
+    Wallet,
 } from './Icons';
 import { CampaignRecord } from '../types';
 import {
@@ -4664,11 +4665,124 @@ const DailyLimitModal: React.FC<{
 type Widgets2Card = {
   id: 'start-promo' | 'good-sales' | 'views-drop' | 'repeat-campaign' | 'bonus-gift';
   title: string;
+  /** Текст без товара или запасной подпись */
   subtitle: string;
-  tone: 'rose' | 'emerald' | 'amber';
+  /** Серая подпись под названием товара */
+  productCaption?: string;
+  icon: 'sparkles' | 'alert' | 'wallet' | 'gift' | 'settings' | 'refresh' | 'bars';
+  iconTone: 'emerald' | 'rose' | 'amber' | 'violet';
   item?: { nmId: number; name: string; image: string };
   ctaLabel: string;
+  ctaAction: 'promote' | 'bid-recommendation' | 'budget' | 'bonus-campaign' | 'setup-recommendation' | 'repeat';
 };
+
+const WIDGETS2_PROFILE1_PRIMARY_IDS: Widgets2Card['id'][] = [
+  'start-promo',
+  'good-sales',
+  'views-drop',
+];
+const WIDGETS2_PROFILE1_RESERVE_IDS: Widgets2Card['id'][] = ['bonus-gift', 'repeat-campaign'];
+
+function resolveWidgets2VisibleCards(
+  allCards: Widgets2Card[],
+  closedIds: Set<Widgets2Card['id']>,
+  profileId: ProfileId,
+): Widgets2Card[] {
+  if (profileId === '2') {
+    return allCards.filter((card) => !closedIds.has(card.id));
+  }
+  const byId = new Map(allCards.map((card) => [card.id, card]));
+  const visible: Widgets2Card[] = [];
+  let reserveIndex = 0;
+  for (const slotId of WIDGETS2_PROFILE1_PRIMARY_IDS) {
+    if (!closedIds.has(slotId)) {
+      const card = byId.get(slotId);
+      if (card) visible.push(card);
+      continue;
+    }
+    while (reserveIndex < WIDGETS2_PROFILE1_RESERVE_IDS.length) {
+      const reserveId = WIDGETS2_PROFILE1_RESERVE_IDS[reserveIndex]!;
+      reserveIndex += 1;
+      if (closedIds.has(reserveId)) continue;
+      const reserveCard = byId.get(reserveId);
+      if (reserveCard) {
+        visible.push(reserveCard);
+        break;
+      }
+    }
+  }
+  return visible;
+}
+
+function Widgets2CardIcon({
+  icon,
+  tone,
+}: {
+  icon: Widgets2Card['icon'];
+  tone: Widgets2Card['iconTone'];
+}) {
+  const shellClass =
+    tone === 'emerald'
+      ? 'bg-emerald-50 text-emerald-600'
+      : tone === 'rose'
+        ? 'bg-rose-50 text-rose-600'
+        : tone === 'violet'
+          ? 'bg-violet-50 text-violet-600'
+          : 'bg-amber-50 text-amber-600';
+
+  if (icon === 'sparkles') {
+    return (
+      <div className={`rounded-md p-1 ${shellClass}`}>
+        <Sparkles className="h-4 w-4" aria-hidden />
+      </div>
+    );
+  }
+  if (icon === 'alert') {
+    return (
+      <div className={`rounded-md p-1 ${shellClass}`}>
+        <AlertTriangle className="h-4 w-4" aria-hidden />
+      </div>
+    );
+  }
+  if (icon === 'wallet') {
+    return (
+      <div className={`rounded-md p-1 ${shellClass}`}>
+        <Wallet className="h-4 w-4" aria-hidden />
+      </div>
+    );
+  }
+  if (icon === 'gift') {
+    return (
+      <div className={`rounded-md p-1 ${shellClass}`}>
+        <Gift className="h-4 w-4" aria-hidden />
+      </div>
+    );
+  }
+  if (icon === 'settings') {
+    return (
+      <div className={`rounded-md p-1 ${shellClass}`}>
+        <Settings className="h-4 w-4" aria-hidden />
+      </div>
+    );
+  }
+  if (icon === 'refresh') {
+    return (
+      <div className={`rounded-md p-1 ${shellClass}`}>
+        <RefreshCw className="h-4 w-4" aria-hidden />
+      </div>
+    );
+  }
+  return (
+    <div className={`rounded-md p-1 ${shellClass}`}>
+      <div className="flex items-end gap-0.5" aria-hidden>
+        <div className="h-2 w-1 rounded-sm bg-current opacity-40" />
+        <div className="h-3 w-1 rounded-sm bg-current opacity-50" />
+        <div className="h-4 w-1 rounded-sm bg-current opacity-70" />
+        <div className="h-5 w-1 rounded-sm bg-current" />
+      </div>
+    </div>
+  );
+}
 
 function Widgets2Strip({
   profileId,
@@ -4677,6 +4791,8 @@ function Widgets2Strip({
   onPromoteItem,
   onOpenBudgetHint,
   onChooseProducts,
+  onViewBidRecommendation,
+  onOpenSetupRecommendations,
 }: {
   profileId: ProfileId;
   items: Widgets2Card[];
@@ -4684,6 +4800,8 @@ function Widgets2Strip({
   onPromoteItem: (item: Widgets2Card['item']) => void;
   onOpenBudgetHint: () => void;
   onChooseProducts: () => void;
+  onViewBidRecommendation: (item: Widgets2Card['item']) => void;
+  onOpenSetupRecommendations: (item: Widgets2Card['item']) => void;
 }) {
   const promotionHealth = useMemo(() => {
     // Demo: fixed values for preview iterations.
@@ -4748,7 +4866,7 @@ function Widgets2Strip({
 
   return (
     <div className="flex w-full min-w-0 items-stretch gap-2 overflow-visible">
-      <section className="group flex min-h-0 min-w-0 flex-[0.85] flex-col rounded-[20px] bg-white p-3 shadow-sm">
+      <section className="group flex min-h-0 w-[min(220px,22%)] shrink-0 flex-col rounded-[20px] bg-white p-3 shadow-sm">
         <div className="flex items-start justify-between gap-3 pb-3">
           <h2 className="text-sm font-bold leading-none text-gray-900">Здоровье кабинета</h2>
           <div className="shrink-0 text-right">
@@ -4804,7 +4922,7 @@ function Widgets2Strip({
         </div>
       </section>
 
-      <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-white p-4 shadow-sm">
+      <section className="flex min-h-0 min-w-0 flex-[0.72] flex-col rounded-xl bg-white p-4 shadow-sm">
         <div className="mt-3 grid w-full min-w-0 grid-cols-[1fr_130px] items-baseline gap-x-3 gap-y-3">
           <div className="text-[11px] leading-none text-[#767386]">Сумма заказов</div>
           <div className="flex items-baseline gap-2 leading-none justify-self-start">
@@ -4863,7 +4981,7 @@ function Widgets2Strip({
       {items.map((card) => (
         <section
           key={card.id}
-          className="relative flex min-h-0 min-w-0 flex-1 flex-col rounded-xl bg-white p-4 pb-2 shadow-sm"
+          className="relative flex min-h-0 min-w-0 flex-[1.08] flex-col rounded-xl bg-white p-4 shadow-sm"
         >
           <button
             type="button"
@@ -4875,44 +4993,17 @@ function Widgets2Strip({
             <X className="h-4 w-4" aria-hidden />
           </button>
 
-          <div className="min-w-0 pr-9">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2 pb-1">
-                <div className="shrink-0" aria-hidden>
-                  {card.id === 'good-sales' ? (
-                    <div className="flex items-end gap-0.5">
-                      <div className="h-2 w-1 rounded-sm bg-emerald-200" />
-                      <div className="h-3 w-1 rounded-sm bg-emerald-200" />
-                      <div className="h-4 w-1 rounded-sm bg-emerald-200" />
-                      <div className="h-3 w-1 rounded-sm bg-emerald-300" />
-                      <div className="h-5 w-1 rounded-sm bg-emerald-500" />
-                    </div>
-                  ) : card.id === 'repeat-campaign' ? (
-                    <div className="rounded-md bg-emerald-50 p-1 text-emerald-700">
-                      <RefreshCw className="h-4 w-4" aria-hidden />
-                    </div>
-                  ) : card.id === 'bonus-gift' ? (
-                    <div className="rounded-md bg-purple-50 p-1 text-purple-700">
-                      <Gift className="h-4 w-4" aria-hidden />
-                    </div>
-                  ) : (
-                    <div className="rounded-md bg-rose-50 p-1">
-                      <div className="flex items-center gap-0.5">
-                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
-                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-500" />
-                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
-                        <div className="h-2.5 w-1.5 rounded-sm bg-rose-200" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 text-sm font-bold leading-none text-gray-900">{card.title}</div>
+          <div className="flex min-h-0 flex-1 flex-col pr-9">
+            <div className="flex min-w-0 items-start gap-2">
+              <Widgets2CardIcon icon={card.icon} tone={card.iconTone} />
+              <div className="min-w-0 flex-1 text-sm font-bold leading-snug text-gray-900">
+                {card.title}
               </div>
             </div>
 
-            <div className="mt-3 flex min-w-0 flex-1 flex-col rounded-lg px-0 py-0">
+            <div className="mt-2.5">
               {card.item ? (
-                <div className="flex min-w-0 items-center gap-2 pb-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <img
                     src={card.item.image}
                     alt=""
@@ -4920,104 +5011,59 @@ function Widgets2Strip({
                     loading="lazy"
                     onError={(e) => {
                       const img = e.currentTarget;
-                      if (img.src !== PRODUCT_TABLE_THUMB_FALLBACK) img.src = PRODUCT_TABLE_THUMB_FALLBACK;
+                      if (img.src !== PRODUCT_TABLE_THUMB_FALLBACK) {
+                        img.src = PRODUCT_TABLE_THUMB_FALLBACK;
+                      }
                     }}
                   />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-semibold text-gray-900">{card.item.name}</div>
-                    <div className="mt-0.5 text-[11px] leading-none text-gray-500">
-                      {card.id === 'repeat-campaign'
-                        ? card.subtitle
-                        : card.id === 'good-sales'
-                        ? 'Увеличьте продажи с продвижением'
-                        : card.id === 'start-promo'
-                          ? 'Недобор показов без продвижения'
-                          : card.id === 'views-drop'
-                            ? 'Недобор показов из-за низкого бюджета'
-                            : card.item.nmId}
+                    <div className="truncate text-xs font-semibold text-gray-900">
+                      {card.item.name}
+                    </div>
+                    <div className="mt-0.5 text-[11px] leading-snug text-gray-500">
+                      {card.productCaption ?? card.subtitle}
                     </div>
                   </div>
                 </div>
               ) : (
-                <div className="pb-2 text-xs leading-snug text-gray-600">{card.subtitle}</div>
+                <div className="min-h-[38px] text-[11px] leading-snug text-gray-500">
+                  {card.subtitle}
+                </div>
               )}
-              <div className="mt-auto pt-2">
-                {card.id === 'repeat-campaign' ? (
-                  <div className="flex flex-col items-start gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
+            </div>
+
+            <div className="min-h-0 flex-1" aria-hidden />
+
+            <div className="shrink-0 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    switch (card.ctaAction) {
+                      case 'budget':
                         onOpenBudgetHint();
-                      }}
-                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-                    >
-                      {card.ctaLabel}
-                    </button>
-                  </div>
-                ) : card.id === 'bonus-gift' ? (
-                  <div className="flex flex-col items-start gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
+                        break;
+                      case 'bonus-campaign':
                         onChooseProducts();
-                      }}
-                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-                    >
-                      {card.ctaLabel}
-                    </button>
-                  </div>
-                ) : card.id === 'good-sales' ? (
-                  <div className="flex flex-col items-start gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onPromoteItem(card.item)}
-                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-                    >
-                      {card.ctaLabel}
-                    </button>
-                  </div>
-                ) : card.id === 'start-promo' ? (
-                  <div className="flex flex-col items-start gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (card.id === 'views-drop') {
-                          onOpenBudgetHint();
-                          return;
-                        }
-                        onPromoteItem(card.item);
-                      }}
-                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-                    >
-                      {card.ctaLabel}
-                    </button>
-                  </div>
-                ) : card.id === 'views-drop' ? (
-                  <div className="flex flex-col items-start gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
+                        break;
+                      case 'bid-recommendation':
+                        onViewBidRecommendation(card.item);
+                        break;
+                      case 'setup-recommendation':
+                        onOpenSetupRecommendations(card.item);
+                        break;
+                      case 'repeat':
                         onOpenBudgetHint();
-                      }}
-                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-                    >
-                      {card.ctaLabel}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex justify-start">
-                    <button
-                      type="button"
-                      onClick={() => {
+                        break;
+                      case 'promote':
+                      default:
                         if (card.item) onPromoteItem(card.item);
-                      }}
-                      className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
-                    >
-                      {card.ctaLabel}
-                    </button>
-                  </div>
-                )}
-              </div>
+                        break;
+                    }
+                  }}
+                  className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#ececef] px-3 py-1.5 text-xs font-semibold leading-none text-gray-800 transition-colors hover:bg-[#e2e2e6]"
+                >
+                  {card.ctaLabel}
+                </button>
             </div>
           </div>
         </section>
@@ -6983,79 +7029,116 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           id: 'repeat-campaign',
           title: `Кампания принесла ${repeatOrders} заказов`,
           subtitle: 'Запустите её снова',
-          tone: 'amber',
+          icon: 'refresh',
+          iconTone: 'emerald',
           item: {
-            nmId: p0?.nmId ?? 1400001,
-            name: p0?.productName ?? 'Летнее платье «Ривьера»',
-            image: p0?.imageUrl ?? demoImages[0],
+            nmId: Number.parseInt(p0?.articleWb ?? '', 10) || 1400001,
+            name: p0?.name ?? 'Летнее платье «Ривьера»',
+            image: p0?.image ?? demoImages[0],
           },
           ctaLabel: 'Повторить',
+          ctaAction: 'repeat',
         },
         {
           id: 'good-sales',
           title: 'Товар хорошо продается',
           subtitle: 'Высокий GMV, нет продвижения',
-          tone: 'emerald',
+          productCaption: 'Высокий GMV, нет продвижения',
+          icon: 'bars',
+          iconTone: 'emerald',
           item: {
-            nmId: p1?.nmId ?? 1400002,
-            name: p1?.productName ?? 'Вечернее платье «Грация»',
-            image: p1?.imageUrl ?? demoImages[1],
+            nmId: Number.parseInt(p1?.articleWb ?? '', 10) || 1400002,
+            name: p1?.name ?? 'Вечернее платье «Грация»',
+            image: p1?.image ?? demoImages[1],
           },
           ctaLabel: 'Продвигать',
+          ctaAction: 'promote',
         },
         {
           id: 'bonus-gift',
           title: 'Дарим 5000 бонусов до 30 апреля',
           subtitle: 'Выберите товары и запустите продвижение с бонусами',
-          tone: 'emerald',
+          icon: 'gift',
+          iconTone: 'violet',
           ctaLabel: 'Выбрать товары',
+          ctaAction: 'bonus-campaign',
         },
       ];
     }
 
+    const p2 = profileProductTree[2] ?? p1;
+    const treeProductItem = (
+      row: (typeof profileProductTree)[number] | undefined,
+      fallbackNmId: number,
+      fallbackName: string,
+      image: string,
+    ) => ({
+      nmId: Number.parseInt(row?.articleWb ?? '', 10) || fallbackNmId,
+      name: row?.name ?? fallbackName,
+      image: row?.image ?? image,
+    });
+
     return [
       {
         id: 'start-promo',
-        title: 'Товар без продвижения',
-        subtitle: 'Вы теряете продажи',
-        tone: 'rose',
-        item: {
-          nmId: p0?.nmId ?? 1400001,
-          name: p0?.productName ?? 'Летнее платье «Ривьера»',
-          image: p0?.imageUrl ?? demoImages[0],
-        },
+        title: 'Создайте новую кампанию',
+        subtitle: 'Товар с хорошей конверсией в заказ',
+        productCaption: 'Товар с хорошей конверсией в заказ',
+        icon: 'sparkles',
+        iconTone: 'emerald',
+        item: treeProductItem(p0, 1400001, 'Летнее платье «Ривьера»', demoImages[0]),
         ctaLabel: 'Продвигать',
+        ctaAction: 'promote',
       },
       {
         id: 'good-sales',
-        title: 'Товар хорошо продается',
-        subtitle: 'Высокий GMV, нет продвижения',
-        tone: 'emerald',
-        item: {
-          nmId: p1?.nmId ?? 1400002,
-          name: p1?.productName ?? 'Вечернее платье «Грация»',
-          image: p1?.imageUrl ?? demoImages[1],
-        },
-        ctaLabel: 'Продвигать',
+        title: 'Увеличьте ставку',
+        subtitle: 'Не хватает охвата из-за низкой ставки',
+        productCaption: 'Не хватает охвата из-за низкой ставки',
+        icon: 'alert',
+        iconTone: 'rose',
+        item: treeProductItem(p1, 1400002, 'Вечернее платье «Грация»', demoImages[1]),
+        ctaLabel: 'Увеличить ставку',
+        ctaAction: 'bid-recommendation',
       },
       {
         id: 'views-drop',
-        title: 'Кампания теряет показы',
-        subtitle: 'Рекомендуем увеличить бюджет',
-        tone: 'amber',
-        item: {
-          nmId: c0?.nmId ?? p0?.nmId ?? 1400003,
-          name: c0?.productName ?? 'Платье-футляр «Офис»',
-          image: c0?.imageUrl ?? p0?.imageUrl ?? demoImages[2],
-        },
-        ctaLabel: 'Увеличить бюджет',
+        title: 'Закончился бюджет',
+        subtitle: 'Товар теряет охваты без продвижения',
+        productCaption: 'Товар теряет охваты без продвижения',
+        icon: 'wallet',
+        iconTone: 'rose',
+        item: treeProductItem(p2, 1400003, 'Платье-футляр «Офис»', demoImages[2]),
+        ctaLabel: 'Пополнить бюджет',
+        ctaAction: 'budget',
+      },
+      {
+        id: 'bonus-gift',
+        title: 'Скоро сгорят промобонусы',
+        subtitle:
+          '1 000 промобонусов скоро сгорит. Запустите кампанию за бонусы',
+        icon: 'gift',
+        iconTone: 'violet',
+        ctaLabel: 'Кампания за бонусы',
+        ctaAction: 'bonus-campaign',
+      },
+      {
+        id: 'repeat-campaign',
+        title: 'Улучшите существующую кампанию',
+        subtitle: 'Кластеры настроены неэффективно',
+        productCaption: 'Кластеры настроены неэффективно',
+        icon: 'settings',
+        iconTone: 'amber',
+        item: treeProductItem(p2, 1400003, 'Платье-футляр «Офис»', demoImages[2]),
+        ctaLabel: 'Рекомендации по настройке',
+        ctaAction: 'setup-recommendation',
       },
     ];
   }, [profileProductTree, profileCampaigns, profileId]);
 
   const widgets2VisibleCards = useMemo(
-    () => widgets2DemoCards.filter((c) => !widgets2Closed.has(c.id)),
-    [widgets2DemoCards, widgets2Closed],
+    () => resolveWidgets2VisibleCards(widgets2DemoCards, widgets2Closed, profileId),
+    [widgets2DemoCards, widgets2Closed, profileId],
   );
 
   const openWidgets2Promote = useCallback(
@@ -7079,6 +7162,28 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const openWidgets2ChooseProducts = useCallback(() => {
     onNavigateToCreation();
   }, [onNavigateToCreation]);
+
+  const openWidgets2BidRecommendation = useCallback(
+    (item: Widgets2Card['item']) => {
+      if (item) {
+        openWidgets2Promote(item);
+        return;
+      }
+      onNavigateToCreation();
+    },
+    [openWidgets2Promote, onNavigateToCreation],
+  );
+
+  const openWidgets2SetupRecommendations = useCallback(
+    (item: Widgets2Card['item']) => {
+      if (item) {
+        openWidgets2Promote(item);
+        return;
+      }
+      onNavigateToCreation();
+    },
+    [openWidgets2Promote, onNavigateToCreation],
+  );
 
   useEffect(() => {
     if (!insightFilter) return;
@@ -7148,6 +7253,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setProductTagsOverride({});
     setProductCampaignStatusOverride({});
     setSearchQuery('');
+    setWidgets2Closed(new Set());
   }, [profileId, onSelectionChange]);
 
   const getProductTags = useCallback((product: { id: string; tags: string[] }) => {
@@ -8393,6 +8499,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 onPromoteItem={openWidgets2Promote}
                 onOpenBudgetHint={openWidgets2BudgetHint}
                 onChooseProducts={openWidgets2ChooseProducts}
+                onViewBidRecommendation={openWidgets2BidRecommendation}
+                onOpenSetupRecommendations={openWidgets2SetupRecommendations}
               />
             </div>
           )}
