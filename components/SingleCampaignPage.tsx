@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Checkbox } from 'antd';
 import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical } from './Icons';
 import { SingleCampaignAddProductsModal } from './SingleCampaignAddProductsModal';
 import { AppHeader } from './AppHeader';
 import { ReferralInviteCreationBanner } from './ReferralInviteCreationBanner';
+import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
+import { minDailyLimitForMaxBid, maxBidRubForDailyLimit } from '../utils/cpcDailyLimitBid';
 import { useProfile } from './ProfileContext';
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
@@ -390,13 +393,23 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [unifiedBid, setUnifiedBid] = useState('500');
   const [manualBid, setManualBid] = useState('500');
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
-  const [dailyLimitValue, setDailyLimitValue] = useState('2000');
-  const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
+  const [dailyLimitValue, setDailyLimitValue] = useState('');
+  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
+  const [isBudgetMinTooltipVisible, setIsBudgetMinTooltipVisible] = useState(false);
+  const [isAutoRefillTooltipVisible, setIsAutoRefillTooltipVisible] = useState(false);
+  const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [isMultiCategoryWarningOpen, setIsMultiCategoryWarningOpen] = useState(false);
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
   const [productBidsByNmId, setProductBidsByNmId] = useState<Record<number, string>>({});
+  const [productBidDraftByNmId, setProductBidDraftByNmId] = useState<Record<number, string>>({});
+  const [bidRaisesDailyLimitModal, setBidRaisesDailyLimitModal] = useState<{
+    nmId: number;
+    attemptedBid: number;
+    currentDailyLimit: number;
+    newDailyLimit: number;
+  } | null>(null);
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
   const [actionsMenuNmId, setActionsMenuNmId] = useState<number | null>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
@@ -493,13 +506,117 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
 
   const getProductBid = (nmId: number) => productBidsByNmId[nmId] ?? bidFallback;
 
+  const getProductBidDisplay = (nmId: number) =>
+    productBidDraftByNmId[nmId] ?? getProductBid(nmId);
+
+  const maxProductBidRub = useMemo(() => {
+    const values = products.map((p) => parseDisplayValue(getProductBid(p.nmId))).filter((n) => n > 0);
+    return values.length ? Math.max(...values) : 0;
+  }, [products, productBidsByNmId, bidFallback]);
+
+  const savedDailyLimitRub = useMemo(() => {
+    if (!isDailyLimitEnabled) return 0;
+    const parsed = parseDisplayValue(dailyLimitValue);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  }, [isDailyLimitEnabled, dailyLimitValue]);
+
+  const applyBidWithDailyLimit = useCallback(
+    (nmId: number, bid: number, newDailyLimit: number) => {
+      const budgetRub = parseDisplayValue(budget);
+      if (newDailyLimit > budgetRub) {
+        return;
+      }
+      setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(bid) }));
+      setProductBidDraftByNmId((prev) => {
+        const next = { ...prev };
+        delete next[nmId];
+        return next;
+      });
+      setDailyLimitValue(String(newDailyLimit));
+      setToastMessage('Ставка изменена');
+      setShowToast(true);
+    },
+    [budget],
+  );
+
+  const commitProductBidCpc = useCallback(
+    (nmId: number, parsed: number) => {
+      const maxBid = Math.max(
+        parsed,
+        ...products
+          .filter((p) => p.nmId !== nmId)
+          .map((p) => parseDisplayValue(productBidsByNmId[p.nmId] ?? bidFallback))
+          .filter((n) => n > 0),
+      );
+
+      if (isDailyLimitEnabled && savedDailyLimitRub > 0) {
+        const newDailyLimit = minDailyLimitForMaxBid(maxBid);
+        if (newDailyLimit > savedDailyLimitRub) {
+          setProductBidDraftByNmId((prev) => ({
+            ...prev,
+            [nmId]: productBidsByNmId[nmId] ?? bidFallback,
+          }));
+          setBidRaisesDailyLimitModal({
+            nmId,
+            attemptedBid: parsed,
+            currentDailyLimit: savedDailyLimitRub,
+            newDailyLimit,
+          });
+          return;
+        }
+      }
+
+      setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(parsed) }));
+      setProductBidDraftByNmId((prev) => {
+        const next = { ...prev };
+        delete next[nmId];
+        return next;
+      });
+      setToastMessage('Ставка изменена');
+      setShowToast(true);
+    },
+    [products, productBidsByNmId, bidFallback, isDailyLimitEnabled, savedDailyLimitRub],
+  );
+
   const handleProductBidChange = (nmId: number, value: string) => {
     const parsed = parseDisplayValue(value);
     if (!isNaN(parsed)) {
-      setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(parsed) }));
+      if (paymentModel === 'CPC') {
+        setProductBidDraftByNmId((prev) => ({ ...prev, [nmId]: String(parsed) }));
+      } else {
+        setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(parsed) }));
+      }
     } else if (value === '') {
-      setProductBidsByNmId((prev) => ({ ...prev, [nmId]: '' }));
+      if (paymentModel === 'CPC') {
+        setProductBidDraftByNmId((prev) => ({ ...prev, [nmId]: '' }));
+      } else {
+        setProductBidsByNmId((prev) => ({ ...prev, [nmId]: '' }));
+      }
     }
+  };
+
+  const handleProductBidBlur = (nmId: number) => {
+    if (paymentModel !== 'CPC') return;
+    const raw = getProductBidDisplay(nmId);
+    const parsed = parseDisplayValue(raw);
+    const saved = parseDisplayValue(getProductBid(nmId));
+    if (raw === '' || isNaN(parsed) || parsed <= 0) {
+      setProductBidDraftByNmId((prev) => {
+        const next = { ...prev };
+        delete next[nmId];
+        return next;
+      });
+      return;
+    }
+    if (parsed === saved) {
+      setProductBidDraftByNmId((prev) => {
+        const next = { ...prev };
+        delete next[nmId];
+        return next;
+      });
+      return;
+    }
+    commitProductBidCpc(nmId, parsed);
   };
 
   const bidColumnTitle =
@@ -527,7 +644,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   };
 
   const renderProductBidCell = (nmId: number) => {
-    const raw = getProductBid(nmId);
+    const raw = getProductBidDisplay(nmId);
     return (
       <div className="flex items-center justify-end gap-1">
         <div className="inline-flex h-9 min-w-[5.5rem] items-center rounded-lg border border-gray-200 bg-white px-2.5 text-sm text-gray-900">
@@ -535,6 +652,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             type="text"
             value={formatForDisplay(raw)}
             onChange={(e) => handleProductBidChange(nmId, e.target.value)}
+            onBlur={() => handleProductBidBlur(nmId)}
             className="w-full min-w-0 border-0 bg-transparent p-0 text-sm outline-none focus:ring-0"
           />
           <span className="shrink-0 text-gray-500">₽</span>
@@ -627,172 +745,211 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           </div>
         </div>
 
-        {/* Плавающий остров — бюджет */}
-        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
-          <div className="flex flex-col gap-4">
-            <h2 className="font-heading text-[22px] font-[680] leading-7 text-gray-900">
-              Бюджет
-            </h2>
-            
-            {paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget) && (
-              <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4 mb-4">
-                <p className="text-sm text-gray-900 font-medium">
-                  Чтобы задать дневной лимит {formatForDisplay(dailyLimitValue)} ₽, пополните бюджет еще на {formatForDisplay(parseDisplayValue(dailyLimitValue) - parseDisplayValue(budget))} ₽
+        {/* Бюджет и дневной лимит (CPC — две карточки как в макете) */}
+        <div className="mx-auto w-full max-w-[1200px]">
+          {paymentModel === 'CPC' &&
+            isDailyLimitEnabled &&
+            parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget) && (
+              <div className="mb-4 rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-gray-900">
+                  Чтобы задать дневной лимит {formatForDisplay(dailyLimitValue)} ₽, пополните бюджет
+                  еще на{' '}
+                  {formatForDisplay(parseDisplayValue(dailyLimitValue) - parseDisplayValue(budget))} ₽
                 </p>
               </div>
             )}
-            
-            <div className="flex flex-wrap items-start gap-6">
-              {/* Бюджет кампании */}
-              <div className="flex flex-col gap-2" style={{ width: '240px' }}>
-                <label className="font-body text-base text-[#4E4E53]">
-                  Бюджет кампании
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={formatForDisplay(budget)}
-                    onChange={handleBudgetChange}
-                    onBlur={handleBudgetBlur}
-                    className="w-full px-3 py-3 bg-white border border-[#E3E4EA] rounded-lg outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
-                  />
-                </div>
-                <p className="font-body text-xs font-semibold text-[#767386]">
-                  Минимальный бюджет 1000 ₽
-                </p>
-              </div>
 
-              {/* Автопополнение */}
-              <div className="flex flex-col gap-1 pt-6" style={{ minWidth: '300px', flex: 1 }}>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setIsAutoRefillEnabled(!isAutoRefillEnabled)}
-                    className={`relative inline-flex items-center rounded-full transition-colors duration-200 ${
-                      isAutoRefillEnabled ? 'bg-[#9A41FE]' : 'bg-[#767386]'
-                    }`}
-                    style={{ width: '30px', height: '18px' }}
-                  >
+          {paymentModel === 'CPC' ? (
+            <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
+              <div className="flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                <p className="mb-3 text-sm font-semibold text-gray-900">Бюджет кампании</p>
+                <div className="flex flex-1 flex-col gap-3">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <div className="relative w-full min-w-[120px] max-w-[200px] flex-1">
+                      <input
+                        type="text"
+                        value={formatForDisplay(budget)}
+                        onChange={handleBudgetChange}
+                        onBlur={handleBudgetBlur}
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                      />
+                    </div>
+                    <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                      <ToggleSwitch
+                        checked={isAutoRefillEnabled}
+                        onChange={setIsAutoRefillEnabled}
+                      />
+                      <span className="text-sm font-medium text-[#6366f1]">Автопополнение бюджета</span>
+                      <div
+                        className="relative inline-block"
+                        onMouseEnter={() => setIsAutoRefillTooltipVisible(true)}
+                        onMouseLeave={() => setIsAutoRefillTooltipVisible(false)}
+                      >
+                        <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
+                        {isAutoRefillTooltipVisible && (
+                          <div className="absolute left-1/2 top-full z-50 mt-2 w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
+                            Пополняем бюджет автоматически по заданным условиям, не чаще одного раза в
+                            день.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                    Минимальный бюджет — 1 000 ₽
                     <span
-                      className={`inline-block rounded-full bg-white transition-transform duration-200 ${
-                        isAutoRefillEnabled ? 'translate-x-[14px]' : 'translate-x-[3px]'
-                      }`}
-                      style={{ width: '12px', height: '12px' }}
-                    />
-                  </button>
-                  <span className="font-body text-base text-[#5067DE]">
-                    Автопополнение бюджета
-                  </span>
-                  <div className="relative">
-                    <HelpCircle className="w-4 h-4 text-[#4E4E53] cursor-help" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Дневной лимит - только для CPC */}
-        {paymentModel === 'CPC' && (
-          <div className="bg-white rounded-2xl p-5 w-full max-w-[1200px] shadow-sm border border-gray-100 mx-auto">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <ToggleSwitch 
-                  checked={isDailyLimitEnabled} 
-                  onChange={(checked) => {
-                    setIsDailyLimitEnabled(checked);
-                  }} 
-                />
-                <p className="font-body text-sm text-gray-800 flex items-center gap-1">
-                  Дневной лимит
-                  <div 
-                    className="relative inline-block"
-                    onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}
-                    onMouseLeave={() => setIsDailyLimitTooltipVisible(false)}
-                  >
-                    <HelpCircle className="w-4 h-4 text-gray-600 cursor-help" />
-                    {isDailyLimitTooltipVisible && (
-                      <>
-                        <div className="absolute left-1/2 -translate-x-1/2 top-full w-80 h-2" onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}></div>
-                        <div 
-                          className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-                          onMouseEnter={() => setIsDailyLimitTooltipVisible(true)}
-                          onMouseLeave={() => setIsDailyLimitTooltipVisible(false)}
-                        >
-                          <p className="font-semibold mb-2">Как работает равномерная открутка лимита?</p>
-                          <p className="mb-2">Сумму, которую вы зададите в лимите мы будем расходовать в течение дня равномерно, она не сгорит за 1-2 часа. Так вы достигаете наилучших показателей по показам.</p>
-                          <a href="#" className="text-purple-300 hover:underline">Читать подробнее</a>
+                      className="relative inline-block"
+                      onMouseEnter={() => setIsBudgetMinTooltipVisible(true)}
+                      onMouseLeave={() => setIsBudgetMinTooltipVisible(false)}
+                    >
+                      <HelpCircle className="h-3.5 w-3.5 cursor-help text-gray-400" />
+                      {isBudgetMinTooltipVisible && (
+                        <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
+                          Кампания не запустится, если бюджет ниже 1 000 ₽.
                         </div>
-                      </>
-                    )}
-                  </div>
-                </p>
-              </div>
-            </div>
-            {isDailyLimitEnabled && (
-              <>
-                <div className="flex items-center gap-4">
-                  <div className="relative w-1/3">
-                    <input
-                      type="text"
-                      value={formatForDisplay(dailyLimitValue)}
-                      onChange={(e) => {
-                        const parsed = parseDisplayValue(e.target.value);
-                        if (!isNaN(parsed)) {
-                          setDailyLimitValue(String(parsed));
-                        } else if (e.target.value === '') {
-                          setDailyLimitValue('');
-                        }
-                      }}
-                      onBlur={() => {
-                        const parsed = parseDisplayValue(dailyLimitValue);
-                        if (isNaN(parsed) || parsed < 2000) {
-                          setDailyLimitValue('2000');
-                        }
-                      }}
-                      className="w-full text-sm bg-white border shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5 rounded-lg pr-6 border-gray-300"
-                      placeholder="2000"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
-                  </div>
-                  <p className="text-xs text-gray-500 flex-1">
+                      )}
+                    </span>
                   </p>
                 </div>
-                <div className="flex items-center gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const current = parseDisplayValue(dailyLimitValue) || 0;
-                      setDailyLimitValue(String(current + 1000));
+              </div>
+
+              <div className="flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <ToggleSwitch
+                    checked={isDailyLimitEnabled}
+                    onChange={(checked) => {
+                      setIsDailyLimitEnabled(checked);
+                      if (checked) {
+                        setIsCarryoverEnabled(true);
+                        const minLimit = minDailyLimitForMaxBid(maxProductBidRub);
+                        if (!dailyLimitValue) setDailyLimitValue(String(minLimit));
+                      } else {
+                        setIsCarryoverEnabled(false);
+                      }
                     }}
-                    className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
-                  >
-                    +1000₽
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const current = parseDisplayValue(dailyLimitValue) || 0;
-                      setDailyLimitValue(String(current + 3000));
-                    }}
-                    className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
-                  >
-                    +3000₽
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const current = parseDisplayValue(dailyLimitValue) || 0;
-                      setDailyLimitValue(String(current + 5000));
-                    }}
-                    className="px-2 py-1 text-xs font-medium rounded-md transition-colors bg-gray-100 text-gray-700 hover:bg-gray-200 cursor-pointer"
-                  >
-                    +5000₽
-                  </button>
+                  />
+                  <span className="text-sm font-semibold text-gray-900">Дневной лимит</span>
+                  <DailyLimitInfoTooltip />
                 </div>
-              </>
-            )}
-          </div>
-        )}
+                <div className="relative mb-3 w-full max-w-[260px]">
+                  <input
+                    type="text"
+                    value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
+                    disabled={!isDailyLimitEnabled}
+                    onChange={(e) => {
+                      const parsed = parseDisplayValue(e.target.value);
+                      if (!isNaN(parsed)) {
+                        setDailyLimitValue(String(parsed));
+                      } else if (e.target.value === '') {
+                        setDailyLimitValue('');
+                      }
+                    }}
+                    onBlur={() => {
+                      if (!isDailyLimitEnabled) return;
+                      const parsed = parseDisplayValue(dailyLimitValue);
+                      if (dailyLimitValue === '' || isNaN(parsed) || parsed < 1000) {
+                        setDailyLimitValue('1000');
+                      }
+                    }}
+                    className={`w-full rounded-lg border py-2.5 pl-3 pr-8 text-sm font-medium shadow-sm outline-none transition-colors ${
+                      !isDailyLimitEnabled
+                        ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
+                        : 'border-gray-200 bg-white text-gray-900 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                    }`}
+                    placeholder="Задайте от 1000"
+                  />
+                  <span
+                    className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm ${
+                      !isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'
+                    }`}
+                  >
+                    ₽
+                  </span>
+                </div>
+                <label className="m-0 flex cursor-pointer items-center gap-2">
+                  <Checkbox
+                    disabled={!isDailyLimitEnabled}
+                    checked={isCarryoverEnabled}
+                    onChange={(e) => {
+                      if (!isDailyLimitEnabled) return;
+                      setIsCarryoverEnabled(e.target.checked);
+                    }}
+                  />
+                  <span
+                    className={`text-xs ${isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}`}
+                  >
+                    Переносить неистраченные деньги
+                  </span>
+                  <div
+                    className="relative inline-block"
+                    onMouseEnter={() => setIsCarryoverTooltipVisible(true)}
+                    onMouseLeave={() => setIsCarryoverTooltipVisible(false)}
+                  >
+                    <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
+                    {isCarryoverTooltipVisible && (
+                      <div className="absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
+                        <p className="mb-1">Система старается тратить бюджет равномерно.</p>
+                        <p>
+                          Если сегодня потратится меньше дневного лимита, остаток будет добавлен к
+                          лимиту следующего дня.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </label>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <p className="mb-3 text-sm font-semibold text-gray-900">Бюджет кампании</p>
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <div className="relative w-full min-w-[120px] max-w-[200px]">
+                    <input
+                      type="text"
+                      value={formatForDisplay(budget)}
+                      onChange={handleBudgetChange}
+                      onBlur={handleBudgetBlur}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                    />
+                  </div>
+                  <div className="flex min-w-[220px] flex-1 items-center gap-2">
+                    <ToggleSwitch checked={isAutoRefillEnabled} onChange={setIsAutoRefillEnabled} />
+                    <span className="text-sm font-medium text-[#6366f1]">Автопополнение бюджета</span>
+                    <div
+                      className="relative inline-block"
+                      onMouseEnter={() => setIsAutoRefillTooltipVisible(true)}
+                      onMouseLeave={() => setIsAutoRefillTooltipVisible(false)}
+                    >
+                      <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
+                      {isAutoRefillTooltipVisible && (
+                        <div className="absolute left-1/2 top-full z-50 mt-2 w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
+                          Пополняем бюджет автоматически по заданным условиям, не чаще одного раза в
+                          день.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <p className="flex items-center gap-1.5 text-xs text-gray-500">
+                  Минимальный бюджет — 1 000 ₽
+                  <span
+                    className="relative inline-block"
+                    onMouseEnter={() => setIsBudgetMinTooltipVisible(true)}
+                    onMouseLeave={() => setIsBudgetMinTooltipVisible(false)}
+                  >
+                    <HelpCircle className="h-3.5 w-3.5 cursor-help text-gray-400" />
+                    {isBudgetMinTooltipVisible && (
+                      <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
+                        Кампания не запустится, если бюджет ниже 1 000 ₽.
+                      </div>
+                    )}
+                  </span>
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Зоны показов */}
         <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
@@ -1127,6 +1284,70 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             >
               Запустить кампанию
             </button>
+          </div>
+        </div>
+      )}
+      {bidRaisesDailyLimitModal && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
+          onClick={() => setBidRaisesDailyLimitModal(null)}
+        >
+          <div
+            className="relative w-full max-w-[540px] rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setBidRaisesDailyLimitModal(null)}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+              aria-label="Закрыть"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <p className="pr-8 text-base text-gray-900 leading-snug">
+              <span className="font-semibold">
+                При новой ставке {formatForDisplay(bidRaisesDailyLimitModal.attemptedBid)} ₽ дневного
+                лимита не хватит на весь день, нужно увеличить лимит
+              </span>
+            </p>
+            <div className="mt-6 flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const { nmId, currentDailyLimit } = bidRaisesDailyLimitModal;
+                  const capBid = maxBidRubForDailyLimit(currentDailyLimit);
+                  setBidRaisesDailyLimitModal(null);
+                  if (capBid > 0) {
+                    setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(capBid) }));
+                    setProductBidDraftByNmId((prev) => {
+                      const next = { ...prev };
+                      delete next[nmId];
+                      return next;
+                    });
+                    setToastMessage('Ставка изменена');
+                    setShowToast(true);
+                  }
+                }}
+                className="whitespace-nowrap rounded-lg bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 sm:shrink-0"
+              >
+                Оставить ставку{' '}
+                {formatForDisplay(
+                  maxBidRubForDailyLimit(bidRaisesDailyLimitModal.currentDailyLimit),
+                )}{' '}
+                ₽
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const { nmId, attemptedBid, newDailyLimit } = bidRaisesDailyLimitModal;
+                  setBidRaisesDailyLimitModal(null);
+                  applyBidWithDailyLimit(nmId, attemptedBid, newDailyLimit);
+                }}
+                className="whitespace-nowrap rounded-lg bg-purple-600 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-700 sm:shrink-0"
+              >
+                Поднять лимит до {formatForDisplay(bidRaisesDailyLimitModal.newDailyLimit)} ₽
+              </button>
+            </div>
           </div>
         </div>
       )}

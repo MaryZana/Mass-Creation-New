@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, ArrowUp
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, ArrowUp, Calendar
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -1736,7 +1736,7 @@ const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: 
     );
 };
 
-const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onClear }: { count: number, onConfigureAR: () => void, onDownload: () => void, onEdit?: () => void, onClear: () => void }) => {
+const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onDailyLimit, onClear }: { count: number, onConfigureAR: () => void, onDownload: () => void, onEdit?: () => void, onDailyLimit?: () => void, onClear: () => void }) => {
     return (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md rounded-xl shadow-2xl z-[80] p-2 flex items-center gap-2 border border-gray-200 animate-in slide-in-from-bottom-4 fade-in">
             <span className="text-sm font-medium text-gray-800 px-3 whitespace-nowrap">Выбрано: {count}</span>
@@ -1745,6 +1745,12 @@ const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onClear }:
                 <button onClick={onEdit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
                     <Edit2 className="w-4 h-4 text-gray-500" />
                     <span>Редактировать</span>
+                </button>
+            )}
+            {onDailyLimit && (
+                <button onClick={onDailyLimit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
+                    <Calendar className="w-4 h-4 text-gray-500" />
+                    <span>Дневной лимит</span>
                 </button>
             )}
             <button onClick={onConfigureAR} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
@@ -1847,6 +1853,7 @@ export default function App() {
   const [showUploadHint, setShowUploadHint] = useState(false);
   const [isApplyingEdits, setIsApplyingEdits] = useState(false);
   const [editResult, setEditResult] = useState<{ success: number; error: number; failedIds?: number[] } | null>(null);
+  const [bulkBidDailyLimitNotice, setBulkBidDailyLimitNotice] = useState<{ campaignsCount: number } | null>(null);
   const [isFromExcelModal, setIsFromExcelModal] = useState(false);
   const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -1860,7 +1867,8 @@ export default function App() {
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
   } | null>(null);
-  const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) | null>(null);
+  const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => void) | null>(null);
+  const bulkDailyLimitOpenerRef = useRef<(() => void) | null>(null);
 
 
   const [inlineErrors, setInlineErrors] = useState<Record<string, string>>({});
@@ -1989,6 +1997,7 @@ export default function App() {
     setIsUploadEditsModalOpen(false);
     setIsApplyingEdits(true);
     setEditResult(null);
+    setBulkBidDailyLimitNotice(null);
 
     if (applyEditsTimeoutRef.current) {
         clearTimeout(applyEditsTimeoutRef.current);
@@ -1997,9 +2006,10 @@ export default function App() {
     applyEditsTimeoutRef.current = setTimeout(() => {
         setIsApplyingEdits(false);
         setEditResult({ success: 19, error: 5, failedIds: [1304655, 1304658, 1304661, 1304670, 1304674] });
+        setBulkBidDailyLimitNotice({ campaignsCount: 10 });
         setToastMessage("Изменения применены");
         applyEditsTimeoutRef.current = null;
-    }, 60000); // 1 minute
+    }, 5000);
   };
 
   const handleCancelEdits = () => {
@@ -2010,6 +2020,7 @@ export default function App() {
     setIsApplyingEdits(false);
     setToastMessage("Применение изменений отменено");
     setShowToast(true);
+    setBulkBidDailyLimitNotice(null);
   };
 
   useEffect(() => {
@@ -2750,6 +2761,8 @@ export default function App() {
                     isApplyingEdits={isApplyingEdits}
                     editResult={editResult}
                     onClearEditResult={() => setEditResult(null)}
+                    bulkBidDailyLimitNotice={bulkBidDailyLimitNotice}
+                    onDismissBulkBidDailyLimitNotice={() => setBulkBidDailyLimitNotice(null)}
                     onCancelEdits={handleCancelEdits}
                     onOpenReview={() => setIsReviewEditsModalOpen(true)}
                     onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
@@ -2784,6 +2797,9 @@ export default function App() {
                     }}
                     onRegisterUpdateFn={(fn) => {
                       updateCampaignDataRef.current = fn;
+                    }}
+                    onRegisterBulkDailyLimitOpener={(open) => {
+                      bulkDailyLimitOpenerRef.current = open;
                     }}
                     onOpenSingleCampaign={() => setAppState('single-campaign')}
                   />
@@ -2821,6 +2837,7 @@ export default function App() {
                       setIsFromExcelModal(false);
                       handleNavigationAttempt(handleNavigateToEditing);
                     }}
+                    onDailyLimit={() => bulkDailyLimitOpenerRef.current?.()}
                     onConfigureAR={() => {
                       setToastMessage("Функция 'Настроить АП' в разработке");
                       setShowToast(true);
@@ -3002,6 +3019,7 @@ export default function App() {
               ...(data.remainingBudget !== undefined && { remainingBudget: data.remainingBudget }),
               ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
               ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
+              ...(data.maxCpcBidRub !== undefined && { maxCpcBidRub: data.maxCpcBidRub }),
             };
             setSelectedCpcCampaign(updated);
             // Also update the campaign data in SuccessPage

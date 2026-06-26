@@ -5,7 +5,14 @@ import {
   isCampaignsWidgetsV1Layout,
   PRODUCT_PROMOTION_CONCEPT_PATH,
 } from '../constants/campaignListRoutes';
+import {
+  DAILY_LIMIT_ABSOLUTE_MIN,
+  demoMaxCpcBidForCampaignId,
+  minDailyLimitForMaxBid,
+  maxBidRubForDailyLimit,
+} from '../utils/cpcDailyLimitBid';
 import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
+import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
@@ -143,34 +150,6 @@ const Toast = ({ show, message, onClose, isSuccess = false, isError = false, dur
   );
 };
 
-const DailyLimitInfoTooltip: React.FC = () => {
-  const [isVisible, setIsVisible] = useState(false);
-
-  return (
-    <div 
-      className="relative inline-block"
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-    >
-      <HelpCircle className="w-4 h-4 text-gray-600 cursor-help" />
-      {isVisible && (
-        <>
-          <div className="absolute left-1/2 -translate-x-1/2 top-full w-80 h-2" onMouseEnter={() => setIsVisible(true)}></div>
-          <div 
-            className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-80 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
-            onMouseEnter={() => setIsVisible(true)}
-            onMouseLeave={() => setIsVisible(false)}
-          >
-            <p className="font-semibold mb-2">Как работает дневной лимит?</p>
-            <p className="mb-2">Сумму, которую вы зададите в лимите мы будем расходовать в течение дня равномерно, она не сгорит за 1-2 часа. Так вы достигаете наилучших показателей по показам.</p>
-            <a href="#" className="text-purple-300 hover:underline">Читать подробнее</a>
-          </div>
-        </>
-      )}
-    </div>
-  );
-};
-
 const ToggleSwitch = ({ id, checked, onChange, disabled = false }: { id?: string; checked: boolean; onChange: (checked: boolean) => void, disabled?: boolean }) => ( <button id={id} role="switch" aria-checked={checked} onClick={() => !disabled && onChange(!checked)} disabled={disabled} className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${ disabled ? 'cursor-not-allowed bg-gray-200' : 'cursor-pointer' } ${ checked ? (disabled ? 'bg-purple-300' : 'bg-purple-600') : 'bg-gray-300' }`} > <span aria-hidden="true" className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${ checked ? 'translate-x-3' : 'translate-x-0' }`} /> </button> );
 
 const Pagination = ({ total, pageSize, current, onChange }: { total: number, pageSize: number, current: number, onChange: (page: number) => void }) => {
@@ -215,6 +194,9 @@ interface SuccessPageProps {
   isApplyingEdits: boolean;
   editResult: { success: number; error: number; failedIds?: number[] } | null;
   onClearEditResult: () => void;
+  /** После массовой загрузки ставок из Excel — сколько CPC-кампаний получили новый дневной лимит */
+  bulkBidDailyLimitNotice?: { campaignsCount: number } | null;
+  onDismissBulkBidDailyLimitNotice?: () => void;
   onOpenReview: () => void;
   onCancelEdits: () => void;
   onOpenHistoryModal: () => void;
@@ -230,8 +212,10 @@ interface SuccessPageProps {
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
   }) => void;
-  onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void;
-  onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => void) => void;
+  onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => void;
+  onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => void) => void;
+  /** Открыть массовую настройку дневного лимита для текущего выделения (панель в App) */
+  onRegisterBulkDailyLimitOpener?: (open: () => void) => void;
   onOpenSingleCampaign?: () => void;
 }
 
@@ -261,6 +245,8 @@ interface DisplayCampaign {
   remainingBudget: number | null;
   dailyLimit?: number | null;
   scheduledDailyLimit?: number | null;
+  /** Макс. CPC-ставка в кампании (для минимума дневного лимита в списке) */
+  maxCpcBidRub?: number;
   /** true = лимит на сегодня израсходован, показы остановлены */
   dailyLimitExhausted?: boolean;
   spend: number | null;
@@ -3690,6 +3676,9 @@ function buildCampaignsAndProductTree(sources: ProductSource[]): { campaigns: Di
         remainingBudget: spec.remainingBudget,
         dailyLimit: spec.dailyLimit,
         dailyLimitExhausted: spec.dailyLimitExhausted,
+        ...(spec.type === 'CPC' && {
+          maxCpcBidRub: demoMaxCpcBidForCampaignId(cid),
+        }),
         spend: spec.spend,
         impressions: spec.impressions,
         ctr: spec.ctr,
@@ -3768,6 +3757,7 @@ const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
   // Чтоб в «Дневном лимите» не показывать прогресс
   dailyLimit: null,
   dailyLimitExhausted: false,
+  maxCpcBidRub: 17.9,
   // Подменим заголовок под «предсобранную» логику
   name: 'Футболка хлопок мягкая приятная / CPC-кампания за 0 ₽',
   productId: 'pr7',
@@ -4495,25 +4485,44 @@ const DailyLimitModal: React.FC<{
   onClose: () => void;
   currentBudget: number;
   dailyLimit?: number | null;
+  /** Макс. CPC-ставка в кампании (для связки лимит ↔ ставка) */
+  maxCpcBidRub?: number;
   onDailyLimitChange?: (limit: number | null, isScheduled?: boolean) => void;
   /** Когда пользователь пытается задать лимит выше бюджета — вызвать вместо показа ошибки в модалке (показать нотификашку на странице) */
   onLimitAboveBudget?: (requestedLimit: number, shortfall: number) => void;
-}> = ({ isOpen, onClose, currentBudget, dailyLimit, onDailyLimitChange, onLimitAboveBudget }) => {
+}> = ({ isOpen, onClose, currentBudget, dailyLimit, maxCpcBidRub = 0, onDailyLimitChange, onLimitAboveBudget }) => {
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
   const [dailyLimitValue, setDailyLimitValue] = useState('');
   const [savedDailyLimit, setSavedDailyLimit] = useState('');
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [budgetError, setBudgetError] = useState('');
+  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
+
+  const requiredMinDailyLimit = useMemo(
+    () => minDailyLimitForMaxBid(maxCpcBidRub),
+    [maxCpcBidRub],
+  );
+
+  const enableWithMinLimit = useCallback(() => {
+    const minLimit = requiredMinDailyLimit;
+    setIsDailyLimitEnabled(true);
+    setIsCarryoverEnabled(true);
+    setDailyLimitValue(String(minLimit));
+    setSavedDailyLimit('');
+    setBudgetError('');
+  }, [requiredMinDailyLimit]);
 
   useEffect(() => {
     if (isOpen) {
       if (dailyLimit) {
         setIsDailyLimitEnabled(true);
+        setIsCarryoverEnabled(true);
         setDailyLimitValue(String(dailyLimit));
         setSavedDailyLimit(String(dailyLimit));
       } else {
         setIsDailyLimitEnabled(false);
+        setIsCarryoverEnabled(false);
         setDailyLimitValue('');
         setSavedDailyLimit('');
       }
@@ -4534,12 +4543,10 @@ const DailyLimitModal: React.FC<{
               checked={isDailyLimitEnabled} 
               onChange={(checked) => {
                 if (checked) {
-                  setIsDailyLimitEnabled(true);
-                  setDailyLimitValue('');
-                  setSavedDailyLimit('');
-                  setBudgetError('');
+                  enableWithMinLimit();
                 } else {
                   setIsDailyLimitEnabled(false);
+                  setIsCarryoverEnabled(false);
                   setDailyLimitValue('');
                   setSavedDailyLimit('');
                   setBudgetError('');
@@ -4555,11 +4562,8 @@ const DailyLimitModal: React.FC<{
 
         <div className="mb-6">
           <div className="space-y-6">
-            {!isDailyLimitEnabled && (
-              <p className="text-sm text-gray-500">Включите автопополнение, чтобы кампания не останавливалась</p>
-            )}
-            <div className="flex items-center gap-4">
-              <div className="relative w-1/3">
+            <div className="flex flex-col gap-2">
+              <div className="relative w-full max-w-[280px] min-w-[220px]">
                 <input
                   type="text"
                   value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
@@ -4579,7 +4583,7 @@ const DailyLimitModal: React.FC<{
                       ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200' 
                       : 'bg-white border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
                   }`}
-                  placeholder="от 1 000₽"
+                  placeholder={`Задайте от ${formatForDisplay(requiredMinDailyLimit)}`}
                 />
                 <span className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${!isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'}`}>₽</span>
               </div>
@@ -4590,13 +4594,18 @@ const DailyLimitModal: React.FC<{
               </div>
             )}
             <div className="flex items-center gap-2 mt-2">
-              <label className="flex items-start gap-2 text-xs">
+              <label className="flex items-start gap-2 text-xs cursor-pointer">
                 <Checkbox
                   className="mt-0.5 h-3 w-3 text-purple-600"
                   disabled={!isDailyLimitEnabled}
+                  checked={isCarryoverEnabled}
+                  onChange={(e) => {
+                    if (!isDailyLimitEnabled) return;
+                    setIsCarryoverEnabled(e.target.checked);
+                  }}
                 />
                 <span className={isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}>
-                  Переносить неиспользованный лимит
+                  Переносить неистраченные деньги
                 </span>
               </label>
               <div className="relative inline-block group">
@@ -4626,8 +4635,10 @@ const DailyLimitModal: React.FC<{
                 setBudgetError('Введите сумму дневного лимита');
                 return;
               }
-              if (parsed < 1000) {
-                setBudgetError(`Минимальная сумма дневного лимита: ${formatForDisplay(1000)} ₽`);
+              if (parsed < requiredMinDailyLimit) {
+                setBudgetError(
+                  `Минимальный лимит для ставки ${formatForDisplay(maxCpcBidRub)} ₽ — ${formatForDisplay(requiredMinDailyLimit)} ₽`,
+                );
                 return;
               }
               if (parsed > currentBudget) {
@@ -4658,6 +4669,385 @@ const DailyLimitModal: React.FC<{
         onClose={() => setShowToast(false)} 
         isSuccess={toastMessage.includes('Новый дневной лимит установлен') || toastMessage.includes('Дневной лимит отключен')}
       />
+    </div>
+  );
+};
+
+type BulkDailyLimitTarget = DisplayCampaign;
+
+function bulkDailyLimitMinForCampaign(c: BulkDailyLimitTarget): number {
+  return minDailyLimitForMaxBid(demoMaxCpcBidForCampaignId(c.campaignId));
+}
+
+function listCampaignMaxCpcBidRub(c: DisplayCampaign): number {
+  if (c.type !== 'CPC') return 0;
+  if (c.maxCpcBidRub != null && c.maxCpcBidRub > 0) return c.maxCpcBidRub;
+  return demoMaxCpcBidForCampaignId(c.campaignId);
+}
+
+const BulkDailyLimitModal: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  targets: BulkDailyLimitTarget[];
+  onApply: (payload: {
+    limit: number | null;
+    eligibleIds: Set<string>;
+  }) => void;
+}> = ({ isOpen, onClose, targets, onApply }) => {
+  const cpcTargets = useMemo(() => targets.filter((c) => c.type === 'CPC'), [targets]);
+  const cpmSkippedCount = targets.length - cpcTargets.length;
+
+  const requiredMinDailyLimit = useMemo(() => {
+    if (cpcTargets.length === 0) return DAILY_LIMIT_ABSOLUTE_MIN;
+    return Math.max(...cpcTargets.map(bulkDailyLimitMinForCampaign));
+  }, [cpcTargets]);
+
+  const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
+  const [dailyLimitValue, setDailyLimitValue] = useState('');
+  const [budgetError, setBudgetError] = useState('');
+  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
+  const [partialConfirm, setPartialConfirm] = useState<{
+    limit: number;
+    eligibleIds: Set<string>;
+    skippedBudget: { name: string; shortfall: number }[];
+  } | null>(null);
+
+  const enableWithMinLimit = useCallback(() => {
+    setIsDailyLimitEnabled(true);
+    setIsCarryoverEnabled(true);
+    setDailyLimitValue(String(requiredMinDailyLimit));
+    setBudgetError('');
+    setPartialConfirm(null);
+  }, [requiredMinDailyLimit]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setPartialConfirm(null);
+    setBudgetError('');
+    if (cpcTargets.length === 0) {
+      setIsDailyLimitEnabled(false);
+      setDailyLimitValue('');
+      setIsCarryoverEnabled(false);
+      return;
+    }
+    const withLimit = cpcTargets.filter((c) => c.dailyLimit != null && c.dailyLimit > 0);
+    const allHaveLimit = withLimit.length === cpcTargets.length;
+    const sameLimit =
+      allHaveLimit &&
+      withLimit.every((c) => (c.dailyLimit ?? 0) === (withLimit[0].dailyLimit ?? 0));
+    if (allHaveLimit && sameLimit && withLimit[0].dailyLimit) {
+      setIsDailyLimitEnabled(true);
+      setIsCarryoverEnabled(true);
+      setDailyLimitValue(String(withLimit[0].dailyLimit));
+    } else if (withLimit.length === 0) {
+      setIsDailyLimitEnabled(false);
+      setDailyLimitValue('');
+      setIsCarryoverEnabled(false);
+    } else {
+      setIsDailyLimitEnabled(true);
+      setIsCarryoverEnabled(true);
+      setDailyLimitValue(String(requiredMinDailyLimit));
+    }
+  }, [isOpen, cpcTargets, requiredMinDailyLimit]);
+
+  const parsedLimit = useMemo(() => parseDisplayValue(dailyLimitValue), [dailyLimitValue]);
+
+  const belowMinCampaigns = useMemo(() => {
+    if (!isDailyLimitEnabled || !parsedLimit || isNaN(parsedLimit)) return [];
+    return cpcTargets.filter((c) => parsedLimit < bulkDailyLimitMinForCampaign(c));
+  }, [isDailyLimitEnabled, parsedLimit, cpcTargets]);
+
+  const limitBidConflict = useMemo(() => {
+    if (belowMinCampaigns.length === 0 || !parsedLimit || isNaN(parsedLimit)) return null;
+    const worst = belowMinCampaigns.reduce((a, b) =>
+      bulkDailyLimitMinForCampaign(b) > bulkDailyLimitMinForCampaign(a) ? b : a,
+    );
+    const worstMin = bulkDailyLimitMinForCampaign(worst);
+    const maxBid = demoMaxCpcBidForCampaignId(worst.campaignId);
+    return {
+      enteredLimit: parsedLimit,
+      requiredMinLimit: worstMin,
+      maxBidAtEnteredLimit: maxBidRubForDailyLimit(parsedLimit),
+      currentMaxBid: maxBid,
+      conflictCount: belowMinCampaigns.length,
+    };
+  }, [belowMinCampaigns, parsedLimit]);
+
+  const evaluateApply = useCallback(
+    (limit: number | null) => {
+      const eligibleIds = new Set<string>();
+      const skippedBudget: { name: string; shortfall: number }[] = [];
+
+      if (limit === null) {
+        cpcTargets.forEach((c) => eligibleIds.add(c.id));
+        return { eligibleIds, skippedBudget };
+      }
+
+      cpcTargets.forEach((c) => {
+        const minReq = bulkDailyLimitMinForCampaign(c);
+        if (limit < minReq) return;
+        const budget = c.remainingBudget ?? 0;
+        if (limit > budget) {
+          skippedBudget.push({ name: c.name, shortfall: limit - budget });
+          return;
+        }
+        eligibleIds.add(c.id);
+      });
+
+      return { eligibleIds, skippedBudget };
+    },
+    [cpcTargets],
+  );
+
+  if (!isOpen) return null;
+
+  const titleCount = cpcTargets.length;
+  const title =
+    titleCount === 1
+      ? 'Дневной лимит для 1 CPC-кампании'
+      : `Дневной лимит для ${titleCount} ${getPlural(titleCount, 'CPC-кампании', 'CPC-кампаний', 'CPC-кампаний')}`;
+
+  const commitApply = (limit: number | null, eligibleIds: Set<string>) => {
+    onApply({ limit, eligibleIds });
+    onClose();
+  };
+
+  const handlePrimarySave = () => {
+    if (cpcTargets.length === 0) {
+      setBudgetError('Дневной лимит доступен только для CPC-кампаний');
+      return;
+    }
+    if (!isDailyLimitEnabled) {
+      commitApply(null, new Set(cpcTargets.map((c) => c.id)));
+      return;
+    }
+    if (dailyLimitValue === '' || isNaN(parsedLimit)) {
+      setBudgetError('Введите сумму дневного лимита');
+      return;
+    }
+    if (parsedLimit < requiredMinDailyLimit) {
+      setBudgetError(
+        `Минимальный лимит для выбранных кампаний — ${formatForDisplay(requiredMinDailyLimit)} ₽`,
+      );
+      return;
+    }
+    if (belowMinCampaigns.length > 0) return;
+
+    const { eligibleIds, skippedBudget } = evaluateApply(parsedLimit);
+    if (eligibleIds.size === 0 && skippedBudget.length > 0) {
+      setBudgetError('Ни у одной кампании не хватает бюджета для такого лимита');
+      return;
+    }
+    if (skippedBudget.length > 0) {
+      setPartialConfirm({ limit: parsedLimit, eligibleIds, skippedBudget });
+      return;
+    }
+    commitApply(parsedLimit, eligibleIds);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6 overflow-visible max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-labelledby="bulk-daily-limit-title"
+      >
+        <div className="flex justify-between items-center mb-4 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <ToggleSwitch
+              checked={isDailyLimitEnabled}
+              onChange={(checked) => {
+                if (checked) enableWithMinLimit();
+                else {
+                  setIsDailyLimitEnabled(false);
+                  setIsCarryoverEnabled(false);
+                  setDailyLimitValue('');
+                  setBudgetError('');
+                  setPartialConfirm(null);
+                }
+              }}
+              disabled={cpcTargets.length === 0}
+            />
+            <h3 id="bulk-daily-limit-title" className="font-bold text-lg text-gray-900 truncate">
+              {title}
+            </h3>
+            <DailyLimitInfoTooltip />
+          </div>
+          <button type="button" onClick={onClose} aria-label="Закрыть">
+            <X className="w-5 h-5 text-gray-400 hover:text-gray-600" />
+          </button>
+        </div>
+
+        {cpmSkippedCount > 0 && (
+          <p className="text-sm text-gray-600 mb-3 shrink-0">
+            {cpmSkippedCount}{' '}
+            {getPlural(cpmSkippedCount, 'CPM-кампания', 'CPM-кампании', 'CPM-кампаний')} не{' '}
+            {cpmSkippedCount === 1 ? 'будет изменена' : 'будут изменены'} — лимит только для CPC.
+          </p>
+        )}
+
+        {partialConfirm ? (
+          <div className="mb-6 space-y-4 overflow-y-auto custom-scrollbar pr-1">
+            <p className="text-sm text-gray-800">
+              Лимит {formatForDisplay(partialConfirm.limit)} ₽ можно задать для{' '}
+              <b>{partialConfirm.eligibleIds.size}</b>{' '}
+              {getPlural(partialConfirm.eligibleIds.size, 'кампании', 'кампаний', 'кампаний')}. У{' '}
+              {partialConfirm.skippedBudget.length}{' '}
+              {getPlural(partialConfirm.skippedBudget.length, 'кампании', 'кампаний', 'кампаний')}{' '}
+              не хватает бюджета:
+            </p>
+            <ul className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+              {partialConfirm.skippedBudget.map((row) => (
+                <li key={row.name} className="px-3 py-2 text-gray-700">
+                  <span className="font-medium text-gray-900">{row.name}</span>
+                  <span className="text-gray-500">
+                    {' '}
+                    — пополните ещё на {formatForDisplay(row.shortfall)} ₽
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <div className="mb-6 overflow-y-auto custom-scrollbar pr-1">
+            <div className="space-y-6">
+              {!isDailyLimitEnabled && cpcTargets.length > 0 && (
+                <p className="text-sm text-gray-500">
+                  Включите лимит — подставим минимум {formatForDisplay(requiredMinDailyLimit)} ₽ для
+                  текущих ставок
+                </p>
+              )}
+              {cpcTargets.length === 0 && (
+                <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                  В выделении нет CPC-кампаний. Выберите кампании с оплатой за клики.
+                </p>
+              )}
+              <div className="flex flex-col gap-2">
+                <div className="relative w-full max-w-[280px] min-w-[220px]">
+                  <input
+                    type="text"
+                    value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
+                    disabled={!isDailyLimitEnabled || cpcTargets.length === 0}
+                    onChange={(e) => {
+                      const parsed = parseDisplayValue(e.target.value);
+                      if (!isNaN(parsed)) {
+                        setDailyLimitValue(String(parsed));
+                        setBudgetError('');
+                        setPartialConfirm(null);
+                      } else if (e.target.value === '') {
+                        setDailyLimitValue('');
+                        setBudgetError('');
+                      }
+                    }}
+                    className={`w-full text-sm border shadow-sm outline-none transition-colors px-2 py-1.5 rounded-lg pr-6 ${
+                      !isDailyLimitEnabled || cpcTargets.length === 0
+                        ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200'
+                        : 'bg-white border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                    }`}
+                    placeholder={`Задайте от ${formatForDisplay(requiredMinDailyLimit)}`}
+                  />
+                  <span
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${
+                      !isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'
+                    }`}
+                  >
+                    ₽
+                  </span>
+                </div>
+              </div>
+              {limitBidConflict && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <p className="mb-2">
+                    При лимите {formatForDisplay(limitBidConflict.enteredLimit)} ₽ у{' '}
+                    {limitBidConflict.conflictCount}{' '}
+                    {getPlural(limitBidConflict.conflictCount, 'кампании', 'кампаний', 'кампаний')}{' '}
+                    ставка выше допустимого потолка (
+                    {formatForDisplay(limitBidConflict.maxBidAtEnteredLimit)} ₽).
+                  </p>
+                  <p className="mb-3 text-amber-900/90">
+                    Задайте от {formatForDisplay(limitBidConflict.requiredMinLimit)} ₽ или снизьте
+                    ставки в этих кампаниях.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDailyLimitValue(String(limitBidConflict.requiredMinLimit));
+                      setBudgetError('');
+                    }}
+                    className="text-sm font-medium text-purple-700 hover:text-purple-900 underline-offset-2 hover:underline"
+                  >
+                    Задать {formatForDisplay(limitBidConflict.requiredMinLimit)} ₽
+                  </button>
+                </div>
+              )}
+              {budgetError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <p className="text-sm text-red-600">{budgetError}</p>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <label className="flex items-start gap-2 text-xs cursor-pointer">
+                  <Checkbox
+                    className="mt-0.5 h-3 w-3 text-purple-600"
+                    disabled={!isDailyLimitEnabled}
+                    checked={isCarryoverEnabled}
+                    onChange={(e) => {
+                      if (!isDailyLimitEnabled) return;
+                      setIsCarryoverEnabled(e.target.checked);
+                    }}
+                  />
+                  <span className={isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}>
+                    Переносить неистраченные деньги
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100 shrink-0">
+          {partialConfirm ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setPartialConfirm(null)}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Назад
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  commitApply(partialConfirm.limit, partialConfirm.eligibleIds)
+                }
+                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg"
+              >
+                Применить к {partialConfirm.eligibleIds.size}{' '}
+                {getPlural(partialConfirm.eligibleIds.size, 'кампании', 'кампаниям', 'кампаниям')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={handlePrimarySave}
+                disabled={cpcTargets.length === 0 || !!limitBidConflict}
+                className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                Сохранить
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg"
+              >
+                Отмена
+              </button>
+            </>
+          )}
+        </div>
+      </div>
     </div>
   );
 };
@@ -5195,7 +5585,7 @@ const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () =>
   <div className="bg-white rounded-xl p-8 mb-6 shadow-sm border border-gray-100 flex flex-col items-center text-center animate-in fade-in duration-300">
     <Loader className="w-12 h-12 text-purple-600 animate-spin" />
     <h2 className="text-xl font-bold text-gray-900 mt-4">
-      Внесем изменения через 1 минуту
+      Внесем изменения через 5 секунд
     </h2>
     <div className="mt-2 max-w-xl px-4 py-3 rounded-lg bg-purple-50 border border-purple-100 flex items-start gap-3 text-left">
       <AlertTriangle className="w-5 h-5 text-purple-600 mt-0.5 flex-shrink-0" />
@@ -5214,6 +5604,177 @@ const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () =>
   </div>
 );
 
+function bulkBidDailyLimitCampaignsLabel(count: number): string {
+  const n = Math.abs(count);
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} кампании`;
+  return `${n} кампаниях`;
+}
+
+export type BulkBidDailyLimitChangeRow = {
+  campaignId: number;
+  name: string;
+  previousLimit: number;
+  newLimit: number;
+};
+
+function applyBulkDailyLimitBumpFromExcel(
+  campaigns: DisplayCampaign[],
+  maxCount: number,
+): {
+  campaigns: DisplayCampaign[];
+  snapshot: Record<number, number | null>;
+  changes: BulkBidDailyLimitChangeRow[];
+} {
+  const targets = campaigns
+    .filter((c) => c.type === 'CPC' && c.dailyLimit != null && c.dailyLimit > 0)
+    .slice(0, maxCount);
+
+  if (targets.length === 0) {
+    return { campaigns, snapshot: {}, changes: [] };
+  }
+
+  const snapshot: Record<number, number | null> = {};
+  const changes: BulkBidDailyLimitChangeRow[] = [];
+  const updatesByCampaignId = new Map<number, number>();
+
+  targets.forEach((c) => {
+    snapshot[c.campaignId] = c.dailyLimit ?? null;
+    const previousLimit = c.dailyLimit ?? DAILY_LIMIT_ABSOLUTE_MIN;
+    const bidAfterFile = demoMaxCpcBidForCampaignId(c.campaignId) + 40;
+    let newLimit = minDailyLimitForMaxBid(bidAfterFile);
+    if (newLimit <= previousLimit) {
+      newLimit = previousLimit + 500;
+    }
+    updatesByCampaignId.set(c.campaignId, newLimit);
+    changes.push({
+      campaignId: c.campaignId,
+      name: c.name,
+      previousLimit,
+      newLimit,
+    });
+  });
+
+  const next = campaigns.map((c) => {
+    const newLimit = updatesByCampaignId.get(c.campaignId);
+    if (newLimit == null) return c;
+    return { ...c, dailyLimit: newLimit };
+  });
+
+  return { campaigns: next, snapshot, changes };
+}
+
+function downloadBulkBidDailyLimitChangesExcel(changes: BulkBidDailyLimitChangeRow[]) {
+  const escapeCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+  const header = ['ID кампании', 'Кампания', 'Дневной лимит был (₽)', 'Дневной лимит стал (₽)'];
+  const body = changes.map((row) => [
+    String(row.campaignId),
+    row.name,
+    String(row.previousLimit),
+    String(row.newLimit),
+  ]);
+  const csv = [header, ...body].map((cols) => cols.map((c) => escapeCell(c)).join(';')).join('\r\n');
+  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `daily_limit_changes_${stamp}.xlsx`;
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+}
+
+const BulkBidDailyLimitNoticeModal: React.FC<{
+  changes: BulkBidDailyLimitChangeRow[];
+  onClose: () => void;
+  onRollbackBids: () => void;
+}> = ({ changes, onClose, onRollbackBids }) => (
+  <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div
+      className="relative flex w-full max-w-xl flex-col rounded-xl bg-white p-5 shadow-xl"
+      onClick={(e) => e.stopPropagation()}
+      role="dialog"
+      aria-labelledby="bulk-bid-daily-limit-title"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+        aria-label="Закрыть"
+      >
+        <X className="h-5 w-5" />
+      </button>
+      <h2 id="bulk-bid-daily-limit-title" className="pr-8 text-base font-bold text-gray-900">
+        Обновлён дневной лимит
+      </h2>
+      <p className="mt-2 text-xs leading-snug text-gray-600">
+        В {bulkBidDailyLimitCampaignsLabel(changes.length)} после изменения ставок из файла дневной лимит увеличен:
+      </p>
+      <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-gray-100 bg-gray-50 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
+          <span>Кампания</span>
+          <span className="text-right">Лимит</span>
+        </div>
+        <ul className="max-h-[min(280px,50vh)] overflow-y-auto">
+          {changes.map((row) => (
+            <li
+              key={row.campaignId}
+              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-gray-50 px-2.5 py-1.5 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-xs font-medium text-gray-900" title={row.name}>
+                  {row.name}
+                </p>
+                <p className="truncate text-[10px] text-gray-400 tabular-nums">ID {row.campaignId}</p>
+              </div>
+              <p className="shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-gray-800">
+                <span className="text-gray-400">{formatForDisplay(row.previousLimit)}</span>
+                <span className="mx-1 text-gray-300" aria-hidden>
+                  →
+                </span>
+                <span className="font-semibold">{formatForDisplay(row.newLimit)} ₽</span>
+              </p>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <p className="mt-3 text-xs leading-snug text-gray-600">
+        Если хотите откатить на прежние ставки и лимиты,{' '}
+        <button
+          type="button"
+          onClick={() => {
+            onRollbackBids();
+            onClose();
+          }}
+          className="font-medium text-purple-600 underline underline-offset-2 hover:text-purple-800"
+        >
+          нажмите сюда
+        </button>
+        .
+      </p>
+      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => downloadBulkBidDailyLimitChangesExcel(changes)}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+        >
+          <Download className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
+          Скачать Excel-файл
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+        >
+          Понятно
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 type DateFilterPreset = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'custom';
 
@@ -6578,6 +7139,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     isApplyingEdits,
     editResult,
     onClearEditResult,
+    bulkBidDailyLimitNotice = null,
+    onDismissBulkBidDailyLimitNotice,
     onOpenReview,
     onCancelEdits,
     onOpenHistoryModal,
@@ -6586,6 +7149,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onOpenCpcCampaign,
     onOpenSingleCampaign,
     onRegisterUpdateFn,
+    onRegisterBulkDailyLimitOpener,
 }) => {
   const {
     profileId,
@@ -6688,7 +7252,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(() => buildAllCampaignsForProfile('1'));
 
   // Handle campaign data updates from edit page
-  const handleUpdateCampaignData = useCallback((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null }) => {
+  const handleUpdateCampaignData = useCallback((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => {
     setAllCampaigns(prev => prev.map(c => {
       if (c.campaignId === campaignId) {
         return {
@@ -6697,11 +7261,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           ...(data.remainingBudget !== undefined && { remainingBudget: data.remainingBudget }),
           ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
           ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
+          ...(data.maxCpcBidRub !== undefined && { maxCpcBidRub: data.maxCpcBidRub }),
         };
       }
       return c;
     }));
   }, []);
+
+  const [isBulkDailyLimitModalOpen, setIsBulkDailyLimitModalOpen] = useState(false);
+  const [bulkDailyLimitTargets, setBulkDailyLimitTargets] = useState<DisplayCampaign[]>([]);
 
   // Expose update function to parent
   useEffect(() => {
@@ -6709,6 +7277,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       onRegisterUpdateFn(handleUpdateCampaignData);
     }
   }, [onRegisterUpdateFn]); // Removed handleUpdateCampaignData from dependencies to avoid infinite loop
+
   const [currentPage, setCurrentPage] = useState(1);
   const CAMPAIGNS_PAGE_SIZE = 10;
   const PRODUCTS_PAGINATION_MIN_ITEMS = 20;
@@ -6718,6 +7287,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [massBudgetRefillTargetIds, setMassBudgetRefillTargetIds] = useState<string[]>([]);
   const [isDailyLimitModalOpen, setIsDailyLimitModalOpen] = useState(false);
   const [limitShortfallNotification, setLimitShortfallNotification] = useState<{ requestedLimit: number; shortfall: number } | null>(null);
+
+  const openDailyLimitModalForCampaign = useCallback(
+    (c: DisplayCampaign) => {
+      const fresh = allCampaigns.find((x) => x.id === c.id) ?? c;
+      setSelectedCampaignForRefill(fresh);
+      setIsDailyLimitModalOpen(true);
+    },
+    [allCampaigns],
+  );
+
+  const dailyLimitModalCampaign = useMemo(() => {
+    if (!selectedCampaignForRefill) return null;
+    return allCampaigns.find((x) => x.id === selectedCampaignForRefill.id) ?? selectedCampaignForRefill;
+  }, [allCampaigns, selectedCampaignForRefill]);
 
   // Filter states
   const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
@@ -6775,7 +7358,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const isCampaignsWidgetsV1OnlyPage =
     location.pathname === CAMPAIGNS_WITH_WIDGETS_V1_PATH;
 
-  const [listTab, setListTab] = useState<'campaigns' | 'products'>('products');
+  const [listTab, setListTab] = useState<'campaigns' | 'products'>('campaigns');
   const [productsPickTab, setProductsPickTab] = useState<ProductsPickTab>(() =>
     location.pathname === PRODUCT_PROMOTION_CONCEPT_PATH ? 'all_products' : 'promoted',
   );
@@ -7205,6 +7788,113 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     direction: 'asc' | 'desc';
   } | null>(null);
   const [productBulkNotice, setProductBulkNotice] = useState<string | null>(null);
+
+  const openBulkDailyLimitForSelection = useCallback(() => {
+    const targets = allCampaigns.filter((c) => selectedCampaigns.includes(c.id));
+    const cpcCount = targets.filter((c) => c.type === 'CPC').length;
+    if (targets.length === 0) return;
+    if (cpcCount === 0) {
+      setProductBulkNotice('Дневной лимит доступен только для CPC-кампаний');
+      return;
+    }
+    setBulkDailyLimitTargets(targets);
+    setIsBulkDailyLimitModalOpen(true);
+  }, [allCampaigns, selectedCampaigns]);
+
+  useEffect(() => {
+    if (onRegisterBulkDailyLimitOpener) {
+      onRegisterBulkDailyLimitOpener(openBulkDailyLimitForSelection);
+    }
+  }, [onRegisterBulkDailyLimitOpener, openBulkDailyLimitForSelection]);
+
+  const handleBulkDailyLimitApply = useCallback(
+    ({ limit, eligibleIds }: { limit: number | null; eligibleIds: Set<string> }) => {
+      const cpmSkipped = bulkDailyLimitTargets.filter(
+        (c) => selectedCampaigns.includes(c.id) && c.type === 'CPM',
+      ).length;
+
+      setAllCampaigns((prev) =>
+        prev.map((c) => {
+          if (!eligibleIds.has(c.id)) return c;
+          if (limit === null) {
+            return { ...c, dailyLimit: null, scheduledDailyLimit: null };
+          }
+          return { ...c, dailyLimit: limit, scheduledDailyLimit: null };
+        }),
+      );
+
+      eligibleIds.forEach((id) => {
+        const camp = bulkDailyLimitTargets.find((c) => c.id === id);
+        if (!camp) return;
+        handleUpdateCampaignData(camp.campaignId, {
+          dailyLimit: limit,
+          scheduledDailyLimit: null,
+        });
+      });
+
+      const applied = eligibleIds.size;
+      let message: string;
+      if (limit === null) {
+        message = `Дневной лимит отключён для ${applied} ${getPlural(applied, 'кампании', 'кампаний', 'кампаний')}`;
+      } else {
+        message = `Дневной лимит ${formatForDisplay(limit)} ₽ для ${applied} ${getPlural(applied, 'CPC-кампании', 'CPC-кампаний', 'CPC-кампаний')}`;
+      }
+      if (cpmSkipped > 0) {
+        message += `. ${cpmSkipped} CPM ${getPlural(cpmSkipped, 'пропущена', 'пропущены', 'пропущено')}`;
+      }
+      setProductBulkNotice(message);
+      setIsBulkDailyLimitModalOpen(false);
+      setBulkDailyLimitTargets([]);
+    },
+    [bulkDailyLimitTargets, selectedCampaigns, handleUpdateCampaignData],
+  );
+
+  const bulkDailyLimitRollbackRef = useRef<Record<number, number | null> | null>(null);
+  const bulkDailyLimitNoticeAppliedRef = useRef(false);
+  const [bulkDailyLimitChangeRows, setBulkDailyLimitChangeRows] = useState<BulkBidDailyLimitChangeRow[]>([]);
+
+  useEffect(() => {
+    if (!bulkBidDailyLimitNotice?.campaignsCount) {
+      bulkDailyLimitNoticeAppliedRef.current = false;
+      setBulkDailyLimitChangeRows([]);
+      return;
+    }
+    if (bulkDailyLimitNoticeAppliedRef.current) return;
+
+    const count = bulkBidDailyLimitNotice.campaignsCount;
+    let changes: BulkBidDailyLimitChangeRow[] = [];
+    setAllCampaigns((prev) => {
+      const result = applyBulkDailyLimitBumpFromExcel(prev, count);
+      bulkDailyLimitRollbackRef.current = result.snapshot;
+      changes = result.changes;
+      return result.campaigns;
+    });
+    setBulkDailyLimitChangeRows(changes);
+    bulkDailyLimitNoticeAppliedRef.current = true;
+  }, [bulkBidDailyLimitNotice]);
+
+  const handleRollbackBulkBidDailyLimits = useCallback(() => {
+    const snapshot = bulkDailyLimitRollbackRef.current;
+    if (snapshot) {
+      setAllCampaigns((prev) =>
+        prev.map((c) =>
+          Object.prototype.hasOwnProperty.call(snapshot, c.campaignId)
+            ? { ...c, dailyLimit: snapshot[c.campaignId] }
+            : c,
+        ),
+      );
+      bulkDailyLimitRollbackRef.current = null;
+    }
+    bulkDailyLimitNoticeAppliedRef.current = false;
+    setBulkDailyLimitChangeRows([]);
+    setProductBulkNotice('Прежние ставки и дневные лимиты восстановлены');
+    onDismissBulkBidDailyLimitNotice?.();
+  }, [onDismissBulkBidDailyLimitNotice]);
+
+  const handleDismissBulkBidDailyLimitNotice = useCallback(() => {
+    onDismissBulkBidDailyLimitNotice?.();
+  }, [onDismissBulkBidDailyLimitNotice]);
+
   const [productBidBulkModalKind, setProductBidBulkModalKind] =
     useState<ProductBidBulkModalKind | null>(null);
   // Дропдаун тегов: открыт для productId
@@ -8186,6 +8876,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     >
       {(
         [
+          {
+            id: 'campaigns' as const,
+            label: 'Кампании',
+            count: campaigns.length,
+            selected: listTab === 'campaigns',
+            onSelect: () => setListTab('campaigns'),
+          },
           ...CONCEPT_PRODUCTS_PICK_TABS.map((pick) => ({
             id: pick.id,
             label: pick.label,
@@ -8197,13 +8894,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               setProductsSecondaryPickTab('all');
             },
           })),
-          {
-            id: 'campaigns' as const,
-            label: 'Кампании',
-            count: campaigns.length,
-            selected: listTab === 'campaigns',
-            onSelect: () => setListTab('campaigns'),
-          },
         ] as const
       ).map((tab) => (
         <button
@@ -8304,6 +8994,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         />
       )}
 
+      {bulkBidDailyLimitNotice && bulkDailyLimitChangeRows.length > 0 && (
+        <BulkBidDailyLimitNoticeModal
+          changes={bulkDailyLimitChangeRows}
+          onClose={handleDismissBulkBidDailyLimitNotice}
+          onRollbackBids={handleRollbackBulkBidDailyLimits}
+        />
+      )}
+
       {isProductPromotionConceptPage && productBidBulkModalKind && (
         <ProductBidBulkModal
           kind={productBidBulkModalKind}
@@ -8336,19 +9034,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={listTab === 'products'}
-                    onClick={() => setListTab('products')}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                      listTab === 'products'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
-                  >
-                    Товары
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={listTab === 'campaigns'}
                     onClick={() => setListTab('campaigns')}
                     className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -8358,6 +9043,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     }`}
                   >
                     Кампании
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'products'}
+                    onClick={() => setListTab('products')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'products'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Товары
                   </button>
                 </div>
 
@@ -8531,19 +9229,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     <button
                       type="button"
                       role="tab"
-                      aria-selected={listTab === 'products'}
-                      onClick={() => setListTab('products')}
-                      className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                        listTab === 'products'
-                          ? 'bg-white text-gray-900 shadow-sm'
-                          : 'text-[#767386] hover:text-gray-900'
-                      }`}
-                    >
-                      Товары
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
                       aria-selected={listTab === 'campaigns'}
                       onClick={() => setListTab('campaigns')}
                       className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -8553,6 +9238,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       }`}
                     >
                       Кампании
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={listTab === 'products'}
+                      onClick={() => setListTab('products')}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                        listTab === 'products'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-[#767386] hover:text-gray-900'
+                      }`}
+                    >
+                      Товары
                     </button>
                   </div>
                   <ExcelActionsDropdown
@@ -8843,19 +9541,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <button
                     type="button"
                     role="tab"
-                    aria-selected={listTab === 'products'}
-                    onClick={() => setListTab('products')}
-                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
-                      listTab === 'products'
-                        ? 'bg-white text-gray-900 shadow-sm'
-                        : 'text-[#767386] hover:text-gray-900'
-                    }`}
-                  >
-                    Товары
-                  </button>
-                  <button
-                    type="button"
-                    role="tab"
                     aria-selected={listTab === 'campaigns'}
                     onClick={() => setListTab('campaigns')}
                     className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
@@ -8865,6 +9550,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     }`}
                   >
                     Кампании
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={listTab === 'products'}
+                    onClick={() => setListTab('products')}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition-all ${
+                      listTab === 'products'
+                        ? 'bg-white text-gray-900 shadow-sm'
+                        : 'text-[#767386] hover:text-gray-900'
+                    }`}
+                  >
+                    Товары
                   </button>
                 </div>
 
@@ -9379,7 +10077,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       dailyLimit={c.dailyLimit ?? null}
                                       dailyLimitExhausted={c.dailyLimitExhausted}
                                       isCpc={c.type === 'CPC'}
-                                      onClick={c.type === 'CPC' ? () => { setSelectedCampaignForRefill(c); setIsDailyLimitModalOpen(true); } : undefined}
+                                      onClick={c.type === 'CPC' ? () => openDailyLimitModalForCampaign(c) : undefined}
                                   />
                               </td>
                               <td className="p-4 font-semibold text-gray-900">
@@ -10654,7 +11352,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               dailyLimit={camp.dailyLimit ?? null}
                               dailyLimitExhausted={camp.dailyLimitExhausted}
                               isCpc={camp.type === 'CPC'}
-                              onClick={camp.type === 'CPC' ? () => { setSelectedCampaignForRefill(camp); setIsDailyLimitModalOpen(true); } : undefined}
+                              onClick={camp.type === 'CPC' ? () => openDailyLimitModalForCampaign(camp) : undefined}
                             />
                           </td>
                             ) : null}
@@ -10836,22 +11534,34 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           currentBudget={selectedCampaignForRefill.remainingBudget || 0}
         />
       )}
-      {isDailyLimitModalOpen && selectedCampaignForRefill && (
+      {isBulkDailyLimitModalOpen && bulkDailyLimitTargets.length > 0 && (
+        <BulkDailyLimitModal
+          isOpen={isBulkDailyLimitModalOpen}
+          onClose={() => {
+            setIsBulkDailyLimitModalOpen(false);
+            setBulkDailyLimitTargets([]);
+          }}
+          targets={bulkDailyLimitTargets}
+          onApply={handleBulkDailyLimitApply}
+        />
+      )}
+      {isDailyLimitModalOpen && dailyLimitModalCampaign && (
         <DailyLimitModal
           isOpen={isDailyLimitModalOpen}
           onClose={() => {
             setIsDailyLimitModalOpen(false);
             setSelectedCampaignForRefill(null);
           }}
-          currentBudget={selectedCampaignForRefill.remainingBudget || 0}
-          dailyLimit={selectedCampaignForRefill.dailyLimit || null}
+          currentBudget={dailyLimitModalCampaign.remainingBudget || 0}
+          dailyLimit={dailyLimitModalCampaign.dailyLimit || null}
+          maxCpcBidRub={listCampaignMaxCpcBidRub(dailyLimitModalCampaign)}
           onLimitAboveBudget={(requestedLimit, shortfall) => {
             setLimitShortfallNotification({ requestedLimit, shortfall });
           }}
           onDailyLimitChange={(limit, isScheduled = false) => {
-            if (selectedCampaignForRefill) {
+            if (dailyLimitModalCampaign) {
               setAllCampaigns(prev => prev.map(c => {
-                if (c.id === selectedCampaignForRefill.id) {
+                if (c.id === dailyLimitModalCampaign.id) {
                   if (limit === null) {
                     return { ...c, dailyLimit: null, scheduledDailyLimit: null };
                   }
