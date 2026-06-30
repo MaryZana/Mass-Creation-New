@@ -1,5 +1,7 @@
 export const DAILY_LIMIT_ABSOLUTE_MIN = 1000;
 export const DAILY_LIMIT_MIN_CLICKS_PER_DAY = 30;
+/** Максимальная ставка в CPC (₽) */
+export const CPC_MAX_BID_RUB = 150;
 
 export function minDailyLimitForMaxBid(maxBidRub: number): number {
   const byBid = Math.ceil(maxBidRub * DAILY_LIMIT_MIN_CLICKS_PER_DAY);
@@ -10,6 +12,11 @@ export function maxBidRubForDailyLimit(dailyLimitRub: number): number {
   if (!Number.isFinite(dailyLimitRub) || dailyLimitRub <= 0) return 0;
   return Math.floor(dailyLimitRub / DAILY_LIMIT_MIN_CLICKS_PER_DAY);
 }
+
+/** Демо: товары, для которых ставки из Excel не применились из‑за дневного лимита */
+export const UPLOAD_DAILY_LIMIT_ERROR_DEMO_PRODUCT_IDS = ['pr1', 'pr8', 'pr24'] as const;
+
+export const UPLOAD_DAILY_LIMIT_ERROR_PRODUCTS_FILTER_LABEL = 'Товары с ошибкой лимита';
 
 /** Демо: макс. CPC-ставка в кампании для прототипа списка */
 export function demoMaxCpcBidForCampaignId(campaignId: number): number {

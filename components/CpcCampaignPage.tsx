@@ -24,6 +24,7 @@ import { useProfile, type RepeatLaunchPreset } from './ProfileContext';
 import {
   minDailyLimitForMaxBid,
   maxBidRubForDailyLimit,
+  CPC_MAX_BID_RUB,
 } from '../utils/cpcDailyLimitBid';
 
 const UNIFIED_BALANCE = 105350;
@@ -134,9 +135,11 @@ function CopyNmIdButton({ nmId }: { nmId: number }) {
   );
 }
 
-function HeaderHint({ label }: { label: string }) {
+function HeaderHint({ label, className }: { label: string; className?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-xs font-normal text-gray-400">
+    <span
+      className={`inline-flex items-center gap-1 text-xs font-normal text-gray-400${className ? ` ${className}` : ''}`}
+    >
       {label}
       <HelpCircle className="h-3.5 w-3.5 text-gray-300" aria-hidden />
     </span>
@@ -440,7 +443,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [toastIsError, setToastIsError] = useState(false);
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
   const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
-  const [campaignBudget, setCampaignBudget] = useState(remainingBudget ?? 1500);
+  const [campaignBudget, setCampaignBudget] = useState(remainingBudget ?? 1000);
   const [campaignName, setCampaignName] = useState(name);
   const [isDailyLimitTooltipVisible, setIsDailyLimitTooltipVisible] = useState(false);
   const [isExhaustedPlaqueTooltipVisible, setIsExhaustedPlaqueTooltipVisible] = useState(false);
@@ -624,6 +627,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       const bids = zone === 'search' ? productSearchBids : productRecommendationsBids;
       const entry = bids[productKey];
       if (!entry) return;
+      if (parsed > CPC_MAX_BID_RUB) {
+        const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
+        setter((prev) => ({
+          ...prev,
+          [productKey]: { ...entry, draft: entry.saved },
+        }));
+        setToastMessage(`Максимальная ставка в CPC — ${formatForDisplay(CPC_MAX_BID_RUB)} ₽`);
+        setToastIsError(true);
+        setShowToast(true);
+        return;
+      }
       const bidStr = String(parsed);
       const otherSaved =
         zone === 'search'
@@ -640,6 +654,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             ...prev,
             [productKey]: { ...entry, draft: entry.saved },
           }));
+          if (newDailyLimit > campaignBudget) {
+            setBidLimitBudgetConflictModal({
+              kind: 'productBid',
+              productKey,
+              zone,
+              attemptedBid: parsed,
+              newDailyLimit,
+              shortfall: newDailyLimit - campaignBudget,
+            });
+            return;
+          }
           setBidRaisesDailyLimitModal({
             productKey,
             zone,
@@ -670,6 +695,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       syncDailyLimitAfterMaxBidChange,
       isBidChasingEnabled,
       bidChasingMaxBid,
+      campaignBudget,
     ],
   );
 
@@ -753,7 +779,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   }, [name]);
 
   useEffect(() => {
-    setCampaignBudget(remainingBudget ?? 1500);
+    setCampaignBudget(remainingBudget ?? 1000);
   }, [remainingBudget]);
 
   useEffect(() => {
@@ -857,31 +883,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         </div>
 
         <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
-          {dailyLimitBudgetShortfall != null && dailyLimitBudgetShortfall > 0 && (
-            <div
-              className="flex items-start gap-3 rounded-xl border border-red-500 bg-white px-4 py-3 md:col-span-2"
-              role="alert"
-            >
-              <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white"
-                aria-hidden
-              >
-                <X className="h-4 w-4" />
-              </div>
-              <p className="flex-1 pt-1 text-sm font-semibold leading-snug text-gray-900">
-                Не получилось установить Дневной лимит. Пополните бюджет на{' '}
-                {formatForDisplay(dailyLimitBudgetShortfall)} ₽
-              </p>
-              <button
-                type="button"
-                onClick={() => setDailyLimitBudgetShortfall(null)}
-                className="shrink-0 text-gray-900 hover:text-gray-600"
-                aria-label="Закрыть"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-          )}
           <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="mb-4 text-sm font-semibold text-gray-900">Остаток бюджета</p>
             <div className="flex flex-1 flex-col justify-center gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -943,7 +944,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <div className="mb-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-1 items-start gap-2">
+                <div className="flex min-w-0 flex-1 items-start justify-center gap-2">
                   <ToggleSwitch
                     checked={isDailyLimitEnabled}
                     onChange={(checked) => {
@@ -954,7 +955,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                       }
                     }}
                   />
-                  <div className="min-w-0 flex-1 pt-0.5">
+                  <div className="min-w-0 flex-1 pt-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-gray-900">Дневной лимит</span>
                       <DailyLimitInfoTooltip />
@@ -991,8 +992,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-1 items-stretch">
-              <div className="flex min-w-0 flex-1 flex-col justify-center gap-3 pr-5">
+            <div className="flex flex-1 items-center">
+              <div className="flex min-w-0 flex-1 flex-col justify-center gap-3 pr-4">
                 <div className="relative w-full max-w-[240px]">
                   <input
                     type="text"
@@ -1090,18 +1091,18 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               </div>
 
               {dailyLimitSpendSummary ? (
-                <div className="flex w-[min(200px,38%)] shrink-0 flex-col justify-center border-l border-gray-200 pl-5">
+                <div className="flex w-[min(148px,30%)] shrink-0 flex-col justify-center gap-1 border-l border-gray-200 pl-4">
                   <span className="text-xs text-gray-500">Истратили</span>
-                  <p className="mt-1 leading-tight">
-                    <span className="text-base font-bold text-gray-900">
+                  <p className="whitespace-nowrap text-sm leading-none tabular-nums text-gray-900">
+                    <span className="font-semibold">
                       {formatForDisplay(dailyLimitSpendSummary.spent)} ₽
                     </span>
-                    <span className="text-sm text-gray-500">
+                    <span className="font-normal text-gray-500">
                       {' '}
                       из {formatForDisplay(dailyLimitSpendSummary.total)} ₽
                     </span>
                   </p>
-                  <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+                  <div className="mt-1 h-1.5 w-full max-w-[120px] overflow-hidden rounded-full bg-gray-200">
                     <div
                       className="h-full rounded-full bg-gray-700 transition-[width] duration-300"
                       style={{ width: `${dailyLimitSpendSummary.progress}%` }}
@@ -1109,7 +1110,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   </div>
                 </div>
               ) : (
-                <div className="flex w-[min(200px,38%)] shrink-0 flex-col justify-center border-l border-gray-200 pl-5">
+                <div className="flex w-[min(148px,30%)] shrink-0 flex-col justify-center border-l border-gray-200 pl-4">
                   <p className="text-xs leading-snug text-gray-500">
                     Чем больше ставка, тем больше будет минимальный лимит
                   </p>
@@ -1314,7 +1315,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   </th>
                   <th className="pb-3 pr-3 font-normal align-bottom text-right">
                     <span className="inline-flex justify-end w-full">
-                      <HeaderHint label="Поиск" />
+                      <HeaderHint label="Поиск" className="pr-[42px]" />
                     </span>
                   </th>
                   <th className="pb-3 pr-3 font-normal align-bottom">
@@ -1661,25 +1662,32 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             >
               <X className="w-5 h-5" />
             </button>
-            <div className="mb-4 flex items-start gap-3 pr-8">
-              <div
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white"
-                aria-hidden
-              >
-                <X className="h-4 w-4" />
-              </div>
+            <div className="mb-4 pr-8">
               <p className="text-base font-semibold leading-snug text-gray-900">
-                Не получилось установить Дневной лимит. Пополните бюджет на{' '}
-                {formatForDisplay(bidLimitBudgetConflictModal.shortfall)} ₽
+                {bidLimitBudgetConflictModal.kind === 'bidChasing' ? (
+                  <>
+                    Не получилось установить Дневной лимит. Пополните бюджет на{' '}
+                    {formatForDisplay(bidLimitBudgetConflictModal.shortfall)} ₽
+                  </>
+                ) : (
+                  <>
+                    Чтобы установить ставку {formatForDisplay(bidLimitBudgetConflictModal.attemptedBid)}{' '}
+                    ₽, пополните бюджет на {formatForDisplay(bidLimitBudgetConflictModal.shortfall)} ₽ —
+                    иначе мы не сможем повысить дневной лимит
+                  </>
+                )}
               </p>
             </div>
-            <div className="flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end">
+            <div className="flex flex-col items-stretch gap-3 sm:items-end">
               <button
                 type="button"
-                onClick={() => setBidLimitBudgetConflictModal(null)}
-                className="whitespace-nowrap rounded-lg bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 sm:shrink-0"
+                onClick={() => {
+                  setBidLimitBudgetConflictModal(null);
+                  setIsBudgetRefillModalOpen(true);
+                }}
+                className="rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-700 sm:min-w-[200px]"
               >
-                Отмена
+                Пополнить бюджет
               </button>
               <button
                 type="button"
@@ -1696,7 +1704,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     applyBidChasingWithDailyLimitDisabled(payload.position, payload.maxBid);
                   }
                 }}
-                className="whitespace-nowrap rounded-lg bg-purple-600 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-700 sm:shrink-0"
+                className="text-left text-sm font-medium leading-snug text-blue-600 transition-colors hover:text-blue-700 hover:underline sm:text-right"
               >
                 {bidLimitBudgetConflictModal.kind === 'bidChasing'
                   ? `Отключить дневной лимит и применить лимит ставки ${formatForDisplay(bidLimitBudgetConflictModal.maxBid)} ₽`
@@ -1704,6 +1712,32 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {dailyLimitBudgetShortfall != null && dailyLimitBudgetShortfall > 0 && (
+        <div
+          className="fixed top-20 right-8 z-[100] flex max-w-sm items-start gap-3 rounded-xl border border-red-500 bg-white px-4 py-3 shadow-xl animate-in fade-in slide-in-from-right-4 duration-300"
+          role="alert"
+        >
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white"
+            aria-hidden
+          >
+            <X className="h-4 w-4" />
+          </div>
+          <p className="flex-1 pt-1 text-sm font-semibold leading-snug text-gray-900">
+            Не получилось установить Дневной лимит. Пополните бюджет на{' '}
+            {formatForDisplay(dailyLimitBudgetShortfall)} ₽
+          </p>
+          <button
+            type="button"
+            onClick={() => setDailyLimitBudgetShortfall(null)}
+            className="shrink-0 text-gray-900 hover:text-gray-600"
+            aria-label="Закрыть"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
       )}
 
@@ -2105,7 +2139,10 @@ const BidChasingClustersModal: React.FC<{
   if (!isOpen) return null;
 
   const parsedMaxBid = parseDisplayValue(maxBidDraft.replace(',', '.'));
-  const maxBidValid = Number.isFinite(parsedMaxBid) && parsedMaxBid >= BID_CHASING_MIN_BID_RUB;
+  const maxBidValid =
+    Number.isFinite(parsedMaxBid) &&
+    parsedMaxBid >= BID_CHASING_MIN_BID_RUB &&
+    parsedMaxBid <= CPC_MAX_BID_RUB;
 
   const effectiveMaxBidRub = Math.max(
     Number.isFinite(parsedMaxBid) ? parsedMaxBid : 0,
@@ -2214,7 +2251,8 @@ const BidChasingClustersModal: React.FC<{
               </span>
             </div>
             <p className="mt-2 text-xs text-gray-400">
-              Минимум {BID_CHASING_MIN_BID_RUB.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽
+              От {BID_CHASING_MIN_BID_RUB.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} до{' '}
+              {formatForDisplay(CPC_MAX_BID_RUB)} ₽
             </p>
             {showDailyLimitBumpNotice && (
               <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">

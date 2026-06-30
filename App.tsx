@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom'
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, ArrowUp, Calendar
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -1494,246 +1494,380 @@ const BidInput = ({
 };
 
 
-const Stepper = ({ currentStep, setStep }: { currentStep: number, setStep: (step: number) => void }) => {
-    const steps = [
-        { number: 1, title: 'Загрузка файла' },
-        { number: 2, title: 'Проверка файла' },
-        { number: 3, title: 'Подтверждение' }
-    ];
+type UploadEditsTab = 'bids' | 'clusters';
+type UploadEditsPhase = 'upload' | 'processing' | 'success';
 
-    return (
-        <div className="flex items-center w-full">
-            {steps.map((step, index) => {
-                const isCompleted = currentStep > step.number;
-                const isActive = currentStep === step.number;
-
-                return (
-                    <React.Fragment key={step.number}>
-                        <div
-                            className={`flex items-center gap-3 ${isCompleted ? 'cursor-pointer' : 'cursor-default'}`}
-                            onClick={() => isCompleted && setStep(step.number)}
-                            aria-current={isActive ? 'step' : undefined}
-                        >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors shrink-0 ${
-                                isCompleted ? 'bg-purple-600 text-white hover:bg-purple-700' : isActive ? 'bg-purple-100 text-purple-700 border-2 border-purple-200' : 'bg-gray-100 text-gray-500'
-                            }`}>
-                                {isCompleted ? <Check className="w-4 h-4" /> : step.number}
-                            </div>
-                            <div>
-                                <p className={`text-sm font-semibold transition-colors ${isActive || isCompleted ? 'text-gray-900' : 'text-gray-500'}`}>{`Шаг ${step.number}`}</p>
-                                <p className={`text-xs transition-colors ${isActive || isCompleted ? 'text-gray-600' : 'text-gray-500'}`}>{step.title}</p>
-                            </div>
-                        </div>
-                        {index < steps.length - 1 && (
-                            <div className={`flex-grow h-0.5 mx-4 transition-colors duration-300 ${isCompleted ? 'bg-purple-600' : 'bg-gray-200'}`}></div>
-                        )}
-                    </React.Fragment>
-                );
-            })}
-        </div>
-    );
+type UploadSuccessRow = {
+  variant: 'success' | 'adjust' | 'error';
+  title: string;
+  description: string;
+  /** Кнопка «Показать на списке» после загрузки Excel */
+  showOnListAction?: 'daily_limit_errors';
 };
 
-const UploadEditsModal = ({ isOpen, onClose, onApply, onOpenReview }: { isOpen: boolean, onClose: () => void, onApply: () => void, onOpenReview: () => void }) => {
-    const [step, setStep] = useState(1);
-    const [file, setFile] = useState<File | null>(null);
-    const [isDragging, setIsDragging] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [isProcessingFile, setIsProcessingFile] = useState(false);
-    const [isExcelHelpOpen, setIsExcelHelpOpen] = useState(false);
+function uploadSuccessRowsForTab(tab: UploadEditsTab): UploadSuccessRow[] {
+  if (tab === 'clusters') {
+    return [
+      {
+        variant: 'success',
+        title: '1 кампания, 1 товар, 3 кластера',
+        description: 'Применили изменения',
+      },
+    ];
+  }
+  return [
+    {
+      variant: 'success',
+      title: '12 кампаний, 24 товара',
+      description: 'Применили изменения',
+    },
+    {
+      variant: 'adjust',
+      title: '5 кампаний',
+      description: 'Скорректировали ставки',
+    },
+    {
+      variant: 'error',
+      title: '3 товара, не применили ставки',
+      description: 'Так как они были ограничены дневным лимитом',
+      showOnListAction: 'daily_limit_errors',
+    },
+    {
+      variant: 'error',
+      title: '3 товара',
+      description: 'Не распознали',
+    },
+  ];
+}
 
-    const handleSetStep = (newStep: number) => {
-        if (newStep === 1 && step > 1) {
-            // Do not clear the file when going back
-        }
-        setStep(newStep);
-    }
-    
-    useEffect(() => {
-        if (isOpen) {
-            setStep(1);
-            setFile(null);
-            setIsDragging(false);
-            setIsProcessingFile(false);
-        }
-    }, [isOpen]);
-    
-    const handleFile = (selectedFile: File) => {
-        if (selectedFile && (selectedFile.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' || selectedFile.type === 'text/csv')) {
-            setIsProcessingFile(true);
-            setTimeout(() => {
-                setFile(selectedFile);
-                setIsProcessingFile(false);
-                // No auto-advance
-            }, 2000);
-        } else {
-            alert("Пожалуйста, выберите файл Excel (.xlsx) или CSV.");
-        }
-    };
+const PaperclipIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden
+  >
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+);
 
-    const handleRemoveFile = () => {
-        setFile(null);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-        }
-    }
-    
-    const handleDragEnter = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); };
-    const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); };
-    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); };
-    const handleDrop = (e: React.DragEvent) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if (e.dataTransfer.files && e.dataTransfer.files.length > 0) { handleFile(e.dataTransfer.files[0]); } };
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files && e.target.files.length > 0) { handleFile(e.target.files[0]); } };
-    
-    if (!isOpen) return null;
-
-    const renderStepContent = () => {
-        if (isProcessingFile) {
-            return (
-                <div className="text-center p-8 flex flex-col items-center justify-center gap-4 min-h-[280px]">
-                    <Loader className="w-12 h-12 text-purple-600 animate-spin" />
-                    <p className="font-semibold text-gray-700">Обработка файла...</p>
-                    <p className="text-sm text-gray-500">Пожалуйста, подождите</p>
-                </div>
-            );
-        }
-
-        switch (step) {
-            case 1:
-                return (
-                    <div>
-                        {!file ? (
-                             <div onDragEnter={handleDragEnter} onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop} className={`p-8 border-2 border-dashed rounded-xl text-center transition-colors ${isDragging ? 'border-purple-500 bg-purple-50' : 'border-gray-300'}`}>
-                                <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.csv" className="hidden" />
-                                <UploadCloud className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-                                <p className="font-medium text-gray-800 mb-1">
-                                    Загрузите изменния по кампаниям в формате файла XLSX, CSV
-                                </p>
-                                <p className="text-xs text-gray-500">
-                                    Одновременно можно внести изменения не более чем в 25 кампаний
-                                </p>
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    className="mt-3 text-sm font-semibold text-purple-600 hover:text-purple-700 hover:underline"
-                                >
-                                    Выберите файл на компьютере
-                                </button>
-                            </div>
-                        ) : (
-                            <div className="my-3 p-4 bg-gray-50 border border-gray-200 rounded-lg">
-                                <div className="flex justify-between items-center">
-                                    <div className="flex items-center gap-3 overflow-hidden">
-                                        <FileIcon className="w-5 h-5 text-gray-400 shrink-0" />
-                                        <div className="overflow-hidden">
-                                            <p className="font-medium text-gray-800 truncate" title={file.name}>{file.name}</p>
-                                            <p className="text-xs text-gray-500">{(file.size / 1024).toFixed(2)} KB</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center shrink-0">
-                                        <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".xlsx,.csv" className="hidden" />
-                                        <button onClick={() => fileInputRef.current?.click()} className="ml-2 px-3 py-1 text-xs font-medium text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300">Заменить</button>
-                                        <button onClick={handleRemoveFile} className="ml-2 text-gray-400 hover:text-red-500 p-1 rounded-full hover:bg-gray-100"><Trash2 className="w-4 h-4" /></button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                        <div className="mt-6 flex justify-end">
-                            <button 
-                                onClick={() => handleSetStep(2)} 
-                                disabled={!file}
-                                className="px-5 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-300 disabled:cursor-not-allowed">
-                                Продолжить
-                            </button>
-                        </div>
-                    </div>
-                );
-            case 2:
-                return (
-                    <div className="text-left p-4 bg-gray-50 rounded-lg border">
-                        <h3 className="font-bold text-lg mb-4 text-gray-800">Проверка изменений</h3>
-                        <p className="font-medium text-gray-700 mb-4">Вы собираетесь применить изменения:</p>
-                        <div className="space-y-2 text-sm">
-                            <div className="flex justify-between"><span>Кампании:</span><span className="font-medium">24</span></div>
-                            <div className="flex justify-between"><span>Товары:</span><span className="font-medium">87</span></div>
-                            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200">
-                                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                                <span className="text-sm text-gray-700">Поменяли минимальные ставки для 5 кампаний</span>
-                            </div>
-                            <div className="border-t pt-2 my-2"></div>
-                            <div className="space-y-2">
-                                <div className="flex justify-between"><span>Общая сумма бюджета всех редактируемых кампаний:</span><span className="font-medium">250 000 ₽</span></div>
-                                <div className="flex justify-between font-bold text-base"><span>Будет списано с ЕЛС:</span><span>125 400 ₽</span></div>
-                                <p className="text-xs text-gray-500 mt-1">(часть кампаний уже пополнены деньгами, спишем только недостающую часть)</p>
-                            </div>
-                        </div>
-                        <div className="mt-6 flex justify-between items-center">
-                            <button onClick={() => handleSetStep(1)} className="px-5 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
-                                Назад
-                            </button>
-                            <div className="flex items-center gap-4">
-                                <button onClick={onOpenReview} className="px-5 py-2 text-sm font-bold text-white bg-gray-800 hover:bg-gray-900 rounded-lg">Проверить изменения</button>
-                                <button onClick={() => handleSetStep(3)} className="px-5 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
-                                    Перейти к подтверждению
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                );
-             case 3:
-                return (
-                    <div className="text-center p-8">
-                        <h3 className="font-semibold text-gray-800 text-xl">Подтверждение изменений</h3>
-                        <p className="text-gray-600 text-sm mt-4">
-                            Изменения будут применены к <span className="font-bold text-gray-800">24 кампаниям</span> и <span className="font-bold text-gray-800">87 товарам</span>.
-                        </p>
-                        <div className="mt-4 space-y-1">
-                            <p className="text-gray-600 text-sm">Общая сумма бюджета всех редактируемых кампаний: <span className="font-bold text-lg text-gray-800">250 000 ₽</span></p>
-                            <p className="text-gray-600 text-sm">Будет списано с ЕЛС: <span className="font-bold text-lg text-gray-800">125 400 ₽</span></p>
-                            <p className="text-xs text-gray-500 mt-1">(часть кампаний уже пополнены деньгами, спишем только недостающую часть)</p>
-                        </div>
-                         <div className="mt-6 flex justify-center gap-3">
-                            <button onClick={() => handleSetStep(2)} className="px-6 py-2 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">Назад</button>
-                            <button onClick={onApply} className="px-6 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">Применить и списать</button>
-                        </div>
-                    </div>
-                );
-        }
-    }
-
+const UploadSuccessRowIcon: React.FC<{ variant: UploadSuccessRow['variant'] }> = ({ variant }) => {
+  if (variant === 'success') {
     return (
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-            <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-3xl m-auto" onClick={e => e.stopPropagation()}>
-                <div className="flex items-center justify-between p-6 border-b border-gray-100">
-                    <div className="flex-1">
-                        <h2 className="text-xl font-bold text-gray-900">Загрузить Excel с правками</h2>
-                        <button
-                            type="button"
-                            onClick={() => setIsExcelHelpOpen(prev => !prev)}
-                            className="mt-2 flex items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
-                        >
-                            <HelpCircle className="w-4 h-4 text-purple-500" />
-                            <span>Где взять Excel?</span>
-                            <ChevronDown
-                                className={`w-4 h-4 text-gray-500 transition-transform ${isExcelHelpOpen ? 'rotate-180' : ''}`}
-                            />
-                        </button>
-                        {isExcelHelpOpen && (
-                            <p className="mt-2 text-xs text-gray-600 max-w-2xl">
-                                В списке кампаний выберите нужные кампании, нажмите «Скачать Excel для правок», внесите изменения в файле и затем загрузите его здесь.
-                            </p>
-                        )}
-                    </div>
-                    <button onClick={onClose} className="p-1 rounded-full text-gray-400 hover:bg-gray-100"><X className="w-6 h-6" /></button>
-                </div>
-
-                <div className="p-8">
-                    <Stepper currentStep={step} setStep={handleSetStep} />
-                    <div className="mt-8">
-                        {renderStepContent()}
-                    </div>
-                </div>
-            </div>
-        </div>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-white">
+        <Check className="h-4 w-4" />
+      </span>
     );
+  }
+  if (variant === 'adjust') {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-600">
+        <Edit2 className="h-4 w-4" />
+      </span>
+    );
+  }
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-500 text-white">
+      <AlertCircle className="h-4 w-4" />
+    </span>
+  );
+};
+
+const UploadEditsModal = ({
+  isOpen,
+  onClose,
+  onApply,
+  onShowDailyLimitErrorsOnList,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onApply: () => void;
+  onShowDailyLimitErrorsOnList?: () => void;
+}) => {
+  const [uploadTab, setUploadTab] = useState<UploadEditsTab>('bids');
+  const [phase, setPhase] = useState<UploadEditsPhase>('upload');
+  const [file, setFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setUploadTab('bids');
+      setPhase('upload');
+      setFile(null);
+      setIsDragging(false);
+    }
+  }, [isOpen]);
+
+  const handleFile = (selectedFile: File) => {
+    if (
+      selectedFile &&
+      (selectedFile.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        selectedFile.type === 'text/csv' ||
+        selectedFile.name.endsWith('.xlsx'))
+    ) {
+      setFile(selectedFile);
+    } else {
+      alert('Пожалуйста, выберите файл Excel (.xlsx) или CSV.');
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setFile(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files?.length) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  };
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.length) {
+      handleFile(e.target.files[0]);
+    }
+  };
+
+  const handleApplyClick = () => {
+    const canApply = Boolean(file) || uploadTab === 'clusters';
+    if (!canApply) return;
+    setPhase('processing');
+    onApply();
+    window.setTimeout(() => setPhase('success'), 2000);
+  };
+
+  const handleClose = () => {
+    onClose();
+  };
+
+  const fileLabel =
+    file?.name ??
+    (uploadTab === 'clusters' ? 'Редактирование поисковых кластеров. Шаблон актуален на …' : '');
+
+  const hasAttachedFile = Boolean(file) || uploadTab === 'clusters';
+
+  if (!isOpen) return null;
+
+  const successRows = uploadSuccessRowsForTab(uploadTab);
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+      onClick={handleClose}
+    >
+      <div
+        className="relative w-full max-w-[560px] rounded-2xl bg-white shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-labelledby="upload-edits-modal-title"
+      >
+        <button
+          type="button"
+          onClick={handleClose}
+          className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+          aria-label="Закрыть"
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        {phase === 'success' ? (
+          <div className="p-6">
+            <h2 id="upload-edits-modal-title" className="pr-8 text-xl font-bold text-gray-900">
+              Файл загружен
+            </h2>
+            <ul className="mt-5 divide-y divide-gray-100 border-y border-gray-100">
+              {successRows.map((row) => (
+                <li key={row.title} className="flex gap-3 py-4 first:pt-4 last:pb-4">
+                  <UploadSuccessRowIcon variant={row.variant} />
+                  <div className="min-w-0">
+                    <p className="mb-0 text-sm font-semibold text-gray-900">{row.title}</p>
+                    <p className="mt-0.5 text-sm text-gray-500">{row.description}</p>
+                    {row.showOnListAction === 'daily_limit_errors' && onShowDailyLimitErrorsOnList && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onShowDailyLimitErrorsOnList();
+                          handleClose();
+                        }}
+                        className="mt-1 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
+                      >
+                        Показать на списке
+                      </button>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={handleClose}
+                className="rounded-lg border border-gray-200 bg-white px-5 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
+                Закрыть
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  /* демо: скачивание отчёта */
+                }}
+                className="inline-flex items-center gap-2 rounded-lg bg-gray-100 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-200"
+              >
+                <Download className="h-4 w-4 shrink-0" />
+                Скачать файл с пояснениями ошибок
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="p-6">
+            <h2 id="upload-edits-modal-title" className="pr-8 text-xl font-bold text-gray-900">
+              Измените кампании через Excel
+            </h2>
+            <p className="mt-2 flex items-center gap-1.5 text-sm text-gray-600">
+              <span>Скачать файл можно в списке кампаний</span>
+              <span
+                className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-gray-200 text-[10px] font-bold text-gray-500"
+                title="В списке кампаний выберите нужные, нажмите «Скачать Excel для правок», внесите изменения и загрузите файл здесь"
+              >
+                ?
+              </span>
+            </p>
+
+            <div className="mt-4 flex rounded-lg bg-gray-100 p-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadTab('bids');
+                  handleRemoveFile();
+                }}
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  uploadTab === 'bids'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Загрузка ставок
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setUploadTab('clusters');
+                }}
+                className={`flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+                  uploadTab === 'clusters'
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                Загрузка кластеров
+              </button>
+            </div>
+
+            {phase === 'processing' ? (
+              <div className="mt-4 flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 py-12">
+                <Loader className="h-10 w-10 animate-spin text-purple-600" />
+                <p className="text-sm font-medium text-gray-700">Обработка файла…</p>
+              </div>
+            ) : hasAttachedFile ? (
+              <div className="mt-4 flex items-center gap-3 rounded-xl bg-gray-50 px-4 py-3">
+                <PaperclipIcon className="h-5 w-5 shrink-0 text-gray-500" />
+                <p className="min-w-0 flex-1 truncate text-sm font-medium text-purple-600" title={fileLabel}>
+                  {fileLabel}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRemoveFile();
+                    if (uploadTab === 'clusters') {
+                      setUploadTab('bids');
+                    }
+                  }}
+                  className="shrink-0 rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+                  aria-label="Удалить файл"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div
+                onDragEnter={handleDragEnter}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`mt-4 flex min-h-[200px] flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors ${
+                  isDragging ? 'border-purple-400 bg-purple-50/50' : 'border-gray-200'
+                }`}
+              >
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  accept=".xlsx,.csv"
+                  className="hidden"
+                />
+                <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+                  <FileSpreadsheet className="h-7 w-7" />
+                </span>
+                <p className="text-base font-semibold text-gray-900">Загрузите файл в формате XLSX</p>
+                <p className="mt-2 text-sm text-gray-500">Максимум 50 кампаний в таблице</p>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="mt-4 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
+                >
+                  Выберите файл на компьютере
+                </button>
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleApplyClick}
+                disabled={!hasAttachedFile || phase === 'processing'}
+                className="rounded-lg bg-purple-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-purple-100 disabled:text-purple-400"
+              >
+                Применить изменения
+              </button>
+              <button
+                type="button"
+                onClick={handleClose}
+                className="rounded-lg border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 };
 
 const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onDailyLimit, onClear }: { count: number, onConfigureAR: () => void, onDownload: () => void, onEdit?: () => void, onDailyLimit?: () => void, onClear: () => void }) => {
@@ -1844,6 +1978,7 @@ export default function App() {
   const [campaignForAutoRefill, setCampaignForAutoRefill] = useState<CampaignRecord | null>(null);
   const [campaignForBonusEdit, setCampaignForBonusEdit] = useState<CampaignRecord | null>(null);
   const [isUploadEditsModalOpen, setIsUploadEditsModalOpen] = useState(false);
+  const [uploadLimitErrorProductsFilter, setUploadLimitErrorProductsFilter] = useState(false);
   const [isReviewEditsModalOpen, setIsReviewEditsModalOpen] = useState(false);
   const [isConfirmExitOpen, setIsConfirmExitOpen] = useState(false);
   const [pendingNavigationAction, setPendingNavigationAction] = useState<(() => void) | null>(null);
@@ -1852,8 +1987,27 @@ export default function App() {
   const [isEditDownloadModalOpen, setIsEditDownloadModalOpen] = useState(false);
   const [showUploadHint, setShowUploadHint] = useState(false);
   const [isApplyingEdits, setIsApplyingEdits] = useState(false);
-  const [editResult, setEditResult] = useState<{ success: number; error: number; failedIds?: number[] } | null>(null);
-  const [bulkBidDailyLimitNotice, setBulkBidDailyLimitNotice] = useState<{ campaignsCount: number } | null>(null);
+  const handleApplyEdits = () => {
+    if (applyEditsTimeoutRef.current) {
+      clearTimeout(applyEditsTimeoutRef.current);
+    }
+
+    applyEditsTimeoutRef.current = setTimeout(() => {
+      setIsApplyingEdits(false);
+      setToastMessage('Изменения применены');
+      applyEditsTimeoutRef.current = null;
+    }, 5000);
+  };
+
+  const handleCancelEdits = () => {
+    if (applyEditsTimeoutRef.current) {
+        clearTimeout(applyEditsTimeoutRef.current);
+        applyEditsTimeoutRef.current = null;
+    }
+    setIsApplyingEdits(false);
+    setToastMessage("Применение изменений отменено");
+    setShowToast(true);
+  };
   const [isFromExcelModal, setIsFromExcelModal] = useState(false);
   const applyEditsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -1870,6 +2024,20 @@ export default function App() {
   const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => void) | null>(null);
   const bulkDailyLimitOpenerRef = useRef<(() => void) | null>(null);
 
+  type CampaignListDataPatch = {
+    name?: string;
+    remainingBudget?: number | null;
+    dailyLimit?: number | null;
+    scheduledDailyLimit?: number | null;
+    maxCpcBidRub?: number;
+  };
+  const [campaignListPatches, setCampaignListPatches] = useState<Record<number, CampaignListDataPatch>>({});
+  const persistCampaignListPatch = useCallback((campaignId: number, data: CampaignListDataPatch) => {
+    setCampaignListPatches((prev) => ({
+      ...prev,
+      [campaignId]: { ...prev[campaignId], ...data },
+    }));
+  }, []);
 
   const [inlineErrors, setInlineErrors] = useState<Record<string, string>>({});
 
@@ -1991,36 +2159,6 @@ export default function App() {
 
   const handleOpenEditDownloadModal = () => {
     setIsEditDownloadModalOpen(true);
-  };
-
-  const handleApplyEdits = () => {
-    setIsUploadEditsModalOpen(false);
-    setIsApplyingEdits(true);
-    setEditResult(null);
-    setBulkBidDailyLimitNotice(null);
-
-    if (applyEditsTimeoutRef.current) {
-        clearTimeout(applyEditsTimeoutRef.current);
-    }
-
-    applyEditsTimeoutRef.current = setTimeout(() => {
-        setIsApplyingEdits(false);
-        setEditResult({ success: 19, error: 5, failedIds: [1304655, 1304658, 1304661, 1304670, 1304674] });
-        setBulkBidDailyLimitNotice({ campaignsCount: 10 });
-        setToastMessage("Изменения применены");
-        applyEditsTimeoutRef.current = null;
-    }, 5000);
-  };
-
-  const handleCancelEdits = () => {
-    if (applyEditsTimeoutRef.current) {
-        clearTimeout(applyEditsTimeoutRef.current);
-        applyEditsTimeoutRef.current = null;
-    }
-    setIsApplyingEdits(false);
-    setToastMessage("Применение изменений отменено");
-    setShowToast(true);
-    setBulkBidDailyLimitNotice(null);
   };
 
   useEffect(() => {
@@ -2759,10 +2897,6 @@ export default function App() {
                     selectedCampaigns={selectedListedCampaignIds}
                     onSelectionChange={setSelectedListedCampaignIds}
                     isApplyingEdits={isApplyingEdits}
-                    editResult={editResult}
-                    onClearEditResult={() => setEditResult(null)}
-                    bulkBidDailyLimitNotice={bulkBidDailyLimitNotice}
-                    onDismissBulkBidDailyLimitNotice={() => setBulkBidDailyLimitNotice(null)}
                     onCancelEdits={handleCancelEdits}
                     onOpenReview={() => setIsReviewEditsModalOpen(true)}
                     onOpenHistoryModal={() => setIsHistoryModalOpen(true)}
@@ -2801,18 +2935,18 @@ export default function App() {
                     onRegisterBulkDailyLimitOpener={(open) => {
                       bulkDailyLimitOpenerRef.current = open;
                     }}
+                    campaignListPatches={campaignListPatches}
+                    onPersistCampaignListPatch={persistCampaignListPatch}
+                    uploadLimitErrorProductsFilter={uploadLimitErrorProductsFilter}
+                    onClearUploadLimitErrorProductsFilter={() => setUploadLimitErrorProductsFilter(false)}
                     onOpenSingleCampaign={() => setAppState('single-campaign')}
                   />
                 </main>
-                <UploadEditsModal 
-                  isOpen={isUploadEditsModalOpen} 
+                <UploadEditsModal
+                  isOpen={isUploadEditsModalOpen}
                   onClose={() => setIsUploadEditsModalOpen(false)}
                   onApply={handleApplyEdits}
-                  onOpenReview={() => {
-                    setIsUploadEditsModalOpen(false);
-                    setIsFromExcelModal(true);
-                    handleNavigationAttempt(handleNavigateToEditing);
-                  }}
+                  onShowDailyLimitErrorsOnList={() => setUploadLimitErrorProductsFilter(true)}
                 />
                 <ReviewEditsModal 
                   isOpen={isReviewEditsModalOpen}
@@ -3013,6 +3147,7 @@ export default function App() {
         }}
         onUpdateData={(data) => {
           if (selectedCpcCampaign) {
+            persistCampaignListPatch(selectedCpcCampaign.id, data);
             const updated = {
               ...selectedCpcCampaign,
               ...(data.name !== undefined && { name: data.name }),
@@ -3022,7 +3157,6 @@ export default function App() {
               ...(data.maxCpcBidRub !== undefined && { maxCpcBidRub: data.maxCpcBidRub }),
             };
             setSelectedCpcCampaign(updated);
-            // Also update the campaign data in SuccessPage
             if (updateCampaignDataRef.current) {
               updateCampaignDataRef.current(selectedCpcCampaign.id, data);
             }

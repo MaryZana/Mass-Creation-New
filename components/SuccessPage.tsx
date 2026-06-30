@@ -10,6 +10,8 @@ import {
   demoMaxCpcBidForCampaignId,
   minDailyLimitForMaxBid,
   maxBidRubForDailyLimit,
+  UPLOAD_DAILY_LIMIT_ERROR_DEMO_PRODUCT_IDS,
+  UPLOAD_DAILY_LIMIT_ERROR_PRODUCTS_FILTER_LABEL,
 } from '../utils/cpcDailyLimitBid';
 import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
@@ -192,11 +194,6 @@ interface SuccessPageProps {
   selectedCampaigns: string[];
   onSelectionChange: (ids: string[]) => void;
   isApplyingEdits: boolean;
-  editResult: { success: number; error: number; failedIds?: number[] } | null;
-  onClearEditResult: () => void;
-  /** После массовой загрузки ставок из Excel — сколько CPC-кампаний получили новый дневной лимит */
-  bulkBidDailyLimitNotice?: { campaignsCount: number } | null;
-  onDismissBulkBidDailyLimitNotice?: () => void;
   onOpenReview: () => void;
   onCancelEdits: () => void;
   onOpenHistoryModal: () => void;
@@ -217,6 +214,12 @@ interface SuccessPageProps {
   /** Открыть массовую настройку дневного лимита для текущего выделения (панель в App) */
   onRegisterBulkDailyLimitOpener?: (open: () => void) => void;
   onOpenSingleCampaign?: () => void;
+  /** Патчи данных кампаний с CPC-страницы (список при этом размонтирован) */
+  campaignListPatches?: Record<number, CampaignListDataPatch>;
+  onPersistCampaignListPatch?: (campaignId: number, data: CampaignListDataPatch) => void;
+  /** Фильтр «Товары с ошибкой лимита» после загрузки Excel */
+  uploadLimitErrorProductsFilter?: boolean;
+  onClearUploadLimitErrorProductsFilter?: () => void;
 }
 
 interface DisplayCampaign {
@@ -256,6 +259,33 @@ interface DisplayCampaign {
   spendShare: number | null;
   /** Вторая строка в списке: кампания за бонусы, открывается как из «Готовы к повтору» */
   isBonusCampaign?: boolean;
+}
+
+type CampaignListDataPatch = {
+  name?: string;
+  remainingBudget?: number | null;
+  dailyLimit?: number | null;
+  scheduledDailyLimit?: number | null;
+  maxCpcBidRub?: number;
+};
+
+function applyCampaignListPatches(
+  campaigns: DisplayCampaign[],
+  patches: Record<number, CampaignListDataPatch> | undefined,
+): DisplayCampaign[] {
+  if (!patches || Object.keys(patches).length === 0) return campaigns;
+  return campaigns.map((c) => {
+    const patch = patches[c.campaignId];
+    if (!patch) return c;
+    return {
+      ...c,
+      ...(patch.name !== undefined && { name: patch.name }),
+      ...(patch.remainingBudget !== undefined && { remainingBudget: patch.remainingBudget }),
+      ...(patch.dailyLimit !== undefined && { dailyLimit: patch.dailyLimit }),
+      ...(patch.scheduledDailyLimit !== undefined && { scheduledDailyLimit: patch.scheduledDailyLimit }),
+      ...(patch.maxCpcBidRub !== undefined && { maxCpcBidRub: patch.maxCpcBidRub }),
+    };
+  });
 }
 
 const formatNumber = (num: number | null | undefined): string => {
@@ -3741,8 +3771,8 @@ const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
   status: 'paused',
   statusText: 'приостановлена',
   // На скрине в этой строке рядом с бюджетом стоит подарок и сумма 5000 ₽
-  remainingBudget: 5000,
-  budget: 5000,
+  remainingBudget: 1000,
+  budget: 1000,
   autoRefill: true,
   autoRefillStatus: 'ok',
   // В скрине по метрикам — нет данных
@@ -4673,16 +4703,16 @@ const DailyLimitModal: React.FC<{
   );
 };
 
-type BulkDailyLimitTarget = DisplayCampaign;
-
-function bulkDailyLimitMinForCampaign(c: BulkDailyLimitTarget): number {
-  return minDailyLimitForMaxBid(demoMaxCpcBidForCampaignId(c.campaignId));
-}
-
-function listCampaignMaxCpcBidRub(c: DisplayCampaign): number {
+function listCampaignMaxCpcBidRub(c: Pick<DisplayCampaign, 'type' | 'maxCpcBidRub' | 'campaignId'>): number {
   if (c.type !== 'CPC') return 0;
   if (c.maxCpcBidRub != null && c.maxCpcBidRub > 0) return c.maxCpcBidRub;
   return demoMaxCpcBidForCampaignId(c.campaignId);
+}
+
+type BulkDailyLimitTarget = DisplayCampaign;
+
+function bulkDailyLimitMinForCampaign(c: BulkDailyLimitTarget): number {
+  return minDailyLimitForMaxBid(listCampaignMaxCpcBidRub(c));
 }
 
 const BulkDailyLimitModal: React.FC<{
@@ -4763,7 +4793,7 @@ const BulkDailyLimitModal: React.FC<{
       bulkDailyLimitMinForCampaign(b) > bulkDailyLimitMinForCampaign(a) ? b : a,
     );
     const worstMin = bulkDailyLimitMinForCampaign(worst);
-    const maxBid = demoMaxCpcBidForCampaignId(worst.campaignId);
+    const maxBid = listCampaignMaxCpcBidRub(worst);
     return {
       enteredLimit: parsedLimit,
       requiredMinLimit: worstMin,
@@ -5384,86 +5414,6 @@ const ResultBlock = ({ successCount, errorCount, onClear }: { successCount: numb
     )
 };
 
-const EditResultBlock = ({ successCount, errorCount, onClear, failedIds = [], onShowFailed }: { successCount: number, errorCount: number, onClear: () => void, failedIds?: number[], onShowFailed: (ids: number[]) => void }) => {
-    const [isCopied, setIsCopied] = useState(false);
-
-    const handleCopy = () => {
-        if (!failedIds || failedIds.length === 0) return;
-        navigator.clipboard.writeText(failedIds.join('\n')).then(() => {
-            setIsCopied(true);
-            setTimeout(() => setIsCopied(false), 2500);
-        });
-    };
-
-    const handleDownload = () => {
-        if (!failedIds || failedIds.length === 0) return;
-        const csvContent = "data:text/csv;charset=utf-8,campaign_id\n" + failedIds.map(id => `${id}`).join("\n");
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", "failed_campaign_ids.csv");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    };
-
-    return (
-        <div className="bg-white rounded-xl p-5 mb-6 shadow-sm border border-gray-100 relative animate-in fade-in duration-300">
-            <button onClick={onClear} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100">
-                <X className="w-5 h-5" />
-            </button>
-            <div className="flex items-start gap-4">
-                <CheckCircle className="w-8 h-8 text-green-500 mt-1 shrink-0" />
-                <div>
-                    <h2 className="text-xl font-bold text-gray-900">
-                        Изменения применены
-                    </h2>
-                    <div className="flex flex-col gap-1 mt-1 text-sm">
-                       <div className="flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-green-500"/>
-                          <span className="text-gray-800 font-medium">Успешно: {successCount} {getPlural(successCount, 'кампания', 'кампании', 'кампаний')}</span>
-                       </div>
-                       {errorCount > 0 && (
-                          <div className="flex items-start gap-2 text-sm">
-                             <AlertTriangle className="w-4 h-4 text-red-500 mt-0.5"/>
-                             <div className="text-gray-800">
-                               <div className="font-medium">
-                                 Не хватило денег для пополнения {errorCount} {getPlural(errorCount, 'кампании', 'кампаний', 'кампаний')}.
-                               </div>
-                               <div className="text-gray-700">
-                                 Эти кампании были изменены и находятся в статусе «Готово к запуску». Пополните бюджет и запустите их.
-                               </div>
-                               {failedIds && failedIds.length > 0 && (
-                                 <button
-                                   type="button"
-                                   onClick={() => onShowFailed(failedIds)}
-                                   className="mt-1 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
-                                 >
-                                   Показать в списке
-                                 </button>
-                               )}
-                             </div>
-                          </div>
-                       )}
-                    </div>
-                     {errorCount > 0 && failedIds && failedIds.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-gray-100 flex items-center gap-3">
-                            <button onClick={handleCopy} disabled={isCopied} className="flex items-center gap-2 text-sm font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all disabled:opacity-70 disabled:cursor-wait">
-                               <ClipboardCheck className="w-4 h-4" />
-                               <span>{isCopied ? 'ID скопированы!' : 'Скопировать ID с ошибками'}</span>
-                           </button>
-                           <button onClick={handleDownload} className="flex items-center gap-2 text-sm font-medium bg-gray-100 text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-200 transition-all">
-                               <Download className="w-4 h-4" />
-                               <span>Скачать список с ошибками</span>
-                           </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
-};
-
 const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () => void; }> = ({ onOpenReview, onCancel }) => (
   <div className="bg-white rounded-xl p-8 mb-6 shadow-sm border border-gray-100 flex flex-col items-center text-center animate-in fade-in duration-300">
     <Loader className="w-12 h-12 text-purple-600 animate-spin" />
@@ -5483,178 +5433,6 @@ const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () =>
       <button onClick={onOpenReview} className="px-5 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
         Смотреть файл с изменениями
       </button>
-    </div>
-  </div>
-);
-
-function bulkBidDailyLimitCampaignsLabel(count: number): string {
-  const n = Math.abs(count);
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${n} кампании`;
-  return `${n} кампаниях`;
-}
-
-export type BulkBidDailyLimitChangeRow = {
-  campaignId: number;
-  name: string;
-  previousLimit: number;
-  newLimit: number;
-};
-
-function applyBulkDailyLimitBumpFromExcel(
-  campaigns: DisplayCampaign[],
-  maxCount: number,
-): {
-  campaigns: DisplayCampaign[];
-  snapshot: Record<number, number | null>;
-  changes: BulkBidDailyLimitChangeRow[];
-} {
-  const targets = campaigns
-    .filter((c) => c.type === 'CPC' && c.dailyLimit != null && c.dailyLimit > 0)
-    .slice(0, maxCount);
-
-  if (targets.length === 0) {
-    return { campaigns, snapshot: {}, changes: [] };
-  }
-
-  const snapshot: Record<number, number | null> = {};
-  const changes: BulkBidDailyLimitChangeRow[] = [];
-  const updatesByCampaignId = new Map<number, number>();
-
-  targets.forEach((c) => {
-    snapshot[c.campaignId] = c.dailyLimit ?? null;
-    const previousLimit = c.dailyLimit ?? DAILY_LIMIT_ABSOLUTE_MIN;
-    const bidAfterFile = demoMaxCpcBidForCampaignId(c.campaignId) + 40;
-    let newLimit = minDailyLimitForMaxBid(bidAfterFile);
-    if (newLimit <= previousLimit) {
-      newLimit = previousLimit + 500;
-    }
-    updatesByCampaignId.set(c.campaignId, newLimit);
-    changes.push({
-      campaignId: c.campaignId,
-      name: c.name,
-      previousLimit,
-      newLimit,
-    });
-  });
-
-  const next = campaigns.map((c) => {
-    const newLimit = updatesByCampaignId.get(c.campaignId);
-    if (newLimit == null) return c;
-    return { ...c, dailyLimit: newLimit };
-  });
-
-  return { campaigns: next, snapshot, changes };
-}
-
-function downloadBulkBidDailyLimitChangesExcel(changes: BulkBidDailyLimitChangeRow[]) {
-  const escapeCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
-  const header = ['ID кампании', 'Кампания', 'Дневной лимит был (₽)', 'Дневной лимит стал (₽)'];
-  const body = changes.map((row) => [
-    String(row.campaignId),
-    row.name,
-    String(row.previousLimit),
-    String(row.newLimit),
-  ]);
-  const csv = [header, ...body].map((cols) => cols.map((c) => escapeCell(c)).join(';')).join('\r\n');
-  const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8;' });
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = `daily_limit_changes_${stamp}.xlsx`;
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(link.href);
-}
-
-const BulkBidDailyLimitNoticeModal: React.FC<{
-  changes: BulkBidDailyLimitChangeRow[];
-  onClose: () => void;
-  onRollbackBids: () => void;
-}> = ({ changes, onClose, onRollbackBids }) => (
-  <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-    <div
-      className="relative flex w-full max-w-xl flex-col rounded-xl bg-white p-5 shadow-xl"
-      onClick={(e) => e.stopPropagation()}
-      role="dialog"
-      aria-labelledby="bulk-bid-daily-limit-title"
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
-        aria-label="Закрыть"
-      >
-        <X className="h-5 w-5" />
-      </button>
-      <h2 id="bulk-bid-daily-limit-title" className="pr-8 text-base font-bold text-gray-900">
-        Обновлён дневной лимит
-      </h2>
-      <p className="mt-2 text-xs leading-snug text-gray-600">
-        В {bulkBidDailyLimitCampaignsLabel(changes.length)} после изменения ставок из файла дневной лимит увеличен:
-      </p>
-      <div className="mt-3 overflow-hidden rounded-lg border border-gray-200">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 border-b border-gray-100 bg-gray-50 px-2.5 py-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-500">
-          <span>Кампания</span>
-          <span className="text-right">Лимит</span>
-        </div>
-        <ul className="max-h-[min(280px,50vh)] overflow-y-auto">
-          {changes.map((row) => (
-            <li
-              key={row.campaignId}
-              className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 border-b border-gray-50 px-2.5 py-1.5 last:border-b-0"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-xs font-medium text-gray-900" title={row.name}>
-                  {row.name}
-                </p>
-                <p className="truncate text-[10px] text-gray-400 tabular-nums">ID {row.campaignId}</p>
-              </div>
-              <p className="shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-gray-800">
-                <span className="text-gray-400">{formatForDisplay(row.previousLimit)}</span>
-                <span className="mx-1 text-gray-300" aria-hidden>
-                  →
-                </span>
-                <span className="font-semibold">{formatForDisplay(row.newLimit)} ₽</span>
-              </p>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <p className="mt-3 text-xs leading-snug text-gray-600">
-        Если хотите откатить на прежние ставки и лимиты,{' '}
-        <button
-          type="button"
-          onClick={() => {
-            onRollbackBids();
-            onClose();
-          }}
-          className="font-medium text-purple-600 underline underline-offset-2 hover:text-purple-800"
-        >
-          нажмите сюда
-        </button>
-        .
-      </p>
-      <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => downloadBulkBidDailyLimitChangesExcel(changes)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-800 hover:bg-gray-50"
-        >
-          <Download className="h-4 w-4 shrink-0 text-gray-600" aria-hidden />
-          Скачать Excel-файл
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg bg-purple-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
-        >
-          Понятно
-        </button>
-      </div>
     </div>
   </div>
 );
@@ -7020,10 +6798,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     selectedCampaigns,
     onSelectionChange,
     isApplyingEdits,
-    editResult,
-    onClearEditResult,
-    bulkBidDailyLimitNotice = null,
-    onDismissBulkBidDailyLimitNotice,
     onOpenReview,
     onCancelEdits,
     onOpenHistoryModal,
@@ -7033,6 +6807,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onOpenSingleCampaign,
     onRegisterUpdateFn,
     onRegisterBulkDailyLimitOpener,
+    campaignListPatches,
+    onPersistCampaignListPatch,
+    uploadLimitErrorProductsFilter = false,
+    onClearUploadLimitErrorProductsFilter,
 }) => {
   const {
     profileId,
@@ -7132,10 +6910,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     });
   }, [initialBonusNotifications]);
 
-  const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(() => buildAllCampaignsForProfile('1'));
+  const [allCampaigns, setAllCampaigns] = useState<DisplayCampaign[]>(() =>
+    applyCampaignListPatches(buildAllCampaignsForProfile('1'), campaignListPatches),
+  );
+
+  useEffect(() => {
+    if (!campaignListPatches || Object.keys(campaignListPatches).length === 0) return;
+    setAllCampaigns((prev) => applyCampaignListPatches(prev, campaignListPatches));
+  }, [campaignListPatches]);
 
   // Handle campaign data updates from edit page
-  const handleUpdateCampaignData = useCallback((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => {
+  const handleUpdateCampaignData = useCallback((campaignId: number, data: CampaignListDataPatch) => {
+    onPersistCampaignListPatch?.(campaignId, data);
     setAllCampaigns(prev => prev.map(c => {
       if (c.campaignId === campaignId) {
         return {
@@ -7149,7 +6935,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       }
       return c;
     }));
-  }, []);
+  }, [onPersistCampaignListPatch]);
 
   const [isBulkDailyLimitModalOpen, setIsBulkDailyLimitModalOpen] = useState(false);
   const [bulkDailyLimitTargets, setBulkDailyLimitTargets] = useState<DisplayCampaign[]>([]);
@@ -7657,6 +7443,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setCurrentPage(1);
   }, [insightFilter]);
 
+  useEffect(() => {
+    if (!uploadLimitErrorProductsFilter) return;
+    setListTab('products');
+    setCurrentPage(1);
+    setSelectedProductIds([]);
+    onSelectionChange([]);
+  }, [uploadLimitErrorProductsFilter, onSelectionChange]);
+
   // Раскрытые строки товаров (вкладка Товары)
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
   const [collapsedConceptMulticardGroupIds, setCollapsedConceptMulticardGroupIds] = useState<
@@ -7732,52 +7526,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [bulkDailyLimitTargets, selectedCampaigns, handleUpdateCampaignData],
   );
 
-  const bulkDailyLimitRollbackRef = useRef<Record<number, number | null> | null>(null);
-  const bulkDailyLimitNoticeAppliedRef = useRef(false);
-  const [bulkDailyLimitChangeRows, setBulkDailyLimitChangeRows] = useState<BulkBidDailyLimitChangeRow[]>([]);
-
-  useEffect(() => {
-    if (!bulkBidDailyLimitNotice?.campaignsCount) {
-      bulkDailyLimitNoticeAppliedRef.current = false;
-      setBulkDailyLimitChangeRows([]);
-      return;
-    }
-    if (bulkDailyLimitNoticeAppliedRef.current) return;
-
-    const count = bulkBidDailyLimitNotice.campaignsCount;
-    let changes: BulkBidDailyLimitChangeRow[] = [];
-    setAllCampaigns((prev) => {
-      const result = applyBulkDailyLimitBumpFromExcel(prev, count);
-      bulkDailyLimitRollbackRef.current = result.snapshot;
-      changes = result.changes;
-      return result.campaigns;
-    });
-    setBulkDailyLimitChangeRows(changes);
-    bulkDailyLimitNoticeAppliedRef.current = true;
-  }, [bulkBidDailyLimitNotice]);
-
-  const handleRollbackBulkBidDailyLimits = useCallback(() => {
-    const snapshot = bulkDailyLimitRollbackRef.current;
-    if (snapshot) {
-      setAllCampaigns((prev) =>
-        prev.map((c) =>
-          Object.prototype.hasOwnProperty.call(snapshot, c.campaignId)
-            ? { ...c, dailyLimit: snapshot[c.campaignId] }
-            : c,
-        ),
-      );
-      bulkDailyLimitRollbackRef.current = null;
-    }
-    bulkDailyLimitNoticeAppliedRef.current = false;
-    setBulkDailyLimitChangeRows([]);
-    setProductBulkNotice('Прежние ставки и дневные лимиты восстановлены');
-    onDismissBulkBidDailyLimitNotice?.();
-  }, [onDismissBulkBidDailyLimitNotice]);
-
-  const handleDismissBulkBidDailyLimitNotice = useCallback(() => {
-    onDismissBulkBidDailyLimitNotice?.();
-  }, [onDismissBulkBidDailyLimitNotice]);
-
   const [productBidBulkModalKind, setProductBidBulkModalKind] =
     useState<ProductBidBulkModalKind | null>(null);
   // Дропдаун тегов: открыт для productId
@@ -7814,7 +7562,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       isFirstProfileMount.current = false;
       return;
     }
-    setAllCampaigns(buildAllCampaignsForProfile(profileId));
+    setAllCampaigns(
+      applyCampaignListPatches(buildAllCampaignsForProfile(profileId), campaignListPatches),
+    );
     setCurrentPage(1);
     onSelectionChange([]);
     setSelectedProductIds([]);
@@ -7827,7 +7577,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setProductCampaignStatusOverride({});
     setSearchQuery('');
     setWidgets2Closed(new Set());
-  }, [profileId, onSelectionChange]);
+  }, [profileId, onSelectionChange, campaignListPatches]);
 
   const getProductTags = useCallback((product: { id: string; tags: string[] }) => {
     const base = productTagsOverride[product.id] ?? product.tags;
@@ -8039,6 +7789,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter((c) => campaignMatchesInsightFilter(c, insightFilter.kind));
     }
 
+    if (uploadLimitErrorProductsFilter) {
+      const productIdSet = new Set<string>(UPLOAD_DAILY_LIMIT_ERROR_DEMO_PRODUCT_IDS);
+      filtered = filtered.filter((c) => c.productId != null && productIdSet.has(c.productId));
+    }
+
     // Sort campaigns
     if (filterSort === 'by-name') {
       filtered.sort((a, b) => a.name.localeCompare(b.name));
@@ -8059,7 +7814,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     }
 
     const prebuilt = allCampaigns.find((c) => c.id === PREBUILT_CPC_CAMPAIGN_ID);
-    if (prebuilt && !insightFilter) {
+    if (prebuilt && !insightFilter && !uploadLimitErrorProductsFilter) {
       filtered = [prebuilt, ...filtered.filter((c) => c.id !== PREBUILT_CPC_CAMPAIGN_ID)];
     }
 
@@ -8078,11 +7833,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     productTagsOverride,
     searchQuery,
     insightFilter,
+    uploadLimitErrorProductsFilter,
   ]);
 
   /** Товары, отфильтрованные по тем же правилам, что и кампании (на вкладке «Товары» показываем товар, если есть хотя бы одна подходящая кампания) */
   const filteredProducts = useMemo(() => {
+    const uploadLimitProductIdSet = uploadLimitErrorProductsFilter
+      ? new Set<string>(UPLOAD_DAILY_LIMIT_ERROR_DEMO_PRODUCT_IDS)
+      : null;
+
     return profileProductTree.filter((product) => {
+      if (uploadLimitProductIdSet && !uploadLimitProductIdSet.has(product.id)) {
+        return false;
+      }
       if (product.campaigns.length === 0) {
         const noCampaignFilters =
           filterStatus === 'all-except-archived' &&
@@ -8091,7 +7854,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           filterTags.length === 0 &&
           filterCampaignTypes.length === 0 &&
           !filterConflictOnly &&
-          !insightFilter;
+          !insightFilter &&
+          !uploadLimitErrorProductsFilter;
         const categoryOk =
           listTab === 'products'
             ? filterProductCategories.length === 0 ||
@@ -8172,6 +7936,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     getProductTags,
     insightFilter,
     listTab,
+    uploadLimitErrorProductsFilter,
   ]);
 
   // Поиск по товарам: по названию товара, артикулу, артикулу WB, артикулу продавца, названию кампании, ID кампании
@@ -8820,24 +8585,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               onClear={onClearLaunchResult}
           />
       )}
-      {!isLaunching && !isApplyingEdits && editResult && (
-        <EditResultBlock 
-          successCount={editResult.success}
-          errorCount={editResult.error}
-          onClear={() => {
-            onClearEditResult();
-            setFailedFilterIds(null);
-          }}
-          failedIds={editResult.failedIds}
-          onShowFailed={(ids) => {
-            if (ids && ids.length > 0) {
-              setFailedFilterIds(ids);
-              // Сбрасываем пагинацию на первую страницу, чтобы точно увидеть отфильтрованные кампании
-              setCurrentPage(1);
-            }
-          }}
-        />
-      )}
 
       {isApplyingEdits && <ApplyingChangesBlock onOpenReview={onOpenReview} onCancel={onCancelEdits} />}
 
@@ -8874,14 +8621,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           onClose={() => setProductBulkNotice(null)}
           durationMs={2500}
           aboveOverlay
-        />
-      )}
-
-      {bulkBidDailyLimitNotice && bulkDailyLimitChangeRows.length > 0 && (
-        <BulkBidDailyLimitNoticeModal
-          changes={bulkDailyLimitChangeRows}
-          onClose={handleDismissBulkBidDailyLimitNotice}
-          onRollbackBids={handleRollbackBulkBidDailyLimits}
         />
       )}
 
@@ -9291,19 +9030,34 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           ) : null}
 
-          {insightFilter && (
+          {(insightFilter || uploadLimitErrorProductsFilter) && (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] py-1.5 pl-3 pr-1.5 text-sm font-medium text-gray-900">
-                <span className="truncate">{insightFilter.label}</span>
-                <button
-                  type="button"
-                  onClick={() => clearInsightFilter?.()}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.12)] hover:text-gray-900"
-                  aria-label="Сбросить фильтр"
-                >
-                  <X className="h-4 w-4" aria-hidden />
-                </button>
-              </span>
+              {insightFilter && (
+                <span className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] py-1.5 pl-3 pr-1.5 text-sm font-medium text-gray-900">
+                  <span className="truncate">{insightFilter.label}</span>
+                  <button
+                    type="button"
+                    onClick={() => clearInsightFilter?.()}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.12)] hover:text-gray-900"
+                    aria-label="Сбросить фильтр"
+                  >
+                    <X className="h-4 w-4" aria-hidden />
+                  </button>
+                </span>
+              )}
+              {uploadLimitErrorProductsFilter && (
+                <span className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] py-1.5 pl-3 pr-1.5 text-sm font-medium text-gray-900">
+                  <span className="truncate">{UPLOAD_DAILY_LIMIT_ERROR_PRODUCTS_FILTER_LABEL}</span>
+                  <button
+                    type="button"
+                    onClick={() => onClearUploadLimitErrorProductsFilter?.()}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.12)] hover:text-gray-900"
+                    aria-label="Сбросить фильтр"
+                  >
+                    <X className="h-4 w-4" aria-hidden />
+                  </button>
+                </span>
+              )}
             </div>
           )}
 
@@ -11443,6 +11197,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
           onDailyLimitChange={(limit, isScheduled = false) => {
             if (dailyLimitModalCampaign) {
+              const patch =
+                limit === null
+                  ? { dailyLimit: null as null, scheduledDailyLimit: null as null }
+                  : isScheduled
+                    ? { scheduledDailyLimit: limit }
+                    : { dailyLimit: limit, scheduledDailyLimit: null as null };
+              onPersistCampaignListPatch?.(dailyLimitModalCampaign.campaignId, patch);
               setAllCampaigns(prev => prev.map(c => {
                 if (c.id === dailyLimitModalCampaign.id) {
                   if (limit === null) {
