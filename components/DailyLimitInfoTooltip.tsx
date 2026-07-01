@@ -23,7 +23,7 @@ export const DailyLimitInfoTooltip: React.FC = () => {
             onMouseLeave={() => setIsVisible(false)}
           >
             <p className="mb-2 font-semibold">Как работает дневной лимит?</p>
-            <p className="mb-2">Минимальная сумма лимита зависит от ставки.</p>
+            <p className="mb-2">Минимальная сумма дневного лимита — 1 000 ₽.</p>
             <p className="mb-2">
               Обычно лимит равномерно тратится в течение дня. Он может закончиться быстрее, если
               товаром интересуется много покупателей.

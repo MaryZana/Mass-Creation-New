@@ -9,12 +9,11 @@ import {
   DAILY_LIMIT_ABSOLUTE_MIN,
   demoMaxCpcBidForCampaignId,
   minDailyLimitForMaxBid,
-  maxBidRubForDailyLimit,
-  UPLOAD_DAILY_LIMIT_ERROR_DEMO_PRODUCT_IDS,
-  UPLOAD_DAILY_LIMIT_ERROR_PRODUCTS_FILTER_LABEL,
+  isDailyLimitBelowRecommendedForMaxBid,
 } from '../utils/cpcDailyLimitBid';
 import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
+import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
@@ -217,9 +216,6 @@ interface SuccessPageProps {
   /** Патчи данных кампаний с CPC-страницы (список при этом размонтирован) */
   campaignListPatches?: Record<number, CampaignListDataPatch>;
   onPersistCampaignListPatch?: (campaignId: number, data: CampaignListDataPatch) => void;
-  /** Фильтр «Товары с ошибкой лимита» после загрузки Excel */
-  uploadLimitErrorProductsFilter?: boolean;
-  onClearUploadLimitErrorProductsFilter?: () => void;
 }
 
 interface DisplayCampaign {
@@ -5165,8 +5161,9 @@ const DailyLimitCell: React.FC<{
   dailyLimitExhausted?: boolean;
   /** true только для кампаний CPC — только для них можно настраивать лимит */
   isCpc?: boolean;
+  maxCpcBidRub?: number;
   onClick?: () => void;
-}> = ({ dailyLimit, dailyLimitExhausted, isCpc = true, onClick }) => {
+}> = ({ dailyLimit, dailyLimitExhausted, isCpc = true, maxCpcBidRub = 0, onClick }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const hideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const exhausted = !!dailyLimitExhausted;
@@ -5187,6 +5184,15 @@ const DailyLimitCell: React.FC<{
     ? `Лимит в ${formatForDisplay(dailyLimit)} ₽ на сегодня израсходован. Показы остановлены до завтра. Если хотите возобновить показы сейчас увеличьте лимит`
     : '';
 
+  const bidLimitMismatch =
+    isCpc &&
+    dailyLimit != null &&
+    maxCpcBidRub > 0 &&
+    isDailyLimitBelowRecommendedForMaxBid(dailyLimit, maxCpcBidRub);
+  const recommendedDailyLimitRub = bidLimitMismatch
+    ? minDailyLimitForMaxBid(maxCpcBidRub)
+    : 0;
+
   // Для кампаний CPM всегда показываем прочерк
   if (!isCpc) {
     return <span className="text-gray-400">—</span>;
@@ -5194,16 +5200,21 @@ const DailyLimitCell: React.FC<{
 
   const content =
     dailyLimit != null ? (
-      <div className="w-max max-w-full space-y-0.5">
-        <span className="whitespace-nowrap text-sm font-medium tabular-nums">
-          {formatForDisplay(dailyLimit)} ₽
-        </span>
-        <div className="h-1.5 w-[4.5rem] max-w-full rounded-full bg-gray-200 overflow-hidden">
-          <div
-            className={`h-full rounded-full ${exhausted ? 'bg-red-500' : 'bg-purple-600'}`}
-            style={{ width: exhausted ? '100%' : '60%' }}
-          />
+      <div className="inline-flex max-w-full items-start gap-1">
+        <div className="w-max max-w-full space-y-0.5">
+          <span className="whitespace-nowrap text-sm font-medium tabular-nums">
+            {formatForDisplay(dailyLimit)} ₽
+          </span>
+          <div className="h-1.5 w-[4.5rem] max-w-full rounded-full bg-gray-200 overflow-hidden">
+            <div
+              className={`h-full rounded-full ${exhausted ? 'bg-red-500' : 'bg-purple-600'}`}
+              style={{ width: exhausted ? '100%' : '60%' }}
+            />
+          </div>
         </div>
+        {bidLimitMismatch ? (
+          <DailyLimitBidMismatchHint recommendedDailyLimitRub={recommendedDailyLimitRub} className="mt-0.5" />
+        ) : null}
       </div>
     ) : (
       <span className="text-sm font-medium text-blue-600">Настроить</span>
@@ -5263,19 +5274,32 @@ const DailyLimitModal: React.FC<{
   const [budgetError, setBudgetError] = useState('');
   const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
 
-  const requiredMinDailyLimit = useMemo(
-    () => minDailyLimitForMaxBid(maxCpcBidRub),
+  const requiredMinDailyLimit = DAILY_LIMIT_ABSOLUTE_MIN;
+  const recommendedDailyLimitForBid = useMemo(
+    () => (maxCpcBidRub > 0 ? minDailyLimitForMaxBid(maxCpcBidRub) : DAILY_LIMIT_ABSOLUTE_MIN),
     [maxCpcBidRub],
   );
 
+  const parsedDailyLimitInput = useMemo(
+    () => parseDisplayValue(dailyLimitValue),
+    [dailyLimitValue],
+  );
+
+  const showBidLimitMismatchHint =
+    isDailyLimitEnabled &&
+    !Number.isNaN(parsedDailyLimitInput) &&
+    parsedDailyLimitInput > 0 &&
+    maxCpcBidRub > 0 &&
+    isDailyLimitBelowRecommendedForMaxBid(parsedDailyLimitInput, maxCpcBidRub);
+
   const enableWithMinLimit = useCallback(() => {
-    const minLimit = requiredMinDailyLimit;
+    const minLimit = DAILY_LIMIT_ABSOLUTE_MIN;
     setIsDailyLimitEnabled(true);
     setIsCarryoverEnabled(true);
     setDailyLimitValue(String(minLimit));
     setSavedDailyLimit('');
     setBudgetError('');
-  }, [requiredMinDailyLimit]);
+  }, []);
 
   useEffect(() => {
     if (isOpen) {
@@ -5327,7 +5351,8 @@ const DailyLimitModal: React.FC<{
         <div className="mb-6">
           <div className="space-y-6">
             <div className="flex flex-col gap-2">
-              <div className="relative w-full max-w-[280px] min-w-[220px]">
+              <div className="flex max-w-[280px] min-w-[220px] items-start gap-1.5">
+                <div className="relative w-full min-w-0 flex-1">
                 <input
                   type="text"
                   value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
@@ -5347,9 +5372,16 @@ const DailyLimitModal: React.FC<{
                       ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200' 
                       : 'bg-white border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
                   }`}
-                  placeholder={`Задайте от ${formatForDisplay(requiredMinDailyLimit)}`}
+                  placeholder={`Задайте от ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
                 />
                 <span className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${!isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'}`}>₽</span>
+              </div>
+              {showBidLimitMismatchHint ? (
+                <DailyLimitBidMismatchHint
+                  recommendedDailyLimitRub={recommendedDailyLimitForBid}
+                  className="mt-1.5"
+                />
+              ) : null}
               </div>
             </div>
             {budgetError && (
@@ -5401,7 +5433,7 @@ const DailyLimitModal: React.FC<{
               }
               if (parsed < requiredMinDailyLimit) {
                 setBudgetError(
-                  `Минимальный лимит для ставки ${formatForDisplay(maxCpcBidRub)} ₽ — ${formatForDisplay(requiredMinDailyLimit)} ₽`,
+                  `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
                 );
                 return;
               }
@@ -5445,8 +5477,8 @@ function listCampaignMaxCpcBidRub(c: Pick<DisplayCampaign, 'type' | 'maxCpcBidRu
 
 type BulkDailyLimitTarget = DisplayCampaign;
 
-function bulkDailyLimitMinForCampaign(c: BulkDailyLimitTarget): number {
-  return minDailyLimitForMaxBid(listCampaignMaxCpcBidRub(c));
+function bulkDailyLimitMinForCampaign(_c: BulkDailyLimitTarget): number {
+  return DAILY_LIMIT_ABSOLUTE_MIN;
 }
 
 const BulkDailyLimitModal: React.FC<{
@@ -5516,26 +5548,18 @@ const BulkDailyLimitModal: React.FC<{
 
   const parsedLimit = useMemo(() => parseDisplayValue(dailyLimitValue), [dailyLimitValue]);
 
-  const belowMinCampaigns = useMemo(() => {
-    if (!isDailyLimitEnabled || !parsedLimit || isNaN(parsedLimit)) return [];
-    return cpcTargets.filter((c) => parsedLimit < bulkDailyLimitMinForCampaign(c));
-  }, [isDailyLimitEnabled, parsedLimit, cpcTargets]);
-
-  const limitBidConflict = useMemo(() => {
-    if (belowMinCampaigns.length === 0 || !parsedLimit || isNaN(parsedLimit)) return null;
-    const worst = belowMinCampaigns.reduce((a, b) =>
-      bulkDailyLimitMinForCampaign(b) > bulkDailyLimitMinForCampaign(a) ? b : a,
+  const recommendedDailyLimitForSelection = useMemo(() => {
+    if (cpcTargets.length === 0) return DAILY_LIMIT_ABSOLUTE_MIN;
+    return Math.max(
+      ...cpcTargets.map((c) => minDailyLimitForMaxBid(listCampaignMaxCpcBidRub(c))),
     );
-    const worstMin = bulkDailyLimitMinForCampaign(worst);
-    const maxBid = listCampaignMaxCpcBidRub(worst);
-    return {
-      enteredLimit: parsedLimit,
-      requiredMinLimit: worstMin,
-      maxBidAtEnteredLimit: maxBidRubForDailyLimit(parsedLimit),
-      currentMaxBid: maxBid,
-      conflictCount: belowMinCampaigns.length,
-    };
-  }, [belowMinCampaigns, parsedLimit]);
+  }, [cpcTargets]);
+
+  const showBulkBidLimitMismatchHint =
+    isDailyLimitEnabled &&
+    !Number.isNaN(parsedLimit) &&
+    parsedLimit > 0 &&
+    parsedLimit < recommendedDailyLimitForSelection;
 
   const evaluateApply = useCallback(
     (limit: number | null) => {
@@ -5591,11 +5615,10 @@ const BulkDailyLimitModal: React.FC<{
     }
     if (parsedLimit < requiredMinDailyLimit) {
       setBudgetError(
-        `Минимальный лимит для выбранных кампаний — ${formatForDisplay(requiredMinDailyLimit)} ₽`,
+        `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
       );
       return;
     }
-    if (belowMinCampaigns.length > 0) return;
 
     const { eligibleIds, skippedBudget } = evaluateApply(parsedLimit);
     if (eligibleIds.size === 0 && skippedBudget.length > 0) {
@@ -5678,8 +5701,7 @@ const BulkDailyLimitModal: React.FC<{
             <div className="space-y-6">
               {!isDailyLimitEnabled && cpcTargets.length > 0 && (
                 <p className="text-sm text-gray-500">
-                  Включите лимит — подставим минимум {formatForDisplay(requiredMinDailyLimit)} ₽ для
-                  текущих ставок
+                  Включите лимит — по умолчанию подставим {formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽
                 </p>
               )}
               {cpcTargets.length === 0 && (
@@ -5688,7 +5710,8 @@ const BulkDailyLimitModal: React.FC<{
                 </p>
               )}
               <div className="flex flex-col gap-2">
-                <div className="relative w-full max-w-[280px] min-w-[220px]">
+                <div className="flex max-w-[280px] min-w-[220px] items-start gap-1.5">
+                  <div className="relative w-full min-w-0 flex-1">
                   <input
                     type="text"
                     value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
@@ -5709,7 +5732,7 @@ const BulkDailyLimitModal: React.FC<{
                         ? 'bg-gray-50 text-gray-400 cursor-not-allowed border-gray-200'
                         : 'bg-white border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
                     }`}
-                    placeholder={`Задайте от ${formatForDisplay(requiredMinDailyLimit)}`}
+                    placeholder={`Задайте от ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
                   />
                   <span
                     className={`absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none ${
@@ -5718,33 +5741,15 @@ const BulkDailyLimitModal: React.FC<{
                   >
                     ₽
                   </span>
+                  </div>
+                  {showBulkBidLimitMismatchHint ? (
+                    <DailyLimitBidMismatchHint
+                      recommendedDailyLimitRub={recommendedDailyLimitForSelection}
+                      className="mt-1.5"
+                    />
+                  ) : null}
                 </div>
               </div>
-              {limitBidConflict && (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                  <p className="mb-2">
-                    При лимите {formatForDisplay(limitBidConflict.enteredLimit)} ₽ у{' '}
-                    {limitBidConflict.conflictCount}{' '}
-                    {getPlural(limitBidConflict.conflictCount, 'кампании', 'кампаний', 'кампаний')}{' '}
-                    ставка выше допустимого потолка (
-                    {formatForDisplay(limitBidConflict.maxBidAtEnteredLimit)} ₽).
-                  </p>
-                  <p className="mb-3 text-amber-900/90">
-                    Задайте от {formatForDisplay(limitBidConflict.requiredMinLimit)} ₽ или снизьте
-                    ставки в этих кампаниях.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDailyLimitValue(String(limitBidConflict.requiredMinLimit));
-                      setBudgetError('');
-                    }}
-                    className="text-sm font-medium text-purple-700 hover:text-purple-900 underline-offset-2 hover:underline"
-                  >
-                    Задать {formatForDisplay(limitBidConflict.requiredMinLimit)} ₽
-                  </button>
-                </div>
-              )}
               {budgetError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
                   <p className="text-sm text-red-600">{budgetError}</p>
@@ -5796,7 +5801,7 @@ const BulkDailyLimitModal: React.FC<{
               <button
                 type="button"
                 onClick={handlePrimarySave}
-                disabled={cpcTargets.length === 0 || !!limitBidConflict}
+                disabled={cpcTargets.length === 0}
                 className="px-4 py-2 text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 Сохранить
@@ -7543,8 +7548,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onRegisterBulkDailyLimitOpener,
     campaignListPatches,
     onPersistCampaignListPatch,
-    uploadLimitErrorProductsFilter = false,
-    onClearUploadLimitErrorProductsFilter,
 }) => {
   const {
     profileId,
@@ -8171,13 +8174,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setCurrentPage(1);
   }, [insightFilter]);
 
-  useEffect(() => {
-    if (!uploadLimitErrorProductsFilter) return;
-    setListTab('products');
-    setCurrentPage(1);
-    setSelectedProductIds([]);
-    onSelectionChange([]);
-  }, [uploadLimitErrorProductsFilter, onSelectionChange]);
 
   // Раскрытые строки товаров (вкладка Товары)
   const [expandedProductIds, setExpandedProductIds] = useState<Set<string>>(new Set());
@@ -8517,11 +8513,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter((c) => campaignMatchesInsightFilter(c, insightFilter.kind));
     }
 
-    if (uploadLimitErrorProductsFilter) {
-      const productIdSet = new Set<string>(UPLOAD_DAILY_LIMIT_ERROR_DEMO_PRODUCT_IDS);
-      filtered = filtered.filter((c) => c.productId != null && productIdSet.has(c.productId));
-    }
-
     // Sort campaigns
     if (filterSort === 'by-name') {
       filtered.sort((a, b) => a.name.localeCompare(b.name));
@@ -8542,7 +8533,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     }
 
     const prebuilt = allCampaigns.find((c) => c.id === PREBUILT_CPC_CAMPAIGN_ID);
-    if (prebuilt && !insightFilter && !uploadLimitErrorProductsFilter) {
+    if (prebuilt && !insightFilter) {
       filtered = [prebuilt, ...filtered.filter((c) => c.id !== PREBUILT_CPC_CAMPAIGN_ID)];
     }
 
@@ -8561,19 +8552,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     productTagsOverride,
     searchQuery,
     insightFilter,
-    uploadLimitErrorProductsFilter,
   ]);
 
   /** Товары, отфильтрованные по тем же правилам, что и кампании (на вкладке «Товары» показываем товар, если есть хотя бы одна подходящая кампания) */
   const filteredProducts = useMemo(() => {
-    const uploadLimitProductIdSet = uploadLimitErrorProductsFilter
-      ? new Set<string>(UPLOAD_DAILY_LIMIT_ERROR_DEMO_PRODUCT_IDS)
-      : null;
-
     return profileProductTree.filter((product) => {
-      if (uploadLimitProductIdSet && !uploadLimitProductIdSet.has(product.id)) {
-        return false;
-      }
       if (product.campaigns.length === 0) {
         const noCampaignFilters =
           filterStatus === 'all-except-archived' &&
@@ -8582,8 +8565,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           filterTags.length === 0 &&
           filterCampaignTypes.length === 0 &&
           !filterConflictOnly &&
-          !insightFilter &&
-          !uploadLimitErrorProductsFilter;
+          !insightFilter;
         const categoryOk =
           listTab === 'products'
             ? filterProductCategories.length === 0 ||
@@ -8664,7 +8646,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     getProductTags,
     insightFilter,
     listTab,
-    uploadLimitErrorProductsFilter,
   ]);
 
   // Поиск по товарам: по названию товара, артикулу, артикулу WB, артикулу продавца, названию кампании, ID кампании
@@ -9758,34 +9739,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           ) : null}
 
-          {(insightFilter || uploadLimitErrorProductsFilter) && (
+          {insightFilter && (
             <div className="flex flex-wrap items-center gap-2">
-              {insightFilter && (
-                <span className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] py-1.5 pl-3 pr-1.5 text-sm font-medium text-gray-900">
-                  <span className="truncate">{insightFilter.label}</span>
-                  <button
-                    type="button"
-                    onClick={() => clearInsightFilter?.()}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.12)] hover:text-gray-900"
-                    aria-label="Сбросить фильтр"
-                  >
-                    <X className="h-4 w-4" aria-hidden />
-                  </button>
-                </span>
-              )}
-              {uploadLimitErrorProductsFilter && (
-                <span className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] py-1.5 pl-3 pr-1.5 text-sm font-medium text-gray-900">
-                  <span className="truncate">{UPLOAD_DAILY_LIMIT_ERROR_PRODUCTS_FILTER_LABEL}</span>
-                  <button
-                    type="button"
-                    onClick={() => onClearUploadLimitErrorProductsFilter?.()}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.12)] hover:text-gray-900"
-                    aria-label="Сбросить фильтр"
-                  >
-                    <X className="h-4 w-4" aria-hidden />
-                  </button>
-                </span>
-              )}
+              <span className="inline-flex max-w-full items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] py-1.5 pl-3 pr-1.5 text-sm font-medium text-gray-900">
+                <span className="truncate">{insightFilter.label}</span>
+                <button
+                  type="button"
+                  onClick={() => clearInsightFilter?.()}
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.12)] hover:text-gray-900"
+                  aria-label="Сбросить фильтр"
+                >
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              </span>
             </div>
           )}
 
@@ -10443,6 +10409,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       dailyLimit={c.dailyLimit ?? null}
                                       dailyLimitExhausted={c.dailyLimitExhausted}
                                       isCpc={c.type === 'CPC'}
+                                      maxCpcBidRub={c.type === 'CPC' ? listCampaignMaxCpcBidRub(c) : 0}
                                       onClick={c.type === 'CPC' ? () => openDailyLimitModalForCampaign(c) : undefined}
                                   />
                               </td>
@@ -11764,6 +11731,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               dailyLimit={camp.dailyLimit ?? null}
                               dailyLimitExhausted={camp.dailyLimitExhausted}
                               isCpc={camp.type === 'CPC'}
+                              maxCpcBidRub={camp.type === 'CPC' ? listCampaignMaxCpcBidRub(camp) : 0}
                               onClick={camp.type === 'CPC' ? () => openDailyLimitModalForCampaign(camp) : undefined}
                             />
                           </td>

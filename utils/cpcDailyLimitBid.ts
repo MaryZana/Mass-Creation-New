@@ -8,6 +8,14 @@ export function minDailyLimitForMaxBid(maxBidRub: number): number {
   return Math.max(DAILY_LIMIT_ABSOLUTE_MIN, byBid);
 }
 
+export function isDailyLimitBelowRecommendedForMaxBid(
+  dailyLimitRub: number | null | undefined,
+  maxBidRub: number,
+): boolean {
+  if (dailyLimitRub == null || dailyLimitRub <= 0 || maxBidRub <= 0) return false;
+  return dailyLimitRub < minDailyLimitForMaxBid(maxBidRub);
+}
+
 export function maxBidRubForDailyLimit(dailyLimitRub: number): number {
   if (!Number.isFinite(dailyLimitRub) || dailyLimitRub <= 0) return 0;
   return Math.floor(dailyLimitRub / DAILY_LIMIT_MIN_CLICKS_PER_DAY);

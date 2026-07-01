@@ -18,12 +18,14 @@ import {
 } from './SuccessPageTestData';
 import { AppHeader } from './AppHeader';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
+import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
 import { CampaignRepeatPerformanceBlock } from './CampaignRepeatPerformanceBlock';
 import { SimilarDemandProductsBlock } from './SimilarDemandProductsBlock';
 import { useProfile, type RepeatLaunchPreset } from './ProfileContext';
 import {
+  DAILY_LIMIT_ABSOLUTE_MIN,
   minDailyLimitForMaxBid,
-  maxBidRubForDailyLimit,
+  isDailyLimitBelowRecommendedForMaxBid,
   CPC_MAX_BID_RUB,
 } from '../utils/cpcDailyLimitBid';
 
@@ -467,13 +469,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [bidChasingPosition, setBidChasingPosition] = useState<'1-2' | '3-10' | '11-34'>('1-2');
   const [bidChasingMaxBid, setBidChasingMaxBid] = useState(11.88);
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
-  const [bidRaisesDailyLimitModal, setBidRaisesDailyLimitModal] = useState<{
-    productKey: string;
-    zone: 'search' | 'recommendations';
-    attemptedBid: number;
-    currentDailyLimit: number;
-    newDailyLimit: number;
-  } | null>(null);
   const [bidLimitBudgetConflictModal, setBidLimitBudgetConflictModal] = useState<
     | {
         kind: 'productBid';
@@ -512,73 +507,26 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     return `${labels[bidChasingPosition]} позиции в поиске`;
   }, [bidChasingPosition]);
 
-  const requiredMinDailyLimit = useMemo(
+  const recommendedDailyLimitForBids = useMemo(
     () => minDailyLimitForMaxBid(maxSavedProductBidRub),
     [maxSavedProductBidRub],
   );
-
-  useEffect(() => {
-    if (!onUpdateData || maxSavedProductBidRub <= 0) return;
-    onUpdateData({ maxCpcBidRub: maxSavedProductBidRub });
-  }, [maxSavedProductBidRub, onUpdateData]);
 
   const savedDailyLimitRub = useMemo(() => {
     const parsed = parseDisplayValue(savedDailyLimit);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }, [savedDailyLimit]);
 
-  const syncDailyLimitAfterMaxBidChange = useCallback(
-    (maxBidRub: number) => {
-      if (!isDailyLimitEnabled) return;
-      const newMinLimit = minDailyLimitForMaxBid(maxBidRub);
-      // Лимит, заданный селлером вручную или после повышения ставки, не уменьшаем при снижении ставки
-      if (newMinLimit <= savedDailyLimitRub) return;
-      if (newMinLimit > campaignBudget) return;
-      const limitStr = String(newMinLimit);
-      setSavedDailyLimit(limitStr);
-      setDailyLimitValue(limitStr);
-      if (onUpdateData) {
-        onUpdateData({ dailyLimit: newMinLimit, scheduledDailyLimit: null });
-      }
-    },
-    [isDailyLimitEnabled, savedDailyLimitRub, campaignBudget, onUpdateData],
-  );
+  useEffect(() => {
+    if (!onUpdateData || maxSavedProductBidRub <= 0) return;
+    onUpdateData({ maxCpcBidRub: maxSavedProductBidRub });
+  }, [maxSavedProductBidRub, onUpdateData]);
 
-  const applyBidWithDailyLimit = useCallback(
-    (productKey: string, zone: 'search' | 'recommendations', bid: number, newDailyLimit: number) => {
-      if (newDailyLimit > campaignBudget) {
-        setBidLimitBudgetConflictModal({
-          kind: 'productBid',
-          productKey,
-          zone,
-          attemptedBid: bid,
-          newDailyLimit,
-          shortfall: newDailyLimit - campaignBudget,
-        });
-        return;
-      }
-      const applyZoneBid = (setter: React.Dispatch<React.SetStateAction<Record<string, ProductBidEntry>>>) => {
-        setter((prev) => ({
-          ...prev,
-          [productKey]: { draft: String(bid), saved: String(bid) },
-        }));
-      };
-      if (zone === 'search') applyZoneBid(setProductSearchBids);
-      else applyZoneBid(setProductRecommendationsBids);
-
-      const limitStr = String(newDailyLimit);
-      setSavedDailyLimit(limitStr);
-      setDailyLimitValue(limitStr);
-      setDailyLimitBudgetShortfall(null);
-      if (onUpdateData) {
-        onUpdateData({ dailyLimit: newDailyLimit, scheduledDailyLimit: null });
-      }
-      setToastMessage('Ставка изменена');
-      setToastIsError(false);
-      setShowToast(true);
-    },
-    [campaignBudget, onUpdateData],
-  );
+  const showDailyLimitBidMismatchHint =
+    isDailyLimitEnabled &&
+    savedDailyLimitRub > 0 &&
+    maxSavedProductBidRub > 0 &&
+    isDailyLimitBelowRecommendedForMaxBid(savedDailyLimitRub, maxSavedProductBidRub);
 
   const applyBidWithDailyLimitDisabled = useCallback(
     (productKey: string, zone: 'search' | 'recommendations', bid: number) => {
@@ -646,42 +594,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       const chasingCeiling = isBidChasingEnabled ? bidChasingMaxBid : 0;
       const maxBid = Math.max(parsed, otherSaved, chasingCeiling);
 
-      if (isDailyLimitEnabled && savedDailyLimitRub > 0) {
-        const newDailyLimit = minDailyLimitForMaxBid(maxBid);
-        if (newDailyLimit > savedDailyLimitRub) {
-          const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
-          setter((prev) => ({
-            ...prev,
-            [productKey]: { ...entry, draft: entry.saved },
-          }));
-          if (newDailyLimit > campaignBudget) {
-            setBidLimitBudgetConflictModal({
-              kind: 'productBid',
-              productKey,
-              zone,
-              attemptedBid: parsed,
-              newDailyLimit,
-              shortfall: newDailyLimit - campaignBudget,
-            });
-            return;
-          }
-          setBidRaisesDailyLimitModal({
-            productKey,
-            zone,
-            attemptedBid: parsed,
-            currentDailyLimit: savedDailyLimitRub,
-            newDailyLimit,
-          });
-          return;
-        }
-      }
-
       const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
       setter((prev) => ({
         ...prev,
         [productKey]: { draft: bidStr, saved: bidStr },
       }));
-      syncDailyLimitAfterMaxBidChange(maxBid);
       setToastMessage('Ставка изменена');
       setToastIsError(false);
       setShowToast(true);
@@ -690,12 +607,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       productKey,
       productSearchBids,
       productRecommendationsBids,
-      isDailyLimitEnabled,
-      savedDailyLimitRub,
-      syncDailyLimitAfterMaxBidChange,
       isBidChasingEnabled,
       bidChasingMaxBid,
-      campaignBudget,
     ],
   );
 
@@ -752,7 +665,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   }, [onUpdateData]);
 
   const applyMinDailyLimitOnEnable = useCallback(() => {
-    const minLimit = requiredMinDailyLimit;
+    const minLimit = DAILY_LIMIT_ABSOLUTE_MIN;
     if (minLimit > campaignBudget) {
       setDailyLimitBudgetShortfall(minLimit - campaignBudget);
       setDailyLimitValue('');
@@ -771,7 +684,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     if (onUpdateData) {
       onUpdateData({ dailyLimit: minLimit, scheduledDailyLimit: null });
     }
-  }, [requiredMinDailyLimit, campaignBudget, onUpdateData]);
+  }, [campaignBudget, onUpdateData]);
 
   // Sync with props when they change
   useEffect(() => {
@@ -841,15 +754,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     const parsedSaved = parseDisplayValue(savedDailyLimit);
     const parsedInput = parseDisplayValue(dailyLimitValue);
     const total =
-      parsedSaved >= requiredMinDailyLimit
-        ? parsedSaved
-        : parsedInput >= requiredMinDailyLimit
-          ? parsedInput
-          : requiredMinDailyLimit;
+      parsedSaved > 0 ? parsedSaved : parsedInput > 0 ? parsedInput : DAILY_LIMIT_ABSOLUTE_MIN;
     const spent = dailyLimitExhausted ? total : 0;
     const progress = total > 0 ? Math.min(100, (spent / total) * 100) : 0;
     return { total, spent, progress };
-  }, [isDailyLimitEnabled, savedDailyLimit, dailyLimitValue, dailyLimitExhausted, requiredMinDailyLimit]);
+  }, [isDailyLimitEnabled, savedDailyLimit, dailyLimitValue, dailyLimitExhausted]);
 
   return (
     <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-10">
@@ -1016,10 +925,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                       ) {
                         return;
                       }
-                      if (isNaN(parsed) || parsed < requiredMinDailyLimit) {
+                      if (isNaN(parsed) || parsed < DAILY_LIMIT_ABSOLUTE_MIN) {
                         setDailyLimitValue(savedDailyLimit || '');
                         setToastMessage(
-                          `Минимальный лимит для ставки ${formatForDisplay(maxSavedProductBidRub)} ₽ — ${formatForDisplay(requiredMinDailyLimit)} ₽`,
+                          `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
                         );
                         setToastIsError(true);
                         setShowToast(true);
@@ -1045,7 +954,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                         ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
                         : 'border-gray-200 bg-white text-gray-900 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
                     }`}
-                    placeholder={`Задайте от ${formatForDisplay(requiredMinDailyLimit)}`}
+                    placeholder={`Задайте от ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
                   />
                   <span
                     className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm ${
@@ -1055,6 +964,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     ₽
                   </span>
                 </div>
+                {showDailyLimitBidMismatchHint ? (
+                  <DailyLimitBidMismatchHint
+                    recommendedDailyLimitRub={recommendedDailyLimitForBids}
+                    className="mt-1.5"
+                  />
+                ) : null}
                 <label className="m-0 flex cursor-pointer items-center gap-2">
                   <Checkbox
                     disabled={!isDailyLimitEnabled}
@@ -1535,27 +1450,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         }}
         onClose={() => setIsBidChasingModalOpen(false)}
         onApply={({ position, maxBid }) => {
-          const effectiveMaxBidRub = Math.max(
-            maxBid,
-            parseDisplayValue(productSearchBids[productKey]?.saved ?? '0'),
-            parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0'),
-          );
-          const requiredDailyLimit = minDailyLimitForMaxBid(effectiveMaxBidRub);
-          if (isDailyLimitEnabled && requiredDailyLimit > campaignBudget) {
-            setIsBidChasingModalOpen(false);
-            setBidLimitBudgetConflictModal({
-              kind: 'bidChasing',
-              position,
-              maxBid,
-              shortfall: requiredDailyLimit - campaignBudget,
-            });
-            return;
-          }
           setBidChasingPosition(position);
           setBidChasingMaxBid(maxBid);
           setIsBidChasingEnabled(true);
           setIsBidChasingModalOpen(false);
-          syncDailyLimitAfterMaxBidChange(effectiveMaxBidRub);
           setToastMessage('Преследование ставки настроено');
           setToastIsError(false);
           setShowToast(true);
@@ -1581,68 +1479,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           currentBudget={campaignBudget}
           showDailyLimitInfo={false}
         />
-      )}
-
-      {bidRaisesDailyLimitModal && (
-        <div
-          className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4"
-          onClick={() => setBidRaisesDailyLimitModal(null)}
-        >
-          <div
-            className="relative w-full max-w-[540px] rounded-xl bg-white p-6 shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setBidRaisesDailyLimitModal(null)}
-              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
-              aria-label="Закрыть"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <p className="pr-8 text-base text-gray-900 leading-snug">
-              <span className="font-semibold">
-                При новой ставке {formatForDisplay(bidRaisesDailyLimitModal.attemptedBid)} ₽ дневного
-                лимита не хватит на весь день, нужно увеличить лимит
-              </span>
-            </p>
-            <div className="mt-6 flex flex-col-reverse items-stretch gap-2 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end">
-              <button
-                type="button"
-                onClick={() => {
-                  const { productKey: pk, zone, currentDailyLimit } = bidRaisesDailyLimitModal;
-                  const capBid = maxBidRubForDailyLimit(currentDailyLimit);
-                  setBidRaisesDailyLimitModal(null);
-                  if (capBid > 0) {
-                    const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
-                    setter((prev) => ({
-                      ...prev,
-                      [pk]: { draft: String(capBid), saved: String(capBid) },
-                    }));
-                    setToastMessage('Ставка изменена');
-                    setToastIsError(false);
-                    setShowToast(true);
-                  }
-                }}
-                className="whitespace-nowrap rounded-lg bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-200 sm:shrink-0"
-              >
-                Оставить ставку{' '}
-                {formatForDisplay(maxBidRubForDailyLimit(bidRaisesDailyLimitModal.currentDailyLimit))} ₽
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const { productKey: pk, zone, attemptedBid, newDailyLimit } = bidRaisesDailyLimitModal;
-                  setBidRaisesDailyLimitModal(null);
-                  applyBidWithDailyLimit(pk, zone, attemptedBid, newDailyLimit);
-                }}
-                className="whitespace-nowrap rounded-lg bg-purple-600 px-3 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-700 sm:shrink-0"
-              >
-                Поднять лимит до {formatForDisplay(bidRaisesDailyLimitModal.newDailyLimit)} ₽
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {bidLimitBudgetConflictModal && (
@@ -2148,13 +1984,6 @@ const BidChasingClustersModal: React.FC<{
     Number.isFinite(parsedMaxBid) ? parsedMaxBid : 0,
     otherMaxProductBidRub,
   );
-  const requiredDailyLimitRub = minDailyLimitForMaxBid(effectiveMaxBidRub);
-  const showDailyLimitBumpNotice =
-    isDailyLimitEnabled &&
-    savedDailyLimitRub > 0 &&
-    maxBidValid &&
-    requiredDailyLimitRub > savedDailyLimitRub;
-
   const handleApply = () => {
     if (!maxBidValid) return;
     onApply({ position, maxBid: parsedMaxBid });
@@ -2254,21 +2083,7 @@ const BidChasingClustersModal: React.FC<{
               От {BID_CHASING_MIN_BID_RUB.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} до{' '}
               {formatForDisplay(CPC_MAX_BID_RUB)} ₽
             </p>
-            {showDailyLimitBumpNotice && (
-              <div className="mt-4 flex gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <span
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-white"
-                  aria-hidden
-                >
-                  !
-                </span>
-                <p className="min-w-0 text-sm leading-snug text-amber-950">
-                  Если примените такой лимит ставки, дневной лимит изменится до{' '}
-                  <span className="font-semibold">{formatForDisplay(requiredDailyLimitRub)} ₽</span>. Чтобы бюджета
-                  хватило на целый день показов, если ставка будет близка к лимиту.
-                </p>
-              </div>
-            )}
+
           </div>
 
           <div className="mt-4 flex gap-3 rounded-2xl bg-[#F6F2FF] px-4 py-3">

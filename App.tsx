@@ -1501,8 +1501,6 @@ type UploadSuccessRow = {
   variant: 'success' | 'adjust' | 'error';
   title: string;
   description: string;
-  /** Кнопка «Показать на списке» после загрузки Excel */
-  showOnListAction?: 'daily_limit_errors';
 };
 
 function uploadSuccessRowsForTab(tab: UploadEditsTab): UploadSuccessRow[] {
@@ -1527,10 +1525,9 @@ function uploadSuccessRowsForTab(tab: UploadEditsTab): UploadSuccessRow[] {
       description: 'Скорректировали ставки',
     },
     {
-      variant: 'error',
-      title: '3 товара, не применили ставки',
-      description: 'Так как они были ограничены дневным лимитом',
-      showOnListAction: 'daily_limit_errors',
+      variant: 'adjust',
+      title: '3 товара',
+      description: 'Ставки применены — проверьте дневной лимит, если он ниже рекомендуемого',
     },
     {
       variant: 'error',
@@ -1584,12 +1581,10 @@ const UploadEditsModal = ({
   isOpen,
   onClose,
   onApply,
-  onShowDailyLimitErrorsOnList,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onApply: () => void;
-  onShowDailyLimitErrorsOnList?: () => void;
 }) => {
   const [uploadTab, setUploadTab] = useState<UploadEditsTab>('bids');
   const [phase, setPhase] = useState<UploadEditsPhase>('upload');
@@ -1708,18 +1703,6 @@ const UploadEditsModal = ({
                   <div className="min-w-0">
                     <p className="mb-0 text-sm font-semibold text-gray-900">{row.title}</p>
                     <p className="mt-0.5 text-sm text-gray-500">{row.description}</p>
-                    {row.showOnListAction === 'daily_limit_errors' && onShowDailyLimitErrorsOnList && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          onShowDailyLimitErrorsOnList();
-                          handleClose();
-                        }}
-                        className="mt-1 text-sm font-medium text-purple-600 hover:text-purple-700 hover:underline"
-                      >
-                        Показать на списке
-                      </button>
-                    )}
                   </div>
                 </li>
               ))}
@@ -1978,7 +1961,6 @@ export default function App() {
   const [campaignForAutoRefill, setCampaignForAutoRefill] = useState<CampaignRecord | null>(null);
   const [campaignForBonusEdit, setCampaignForBonusEdit] = useState<CampaignRecord | null>(null);
   const [isUploadEditsModalOpen, setIsUploadEditsModalOpen] = useState(false);
-  const [uploadLimitErrorProductsFilter, setUploadLimitErrorProductsFilter] = useState(false);
   const [isReviewEditsModalOpen, setIsReviewEditsModalOpen] = useState(false);
   const [isConfirmExitOpen, setIsConfirmExitOpen] = useState(false);
   const [pendingNavigationAction, setPendingNavigationAction] = useState<(() => void) | null>(null);
@@ -2937,8 +2919,6 @@ export default function App() {
                     }}
                     campaignListPatches={campaignListPatches}
                     onPersistCampaignListPatch={persistCampaignListPatch}
-                    uploadLimitErrorProductsFilter={uploadLimitErrorProductsFilter}
-                    onClearUploadLimitErrorProductsFilter={() => setUploadLimitErrorProductsFilter(false)}
                     onOpenSingleCampaign={() => setAppState('single-campaign')}
                   />
                 </main>
@@ -2946,7 +2926,6 @@ export default function App() {
                   isOpen={isUploadEditsModalOpen}
                   onClose={() => setIsUploadEditsModalOpen(false)}
                   onApply={handleApplyEdits}
-                  onShowDailyLimitErrorsOnList={() => setUploadLimitErrorProductsFilter(true)}
                 />
                 <ReviewEditsModal 
                   isOpen={isReviewEditsModalOpen}
