@@ -330,15 +330,26 @@ type ProductRow = {
 };
 
 const PRODUCTS_STOCK_COLUMN_ID = 'stock';
-const PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID = 'averageBidCpm10k';
-const PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID = 'averageBidCpc';
+const PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID = 'recommendedBidCpmSearch';
+const PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID = 'recommendedBidCpmRec';
+const PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID = 'recommendedBidCpcSearch';
+
+const CONCEPT_NOT_PROMOTED_RECOMMENDED_BID_COLUMN_IDS = [
+  PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID,
+  PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID,
+  PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID,
+] as const;
+
+function isConceptNotPromotedRecommendedBidColumnId(columnId: string): boolean {
+  return (CONCEPT_NOT_PROMOTED_RECOMMENDED_BID_COLUMN_IDS as readonly string[]).includes(
+    columnId,
+  );
+}
 /** Пустая колонка: на широком экране отталкивает блок статистики вправо. */
 const PRODUCTS_STAT_SPACER_COLUMN_ID = 'statSpacer';
 const PRODUCTS_STAT_SPACER_CELL_CLASS = 'w-full min-w-0 p-0';
 const PRODUCTS_STOCK_TH_CLASS = 'p-4 text-left font-normal whitespace-nowrap min-w-[108px]';
 const PRODUCTS_STOCK_TD_CLASS = 'p-4 align-middle text-left whitespace-nowrap tabular-nums';
-
-const PRODUCT_STOCK_SIZE_LABELS = ['XS / 40', 'S / 44', 'M / 46', 'L / 48', 'XL / 50'] as const;
 
 type ProductStockSizeRow = { label: string; qty: number };
 
@@ -346,6 +357,97 @@ type ProductStockBreakdown = {
   displayTotal: number;
   wb: { total: number; sizes: ProductStockSizeRow[] };
   seller: { total: number; sizes: ProductStockSizeRow[] };
+};
+
+const PRODUCT_STOCK_SIZE_PRESETS: Record<string, readonly (readonly string[])[]> = {
+  Платья: [
+    ['XS / 40', 'S / 44', 'M / 46', 'L / 48', 'XL / 50'],
+    ['XXS / 38', 'XS / 40', 'S / 42', 'M / 44', 'L / 46', 'XL / 48'],
+    ['40', '42', '44', '46', '48'],
+  ],
+  Футболки: [
+    ['XS / 40', 'S / 44', 'M / 46', 'L / 48', 'XL / 50'],
+    ['S / 44', 'M / 46', 'L / 48', 'XL / 50', 'XXL / 52'],
+    ['40', '42', '44', '46'],
+  ],
+  Кроссовки: [
+    ['36', '37', '38', '39', '40', '41', '42'],
+    ['38', '39', '40', '41', '42', '43'],
+    ['40', '41', '42', '43', '44'],
+  ],
+  Сумки: [
+    ['One size'],
+    ['Мини', 'Средний', 'Макси'],
+  ],
+};
+
+/** Артикул WB демо-товара с длинной размерной сеткой (платье «Ривьера», pr1) */
+const PRODUCT_STOCK_SCROLLABLE_GRID_NM_ID = 1_001_001;
+
+function buildExtendedScrollDemoSizeLabels(category: string): string[] {
+  const labels: string[] = [];
+  if (category === 'Платья' || category === 'Футболки') {
+    for (let ru = 38; ru <= 62; ru++) {
+      labels.push(`${ru} RU`);
+      labels.push(`XS–${ru}`);
+      if (ru % 2 === 0) {
+        labels.push(`${ru}/44`);
+      }
+    }
+  } else {
+    for (let eu = 33; eu <= 50; eu++) {
+      labels.push(`${eu}`);
+      if (eu < 50) {
+        labels.push(`${eu},5`);
+      }
+    }
+  }
+  return labels;
+}
+
+function productStockSizeLabelsForSeed(seed: number, category: string): string[] {
+  if (seed === PRODUCT_STOCK_SCROLLABLE_GRID_NM_ID) {
+    return buildExtendedScrollDemoSizeLabels(category);
+  }
+  const sized = Object.prototype.hasOwnProperty.call(PRODUCT_STOCK_SIZE_PRESETS, category);
+  if (!sized) {
+    return ['Всего'];
+  }
+  const presets = PRODUCT_STOCK_SIZE_PRESETS[category]!;
+  return [...presets[Math.abs(seed) % presets.length]!];
+}
+
+function distributeStockAcrossSizeLabels(
+  labels: string[],
+  baseStock: number,
+  seed: number,
+): ProductStockSizeRow[] {
+  if (labels.length === 1) {
+    return [{ label: labels[0]!, qty: baseStock }];
+  }
+  if (baseStock === 0) {
+    return labels.map((label) => ({ label, qty: 0 }));
+  }
+  const weights = labels.map((_, i) => (seed + i * 17) % 11 + 1);
+  const weightSum = weights.reduce((a, b) => a + b, 0);
+  let allocated = 0;
+  return labels.map((label, i) => {
+    const isLast = i === labels.length - 1;
+    const qty = isLast
+      ? Math.max(0, baseStock - allocated)
+      : Math.floor((baseStock * weights[i]!) / weightSum);
+    allocated += qty;
+    return { label, qty };
+  });
+}
+
+type StockHoverProductItem = {
+  key: string;
+  name: string;
+  image: string;
+  category: string;
+  stockLeft: number;
+  stockSeed: number;
 };
 
 function demoProductStockLeft(source: Pick<ProductSource, 'id' | 'article' | 'category'>): number {
@@ -374,42 +476,32 @@ function buildProductStockBreakdownValues(
   category: string,
   baseStock: number,
 ): ProductStockBreakdown {
-  const sized = ['Платья', 'Футболки', 'Кроссовки', 'Сумки'].includes(category);
-  const richSizedDemo = sized && baseStock > 0 && seed % 3 === 1;
+  const sizeLabels = productStockSizeLabelsForSeed(seed, category);
+  const sized = sizeLabels.length > 1 || sizeLabels[0] !== 'Всего';
+  const richSizedDemo = sized && baseStock > 0 && seed % 3 === 1 && sizeLabels.length >= 5;
 
   let wbSizes: ProductStockSizeRow[];
   if (!sized) {
     wbSizes = [{ label: 'Всего', qty: baseStock }];
   } else if (richSizedDemo) {
-    wbSizes = [
-      { label: 'XS / 40', qty: 100_000 },
-      { label: 'S / 44', qty: 0 },
-      { label: 'M / 46', qty: 100 },
-      { label: 'L / 48', qty: 20 },
-      { label: 'XL / 50', qty: 1_240 },
-    ];
-  } else if (baseStock === 0) {
-    wbSizes = PRODUCT_STOCK_SIZE_LABELS.map((label) => ({ label, qty: 0 }));
+    const demoQtyPattern = [100_000, 0, 100, 20, 1_240, 55, 12];
+    wbSizes = sizeLabels.map((label, i) => ({
+      label,
+      qty: demoQtyPattern[i] ?? Math.max(0, (seed + i * 13) % 400),
+    }));
   } else {
-    const weights = PRODUCT_STOCK_SIZE_LABELS.map((_, i) => (seed + i * 17) % 11 + 1);
-    const weightSum = weights.reduce((a, b) => a + b, 0);
-    let allocated = 0;
-    wbSizes = PRODUCT_STOCK_SIZE_LABELS.map((label, i) => {
-      const isLast = i === PRODUCT_STOCK_SIZE_LABELS.length - 1;
-      const qty = isLast
-        ? Math.max(0, baseStock - allocated)
-        : Math.floor((baseStock * weights[i]!) / weightSum);
-      allocated += qty;
-      return { label, qty };
-    });
+    wbSizes = distributeStockAcrossSizeLabels(sizeLabels, baseStock, seed);
   }
 
   const wbTotal = wbSizes.reduce((sum, row) => sum + row.qty, 0);
   const sellerTotal = sized && seed % 11 === 0 ? (seed % 90) + 5 : 0;
   const sellerSizes: ProductStockSizeRow[] = sized
-    ? PRODUCT_STOCK_SIZE_LABELS.map((label, i) => ({
+    ? sizeLabels.map((label, i) => ({
         label,
-        qty: sellerTotal === 0 ? 0 : Math.floor((sellerTotal * ((seed + i) % 5)) / 10),
+        qty:
+          sellerTotal === 0
+            ? 0
+            : Math.floor((sellerTotal * ((seed + i * 3) % 7)) / Math.max(1, sizeLabels.length * 2)),
       }))
     : [{ label: 'Всего', qty: sellerTotal }];
   const sellerSum = sellerSizes.reduce((sum, row) => sum + row.qty, 0);
@@ -421,16 +513,81 @@ function buildProductStockBreakdownValues(
   };
 }
 
+const STOCK_HOVER_THUMB_SLOTS = 5;
+const STOCK_HOVER_SCROLL_BODY_MAX_PX = 400;
+/** Заголовок колонки + итого до списка размеров */
+const STOCK_HOVER_COLUMN_HEADER_PX = 92;
+/** Строка размера с gap-2.5 */
+const STOCK_HOVER_SIZE_ROW_PX = 26;
+
+function stockHoverScrollBodyHeightPx(items: StockHoverProductItem[]): number | null {
+  if (items.length <= 1) return null;
+  let maxRows = 0;
+  for (const item of items) {
+    const breakdown = buildBreakdownForStockItem(item);
+    maxRows = Math.max(maxRows, breakdown.wb.sizes.length);
+  }
+  const content = STOCK_HOVER_COLUMN_HEADER_PX + maxRows * STOCK_HOVER_SIZE_ROW_PX;
+  return Math.min(STOCK_HOVER_SCROLL_BODY_MAX_PX, content);
+}
+
+function stockHoverItemFromProductRow(product: ProductRow): StockHoverProductItem {
+  return {
+    key: product.id,
+    name: product.name,
+    image: product.image,
+    category: product.category,
+    stockLeft: product.stockLeft,
+    stockSeed: productRowNmId(product) || 1,
+  };
+}
+
+function stockHoverItemsForCampaign(
+  campaign: DisplayCampaign,
+  productTree: ProductRow[],
+): StockHoverProductItem[] {
+  const ids =
+    campaign.productIds?.length > 0
+      ? campaign.productIds
+      : campaign.productId
+        ? [campaign.productId]
+        : [];
+  const fromTree = ids
+    .map((id) => productTree.find((p) => p.id === id))
+    .filter((p): p is ProductRow => Boolean(p));
+  if (fromTree.length > 0) {
+    return fromTree.map(stockHoverItemFromProductRow);
+  }
+  const seed = Number.parseInt(campaign.productId?.replace(/\D/g, '') ?? '0', 10) || campaign.campaignId;
+  const demoStock = Math.max(0, (seed % 97) * 1000 + 459);
+  return [
+    {
+      key: campaign.productId ?? campaign.id,
+      name: campaign.name.split(' / ')[0]?.trim() || campaign.name,
+      image: campaign.image,
+      category: campaign.category ?? '',
+      stockLeft: demoStock,
+      stockSeed: seed,
+    },
+  ];
+}
+
+function buildBreakdownForStockItem(item: StockHoverProductItem): ProductStockBreakdown {
+  return buildProductStockBreakdownValues(item.stockSeed, item.category, item.stockLeft);
+}
+
 function ProductStockBreakdownColumn({
   title,
   total,
   sizes,
   totalClassName,
+  emphasizeQty = false,
 }: {
   title: string;
   total: number;
   sizes: ProductStockSizeRow[];
   totalClassName: string;
+  emphasizeQty?: boolean;
 }) {
   return (
     <div className="min-w-[168px] flex-1">
@@ -447,8 +604,12 @@ function ProductStockBreakdownColumn({
               aria-hidden
             />
             <span
-              className={`shrink-0 tabular-nums font-medium ${
-                row.qty === 0 ? 'text-gray-400' : 'text-gray-900'
+              className={`shrink-0 tabular-nums ${
+                row.qty === 0
+                  ? 'text-gray-400'
+                  : emphasizeQty
+                    ? 'font-bold text-gray-900'
+                    : 'font-medium text-gray-900'
               }`}
             >
               {row.qty.toLocaleString('ru-RU')}
@@ -460,50 +621,203 @@ function ProductStockBreakdownColumn({
   );
 }
 
-function ProductStockRemainderHoverCard({
-  breakdown,
+function ProductStockDetailHoverCard({
+  items,
   anchorRect,
+  onPointerEnterCard,
+  onPointerLeaveCard,
 }: {
-  breakdown: ProductStockBreakdown;
+  items: StockHoverProductItem[];
   anchorRect: DOMRect;
+  onPointerEnterCard: () => void;
+  onPointerLeaveCard: () => void;
 }) {
-  const cardWidth = 420;
+  const [activeIndex, setActiveIndex] = useState(0);
+  const scrollPanelRef = useRef<HTMLDivElement>(null);
+  const safeActiveIndex = Math.min(activeIndex, Math.max(0, items.length - 1));
+  const activeItem = items[safeActiveIndex] ?? items[0];
+  const breakdown = useMemo(
+    () => (activeItem ? buildBreakdownForStockItem(activeItem) : null),
+    [activeItem],
+  );
+
+  const multiScrollBodyHeightPx = useMemo(
+    () => stockHoverScrollBodyHeightPx(items),
+    [items],
+  );
+
+  useEffect(() => {
+    scrollPanelRef.current?.scrollTo({ top: 0 });
+  }, [safeActiveIndex]);
+
+  const showOverflowTail = items.length > STOCK_HOVER_THUMB_SLOTS;
+  const thumbSlotCount = showOverflowTail ? STOCK_HOVER_THUMB_SLOTS : items.length;
+  const overflowBadge =
+    showOverflowTail && items.length > STOCK_HOVER_THUMB_SLOTS
+      ? items.length - STOCK_HOVER_THUMB_SLOTS
+      : 0;
+
+  const cardWidth = 440;
   const gap = 14;
   const top = anchorRect.top + anchorRect.height / 2;
   const left = anchorRect.left - gap;
 
+  if (!activeItem || !breakdown) return null;
+
   return (
     <div
-      className="pointer-events-none fixed z-[220]"
+      className="pointer-events-auto fixed z-[220]"
       style={{
         top,
         left,
         transform: 'translate(-100%, -50%)',
         width: cardWidth,
       }}
+      onMouseEnter={onPointerEnterCard}
+      onMouseLeave={onPointerLeaveCard}
     >
-      <div className="relative rounded-[20px] border border-gray-100 bg-white px-5 py-4 shadow-[0_12px_40px_rgba(0,0,0,0.14)]">
+      <div className="relative" style={{ width: cardWidth }}>
         <div
-          className="absolute right-0 top-1/2 h-3 w-3 translate-x-1/2 -translate-y-1/2 rotate-45 border-r border-t border-gray-100 bg-white"
+          className="pointer-events-none absolute right-0 top-1/2 z-10 h-3 w-3 translate-x-1/2 -translate-y-1/2 rotate-45 border-r border-t border-gray-100 bg-white"
           aria-hidden
         />
-        <div className="flex gap-6">
-          <ProductStockBreakdownColumn
-            title="На складах WB"
-            total={breakdown.wb.total}
-            sizes={breakdown.wb.sizes}
-            totalClassName="text-gray-900"
-          />
-          <ProductStockBreakdownColumn
-            title="На ваших складах"
-            total={breakdown.seller.total}
-            sizes={breakdown.seller.sizes}
-            totalClassName={breakdown.seller.total === 0 ? 'text-gray-400' : 'text-gray-900'}
-          />
+        <div className="overflow-hidden rounded-[20px] border border-gray-100 bg-white shadow-[0_12px_40px_rgba(0,0,0,0.14)]">
+          <div className="shrink-0 px-5 pt-4">
+            <div className="mb-3 flex h-11 flex-wrap items-center gap-2">
+              {Array.from({ length: thumbSlotCount }).map((_, slotIndex) => {
+                const isOverflowSlot =
+                  showOverflowTail && slotIndex === STOCK_HOVER_THUMB_SLOTS - 1;
+                const itemIndex = slotIndex;
+                const item = items[itemIndex];
+                if (!item) return null;
+                const thumbSrc = resolveProductTableThumbSrc(item.key, item.image, item.category);
+                const selected = safeActiveIndex === itemIndex;
+                return (
+                  <button
+                    key={`${item.key}-${slotIndex}`}
+                    type="button"
+                    className={`relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border bg-gray-50 transition-shadow ${
+                      selected ? 'border-[#9A41FE] ring-2 ring-[#9A41FE]/35' : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                    onMouseEnter={() => setActiveIndex(itemIndex)}
+                    aria-label={item.name}
+                  >
+                    <img src={thumbSrc} alt="" className="h-full w-full object-cover" />
+                    {isOverflowSlot && overflowBadge > 0 ? (
+                      <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-sm font-semibold text-white">
+                        +{overflowBadge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+            <p
+              className="mb-0 min-h-5 truncate pb-3 text-sm font-medium leading-5 text-gray-600"
+              title={activeItem.name}
+            >
+              {activeItem.name}
+            </p>
+          </div>
+          <div
+            ref={scrollPanelRef}
+            className="overflow-y-auto overflow-x-hidden custom-scrollbar px-5 pb-4"
+            style={
+              multiScrollBodyHeightPx != null
+                ? {
+                    height: multiScrollBodyHeightPx,
+                    maxHeight: STOCK_HOVER_SCROLL_BODY_MAX_PX,
+                  }
+                : { maxHeight: STOCK_HOVER_SCROLL_BODY_MAX_PX }
+            }
+          >
+            <div className="flex gap-6">
+              <ProductStockBreakdownColumn
+                title="На складах WB"
+                total={breakdown.wb.total}
+                sizes={breakdown.wb.sizes}
+                totalClassName="text-gray-900"
+                emphasizeQty
+              />
+              <ProductStockBreakdownColumn
+                title="На ваших складах"
+                total={breakdown.seller.total}
+                sizes={breakdown.seller.sizes}
+                totalClassName={breakdown.seller.total === 0 ? 'text-red-500' : 'text-gray-900'}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>
   );
+}
+
+function useStockRemainderHoverPortal(
+  items: StockHoverProductItem[],
+) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  const clearCloseTimer = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    clearCloseTimer();
+    closeTimerRef.current = setTimeout(() => setOpen(false), 120);
+  }, [clearCloseTimer]);
+
+  const openHover = useCallback(() => {
+    clearCloseTimer();
+    syncAnchorRect();
+    setOpen(true);
+  }, [clearCloseTimer, syncAnchorRect]);
+
+  useEffect(() => {
+    if (!open) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [open, syncAnchorRect]);
+
+  useEffect(() => () => clearCloseTimer(), [clearCloseTimer]);
+
+  const portal =
+    open && anchorRect && items.length > 0 && typeof document !== 'undefined'
+      ? ReactDOM.createPortal(
+          <ProductStockDetailHoverCard
+            items={items}
+            anchorRect={anchorRect}
+            onPointerEnterCard={clearCloseTimer}
+            onPointerLeaveCard={scheduleClose}
+          />,
+          document.body,
+        )
+      : null;
+
+  return {
+    anchorRef,
+    openHover,
+    scheduleClose,
+    portal,
+  };
 }
 
 function ProductStockRemainderCell({
@@ -513,29 +827,9 @@ function ProductStockRemainderCell({
   product: ProductRow;
   compact?: boolean;
 }) {
-  const anchorRef = useRef<HTMLSpanElement>(null);
-  const [hovered, setHovered] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+  const items = useMemo(() => [stockHoverItemFromProductRow(product)], [product]);
   const breakdown = useMemo(() => buildProductStockBreakdown(product), [product]);
-
-  const syncAnchorRect = useCallback(() => {
-    const el = anchorRef.current;
-    if (!el) return;
-    setAnchorRect(el.getBoundingClientRect());
-  }, []);
-
-  useEffect(() => {
-    if (!hovered) return;
-    syncAnchorRect();
-    const onScrollOrResize = () => syncAnchorRect();
-    window.addEventListener('scroll', onScrollOrResize, true);
-    window.addEventListener('resize', onScrollOrResize);
-    return () => {
-      window.removeEventListener('scroll', onScrollOrResize, true);
-      window.removeEventListener('resize', onScrollOrResize);
-    };
-  }, [hovered, syncAnchorRect]);
-
+  const { anchorRef, openHover, scheduleClose, portal } = useStockRemainderHoverPortal(items);
   const amountClassName = productStockAmountClassName(breakdown.displayTotal, compact);
 
   return (
@@ -543,20 +837,45 @@ function ProductStockRemainderCell({
       <span
         ref={anchorRef}
         className={`cursor-default underline decoration-dotted decoration-gray-300 underline-offset-4 ${amountClassName}`}
-        onMouseEnter={() => {
-          syncAnchorRect();
-          setHovered(true);
-        }}
-        onMouseLeave={() => setHovered(false)}
+        onMouseEnter={openHover}
+        onMouseLeave={scheduleClose}
       >
         {formatProductStockAmount(breakdown.displayTotal)}
       </span>
-      {hovered && anchorRect && typeof document !== 'undefined'
-        ? ReactDOM.createPortal(
-            <ProductStockRemainderHoverCard breakdown={breakdown} anchorRect={anchorRect} />,
-            document.body,
-          )
-        : null}
+      {portal}
+    </>
+  );
+}
+
+function CampaignStockRemainderCell({
+  campaign,
+  productTree,
+}: {
+  campaign: DisplayCampaign;
+  productTree: ProductRow[];
+}) {
+  const items = useMemo(
+    () => stockHoverItemsForCampaign(campaign, productTree),
+    [campaign, productTree],
+  );
+  const displayTotal = useMemo(
+    () => items.reduce((sum, item) => sum + buildBreakdownForStockItem(item).displayTotal, 0),
+    [items],
+  );
+  const { anchorRef, openHover, scheduleClose, portal } = useStockRemainderHoverPortal(items);
+  const amountClassName = productStockAmountClassName(displayTotal, false);
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className={`cursor-default underline decoration-dotted decoration-gray-300 underline-offset-4 ${amountClassName}`}
+        onMouseEnter={openHover}
+        onMouseLeave={scheduleClose}
+      >
+        {formatProductStockAmount(displayTotal)}
+      </span>
+      {portal}
     </>
   );
 }
@@ -838,31 +1157,391 @@ function productCampaignBidMin(camp: ProductCampaign): number {
   return camp.type === 'CPC' ? 10 : 150;
 }
 
-function demoProductAverageBids(product: ProductRow): { cpmPer10k: number; cpc: number } {
+function conceptNotPromotedProductBidSeed(product: ProductRow): number {
   const fromArticle = Number.parseInt(String(product.articleWb ?? '').replace(/\D/g, ''), 10);
-  const seed =
-    Number.isFinite(fromArticle) && fromArticle > 0
-      ? fromArticle
-      : [...product.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  return {
-    cpmPer10k: 120 + (seed % 280),
-    cpc: 8 + (seed % 45),
-  };
+  if (Number.isFinite(fromArticle) && fromArticle > 0) return fromArticle;
+  return [...product.id].reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
 }
 
-function ProductAverageBidAmountCell({
-  product,
-  kind,
-}: {
-  product: ProductRow;
-  kind: 'cpm10k' | 'cpc';
-}) {
-  const amount = useMemo(() => {
-    const { cpmPer10k, cpc } = demoProductAverageBids(product);
-    return kind === 'cpm10k' ? cpmPer10k : cpc;
-  }, [product, kind]);
+type ConceptCpcPositionTierDemo = {
+  key: string;
+  label: string;
+  bidRub: number;
+  clicksPerDay: number;
+};
+
+type ConceptCpmBenchmarkTierDemo = {
+  key: string;
+  title: string;
+  description?: string;
+  budgetRub?: number;
+  impressions?: number;
+  clicks?: number;
+  bidRub: number;
+};
+
+function placementBidScale(placement: 'search' | 'recommendations'): number {
+  return placement === 'search' ? 1 : 0.82;
+}
+
+function demoCpcSearchRecommendedTiers(product: ProductRow): ConceptCpcPositionTierDemo[] {
+  const seed = conceptNotPromotedProductBidSeed(product);
+  const tier12 = Math.round((42 + (seed % 9)) * 100) / 100;
+  const tier310 = Math.round((27 + (seed % 7)) * 100) / 100;
+  const tier1134 = Math.round((15 + (seed % 5)) * 100) / 100;
+  return [
+    {
+      key: 'search-1-2',
+      label: '1–2 позиции',
+      bidRub: tier12,
+      clicksPerDay: 900 + (seed % 200),
+    },
+    {
+      key: 'search-3-10',
+      label: '3–10 позиции',
+      bidRub: tier310,
+      clicksPerDay: 450 + (seed % 120),
+    },
+    {
+      key: 'search-11-34',
+      label: '11–34 позиции',
+      bidRub: tier1134,
+      clicksPerDay: Math.max(8, 12 + (seed % 10)),
+    },
+  ];
+}
+
+function demoCpmSearchRecommendedTiers(product: ProductRow): ConceptCpmBenchmarkTierDemo[] {
+  const seed = conceptNotPromotedProductBidSeed(product);
+  return [
+    {
+      key: 'search-top2',
+      title: 'Ставка за ТОП-2',
+      description: 'Минимальная ставка за первые две позиции в поиске',
+      bidRub: 1180 + (seed % 80),
+    },
+    {
+      key: 'search-leaders',
+      title: 'Ставка лидеров',
+      budgetRub: 4800,
+      impressions: 12000,
+      clicks: 320 + (seed % 80),
+      bidRub: 380 + (seed % 60),
+    },
+    {
+      key: 'search-competitive',
+      title: 'Конкурентная ставка',
+      budgetRub: 480,
+      impressions: 1700,
+      clicks: 280 + (seed % 90),
+      bidRub: 165 + (seed % 45),
+    },
+  ];
+}
+
+function demoCpmRecommendationsBidRub(product: ProductRow): number {
+  const seed = conceptNotPromotedProductBidSeed(product);
+  return Math.round((290 + (seed % 85)) * placementBidScale('recommendations'));
+}
+
+function demoCpcSearchRecommendedBidNa(product: ProductRow): boolean {
+  return conceptNotPromotedProductBidSeed(product) % 7 === 0;
+}
+
+function demoCpmSearchRecommendedBidNa(product: ProductRow): boolean {
+  return conceptNotPromotedProductBidSeed(product) % 11 === 0;
+}
+
+function demoCpmRecommendationsBidNa(product: ProductRow): boolean {
+  return conceptNotPromotedProductBidSeed(product) % 2 === 0;
+}
+
+function conceptFormatBidVolumeCompact(value: number): string {
+  if (value >= 1000) {
+    const thousands = value / 1000;
+    if (thousands >= 10) return `${Math.round(thousands)}K`;
+    const rounded = Math.round(thousands * 10) / 10;
+    return `${rounded}K`.replace('.0K', 'K');
+  }
+  return formatForDisplay(Math.round(value));
+}
+
+function conceptRecommendedCpcDailyClicksSubtitle(tier: ConceptCpcPositionTierDemo): string {
+  const daily = Math.max(8, Math.round(tier.clicksPerDay / 45));
+  return `~ ${conceptFormatBidVolumeCompact(daily)} клика/дн`;
+}
+
+function conceptRecommendedCpmDailyImpressionsSubtitle(
+  product: ProductRow,
+  tier: ConceptCpmBenchmarkTierDemo,
+): string {
+  const seed = conceptNotPromotedProductBidSeed(product);
+  const daily = tier.impressions ?? 15000 + (seed % 12000);
+  return `~ ${conceptFormatBidVolumeCompact(daily)} показа/дн`;
+}
+
+function ConceptRecommendedBidNaCell({ reserveChartSlot = false }: { reserveChartSlot?: boolean }) {
   return (
-    <span className="tabular-nums text-xs text-gray-900">{formatForDisplay(amount)} ₽</span>
+    <div className="flex w-full min-w-0 items-start justify-end gap-0.5 py-0.5">
+      <span className="text-right text-sm font-semibold text-gray-400">Н/Д</span>
+      {reserveChartSlot ? (
+        <span className="inline-block h-7 w-7 shrink-0" aria-hidden />
+      ) : null}
+    </div>
+  );
+}
+
+function ConceptRecommendedBidMetricStack({
+  bidRub,
+  subtitle,
+  chart,
+}: {
+  bidRub: number;
+  subtitle?: string;
+  chart?: React.ReactNode;
+}) {
+  return (
+    <div className="flex w-full min-w-0 items-start justify-end gap-0.5 py-0.5">
+      <div className="min-w-0 text-right leading-tight">
+        <p className="mb-0 text-sm font-semibold tabular-nums text-gray-900">
+          {formatForDisplay(bidRub)} ₽
+        </p>
+        {subtitle ? (
+          <p className={`${CONCEPT_RECOMMENDED_BID_MUTED_CLASS} tabular-nums`}>{subtitle}</p>
+        ) : null}
+      </div>
+      {chart}
+    </div>
+  );
+}
+
+const CONCEPT_RECOMMENDED_BID_TEXT_CLASS = 'text-sm leading-snug text-gray-600';
+const CONCEPT_RECOMMENDED_BID_MUTED_CLASS = 'text-xs leading-snug text-gray-400';
+
+const CONCEPT_CPC_POPOVER_ACCENT: Record<string, string> = {
+  'search-1-2': 'border-l-[#9A41FE]',
+  'search-3-10': 'border-l-emerald-600',
+  'search-11-34': 'border-l-teal-400',
+};
+
+const CONCEPT_CPM_POPOVER_ACCENT: Record<string, string> = {
+  'search-top2': 'border-l-[#9A41FE]',
+  'search-leaders': 'border-l-emerald-600',
+  'search-competitive': 'border-l-teal-400',
+};
+
+function ConceptRecommendedBidHistogramButton({
+  ariaLabel,
+  onMouseEnter,
+  onMouseLeave,
+  buttonRef,
+  className = '',
+}: {
+  ariaLabel: string;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+  buttonRef: React.RefObject<HTMLButtonElement | null>;
+  className?: string;
+}) {
+  return (
+    <button
+      ref={buttonRef}
+      type="button"
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 ${className}`}
+      aria-label={ariaLabel}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+    >
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden>
+        <rect x="1" y="8" width="3" height="7" rx="0.5" fill="currentColor" opacity="0.35" />
+        <rect x="6.5" y="5" width="3" height="10" rx="0.5" fill="currentColor" opacity="0.6" />
+        <rect x="12" y="2" width="3" height="13" rx="0.5" fill="currentColor" />
+      </svg>
+    </button>
+  );
+}
+
+function ConceptRecommendedBidDetailsHover({
+  ariaLabel,
+  panelTitle,
+  panelSubtitle,
+  children,
+}: {
+  ariaLabel: string;
+  panelTitle: string;
+  panelSubtitle?: string;
+  children: React.ReactNode;
+}) {
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = buttonRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!hovered) return;
+    syncAnchorRect();
+    const onScrollOrResize = () => syncAnchorRect();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hovered, syncAnchorRect]);
+
+  const open = () => {
+    syncAnchorRect();
+    setHovered(true);
+  };
+
+  return (
+    <>
+      <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center">
+        <ConceptRecommendedBidHistogramButton
+          ariaLabel={ariaLabel}
+          buttonRef={buttonRef}
+          className={`pointer-events-none invisible group-hover/product-row:pointer-events-auto group-hover/product-row:visible${
+            hovered ? ' pointer-events-auto visible' : ''
+          }`}
+          onMouseEnter={open}
+          onMouseLeave={() => setHovered(false)}
+        />
+      </span>
+      {hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <div
+              className="fixed z-[230] w-[min(320px,calc(100vw-24px))] rounded-xl border border-gray-100 bg-white p-3 text-left shadow-lg"
+              style={{
+                top: anchorRect.top + anchorRect.height / 2,
+                left: Math.min(anchorRect.right + 8, window.innerWidth - 336),
+                transform: 'translateY(-50%)',
+              }}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              <p className="text-sm font-semibold leading-snug text-gray-900">{panelTitle}</p>
+              {panelSubtitle ? (
+                <p className="mt-1 text-xs leading-snug text-gray-500">{panelSubtitle}</p>
+              ) : null}
+              <div className="mt-3 flex flex-col gap-2">{children}</div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
+function ConceptCpcPositionTierPopoverCard({ tier }: { tier: ConceptCpcPositionTierDemo }) {
+  const accent = CONCEPT_CPC_POPOVER_ACCENT[tier.key] ?? 'border-l-gray-300';
+  return (
+    <div
+      className={`rounded-lg border border-gray-100 border-l-[3px] bg-white px-3 py-2 ${accent}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-900">{tier.label}</p>
+          <p className="mt-0.5 text-xs text-gray-600">
+            Рекомендуемая ставка: {formatForDisplay(tier.bidRub)} ₽
+          </p>
+          <p className="text-xs text-gray-400">
+            Клики: ~ {formatForDisplay(tier.clicksPerDay)} в день
+          </p>
+        </div>
+        <span className="shrink-0 rounded-md bg-[#f3f4f6] px-2 py-1 text-xs font-medium tabular-nums text-gray-900">
+          {formatForDisplay(tier.bidRub)} ₽
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ConceptCpmBenchmarkTierPopoverCard({ tier }: { tier: ConceptCpmBenchmarkTierDemo }) {
+  const accent = CONCEPT_CPM_POPOVER_ACCENT[tier.key] ?? 'border-l-gray-300';
+  return (
+    <div
+      className={`flex items-start gap-2 rounded-lg border border-gray-100 border-l-[3px] bg-white px-3 py-2 ${accent}`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-gray-900">{tier.title}</p>
+        {tier.description ? (
+          <p className="mt-0.5 text-xs text-gray-500">{tier.description}</p>
+        ) : null}
+        {tier.budgetRub != null ? (
+          <div className="mt-1.5 space-y-0.5 text-xs text-gray-500">
+            <p>Бюджет: ~ {formatForDisplay(tier.budgetRub)} ₽</p>
+            <p>Показы: {formatForDisplay(tier.impressions ?? 0)}</p>
+            <p>Клики: {formatForDisplay(tier.clicks ?? 0)}</p>
+          </div>
+        ) : null}
+      </div>
+      <span className="shrink-0 rounded-md bg-[#f3f4f6] px-2 py-1 text-xs font-medium tabular-nums text-gray-900">
+        {formatForDisplay(tier.bidRub)} ₽
+      </span>
+    </div>
+  );
+}
+
+function ProductRecommendedCpmSearchBidCell({ product }: { product: ProductRow }) {
+  const searchTiers = useMemo(() => demoCpmSearchRecommendedTiers(product), [product]);
+  const top2 = searchTiers[0];
+  if (demoCpmSearchRecommendedBidNa(product) || !top2) {
+    return <ConceptRecommendedBidNaCell reserveChartSlot />;
+  }
+  return (
+    <ConceptRecommendedBidMetricStack
+      bidRub={top2.bidRub}
+      subtitle={conceptRecommendedCpmDailyImpressionsSubtitle(product, top2)}
+      chart={
+        <ConceptRecommendedBidDetailsHover
+          ariaLabel="Все ориентиры CPM в поиске"
+          panelTitle="У других продавцов"
+          panelSubtitle="Метрики похожих товаров с близкой ценой за последние сутки"
+        >
+          {searchTiers.map((tier) => (
+            <ConceptCpmBenchmarkTierPopoverCard key={tier.key} tier={tier} />
+          ))}
+        </ConceptRecommendedBidDetailsHover>
+      }
+    />
+  );
+}
+
+function ProductRecommendedCpmRecBidCell({ product }: { product: ProductRow }) {
+  const recBid = useMemo(() => demoCpmRecommendationsBidRub(product), [product]);
+  if (demoCpmRecommendationsBidNa(product)) {
+    return <ConceptRecommendedBidNaCell />;
+  }
+  return <ConceptRecommendedBidMetricStack bidRub={recBid} />;
+}
+
+function ProductRecommendedCpcSearchBidCell({ product }: { product: ProductRow }) {
+  const searchTiers = useMemo(() => demoCpcSearchRecommendedTiers(product), [product]);
+  const tier12 = searchTiers[0];
+  if (demoCpcSearchRecommendedBidNa(product) || !tier12) {
+    return <ConceptRecommendedBidNaCell reserveChartSlot />;
+  }
+  return (
+    <ConceptRecommendedBidMetricStack
+      bidRub={tier12.bidRub}
+      subtitle={conceptRecommendedCpcDailyClicksSubtitle(tier12)}
+      chart={
+        <ConceptRecommendedBidDetailsHover
+          ariaLabel="Все позиции CPC в поиске"
+          panelTitle="Позиции в поиске"
+          panelSubtitle="Рекомендуемые ставки и оценка кликов по диапазонам позиций"
+        >
+          {searchTiers.map((tier) => (
+            <ConceptCpcPositionTierPopoverCard key={tier.key} tier={tier} />
+          ))}
+        </ConceptRecommendedBidDetailsHover>
+      }
+    />
   );
 }
 
@@ -1251,24 +1930,24 @@ const CONCEPT_JAM_SUBSCRIPTION_TOOLTIP_BODY =
 type ConceptNotPromotedStatSortLabel = (typeof CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS)[number];
 
 type ConceptNotPromotedAverageBidSortKey =
-  | typeof PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID
-  | typeof PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID;
+  | typeof PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID
+  | typeof PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID
+  | typeof PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID;
 
 type ConceptNotPromotedProductSortKey =
   | ConceptNotPromotedStatSortLabel
   | ConceptNotPromotedAverageBidSortKey;
 
 const CONCEPT_AVERAGE_BID_SORT_COLUMN_TITLES: Record<ConceptNotPromotedAverageBidSortKey, string> = {
-  [PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID]: 'Средняя ставка за 1000 показов в поиске (CPM)',
-  [PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID]: 'Средняя ставка за клик (CPC)',
+  [PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID]: 'Ставка CPC в поиске за 1-2 место',
+  [PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID]: 'Ставка CPM в поиске за 1-2 место',
+  [PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID]: 'Min ставка CPM в рекомендациях',
 };
 
 function isConceptNotPromotedAverageBidSortKey(
   key: ConceptNotPromotedProductSortKey,
 ): key is ConceptNotPromotedAverageBidSortKey {
-  return (
-    key === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID || key === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
-  );
+  return isConceptNotPromotedRecommendedBidColumnId(key);
 }
 
 function isConceptNotPromotedStatSortLabel(
@@ -1301,8 +1980,12 @@ function productAverageBidSortNumericValue(
   product: ProductRow,
   key: ConceptNotPromotedAverageBidSortKey,
 ): number {
-  const { cpmPer10k, cpc } = demoProductAverageBids(product);
-  return key === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ? cpmPer10k : cpc;
+  const cpmTop2 = demoCpmSearchRecommendedTiers(product)[0]?.bidRub ?? 0;
+  const cpmRec = demoCpmRecommendationsBidRub(product);
+  const cpcTop = demoCpcSearchRecommendedTiers(product)[0]?.bidRub ?? 0;
+  if (key === PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID) return cpmTop2;
+  if (key === PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID) return cpmRec;
+  return cpcTop;
 }
 
 function ConceptNotPromotedTableSortButton({
@@ -1765,7 +2448,7 @@ function ConceptJamLockedImpressionsMetricCell({
 }) {
   const change = productsStatChangeForLabel('Показы', productId, changes);
   return (
-    <div className="flex flex-col gap-0.5 leading-none tabular-nums">
+    <div className="flex w-full flex-col items-end gap-0.5 text-right leading-none tabular-nums">
       <span className="text-xs font-semibold text-gray-900 blur-[5px] select-none" aria-hidden>
         {formatProductsStatValue('Показы', stats)}
       </span>
@@ -1816,9 +2499,7 @@ function ProductsStatNotAvailableCell({
     <>
       <span
         ref={hint ? anchorRef : undefined}
-        className={`font-semibold text-gray-400 ${compact ? 'text-xs' : 'text-sm'} ${
-          hint ? 'cursor-help' : ''
-        }`}
+        className={`block text-right text-sm font-semibold text-gray-400 ${hint ? 'cursor-help' : ''}`}
         aria-label={hint}
         onMouseEnter={
           hint
@@ -1879,10 +2560,12 @@ function ProductsStatMetricCell({
     label === 'Отмены технические';
 
   return (
-    <div className="flex flex-col gap-0.5 leading-none tabular-nums">
-      <span
-        className={`font-semibold text-gray-900 ${compact ? 'text-xs' : 'text-sm'}`}
-      >
+    <div
+      className={`flex flex-col gap-0.5 leading-none tabular-nums ${
+        compact ? 'w-full items-end text-right' : ''
+      }`}
+    >
+      <span className="text-sm font-semibold text-gray-900">
         {formatProductsStatValue(label, stats)}
       </span>
       {showTrend ? (
@@ -1900,33 +2583,42 @@ const PRODUCTS_STAT_TH_CLASS = 'p-4 text-left font-normal w-[130px] min-w-[120px
 const PRODUCTS_STAT_TD_CLASS = 'p-4 align-top w-[130px] min-w-[120px]';
 
 const CONCEPT_NOT_PROMOTED_STAT_TH_CLASS =
-  'px-1.5 py-2.5 text-left align-top text-[11px] font-normal leading-tight text-[#767386] overflow-visible';
-const CONCEPT_NOT_PROMOTED_STAT_TD_CLASS = 'px-1.5 py-2.5 align-top text-left';
+  'px-1.5 py-2.5 text-right align-top text-[11px] font-normal leading-tight text-[#767386] overflow-visible';
+const CONCEPT_NOT_PROMOTED_STAT_TD_CLASS =
+  'px-1.5 py-2.5 align-middle text-right text-sm';
 const CONCEPT_NOT_PROMOTED_TAGS_TH_CLASS =
   'px-2 py-2.5 text-left text-[11px] font-normal leading-tight text-[#767386] w-[1%]';
 const CONCEPT_NOT_PROMOTED_TAGS_TD_CLASS = 'px-2 py-2.5 align-middle w-[1%] max-w-[7.5rem]';
 const CONCEPT_NOT_PROMOTED_STOCK_TH_CLASS =
-  'px-1.5 py-2.5 text-left text-[11px] font-normal leading-tight text-[#767386] whitespace-nowrap';
+  'px-1.5 py-2.5 text-center text-[11px] font-normal leading-tight text-[#767386] whitespace-nowrap';
 const CONCEPT_NOT_PROMOTED_STOCK_TD_CLASS =
-  'px-1.5 py-2.5 align-middle text-left whitespace-nowrap tabular-nums text-xs';
+  'px-1.5 py-2.5 align-middle text-center whitespace-nowrap tabular-nums text-sm';
 const CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS =
-  'px-1.5 py-2.5 text-left align-top text-[11px] font-normal leading-tight text-[#767386] overflow-visible';
+  'px-1.5 py-2.5 text-right align-top text-[11px] font-normal leading-tight text-[#767386] overflow-visible';
 const CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS =
-  'px-1.5 py-2.5 align-middle text-left whitespace-nowrap';
+  'px-1.5 py-2.5 align-middle text-right text-sm';
 
-const CONCEPT_AVERAGE_BID_HEADER_TOOLTIP_TEXT =
-  'Средняя ставка в категории этого товара. Ваша ставка может быть как ниже, так и выше.';
+const CONCEPT_RECOMMENDED_CPM_SEARCH_BID_HEADER_TOOLTIP =
+  'Рекомендуемые ставки за 1000 показов в поиске';
+
+const CONCEPT_RECOMMENDED_CPM_REC_BID_HEADER_TOOLTIP =
+  'Рекомендуемые ставки за 1000 показов в рекомендациях';
+
+const CONCEPT_RECOMMENDED_CPC_SEARCH_BID_HEADER_TOOLTIP =
+  'Рекомендуемые ставки за клик в поиске';
 
 function ConceptAverageBidColumnHeader({
   titleLines,
   sortKey,
   activeSort,
   onSort,
+  tooltipText,
 }: {
   titleLines: React.ReactNode;
   sortKey: ConceptNotPromotedAverageBidSortKey;
   activeSort: { label: ConceptNotPromotedProductSortKey; direction: 'asc' | 'desc' } | null;
   onSort: (key: ConceptNotPromotedProductSortKey) => void;
+  tooltipText: string;
 }) {
   const titleRef = useRef<HTMLSpanElement>(null);
   const [hovered, setHovered] = useState(false);
@@ -1952,11 +2644,11 @@ function ConceptAverageBidColumnHeader({
 
   return (
     <>
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-1">
+      <div className="ml-auto grid w-max max-w-full grid-cols-[minmax(0,1fr)_auto] items-start justify-end gap-x-1 text-right">
         <span
           ref={titleRef}
-          className="col-start-1 min-w-0 cursor-help leading-tight"
-          aria-label={CONCEPT_AVERAGE_BID_HEADER_TOOLTIP_TEXT}
+          className="col-start-1 min-w-0 cursor-help leading-tight text-right"
+          aria-label={tooltipText}
           onMouseEnter={() => {
             syncAnchorRect();
             setHovered(true);
@@ -1986,7 +2678,7 @@ function ConceptAverageBidColumnHeader({
               onMouseEnter={() => setHovered(true)}
               onMouseLeave={() => setHovered(false)}
             >
-              {CONCEPT_AVERAGE_BID_HEADER_TOOLTIP_TEXT}
+              {tooltipText}
             </div>,
             document.body,
           )
@@ -1995,10 +2687,32 @@ function ConceptAverageBidColumnHeader({
   );
 }
 
-/** Узкая колонка «Товар» на «Без продвижения», чтобы влезала вся статистика без горизонтального скролла. */
-const CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX = 236;
+/** Колонка «Товар» на «Без продвижения» — широкая под название и «Продвигать». */
+const CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX = 500;
 const CONCEPT_NOT_PROMOTED_PRODUCT_COL_CLASS =
-  'w-[236px] min-w-0 max-w-[236px]';
+  'w-[500px] min-w-[500px] max-w-[500px]';
+const CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX = 48;
+const CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX = 120;
+const CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX = 184;
+const CONCEPT_NOT_PROMOTED_REC_BID_CPM_SEARCH_COL_WIDTH_PX = 184;
+const CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX = 168;
+const CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX = 108;
+const CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX = 88;
+
+function conceptNotPromotedTableMinWidthPx(showTagsColumn: boolean): number {
+  let total =
+    CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX + CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX;
+  if (showTagsColumn) total += CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX;
+  total +=
+    CONCEPT_NOT_PROMOTED_REC_BID_CPM_SEARCH_COL_WIDTH_PX +
+    CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX +
+    CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX;
+  total +=
+    CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.length *
+    CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX;
+  total += CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX;
+  return total;
+}
 
 const CONCEPT_ASSOCIATED_ORDERS_HEADER_TOOLTIP =
   'Заказы, которые оформили, перейдя через другой ваш товар, который уже продвигается. Это не все заказы карточки. Н/Д — не было таких заказов за выбранный период.';
@@ -2070,10 +2784,10 @@ function ConceptNotPromotedStatColumnHeader({
 
   return (
     <>
-      <span className="inline-flex items-start gap-0.5">
+      <span className="inline-flex items-start justify-end gap-0.5">
         <span
           ref={tooltipText ? titleRef : undefined}
-          className={`min-w-0 leading-tight ${tooltipText ? 'cursor-help' : ''}`}
+          className={`min-w-0 text-right leading-tight ${tooltipText ? 'cursor-help' : ''}`}
           aria-label={tooltipText ?? undefined}
           onMouseEnter={
             tooltipText
@@ -2132,17 +2846,17 @@ function conceptNotPromotedStatColumnTitle(
     case 'Добавления в корзину':
       return (
         <>
-          Ассоциированные добавления
+          Ассоциированные
           <br />
-          в корзину
+          корзины
         </>
       );
     case 'Сумма заказов':
       return (
         <>
-          Сумма
+          Ассоциированная
           <br />
-          заказов
+          сумма заказов
         </>
       );
     default:
@@ -2226,6 +2940,9 @@ function productsPinnedColumnWidthPx(
   col: (typeof PRODUCTS_PINNED_COLUMNS)[number],
   compactProductColumn: boolean,
 ): number {
+  if (compactProductColumn && col.id === 'select') {
+    return CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX;
+  }
   if (compactProductColumn && col.id === 'product') {
     return CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX;
   }
@@ -2277,10 +2994,12 @@ function productsPinnedCellProps(
   compactProductColumn = false,
 ): { className: string; style: React.CSSProperties } {
   const meta = PRODUCTS_PINNED_COLUMNS.find((c) => c.id === columnId)!;
-  const widthClass =
-    compactProductColumn && columnId === 'product'
-      ? CONCEPT_NOT_PROMOTED_PRODUCT_COL_CLASS
-      : meta.widthClass;
+  let widthClass = meta.widthClass;
+  if (compactProductColumn && columnId === 'product') {
+    widthClass = CONCEPT_NOT_PROMOTED_PRODUCT_COL_CLASS;
+  } else if (compactProductColumn && columnId === 'select') {
+    widthClass = 'w-12 min-w-[48px] max-w-[48px]';
+  }
   const z = variant === 'head' ? PRODUCTS_PINNED_HEAD_Z[columnId] : PRODUCTS_PINNED_BODY_Z[columnId];
   const bg =
     variant === 'head'
@@ -2306,8 +3025,8 @@ const PRODUCTS_PINNED_TH_PRODUCT_CLASS = 'pl-[5px] pr-5 py-4 text-left font-norm
 /** Колонка чекбокса: выравнивание к правому краю ячейки (ближе к колонке «Товар»). */
 const PRODUCTS_SELECT_TH_CLASS = 'flex items-center justify-end pl-2 pr-3 py-4';
 const PRODUCTS_SELECT_TD_CLASS = 'flex items-center justify-end pl-2 pr-3 py-4 align-middle';
-const PRODUCTS_SELECT_TH_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-2.5 py-2.5';
-const PRODUCTS_SELECT_TD_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-2.5 py-2.5 align-middle';
+const PRODUCTS_SELECT_TH_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-4 py-2.5';
+const PRODUCTS_SELECT_TD_CLASS_COMPACT = 'align-middle pl-1 pr-4 py-2.5';
 
 /** Мультикарточки: чекбокс ближе к колонке «Товар». */
 const CONCEPT_MULTICARD_SELECT_TH_CLASS = 'flex items-center justify-end pl-1 pr-2.5 py-4';
@@ -3595,7 +4314,7 @@ function ProductCollapsedRowCell({
               e.stopPropagation();
               onPromote?.(product);
             }}
-            className={`absolute right-0 top-1/2 z-[1] -translate-y-1/2 ${promoteBtnClass}`}
+            className={`absolute right-0 top-1/2 z-[1] -translate-y-1/2 hidden group-hover/product-row:inline-flex ${promoteBtnClass}`}
           >
             Продвигать
           </button>
@@ -3790,16 +4509,31 @@ const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
   maxCpcBidRub: 17.9,
   // Подменим заголовок под «предсобранную» логику
   name: 'Футболка хлопок мягкая приятная / CPC-кампания за 0 ₽',
-  productId: 'pr7',
-  category: 'Футболки',
-  image: productTableThumbUrl('pr7', 'Футболки'),
+  productId: 'pr1',
+  productIds: ['pr1', 'pr7', 'pr8', 'pr9', 'pr10', 'pr11', 'pr12', 'pr13'],
+  category: 'Платья',
+  image: productTableThumbUrl('pr1', 'Платья'),
 };
+
+/** 4-я строка в списке кампаний (после предсобранной и двух кампаний pr1): мультитовар без длинной сетки */
+const CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID = '1400002';
+const CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS = ['pr2', 'pr3', 'pr4', 'pr5', 'pr6'] as const;
 
 function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
   const { campaigns } = getProfileListData(profileId);
   const list = profileId === '2' ? [...campaigns] : [PREBUILT_CPC_CAMPAIGN, ...campaigns];
   return list.map((c, index) => {
-    const base = index === 1 ? { ...c, isBonusCampaign: true } : c;
+    let base = index === 1 ? { ...c, isBonusCampaign: true } : c;
+    if (c.id === CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID) {
+      const primaryId = CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[0];
+      base = {
+        ...base,
+        productId: primaryId,
+        productIds: [...CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS],
+        category: base.category ?? 'Платья',
+        image: productTableThumbUrl(primaryId, base.category ?? 'Платья'),
+      };
+    }
     if (profileId !== '2') return base;
     return { ...base, status: 'paused', statusText: 'приостановлена' };
   });
@@ -7079,10 +7813,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         if (columnId === PRODUCTS_STOCK_COLUMN_ID) {
           return true;
         }
-        if (
-          columnId === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ||
-          columnId === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
-        ) {
+        if (isConceptNotPromotedRecommendedBidColumnId(columnId)) {
           return false;
         }
         if (columnId.startsWith('stat:')) {
@@ -7115,10 +7846,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         if (columnId === PRODUCTS_STAT_SPACER_COLUMN_ID) {
           return false;
         }
-        if (
-          columnId === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ||
-          columnId === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
-        ) {
+        if (isConceptNotPromotedRecommendedBidColumnId(columnId)) {
           return true;
         }
         if (columnId === PRODUCTS_STOCK_COLUMN_ID) {
@@ -7134,8 +7862,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       if (
         columnId === PRODUCTS_STOCK_COLUMN_ID ||
         columnId === PRODUCTS_STAT_SPACER_COLUMN_ID ||
-        columnId === PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID ||
-        columnId === PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID
+        isConceptNotPromotedRecommendedBidColumnId(columnId)
       ) {
         return false;
       }
@@ -7182,13 +7909,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     conceptAllProductsTable,
   ]);
 
-  const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
-    if (!conceptCompactProductsTable) return undefined;
-    return { width: '100%' };
-  }, [conceptCompactProductsTable]);
-
   const conceptNotPromotedShowTagsColumn =
     conceptCompactProductsTable && productsColumnVisibility.tags !== false;
+
+  const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
+    if (!conceptCompactProductsTable) return undefined;
+    return { minWidth: conceptNotPromotedTableMinWidthPx(conceptNotPromotedShowTagsColumn) };
+  }, [conceptCompactProductsTable, conceptNotPromotedShowTagsColumn]);
+
   const showProductsBidColumn = productsPinVisibility.bid === true;
   const showProductsCampaignTypeColumn = productsPinVisibility.campaignType === true;
 
@@ -9611,6 +10339,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">CTR <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Заказы <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Доля затрат <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className={`p-4 text-left font-medium ${PRODUCTS_STOCK_TH_CLASS}`}>Остатки</th>
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -9731,6 +10460,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </td>
                               <td className="p-4 font-semibold text-gray-900">
                                 {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatPercentage(c.spendShare)}
+                              </td>
+                              <td className={PRODUCTS_STOCK_TD_CLASS} onClick={(e) => e.stopPropagation()}>
+                                <CampaignStockRemainderCell
+                                  campaign={c}
+                                  productTree={profileProductTree}
+                                />
                               </td>
                           </tr>
                       ))}
@@ -10087,7 +10822,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ) : null}
 
             <div
-              className={`relative z-0 ${conceptCompactProductsTable ? 'overflow-x-hidden' : 'overflow-x-auto'}`}
+              className="relative z-0 overflow-x-auto"
               onScroll={(e) => {
                 const target = e.currentTarget;
                 setHasProductsScrollShadow(target.scrollLeft > 0);
@@ -10097,7 +10832,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               <table
                 className={`relative w-full text-sm ${
                   conceptCompactProductsTable
-                    ? 'min-w-0 table-fixed'
+                    ? ''
                     : conceptAllProductsPickTab
                       ? 'min-w-[2928px]'
                       : 'min-w-[2800px]'
@@ -10106,15 +10841,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               >
                 {conceptCompactProductsTable ? (
                   <colgroup>
-                    <col className="w-[3%]" />
-                    <col className={conceptNotPromotedShowTagsColumn ? 'w-[19%]' : 'w-[23%]'} />
-                    {conceptNotPromotedShowTagsColumn ? <col className="w-[8%]" /> : null}
-                    <col className="w-[8%]" />
-                    <col className="w-[8%]" />
+                    <col style={{ width: CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX }} />
+                    <col style={{ width: CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX }} />
+                    {conceptNotPromotedShowTagsColumn ? (
+                      <col style={{ width: CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX }} />
+                    ) : null}
+                    <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX }} />
+                    <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPM_SEARCH_COL_WIDTH_PX }} />
+                    <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX }} />
                     {CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.map((label) => (
-                      <col key={label} className="w-[6.5%]" />
+                      <col key={label} style={{ width: CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX }} />
                     ))}
-                    <col className="w-[6%]" />
+                    <col style={{ width: CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX }} />
                   </colgroup>
                 ) : null}
                 <thead
@@ -10269,33 +11007,49 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         Ярлыки
                       </th>
                     ) : null}
-                    {productsColVisible(PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID) ? (
+                    {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
                       <th className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS}>
                         <ConceptAverageBidColumnHeader
                           titleLines={
                             <>
-                              Средняя ставка
-                              <br />
-                              за 1000 показов в поиске (CPM)
+                              <span className="block">Ставка CPC в поиске</span>
+                              <span className="block">за 1-2 место</span>
                             </>
                           }
-                          sortKey={PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID}
+                          tooltipText={CONCEPT_RECOMMENDED_CPC_SEARCH_BID_HEADER_TOOLTIP}
+                          sortKey={PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID}
                           activeSort={productStatSort}
                           onSort={handleProductStatColumnSort}
                         />
                       </th>
                     ) : null}
-                    {productsColVisible(PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID) ? (
+                    {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID) ? (
                       <th className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS}>
                         <ConceptAverageBidColumnHeader
                           titleLines={
                             <>
-                              Средняя ставка
-                              <br />
-                              за клик (CPC)
+                              <span className="block">Ставка CPM в поиске</span>
+                              <span className="block">за 1-2 место</span>
                             </>
                           }
-                          sortKey={PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID}
+                          tooltipText={CONCEPT_RECOMMENDED_CPM_SEARCH_BID_HEADER_TOOLTIP}
+                          sortKey={PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID}
+                          activeSort={productStatSort}
+                          onSort={handleProductStatColumnSort}
+                        />
+                      </th>
+                    ) : null}
+                    {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID) ? (
+                      <th className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS}>
+                        <ConceptAverageBidColumnHeader
+                          titleLines={
+                            <>
+                              <span className="block">Min ставка CPM</span>
+                              <span className="block">в рекомендациях</span>
+                            </>
+                          }
+                          tooltipText={CONCEPT_RECOMMENDED_CPM_REC_BID_HEADER_TOOLTIP}
+                          sortKey={PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID}
                           activeSort={productStatSort}
                           onSort={handleProductStatColumnSort}
                         />
@@ -10314,7 +11068,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               : PRODUCTS_STAT_TH_CLASS
                           }
                         >
-                          <span className="inline-flex items-start gap-0.5">
+                          <span className="inline-flex w-full items-start justify-end gap-0.5">
                             {conceptCompactProductsTable &&
                             isConceptNotPromotedStatSortLabel(label) ? (
                               <ConceptNotPromotedStatColumnHeader
@@ -10569,6 +11323,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             );
                             return {
                               ...pinned,
+                              className: [
+                                pinned.className,
+                                productsSelectTdClass === PRODUCTS_SELECT_TD_CLASS_COMPACT
+                                  ? 'h-px'
+                                  : '',
+                              ]
+                                .filter(Boolean)
+                                .join(' '),
                               style: {
                                 ...pinned.style,
                                 ...(multicardCheckboxIndentPx > 0
@@ -10579,17 +11341,25 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           })()}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <Checkbox
-                            checked={selectedProductIds.includes(product.id)}
-                            onChange={(e) =>
-                              handleSelectSingleProduct(product.id, e.target.checked)
-                            }
-                            className={
-                              isProductPromotionConceptPage
-                                ? CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME
-                                : 'w-4 h-4 text-purple-600'
-                            }
-                          />
+                          <div
+                            className={`flex items-center justify-end ${
+                              productsSelectTdClass === PRODUCTS_SELECT_TD_CLASS_COMPACT
+                                ? 'h-full min-h-full'
+                                : 'w-full'
+                            }`}
+                          >
+                            <Checkbox
+                              checked={selectedProductIds.includes(product.id)}
+                              onChange={(e) =>
+                                handleSelectSingleProduct(product.id, e.target.checked)
+                              }
+                              className={
+                                isProductPromotionConceptPage
+                                  ? CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME
+                                  : 'w-4 h-4 text-purple-600'
+                              }
+                            />
+                          </div>
                         </td>
                         {productsColVisible('product') ? (
                           <td
@@ -10735,14 +11505,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           )}
                         </td>
                         ) : null}
-                        {productsColVisible(PRODUCTS_AVERAGE_BID_CPM_10K_COLUMN_ID) ? (
+                        {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
                           <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS}>
-                            <ProductAverageBidAmountCell product={product} kind="cpm10k" />
+                            <ProductRecommendedCpcSearchBidCell product={product} />
                           </td>
                         ) : null}
-                        {productsColVisible(PRODUCTS_AVERAGE_BID_CPC_COLUMN_ID) ? (
+                        {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID) ? (
                           <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS}>
-                            <ProductAverageBidAmountCell product={product} kind="cpc" />
+                            <ProductRecommendedCpmSearchBidCell product={product} />
+                          </td>
+                        ) : null}
+                        {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID) ? (
+                          <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS}>
+                            <ProductRecommendedCpmRecBidCell product={product} />
                           </td>
                         ) : null}
                         {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
