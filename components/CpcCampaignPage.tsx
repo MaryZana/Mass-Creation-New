@@ -1489,8 +1489,8 @@ function CpcCampaignStatisticsSection({
 }) {
   const statsChartRef = useRef<HTMLDivElement>(null);
   const [isChartVisible, setIsChartVisible] = useState(true);
-  const [chartTab, setChartTab] = useState<CpcStatsChartTab>('dynamics');
-  const [chartMetric, setChartMetric] = useState<CpcChartMetricId>('ctr');
+  const [chartTab, setChartTab] = useState<CpcStatsChartTab>('position');
+  const [chartMetric, setChartMetric] = useState<CpcChartMetricId>('searchPosition');
   const [chartThirdMetric, setChartThirdMetric] =
     useState<CpcChartThirdMetricId>('impressionShare');
   const [openChartDropdown, setOpenChartDropdown] = useState<'metric' | 'thirdMetric' | null>(
@@ -1539,6 +1539,16 @@ function CpcCampaignStatisticsSection({
 
   const handleChartThirdMetricChange = (thirdMetricId: CpcChartThirdMetricId) => {
     setChartThirdMetric(thirdMetricId);
+  };
+
+  const handleChartVisibilityChange = (visible: boolean) => {
+    setIsChartVisible(visible);
+    if (visible) {
+      handleChartMetricChange('searchPosition');
+      window.setTimeout(() => {
+        statsChartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    }
   };
 
   const focusChart = useCallback((metricId: CpcChartMetricId) => {
@@ -1834,7 +1844,7 @@ function CpcCampaignStatisticsSection({
       </div>
 
       <label className="mt-4 flex cursor-pointer select-none items-center gap-2.5 text-[15px] font-medium text-gray-700">
-        <StatsChartToggleSwitch checked={isChartVisible} onChange={setIsChartVisible} />
+        <StatsChartToggleSwitch checked={isChartVisible} onChange={handleChartVisibilityChange} />
         <span>Показать график</span>
       </label>
 
