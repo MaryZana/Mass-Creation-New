@@ -401,19 +401,37 @@ const Toast = ({ show, message, onClose, isSuccess = false, isError = false, dur
 
 type StatTrendDirection = 'up' | 'down';
 
+type StatMetricTone = 'default' | 'highlight' | 'muted' | 'faded';
+
 function StatTrendBadge({
   value,
   direction,
   positiveIsGood = true,
+  tone = 'default',
 }: {
   value: string;
   direction: StatTrendDirection;
   positiveIsGood?: boolean;
+  tone?: StatMetricTone;
 }) {
   const favorable = direction === 'up' ? positiveIsGood : !positiveIsGood;
   const isNeutral = value === '0%' || value === '0';
+  if (tone === 'muted') {
+    return <span className="text-xs font-medium tabular-nums text-gray-400">{value}</span>;
+  }
+  if (tone === 'faded') {
+    return <span className="text-xs font-medium tabular-nums text-gray-500">{value}</span>;
+  }
   if (isNeutral) {
     return <span className="text-xs font-medium tabular-nums text-gray-400">{value}</span>;
+  }
+  if (tone === 'highlight') {
+    return (
+      <span className="inline-flex items-center gap-0.5 text-xs font-medium tabular-nums text-[#9A41FE]">
+        <span aria-hidden>{direction === 'up' ? '▲' : '▼'}</span>
+        {value}
+      </span>
+    );
   }
   return (
     <span
@@ -431,15 +449,26 @@ function StatPrimaryMetric({
   value,
   trend,
   compact,
+  tone = 'default',
 }: {
   value: string;
   trend: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
   compact?: boolean;
+  tone?: StatMetricTone;
 }) {
+  const valueClass =
+    tone === 'highlight'
+      ? 'text-[#9A41FE]'
+      : tone === 'faded'
+        ? 'text-gray-500'
+        : tone === 'muted'
+          ? 'text-gray-400'
+          : 'text-gray-900';
+
   return (
     <div className={`flex flex-wrap items-baseline gap-2 ${compact ? 'mb-2' : 'mb-4'}`}>
-      <p className="text-2xl font-bold tabular-nums tracking-tight text-gray-900">{value}</p>
-      <StatTrendBadge {...trend} />
+      <p className={`text-2xl font-bold tabular-nums tracking-tight ${valueClass}`}>{value}</p>
+      <StatTrendBadge {...trend} tone={tone} />
     </div>
   );
 }
@@ -449,22 +478,37 @@ function StatSecondaryMetric({
   value,
   trend,
   valueMuted,
+  tone = 'default',
 }: {
   label: string;
   value: string;
   trend?: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
   valueMuted?: boolean;
+  tone?: StatMetricTone;
 }) {
+  const labelClass =
+    tone === 'highlight'
+      ? 'text-[#9A41FE]/80'
+      : tone === 'faded'
+        ? 'text-gray-500'
+        : tone === 'muted' || valueMuted
+          ? 'text-gray-400'
+          : 'text-gray-500';
+  const valueClass =
+    tone === 'highlight'
+      ? 'text-[#9A41FE]'
+      : tone === 'faded'
+        ? 'text-gray-600'
+        : tone === 'muted' || valueMuted
+          ? 'text-gray-400'
+          : 'text-gray-900';
+
   return (
     <div className="min-w-0">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p
-        className={`mt-0.5 flex flex-wrap items-baseline gap-1.5 text-sm font-semibold tabular-nums ${
-          valueMuted ? 'text-gray-400' : 'text-gray-900'
-        }`}
-      >
+      <p className={`text-xs ${labelClass}`}>{label}</p>
+      <p className={`mt-0.5 flex flex-wrap items-baseline gap-1.5 text-sm font-semibold tabular-nums ${valueClass}`}>
         <span>{value}</span>
-        {trend ? <StatTrendBadge {...trend} /> : null}
+        {trend ? <StatTrendBadge {...trend} tone={tone} /> : null}
       </p>
     </div>
   );
@@ -553,6 +597,65 @@ const CPC_CHART_THIRD_METRICS: { id: CpcChartThirdMetricId; label: string }[] = 
 
 function defaultSubMetricForCard(card: CpcChartCardMetricId): CpcChartSubMetricId {
   return CPC_CHART_SUB_METRICS_BY_CARD[card][0].id;
+}
+
+type StatCardHighlightState = 'none' | 'active' | 'inactive';
+
+function statCardHighlightForMetric(
+  cardId: CpcChartCardMetricId,
+  isChartVisible: boolean,
+  chartMetric: CpcChartMetricId,
+): StatCardHighlightState {
+  if (!isChartVisible) return 'none';
+  return chartFocusForMetric(chartMetric).card === cardId ? 'active' : 'inactive';
+}
+
+function isPrimaryMetricOnChart(
+  cardId: CpcChartCardMetricId,
+  chartMetric: CpcChartMetricId,
+  isChartVisible: boolean,
+): boolean {
+  if (!isChartVisible) return false;
+  return chartMetric === cardId;
+}
+
+function isSubMetricOnChart(
+  cardId: CpcChartCardMetricId,
+  subMetricId: CpcChartSubMetricId,
+  chartMetric: CpcChartMetricId,
+  isChartVisible: boolean,
+): boolean {
+  if (!isChartVisible) return false;
+  if (chartMetric === cardId) return false;
+  const focus = chartFocusForMetric(chartMetric);
+  return focus.card === cardId && focus.sub === subMetricId;
+}
+
+function primaryMetricToneForCard(
+  cardId: CpcChartCardMetricId,
+  highlight: StatCardHighlightState,
+  chartMetric: CpcChartMetricId,
+): StatMetricTone {
+  if (highlight === 'inactive') return 'default';
+  if (highlight === 'none') return 'default';
+  const focus = chartFocusForMetric(chartMetric);
+  if (focus.card !== cardId) return 'default';
+  if (chartMetric === cardId) return 'highlight';
+  return 'muted';
+}
+
+function secondaryMetricToneForCard(
+  cardId: CpcChartCardMetricId,
+  subMetricId: CpcChartSubMetricId,
+  highlight: StatCardHighlightState,
+  chartMetric: CpcChartMetricId,
+): StatMetricTone {
+  if (highlight === 'inactive') return 'default';
+  if (highlight === 'none') return 'default';
+  const focus = chartFocusForMetric(chartMetric);
+  if (focus.card !== cardId) return 'default';
+  if (focus.sub === subMetricId && chartMetric !== cardId) return 'highlight';
+  return 'muted';
 }
 
 type CpcChartFocus = {
@@ -937,7 +1040,11 @@ function dynamicsChartDataForMetric(
 }
 
 const CHART_AXIS_TITLE_CLASS =
-  'pointer-events-none absolute top-0 z-10 text-sm font-semibold text-gray-900';
+  'pointer-events-none absolute top-0 z-10 text-sm font-semibold leading-none text-gray-900';
+
+const CHART_AXIS_TITLE_BAND_CLASS = 'relative mt-4 pt-6';
+
+const CHART_RECHARTS_MARGIN = { top: 40, right: 8, left: 4, bottom: 4 };
 
 const CHART_VERTICAL_AXIS_TICK = { fill: '#111827', fontSize: 13, fontWeight: 600 };
 
@@ -967,14 +1074,14 @@ function StatOpenChartButton({ onClick, label }: { onClick: () => void; label: s
 
   return (
     <div
-      className="absolute right-0 top-0 z-10"
+      className="absolute right-2 top-2 z-20 overflow-visible"
       onMouseEnter={() => setIsTooltipVisible(true)}
       onMouseLeave={() => setIsTooltipVisible(false)}
     >
       {isTooltipVisible ? (
         <div
           role="tooltip"
-          className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 whitespace-nowrap rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"
+          className="pointer-events-none absolute bottom-full right-0 z-[100] mb-1.5 whitespace-nowrap rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"
         >
           Показать на графике
         </div>
@@ -996,21 +1103,38 @@ function StatOpenChartButton({ onClick, label }: { onClick: () => void; label: s
 
 function StatMetricCard({
   title,
+  highlightState,
+  primaryCellSelected,
   onOpenChart,
   primaryMetric,
   footer,
 }: {
   title: string;
+  highlightState: StatCardHighlightState;
+  primaryCellSelected: boolean;
   onOpenChart: () => void;
   primaryMetric: React.ReactNode;
   footer: React.ReactNode;
 }) {
+  const titleClass =
+    highlightState === 'inactive'
+      ? 'text-gray-900'
+      : primaryCellSelected
+        ? 'text-[#9A41FE]'
+        : 'text-gray-900';
+
   return (
-    <div className="min-h-[7.5rem] rounded-xl border border-gray-200 bg-white p-4">
-      <div className="group relative pr-10">
-        <StatOpenChartButton onClick={onOpenChart} label={title} />
-        <p className="text-sm font-medium text-gray-900">{title}</p>
-        {primaryMetric}
+    <div
+      className={`relative overflow-visible rounded-xl border bg-white transition-[opacity,colors] hover:z-30 ${
+        highlightState === 'inactive' ? 'opacity-[0.55] hover:opacity-100' : ''
+      } ${highlightState === 'inactive' ? 'border-gray-100' : 'border-gray-200'}`}
+    >
+      <div className={primaryCellSelected ? 'bg-[#F2F2F7]' : ''}>
+        <div className="group relative overflow-visible px-4 pb-3 pt-4 pr-10">
+          <StatOpenChartButton onClick={onOpenChart} label={title} />
+          <p className={`text-sm font-medium ${titleClass}`}>{title}</p>
+          {primaryMetric}
+        </div>
       </div>
       {footer}
     </div>
@@ -1023,17 +1147,29 @@ function StatSecondaryMetricWithChart({
   value,
   trend,
   valueMuted,
+  tone = 'default',
+  cellSelected = false,
 }: {
   label: string;
   onOpenChart: () => void;
   value: string;
   trend?: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
   valueMuted?: boolean;
+  tone?: StatMetricTone;
+  cellSelected?: boolean;
 }) {
   return (
-    <div className="group relative min-w-0 pr-9">
-      <StatOpenChartButton onClick={onOpenChart} label={label} />
-      <StatSecondaryMetric label={label} value={value} trend={trend} valueMuted={valueMuted} />
+    <div className={cellSelected ? 'bg-[#F2F2F7]' : ''}>
+      <div className="group relative min-w-0 overflow-visible px-4 pt-3 pr-9 pb-0">
+        <StatOpenChartButton onClick={onOpenChart} label={label} />
+        <StatSecondaryMetric
+          label={label}
+          value={value}
+          trend={trend}
+          valueMuted={valueMuted}
+          tone={tone}
+        />
+      </div>
     </div>
   );
 }
@@ -1070,17 +1206,46 @@ function CpcChartSelectDropdown<T extends string>({
   const buttonClass =
     'border-gray-200 bg-[#F2F2F7] font-medium text-gray-900 hover:bg-[#E8E8ED]';
 
+  const renderTriggerContent = (optionLabel: string, optionTag?: string) => (
+    <>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        <span>{optionLabel}</span>
+        {optionTag ? (
+          <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-xs font-semibold text-[#9A41FE]">
+            {optionTag}
+          </span>
+        ) : null}
+      </span>
+      <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+    </>
+  );
+
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative inline-grid w-max max-w-[min(20rem,calc(100vw-2rem))]">
+      <div
+        aria-hidden
+        className="pointer-events-none col-start-1 row-start-1 h-0 min-h-0 overflow-hidden opacity-0"
+      >
+        <div className="flex w-max flex-col items-start">
+          {options.map((option) => (
+            <span
+              key={option.id}
+              className={`inline-flex items-center gap-1 whitespace-nowrap rounded-lg border px-3 py-1.5 text-sm ${buttonClass}`}
+            >
+              {renderTriggerContent(option.label, option.optionTag)}
+            </span>
+          ))}
+        </div>
+      </div>
       <button
         type="button"
         onClick={() => onOpenChange(!isOpen)}
-        className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm transition-colors ${buttonClass}`}
+        className={`col-start-1 row-start-1 inline-flex w-full min-w-0 items-center gap-1 rounded-lg border px-3 py-1.5 text-sm transition-colors ${buttonClass}`}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
       >
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <span className="truncate">{label}</span>
+        <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 whitespace-nowrap">
+          <span>{label}</span>
           {selectedTag ? (
             <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-xs font-semibold text-[#9A41FE]">
               {selectedTag}
@@ -1093,7 +1258,7 @@ function CpcChartSelectDropdown<T extends string>({
       </button>
       {isOpen ? (
         <div
-          className="absolute left-0 top-full z-50 mt-1 min-w-[11rem] max-w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+          className="absolute left-0 top-full z-50 mt-1 min-w-full max-w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
           role="listbox"
         >
           {options.map((option) => (
@@ -1161,9 +1326,9 @@ function CpcPositionComboChart({
   ];
 
   return (
-    <div className="mt-2 h-[300px] w-full min-w-0">
+    <div className="h-[300px] w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={chartData} margin={{ top: 28, right: 8, left: 4, bottom: 4 }} barGap={3}>
+        <ComposedChart data={chartData} margin={CHART_RECHARTS_MARGIN} barGap={3}>
           <defs>
             <linearGradient id="cpcPositionWithoutPromoGradient" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#9A41FE" stopOpacity={0.38} />
@@ -1261,9 +1426,9 @@ function CpcDynamicsLineChart({
   const data = dynamicsChartDataForMetric(chartMetric, isLowActivityDemo);
 
   return (
-    <div className="mt-2 h-[300px] w-full min-w-0">
+    <div className="h-[300px] w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 28, right: 8, left: 4, bottom: 4 }}>
+        <LineChart data={data} margin={CHART_RECHARTS_MARGIN}>
           <CartesianGrid stroke="#ECECF0" vertical={false} />
           <XAxis
             dataKey="date"
@@ -1434,6 +1599,19 @@ function CpcCampaignStatisticsSection({
   const spendLabel = 'Затраты';
   const spendValue = isLowActivityDemo ? '1,04 ₽' : '5 115 ₽';
 
+  const impressionsCardHighlight = statCardHighlightForMetric(
+    'impressions',
+    isChartVisible,
+    chartMetric,
+  );
+  const clicksCardHighlight = statCardHighlightForMetric('clicks', isChartVisible, chartMetric);
+  const ordersCardHighlight = statCardHighlightForMetric('orders', isChartVisible, chartMetric);
+  const costShareCardHighlight = statCardHighlightForMetric(
+    'costShare',
+    isChartVisible,
+    chartMetric,
+  );
+
   return (
     <section className="mb-8 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -1463,22 +1641,57 @@ function CpcCampaignStatisticsSection({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatMetricCard
           title="Показы"
+          highlightState={impressionsCardHighlight}
+          primaryCellSelected={isPrimaryMetricOnChart(
+            'impressions',
+            chartMetric,
+            isChartVisible,
+          )}
           onOpenChart={() => focusChart('impressions')}
           primaryMetric={
-            <StatPrimaryMetric value={impressionsMain} trend={impressionsTrend} compact />
+            <StatPrimaryMetric
+              value={impressionsMain}
+              trend={impressionsTrend}
+              compact
+              tone={primaryMetricToneForCard('impressions', impressionsCardHighlight, chartMetric)}
+            />
           }
           footer={
-            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+            <div className="grid grid-cols-2 border-t border-gray-100">
               <StatSecondaryMetricWithChart
                 label="CPM"
                 value={cpmValue}
                 trend={cpmTrend}
+                tone={secondaryMetricToneForCard(
+                  'impressions',
+                  'cpm',
+                  impressionsCardHighlight,
+                  chartMetric,
+                )}
                 onOpenChart={() => focusChart('cpm')}
+                cellSelected={isSubMetricOnChart(
+                  'impressions',
+                  'cpm',
+                  chartMetric,
+                  isChartVisible,
+                )}
               />
               <StatSecondaryMetricWithChart
                 label="Позиция в поиске"
                 value={searchPosition}
+                tone={secondaryMetricToneForCard(
+                  'impressions',
+                  'searchPosition',
+                  impressionsCardHighlight,
+                  chartMetric,
+                )}
                 onOpenChart={() => focusChart('searchPosition')}
+                cellSelected={isSubMetricOnChart(
+                  'impressions',
+                  'searchPosition',
+                  chartMetric,
+                  isChartVisible,
+                )}
               />
             </div>
           }
@@ -1486,10 +1699,19 @@ function CpcCampaignStatisticsSection({
 
         <StatMetricCard
           title="Клики"
+          highlightState={clicksCardHighlight}
+          primaryCellSelected={isPrimaryMetricOnChart('clicks', chartMetric, isChartVisible)}
           onOpenChart={() => focusChart('clicks')}
-          primaryMetric={<StatPrimaryMetric value={clicksMain} trend={clicksTrend} compact />}
+          primaryMetric={
+            <StatPrimaryMetric
+              value={clicksMain}
+              trend={clicksTrend}
+              compact
+              tone={primaryMetricToneForCard('clicks', clicksCardHighlight, chartMetric)}
+            />
+          }
           footer={
-            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+            <div className="grid grid-cols-2 border-t border-gray-100">
               <StatSecondaryMetricWithChart
                 label="CTR"
                 value={isLowActivityDemo ? '0%' : '0,28%'}
@@ -1498,7 +1720,9 @@ function CpcCampaignStatisticsSection({
                     ? { value: '0%', direction: 'up' }
                     : { value: '0,03%', direction: 'down', positiveIsGood: false }
                 }
+                tone={secondaryMetricToneForCard('clicks', 'ctr', clicksCardHighlight, chartMetric)}
                 onOpenChart={() => focusChart('ctr')}
+                cellSelected={isSubMetricOnChart('clicks', 'ctr', chartMetric, isChartVisible)}
               />
               <StatSecondaryMetricWithChart
                 label="CPC"
@@ -1508,7 +1732,9 @@ function CpcCampaignStatisticsSection({
                     ? { value: '0%', direction: 'up' }
                     : { value: '6,1%', direction: 'up' }
                 }
+                tone={secondaryMetricToneForCard('clicks', 'cpc', clicksCardHighlight, chartMetric)}
                 onOpenChart={() => focusChart('cpc')}
+                cellSelected={isSubMetricOnChart('clicks', 'cpc', chartMetric, isChartVisible)}
               />
             </div>
           }
@@ -1516,10 +1742,19 @@ function CpcCampaignStatisticsSection({
 
         <StatMetricCard
           title="Заказы"
+          highlightState={ordersCardHighlight}
+          primaryCellSelected={isPrimaryMetricOnChart('orders', chartMetric, isChartVisible)}
           onOpenChart={() => focusChart('orders')}
-          primaryMetric={<StatPrimaryMetric value={ordersMain} trend={ordersTrend} compact />}
+          primaryMetric={
+            <StatPrimaryMetric
+              value={ordersMain}
+              trend={ordersTrend}
+              compact
+              tone={primaryMetricToneForCard('orders', ordersCardHighlight, chartMetric)}
+            />
+          }
           footer={
-            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+            <div className="grid grid-cols-2 border-t border-gray-100">
               <StatSecondaryMetricWithChart
                 label="CR"
                 value={isLowActivityDemo ? '0%' : '22,9%'}
@@ -1528,13 +1763,17 @@ function CpcCampaignStatisticsSection({
                     ? { value: '0%', direction: 'down', positiveIsGood: false }
                     : { value: '1,4%', direction: 'up' }
                 }
+                tone={secondaryMetricToneForCard('orders', 'cr', ordersCardHighlight, chartMetric)}
                 onOpenChart={() => focusChart('cr')}
+                cellSelected={isSubMetricOnChart('orders', 'cr', chartMetric, isChartVisible)}
               />
               <StatSecondaryMetricWithChart
                 label="CPO"
                 value={cpoValue}
                 valueMuted={cpoMuted}
+                tone={secondaryMetricToneForCard('orders', 'cpo', ordersCardHighlight, chartMetric)}
                 onOpenChart={() => focusChart('cpo')}
+                cellSelected={isSubMetricOnChart('orders', 'cpo', chartMetric, isChartVisible)}
               />
             </div>
           }
@@ -1542,19 +1781,35 @@ function CpcCampaignStatisticsSection({
 
         <StatMetricCard
           title="Доля затрат"
+          highlightState={costShareCardHighlight}
+          primaryCellSelected={isPrimaryMetricOnChart('costShare', chartMetric, isChartVisible)}
           onOpenChart={() => focusChart('costShare')}
-          primaryMetric={<StatPrimaryMetric value={shareMain} trend={shareTrend} compact />}
+          primaryMetric={
+            <StatPrimaryMetric
+              value={shareMain}
+              trend={shareTrend}
+              compact
+              tone={primaryMetricToneForCard('costShare', costShareCardHighlight, chartMetric)}
+            />
+          }
           footer={
-            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+            <div className="grid grid-cols-2 border-t border-gray-100">
               <StatSecondaryMetricWithChart
                 label="Сумма заказов"
                 value={orderSum}
-                trend={
-                  isLowActivityDemo
-                    ? { value: '0%', direction: 'down', positiveIsGood: false }
-                    : { value: '5,8%', direction: 'up' }
-                }
+                tone={secondaryMetricToneForCard(
+                  'costShare',
+                  'orderSum',
+                  costShareCardHighlight,
+                  chartMetric,
+                )}
                 onOpenChart={() => focusChart('orderSum')}
+                cellSelected={isSubMetricOnChart(
+                  'costShare',
+                  'orderSum',
+                  chartMetric,
+                  isChartVisible,
+                )}
               />
               <StatSecondaryMetricWithChart
                 label={spendLabel}
@@ -1564,7 +1819,14 @@ function CpcCampaignStatisticsSection({
                     ? { value: '0%', direction: 'up' }
                     : { value: '5,3%', direction: 'up' }
                 }
+                tone={secondaryMetricToneForCard(
+                  'costShare',
+                  'spend',
+                  costShareCardHighlight,
+                  chartMetric,
+                )}
                 onOpenChart={() => focusChart('spend')}
+                cellSelected={isSubMetricOnChart('costShare', 'spend', chartMetric, isChartVisible)}
               />
             </div>
           }
@@ -1637,7 +1899,7 @@ function CpcCampaignStatisticsSection({
 
           {effectiveChartTab === 'position' ? (
             <>
-              <div className="relative mt-4">
+              <div className={CHART_AXIS_TITLE_BAND_CLASS}>
                 <p className={`${CHART_AXIS_TITLE_CLASS} left-0`}>{positionLeftAxisLabel}</p>
                 <p className={`${CHART_AXIS_TITLE_CLASS} right-0`}>CTR, %</p>
                 <CpcPositionComboChart
@@ -1676,7 +1938,7 @@ function CpcCampaignStatisticsSection({
             </>
           ) : (
             <>
-              <div className="relative mt-4">
+              <div className={CHART_AXIS_TITLE_BAND_CLASS}>
                 <p className={`${CHART_AXIS_TITLE_CLASS} left-0`}>{chartMetricLabel}</p>
                 <CpcDynamicsLineChart
                   isLowActivityDemo={isLowActivityDemo}
