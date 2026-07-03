@@ -28,6 +28,17 @@ import {
   isDailyLimitBelowRecommendedForMaxBid,
   CPC_MAX_BID_RUB,
 } from '../utils/cpcDailyLimitBid';
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
@@ -345,6 +356,31 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
   </button>
 );
 
+const StatsChartToggleSwitch = ({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={checked}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+      checked ? 'bg-purple-600' : 'bg-gray-300'
+    }`}
+  >
+    <span
+      aria-hidden
+      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+        checked ? 'translate-x-4' : 'translate-x-0'
+      }`}
+    />
+  </button>
+);
+
 const Toast = ({ show, message, onClose, isSuccess = false, isError = false, durationMs = 3000 }: { show: boolean, message: string, onClose: () => void, isSuccess?: boolean, isError?: boolean, durationMs?: number }) => {
   useEffect(() => {
     if (show) {
@@ -375,6 +411,10 @@ function StatTrendBadge({
   positiveIsGood?: boolean;
 }) {
   const favorable = direction === 'up' ? positiveIsGood : !positiveIsGood;
+  const isNeutral = value === '0%' || value === '0';
+  if (isNeutral) {
+    return <span className="text-xs font-medium tabular-nums text-gray-400">{value}</span>;
+  }
   return (
     <span
       className={`inline-flex items-center gap-0.5 text-xs font-medium tabular-nums ${
@@ -390,12 +430,14 @@ function StatTrendBadge({
 function StatPrimaryMetric({
   value,
   trend,
+  compact,
 }: {
   value: string;
   trend: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
+  compact?: boolean;
 }) {
   return (
-    <div className="mb-4 flex flex-wrap items-baseline gap-2">
+    <div className={`flex flex-wrap items-baseline gap-2 ${compact ? 'mb-2' : 'mb-4'}`}>
       <p className="text-2xl font-bold tabular-nums tracking-tight text-gray-900">{value}</p>
       <StatTrendBadge {...trend} />
     </div>
@@ -406,19 +448,1212 @@ function StatSecondaryMetric({
   label,
   value,
   trend,
+  valueMuted,
 }: {
   label: string;
   value: string;
-  trend: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
+  trend?: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
+  valueMuted?: boolean;
 }) {
   return (
     <div className="min-w-0">
       <p className="text-xs text-gray-500">{label}</p>
-      <p className="mt-1 flex flex-wrap items-baseline gap-1.5 text-sm font-semibold tabular-nums text-gray-900">
+      <p
+        className={`mt-0.5 flex flex-wrap items-baseline gap-1.5 text-sm font-semibold tabular-nums ${
+          valueMuted ? 'text-gray-400' : 'text-gray-900'
+        }`}
+      >
         <span>{value}</span>
-        <StatTrendBadge {...trend} />
+        {trend ? <StatTrendBadge {...trend} /> : null}
       </p>
     </div>
+  );
+}
+
+type CpcStatsChartTab = 'dynamics' | 'position';
+
+type CpcChartCardMetricId = 'impressions' | 'clicks' | 'orders' | 'costShare';
+
+type CpcChartSubMetricId =
+  | 'cpm'
+  | 'searchPosition'
+  | 'ctr'
+  | 'cpc'
+  | 'cr'
+  | 'cpo'
+  | 'orderSum'
+  | 'spend';
+
+type CpcChartMetricId =
+  | 'impressions'
+  | 'cpm'
+  | 'searchPosition'
+  | 'clicks'
+  | 'ctr'
+  | 'cpc'
+  | 'orders'
+  | 'cr'
+  | 'cpo'
+  | 'costShare'
+  | 'orderSum'
+  | 'spend';
+
+type CpcChartThirdMetricId = 'clicks' | 'impressions' | 'clickShare' | 'impressionShare';
+
+const CPC_CHART_ALL_METRICS: { id: CpcChartMetricId; label: string; optionTag?: string }[] = [
+  { id: 'impressions', label: 'Показы' },
+  { id: 'cpm', label: 'CPM' },
+  { id: 'searchPosition', label: 'Позиция в поиске', optionTag: 'Новое' },
+  { id: 'clicks', label: 'Клики' },
+  { id: 'ctr', label: 'CTR' },
+  { id: 'cpc', label: 'CPC' },
+  { id: 'orders', label: 'Заказы' },
+  { id: 'cr', label: 'CR' },
+  { id: 'cpo', label: 'CPO' },
+  { id: 'costShare', label: 'Доля затрат' },
+  { id: 'orderSum', label: 'Сумма заказов' },
+  { id: 'spend', label: 'Затраты' },
+];
+
+const CPC_CHART_CARD_METRICS: { id: CpcChartCardMetricId; label: string }[] = [
+  { id: 'impressions', label: 'Показы' },
+  { id: 'clicks', label: 'Клики' },
+  { id: 'orders', label: 'Заказы' },
+  { id: 'costShare', label: 'Доля затрат' },
+];
+
+const CPC_CHART_SUB_METRICS_BY_CARD: Record<
+  CpcChartCardMetricId,
+  { id: CpcChartSubMetricId; label: string }[]
+> = {
+  impressions: [
+    { id: 'cpm', label: 'CPM' },
+    { id: 'searchPosition', label: 'Позиция в поиске' },
+  ],
+  clicks: [
+    { id: 'ctr', label: 'CTR' },
+    { id: 'cpc', label: 'CPC' },
+  ],
+  orders: [
+    { id: 'cr', label: 'CR' },
+    { id: 'cpo', label: 'CPO' },
+  ],
+  costShare: [
+    { id: 'orderSum', label: 'Сумма заказов' },
+    { id: 'spend', label: 'Затраты' },
+  ],
+};
+
+const CPC_CHART_THIRD_METRICS: { id: CpcChartThirdMetricId; label: string }[] = [
+  { id: 'impressions', label: 'Показы и CTR' },
+  { id: 'clicks', label: 'Клики и CTR' },
+  { id: 'impressionShare', label: 'Доля показов и CTR' },
+  { id: 'clickShare', label: 'Доля кликов и CTR' },
+];
+
+function defaultSubMetricForCard(card: CpcChartCardMetricId): CpcChartSubMetricId {
+  return CPC_CHART_SUB_METRICS_BY_CARD[card][0].id;
+}
+
+type CpcChartFocus = {
+  card: CpcChartCardMetricId;
+  sub: CpcChartSubMetricId;
+  third: CpcChartThirdMetricId;
+  tab: CpcStatsChartTab;
+};
+
+function chartFocusFor(card: CpcChartCardMetricId, sub?: CpcChartSubMetricId): CpcChartFocus {
+  const resolvedSub = sub ?? defaultSubMetricForCard(card);
+  if (resolvedSub === 'searchPosition') {
+    return { card, sub: resolvedSub, third: 'impressionShare', tab: 'position' };
+  }
+  if (card === 'clicks') {
+    return {
+      card,
+      sub: resolvedSub,
+      third: resolvedSub === 'ctr' ? 'clickShare' : 'clicks',
+      tab: 'dynamics',
+    };
+  }
+  if (card === 'impressions') {
+    return { card, sub: resolvedSub, third: 'impressions', tab: 'dynamics' };
+  }
+  if (card === 'orders') {
+    return { card, sub: resolvedSub, third: 'clicks', tab: 'dynamics' };
+  }
+  return { card, sub: resolvedSub, third: 'impressionShare', tab: 'dynamics' };
+}
+
+function chartFocusForMetric(metricId: CpcChartMetricId): CpcChartFocus {
+  switch (metricId) {
+    case 'impressions':
+      return chartFocusFor('impressions');
+    case 'cpm':
+      return chartFocusFor('impressions', 'cpm');
+    case 'searchPosition':
+      return chartFocusFor('impressions', 'searchPosition');
+    case 'clicks':
+      return chartFocusFor('clicks');
+    case 'ctr':
+      return chartFocusFor('clicks', 'ctr');
+    case 'cpc':
+      return chartFocusFor('clicks', 'cpc');
+    case 'orders':
+      return chartFocusFor('orders');
+    case 'cr':
+      return chartFocusFor('orders', 'cr');
+    case 'cpo':
+      return chartFocusFor('orders', 'cpo');
+    case 'costShare':
+      return chartFocusFor('costShare');
+    case 'orderSum':
+      return chartFocusFor('costShare', 'orderSum');
+    case 'spend':
+      return chartFocusFor('costShare', 'spend');
+    default:
+      return chartFocusFor('clicks', 'ctr');
+  }
+}
+
+function isPositionChartTabAvailable(metricId: CpcChartMetricId): boolean {
+  return metricId === 'searchPosition';
+}
+
+const CPC_POSITION_LEFT_METRIC: Record<
+  CpcChartThirdMetricId,
+  { dataKey: 'impressions' | 'clicks' | 'impressionShare' | 'clickShare'; label: string; kind: 'count' | 'share' }
+> = {
+  impressions: { dataKey: 'impressions', label: 'Показы', kind: 'count' },
+  clicks: { dataKey: 'clicks', label: 'Клики', kind: 'count' },
+  impressionShare: { dataKey: 'impressionShare', label: 'Доля показов', kind: 'share' },
+  clickShare: { dataKey: 'clickShare', label: 'Доля кликов', kind: 'share' },
+};
+
+const CPC_POSITION_CHART_DATA = [
+  { range: '1–2 позиции', impressions: 4_200, clicks: 252, impressionShare: 0.05, clickShare: 0.04, ctr: 0.06 },
+  { range: '3–10', impressions: 6_300, clicks: 420, impressionShare: 0.12, clickShare: 0.05, ctr: 0.05 },
+  { range: '11–34', impressions: 12_600, clicks: 756, impressionShare: 0.2, clickShare: 0.04, ctr: 0.04 },
+  { range: '35–50', impressions: 3_150, clicks: 210, impressionShare: 0.08, clickShare: 0.035, ctr: 0.035 },
+  { range: '51–100', impressions: 1_575, clicks: 126, impressionShare: 0.04, clickShare: 0.025, ctr: 0.025 },
+  { range: '101–300', impressions: 788, clicks: 84, impressionShare: 0.02, clickShare: 0.015, ctr: 0.015 },
+  { range: '301+', impressions: 263, clicks: 42, impressionShare: 0.48, clickShare: 0.01, ctr: 0.01 },
+];
+
+const CPC_POSITION_CHART_DATA_LOW = CPC_POSITION_CHART_DATA.map((row, index) => ({
+  ...row,
+  impressions: index === 2 ? 3 : 0,
+  clicks: 0,
+  impressionShare: 0,
+  clickShare: 0,
+  ctr: 0,
+}));
+
+function isDynamicsChartTabAvailable(_metricId: CpcChartMetricId): boolean {
+  return true;
+}
+
+type CpcChartValueKind = 'count' | 'percent' | 'position' | 'currency';
+
+function chartValueKindForMetric(metricId: CpcChartMetricId): CpcChartValueKind {
+  if (metricId === 'searchPosition') return 'position';
+  if (metricId === 'impressions' || metricId === 'clicks' || metricId === 'orders') {
+    return 'count';
+  }
+  if (metricId === 'orderSum' || metricId === 'spend' || metricId === 'cpm' || metricId === 'cpc' || metricId === 'cpo') {
+    return 'currency';
+  }
+  if (metricId === 'ctr' || metricId === 'cr' || metricId === 'costShare') {
+    return 'percent';
+  }
+  return 'percent';
+}
+
+function formatChartAxisTick(kind: CpcChartValueKind, value: number): string {
+  if (kind === 'percent') return `${(value * 100).toFixed(1)}%`;
+  if (kind === 'position') return String(Math.round(value));
+  return Math.round(value).toLocaleString('ru-RU');
+}
+
+function formatChartTooltipValue(kind: CpcChartValueKind, value: number): string {
+  if (kind === 'percent') return `${(value * 100).toFixed(2)}%`;
+  if (kind === 'position') return String(Math.round(value));
+  if (kind === 'currency') {
+    return `${Math.round(value).toLocaleString('ru-RU')} ₽`;
+  }
+  return Math.round(value).toLocaleString('ru-RU');
+}
+
+type CpcDynamicsPoint = { date: string; primary: number; previous: number };
+
+const CPC_DYNAMICS_PERCENT_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0.02, previous: 0.018 },
+  { date: '28.06', primary: 0.022, previous: 0.019 },
+  { date: '29.06', primary: 0.025, previous: 0.021 },
+  { date: '30.06', primary: 0.028, previous: 0.023 },
+  { date: '01.07', primary: 0.026, previous: 0.024 },
+  { date: '02.07', primary: 0.03, previous: 0.025 },
+  { date: '03.07', primary: 0.032, previous: 0.027 },
+];
+
+const CPC_DYNAMICS_PERCENT_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 0, previous: 0 },
+  { date: '30.06', primary: 0, previous: 0 },
+  { date: '01.07', primary: 0, previous: 0 },
+  { date: '02.07', primary: 0, previous: 0 },
+  { date: '03.07', primary: 0, previous: 0 },
+];
+
+const CPC_DYNAMICS_IMPRESSIONS_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 26_500, previous: 25_200 },
+  { date: '28.06', primary: 27_100, previous: 25_800 },
+  { date: '29.06', primary: 27_800, previous: 26_400 },
+  { date: '30.06', primary: 28_400, previous: 27_000 },
+  { date: '01.07', primary: 28_900, previous: 27_500 },
+  { date: '02.07', primary: 29_100, previous: 27_900 },
+  { date: '03.07', primary: 29_231, previous: 28_100 },
+];
+
+const CPC_DYNAMICS_IMPRESSIONS_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 1, previous: 0 },
+  { date: '30.06', primary: 2, previous: 1 },
+  { date: '01.07', primary: 2, previous: 1 },
+  { date: '02.07', primary: 3, previous: 2 },
+  { date: '03.07', primary: 3, previous: 2 },
+];
+
+const CPC_DYNAMICS_CLICKS_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 71, previous: 65 },
+  { date: '28.06', primary: 74, previous: 68 },
+  { date: '29.06', primary: 76, previous: 70 },
+  { date: '30.06', primary: 78, previous: 72 },
+  { date: '01.07', primary: 80, previous: 74 },
+  { date: '02.07', primary: 82, previous: 76 },
+  { date: '03.07', primary: 83, previous: 77 },
+];
+
+const CPC_DYNAMICS_CLICKS_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 0, previous: 0 },
+  { date: '30.06', primary: 0, previous: 0 },
+  { date: '01.07', primary: 0, previous: 0 },
+  { date: '02.07', primary: 0, previous: 0 },
+  { date: '03.07', primary: 0, previous: 0 },
+];
+
+const CPC_DYNAMICS_ORDERS_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 15, previous: 13 },
+  { date: '28.06', primary: 16, previous: 14 },
+  { date: '29.06', primary: 16, previous: 14 },
+  { date: '30.06', primary: 17, previous: 15 },
+  { date: '01.07', primary: 18, previous: 16 },
+  { date: '02.07', primary: 18, previous: 17 },
+  { date: '03.07', primary: 19, previous: 17 },
+];
+
+const CPC_DYNAMICS_ORDERS_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 0, previous: 0 },
+  { date: '30.06', primary: 0, previous: 0 },
+  { date: '01.07', primary: 0, previous: 0 },
+  { date: '02.07', primary: 0, previous: 0 },
+  { date: '03.07', primary: 0, previous: 0 },
+];
+
+const CPC_DYNAMICS_COUNT_CHART_DATA_BY_METRIC: Partial<
+  Record<CpcChartMetricId, { normal: CpcDynamicsPoint[]; low: CpcDynamicsPoint[] }>
+> = {
+  impressions: {
+    normal: CPC_DYNAMICS_IMPRESSIONS_CHART_DATA,
+    low: CPC_DYNAMICS_IMPRESSIONS_CHART_DATA_LOW,
+  },
+  clicks: { normal: CPC_DYNAMICS_CLICKS_CHART_DATA, low: CPC_DYNAMICS_CLICKS_CHART_DATA_LOW },
+  orders: { normal: CPC_DYNAMICS_ORDERS_CHART_DATA, low: CPC_DYNAMICS_ORDERS_CHART_DATA_LOW },
+};
+
+const CPC_DYNAMICS_ORDER_SUM_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 178_000, previous: 165_000 },
+  { date: '28.06', primary: 182_000, previous: 168_000 },
+  { date: '29.06', primary: 186_000, previous: 172_000 },
+  { date: '30.06', primary: 189_000, previous: 176_000 },
+  { date: '01.07', primary: 192_000, previous: 180_000 },
+  { date: '02.07', primary: 194_000, previous: 183_000 },
+  { date: '03.07', primary: 196_000, previous: 185_000 },
+];
+
+const CPC_DYNAMICS_ORDER_SUM_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 0, previous: 0 },
+  { date: '30.06', primary: 0, previous: 0 },
+  { date: '01.07', primary: 0, previous: 0 },
+  { date: '02.07', primary: 0, previous: 0 },
+  { date: '03.07', primary: 0, previous: 0 },
+];
+
+const CPC_DYNAMICS_SPEND_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 4_650, previous: 4_400 },
+  { date: '28.06', primary: 4_780, previous: 4_520 },
+  { date: '29.06', primary: 4_890, previous: 4_610 },
+  { date: '30.06', primary: 4_960, previous: 4_680 },
+  { date: '01.07', primary: 5_020, previous: 4_750 },
+  { date: '02.07', primary: 5_080, previous: 4_820 },
+  { date: '03.07', primary: 5_115, previous: 4_860 },
+];
+
+const CPC_DYNAMICS_SPEND_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 1, previous: 1 },
+  { date: '28.06', primary: 1, previous: 1 },
+  { date: '29.06', primary: 1, previous: 1 },
+  { date: '30.06', primary: 1, previous: 1 },
+  { date: '01.07', primary: 1, previous: 1 },
+  { date: '02.07', primary: 1, previous: 1 },
+  { date: '03.07', primary: 1, previous: 1 },
+];
+
+const CPC_DYNAMICS_CPM_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 172, previous: 168 },
+  { date: '28.06', primary: 173, previous: 169 },
+  { date: '29.06', primary: 174, previous: 170 },
+  { date: '30.06', primary: 174, previous: 171 },
+  { date: '01.07', primary: 175, previous: 172 },
+  { date: '02.07', primary: 175, previous: 173 },
+  { date: '03.07', primary: 175, previous: 174 },
+];
+
+const CPC_DYNAMICS_CPM_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 347, previous: 350 },
+  { date: '28.06', primary: 347, previous: 348 },
+  { date: '29.06', primary: 347, previous: 347 },
+  { date: '30.06', primary: 347, previous: 347 },
+  { date: '01.07', primary: 347, previous: 347 },
+  { date: '02.07', primary: 347, previous: 347 },
+  { date: '03.07', primary: 347, previous: 347 },
+];
+
+const CPC_DYNAMICS_CPC_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 58, previous: 62 },
+  { date: '28.06', primary: 59, previous: 61 },
+  { date: '29.06', primary: 60, previous: 60 },
+  { date: '30.06', primary: 61, previous: 59 },
+  { date: '01.07', primary: 62, previous: 58 },
+  { date: '02.07', primary: 62, previous: 57 },
+  { date: '03.07', primary: 62, previous: 56 },
+];
+
+const CPC_DYNAMICS_CPC_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 0, previous: 0 },
+  { date: '30.06', primary: 0, previous: 0 },
+  { date: '01.07', primary: 0, previous: 0 },
+  { date: '02.07', primary: 0, previous: 0 },
+  { date: '03.07', primary: 0, previous: 0 },
+];
+
+const CPC_DYNAMICS_CPO_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 278, previous: 295 },
+  { date: '28.06', primary: 275, previous: 290 },
+  { date: '29.06', primary: 272, previous: 285 },
+  { date: '30.06', primary: 270, previous: 280 },
+  { date: '01.07', primary: 268, previous: 275 },
+  { date: '02.07', primary: 269, previous: 272 },
+  { date: '03.07', primary: 269, previous: 270 },
+];
+
+const CPC_DYNAMICS_CPO_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 0, previous: 0 },
+  { date: '30.06', primary: 0, previous: 0 },
+  { date: '01.07', primary: 0, previous: 0 },
+  { date: '02.07', primary: 0, previous: 0 },
+  { date: '03.07', primary: 0, previous: 0 },
+];
+
+const CPC_DYNAMICS_CURRENCY_CHART_DATA_BY_METRIC: Partial<
+  Record<CpcChartMetricId, { normal: CpcDynamicsPoint[]; low: CpcDynamicsPoint[] }>
+> = {
+  orderSum: { normal: CPC_DYNAMICS_ORDER_SUM_CHART_DATA, low: CPC_DYNAMICS_ORDER_SUM_CHART_DATA_LOW },
+  spend: { normal: CPC_DYNAMICS_SPEND_CHART_DATA, low: CPC_DYNAMICS_SPEND_CHART_DATA_LOW },
+  cpm: { normal: CPC_DYNAMICS_CPM_CHART_DATA, low: CPC_DYNAMICS_CPM_CHART_DATA_LOW },
+  cpc: { normal: CPC_DYNAMICS_CPC_CHART_DATA, low: CPC_DYNAMICS_CPC_CHART_DATA_LOW },
+  cpo: { normal: CPC_DYNAMICS_CPO_CHART_DATA, low: CPC_DYNAMICS_CPO_CHART_DATA_LOW },
+};
+
+const CPC_DYNAMICS_SEARCH_POSITION_CHART_DATA: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 3, previous: 4 },
+  { date: '28.06', primary: 3, previous: 3 },
+  { date: '29.06', primary: 2, previous: 3 },
+  { date: '30.06', primary: 2, previous: 2 },
+  { date: '01.07', primary: 2, previous: 2 },
+  { date: '02.07', primary: 2, previous: 2 },
+  { date: '03.07', primary: 2, previous: 2 },
+];
+
+const CPC_DYNAMICS_SEARCH_POSITION_CHART_DATA_LOW: CpcDynamicsPoint[] = [
+  { date: '27.06', primary: 24, previous: 26 },
+  { date: '28.06', primary: 22, previous: 25 },
+  { date: '29.06', primary: 21, previous: 23 },
+  { date: '30.06', primary: 20, previous: 22 },
+  { date: '01.07', primary: 19, previous: 21 },
+  { date: '02.07', primary: 19, previous: 20 },
+  { date: '03.07', primary: 19, previous: 19 },
+];
+
+function dynamicsChartDataForMetric(
+  metricId: CpcChartMetricId,
+  isLowActivityDemo: boolean,
+): CpcDynamicsPoint[] {
+  const kind = chartValueKindForMetric(metricId);
+  if (kind === 'position') {
+    return isLowActivityDemo
+      ? CPC_DYNAMICS_SEARCH_POSITION_CHART_DATA_LOW
+      : CPC_DYNAMICS_SEARCH_POSITION_CHART_DATA;
+  }
+  const countSeries = CPC_DYNAMICS_COUNT_CHART_DATA_BY_METRIC[metricId];
+  if (kind === 'count' && countSeries) {
+    return isLowActivityDemo ? countSeries.low : countSeries.normal;
+  }
+  const currencySeries = CPC_DYNAMICS_CURRENCY_CHART_DATA_BY_METRIC[metricId];
+  if (kind === 'currency' && currencySeries) {
+    return isLowActivityDemo ? currencySeries.low : currencySeries.normal;
+  }
+  return isLowActivityDemo ? CPC_DYNAMICS_PERCENT_CHART_DATA_LOW : CPC_DYNAMICS_PERCENT_CHART_DATA;
+}
+
+const CHART_AXIS_TITLE_CLASS =
+  'pointer-events-none absolute top-0 z-10 text-sm font-semibold text-gray-900';
+
+const CHART_VERTICAL_AXIS_TICK = { fill: '#111827', fontSize: 13, fontWeight: 600 };
+
+function StatsChartPositionsGridIcon({ className }: { className?: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" className={className} aria-hidden>
+      <rect x="2" y="2" width="5" height="5" rx="1" fill="currentColor" />
+      <rect x="9" y="2" width="5" height="5" rx="1" fill="currentColor" opacity="0.28" />
+      <rect x="2" y="9" width="5" height="5" rx="1" fill="currentColor" opacity="0.28" />
+      <rect x="9" y="9" width="5" height="5" rx="1" fill="currentColor" opacity="0.28" />
+    </svg>
+  );
+}
+
+function StatsChartPositionIcon({ className }: { className?: string }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" className={className} aria-hidden>
+      <rect x="2" y="9" width="2.5" height="5" rx="0.5" fill="currentColor" opacity="0.35" />
+      <rect x="6.5" y="6" width="2.5" height="8" rx="0.5" fill="currentColor" opacity="0.65" />
+      <rect x="11" y="3" width="2.5" height="11" rx="0.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+function StatOpenChartButton({ onClick, label }: { onClick: () => void; label: string }) {
+  const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+
+  return (
+    <div
+      className="absolute right-0 top-0 z-10"
+      onMouseEnter={() => setIsTooltipVisible(true)}
+      onMouseLeave={() => setIsTooltipVisible(false)}
+    >
+      {isTooltipVisible ? (
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full right-0 z-50 mb-1.5 whitespace-nowrap rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"
+        >
+          Показать на графике
+        </div>
+      ) : null}
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClick();
+        }}
+        className="flex h-8 w-8 items-center justify-center rounded-lg border border-[#9A41FE]/35 bg-[#F6F2FF] text-[#9A41FE] opacity-0 shadow-sm transition-[opacity,colors] hover:border-[#9A41FE] hover:bg-[#9A41FE] hover:text-white group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9A41FE]/40"
+        aria-label={`Показать на графике: ${label}`}
+      >
+        <StatsChartPositionIcon className="h-4 w-4 shrink-0" />
+      </button>
+    </div>
+  );
+}
+
+function StatMetricCard({
+  title,
+  onOpenChart,
+  primaryMetric,
+  footer,
+}: {
+  title: string;
+  onOpenChart: () => void;
+  primaryMetric: React.ReactNode;
+  footer: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-[7.5rem] rounded-xl border border-gray-200 bg-white p-4">
+      <div className="group relative pr-10">
+        <StatOpenChartButton onClick={onOpenChart} label={title} />
+        <p className="text-sm font-medium text-gray-900">{title}</p>
+        {primaryMetric}
+      </div>
+      {footer}
+    </div>
+  );
+}
+
+function StatSecondaryMetricWithChart({
+  label,
+  onOpenChart,
+  value,
+  trend,
+  valueMuted,
+}: {
+  label: string;
+  onOpenChart: () => void;
+  value: string;
+  trend?: { value: string; direction: StatTrendDirection; positiveIsGood?: boolean };
+  valueMuted?: boolean;
+}) {
+  return (
+    <div className="group relative min-w-0 pr-9">
+      <StatOpenChartButton onClick={onOpenChart} label={label} />
+      <StatSecondaryMetric label={label} value={value} trend={trend} valueMuted={valueMuted} />
+    </div>
+  );
+}
+
+function CpcChartSelectDropdown<T extends string>({
+  options,
+  value,
+  onChange,
+  isOpen,
+  onOpenChange,
+}: {
+  options: { id: T; label: string; optionTag?: string }[];
+  value: T;
+  onChange: (id: T) => void;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = options.find((m) => m.id === value);
+  const label = selected?.label ?? '';
+  const selectedTag = selected?.optionTag;
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        onOpenChange(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, onOpenChange]);
+
+  const buttonClass =
+    'border-gray-200 bg-[#F2F2F7] font-medium text-gray-900 hover:bg-[#E8E8ED]';
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!isOpen)}
+        className={`inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-sm transition-colors ${buttonClass}`}
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+      >
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <span className="truncate">{label}</span>
+          {selectedTag ? (
+            <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-xs font-semibold text-[#9A41FE]">
+              {selectedTag}
+            </span>
+          ) : null}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {isOpen ? (
+        <div
+          className="absolute left-0 top-full z-50 mt-1 min-w-[11rem] max-w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+          role="listbox"
+        >
+          {options.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              role="option"
+              aria-selected={value === option.id}
+              className={`w-full px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 ${
+                value === option.id ? 'bg-[#F2F2F7] font-medium text-gray-900' : 'text-gray-700'
+              }`}
+              onClick={() => {
+                onChange(option.id);
+                onOpenChange(false);
+              }}
+            >
+              <span className="flex items-center justify-between gap-2">
+                <span>{option.label}</span>
+                {option.optionTag ? (
+                  <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-xs font-semibold text-[#9A41FE]">
+                    {option.optionTag}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CpcPositionComboChart({
+  thirdMetric,
+  isLowActivityDemo,
+}: {
+  thirdMetric: CpcChartThirdMetricId;
+  isLowActivityDemo: boolean;
+}) {
+  const leftMetric = CPC_POSITION_LEFT_METRIC[thirdMetric];
+  const data = isLowActivityDemo ? CPC_POSITION_CHART_DATA_LOW : CPC_POSITION_CHART_DATA;
+  const leftDomain = leftMetric.kind === 'share' ? ([0, 0.5] as const) : ([0, 'auto'] as const);
+  const leftTicks =
+    leftMetric.kind === 'share' ? [0, 0.1, 0.2, 0.3, 0.4, 0.5] : undefined;
+
+  const leftValueKind: CpcChartValueKind = leftMetric.kind === 'share' ? 'percent' : 'count';
+
+  const formatLeftTick = (value: number) => formatChartAxisTick(leftValueKind, value);
+
+  const formatLeftTooltip = (value: number) => [
+    formatChartTooltipValue(leftValueKind, value),
+    leftMetric.label,
+  ];
+
+  return (
+    <div className="mt-2 h-[300px] w-full min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={data} margin={{ top: 28, right: 8, left: 4, bottom: 4 }}>
+          <CartesianGrid stroke="#ECECF0" vertical />
+          <XAxis
+            dataKey="range"
+            tick={{ fill: '#767386', fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+            interval={0}
+            height={48}
+          />
+          <YAxis
+            yAxisId="left"
+            orientation="left"
+            tick={CHART_VERTICAL_AXIS_TICK}
+            axisLine={false}
+            tickLine={false}
+            width={leftMetric.kind === 'share' ? 44 : 52}
+            domain={leftDomain}
+            ticks={leftTicks}
+            tickFormatter={formatLeftTick}
+          />
+          <YAxis
+            yAxisId="ctr"
+            orientation="right"
+            tick={CHART_VERTICAL_AXIS_TICK}
+            axisLine={false}
+            tickLine={false}
+            width={40}
+            domain={[0, 0.07]}
+            tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+          />
+          <Tooltip
+            contentStyle={{
+              borderRadius: 12,
+              border: '1px solid #E5E7EB',
+              fontSize: 12,
+            }}
+            formatter={(value: number, name: string) => {
+              if (name === 'ctr') return [`${(value * 100).toFixed(2)}%`, 'CTR'];
+              return formatLeftTooltip(value);
+            }}
+          />
+          <Bar
+            yAxisId="left"
+            dataKey={leftMetric.dataKey}
+            fill="#9A41FE"
+            radius={[3, 3, 0, 0]}
+            barSize={28}
+            name="left"
+          />
+          <Line
+            yAxisId="ctr"
+            type="monotone"
+            dataKey="ctr"
+            stroke="#22C55E"
+            strokeWidth={2}
+            dot={false}
+            name="ctr"
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CpcDynamicsLineChart({
+  isLowActivityDemo,
+  primaryLineLabel,
+  chartMetric,
+}: {
+  isLowActivityDemo: boolean;
+  primaryLineLabel: string;
+  chartMetric: CpcChartMetricId;
+}) {
+  const valueKind = chartValueKindForMetric(chartMetric);
+  const data = dynamicsChartDataForMetric(chartMetric, isLowActivityDemo);
+
+  return (
+    <div className="mt-2 h-[300px] w-full min-w-0">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 28, right: 8, left: 4, bottom: 4 }}>
+          <CartesianGrid stroke="#ECECF0" vertical={false} />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: '#767386', fontSize: 11 }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            tick={CHART_VERTICAL_AXIS_TICK}
+            axisLine={false}
+            tickLine={false}
+            width={valueKind === 'percent' ? 44 : 56}
+            domain={[0, 'auto']}
+            tickFormatter={(v) => formatChartAxisTick(valueKind, v)}
+          />
+          <Tooltip
+            contentStyle={{
+              borderRadius: 12,
+              border: '1px solid #E5E7EB',
+              fontSize: 12,
+            }}
+            formatter={(value: number, name: string) => {
+              if (name === 'previous') {
+                return [formatChartTooltipValue(valueKind, value), 'Прошлый период'];
+              }
+              return [formatChartTooltipValue(valueKind, value), primaryLineLabel];
+            }}
+          />
+          <Line
+            type="monotone"
+            dataKey="primary"
+            stroke="#22C55E"
+            strokeWidth={2}
+            dot={false}
+            name="primary"
+          />
+          <Line
+            type="monotone"
+            dataKey="previous"
+            stroke="#22C55E"
+            strokeWidth={2}
+            strokeDasharray="5 5"
+            dot={false}
+            name="previous"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function CpcCampaignStatisticsSection({
+  isLowActivityDemo,
+  onIncreaseBidClick,
+}: {
+  isLowActivityDemo: boolean;
+  onIncreaseBidClick: () => void;
+}) {
+  const statsChartRef = useRef<HTMLDivElement>(null);
+  const [isChartVisible, setIsChartVisible] = useState(true);
+  const [chartTab, setChartTab] = useState<CpcStatsChartTab>('dynamics');
+  const [chartMetric, setChartMetric] = useState<CpcChartMetricId>('ctr');
+  const [chartThirdMetric, setChartThirdMetric] =
+    useState<CpcChartThirdMetricId>('impressionShare');
+  const [openChartDropdown, setOpenChartDropdown] = useState<'metric' | 'thirdMetric' | null>(
+    null,
+  );
+
+  const chartMetricLabel =
+    CPC_CHART_ALL_METRICS.find((m) => m.id === chartMetric)?.label ?? 'Метрика';
+
+  const positionLeftAxisLabel = CPC_POSITION_LEFT_METRIC[chartThirdMetric].label;
+
+  const isPositionTabAvailable = isPositionChartTabAvailable(chartMetric);
+  const isDynamicsTabAvailable = isDynamicsChartTabAvailable(chartMetric);
+  const showChartModeTabs = chartMetric === 'searchPosition';
+  const effectiveChartTab: CpcStatsChartTab = showChartModeTabs ? chartTab : 'dynamics';
+
+  useEffect(() => {
+    if (chartTab === 'position' && !isPositionTabAvailable && isDynamicsTabAvailable) {
+      setChartTab('dynamics');
+    }
+    if (chartTab === 'dynamics' && !isDynamicsTabAvailable && isPositionTabAvailable) {
+      setChartTab('position');
+    }
+  }, [chartTab, isPositionTabAvailable, isDynamicsTabAvailable]);
+
+  useEffect(() => {
+    if (chartTab !== 'position') {
+      setOpenChartDropdown((open) => (open === 'thirdMetric' ? null : open));
+    }
+  }, [chartTab]);
+
+  const handleChartMetricChange = (metricId: CpcChartMetricId) => {
+    setChartMetric(metricId);
+    const focus = chartFocusForMetric(metricId);
+    setChartThirdMetric(focus.third);
+    const positionOk = isPositionChartTabAvailable(metricId);
+    const dynamicsOk = isDynamicsChartTabAvailable(metricId);
+    if (focus.tab === 'position' && positionOk) {
+      setChartTab('position');
+    } else if (dynamicsOk) {
+      setChartTab('dynamics');
+    } else if (positionOk) {
+      setChartTab('position');
+    }
+  };
+
+  const handleChartThirdMetricChange = (thirdMetricId: CpcChartThirdMetricId) => {
+    setChartThirdMetric(thirdMetricId);
+  };
+
+  const focusChart = useCallback((metricId: CpcChartMetricId) => {
+    const focus = chartFocusForMetric(metricId);
+    const openingChart = !isChartVisible;
+    setIsChartVisible(true);
+    setChartMetric(metricId);
+    setChartThirdMetric(focus.third);
+    const positionOk = isPositionChartTabAvailable(metricId);
+    const dynamicsOk = isDynamicsChartTabAvailable(metricId);
+    if (focus.tab === 'position' && positionOk) {
+      setChartTab('position');
+    } else if (dynamicsOk) {
+      setChartTab('dynamics');
+    } else if (positionOk) {
+      setChartTab('position');
+    }
+    setOpenChartDropdown(null);
+    const scrollToChart = () => {
+      statsChartRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+    if (openingChart) {
+      window.setTimeout(scrollToChart, 50);
+    } else {
+      window.requestAnimationFrame(scrollToChart);
+    }
+  }, [isChartVisible]);
+
+  const dateLabel = isLowActivityDemo ? '27.06.2026 — 03.07.2026' : '15.04.25—21.04.25';
+
+  const impressionsMain = isLowActivityDemo ? '3' : '29 231';
+  const impressionsTrend = isLowActivityDemo
+    ? { value: '0%', direction: 'up' as const }
+    : { value: '3,4%', direction: 'up' as const };
+  const cpmValue = isLowActivityDemo ? '346,67 ₽' : '175 ₽';
+  const cpmTrend = isLowActivityDemo
+    ? { value: '0%', direction: 'up' as const }
+    : { value: '1,0%', direction: 'up' as const };
+  const searchPosition = isLowActivityDemo ? '19' : '2';
+
+  const clicksMain = isLowActivityDemo ? '0' : '83';
+  const clicksTrend = isLowActivityDemo
+    ? { value: '0%', direction: 'up' as const }
+    : { value: '12,1%', direction: 'up' as const };
+
+  const ordersMain = isLowActivityDemo ? '0' : '19';
+  const ordersTrend = isLowActivityDemo
+    ? { value: '0%', direction: 'down' as const, positiveIsGood: false }
+    : { value: '18,8%', direction: 'up' as const };
+  const cpoValue = isLowActivityDemo ? 'Нет данных' : '269 ₽';
+  const cpoMuted = isLowActivityDemo;
+
+  const shareMain = isLowActivityDemo ? '0%' : '50,6%';
+  const shareTrend = isLowActivityDemo
+    ? { value: '0%', direction: 'down' as const, positiveIsGood: true }
+    : { value: '0,3%', direction: 'down' as const, positiveIsGood: true };
+  const orderSum = isLowActivityDemo ? '0 ₽' : '196 000 ₽';
+  const spendLabel = 'Затраты';
+  const spendValue = isLowActivityDemo ? '1,04 ₽' : '5 115 ₽';
+
+  return (
+    <section className="mb-8 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-bold text-gray-900">Статистика</h2>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          >
+            <Calendar className="h-4 w-4 text-gray-500" />
+            <span className="tabular-nums">{dateLabel}</span>
+          </button>
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            <span className="text-gray-500" aria-hidden>
+              📊
+            </span>
+            Полная статистика
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatMetricCard
+          title="Показы"
+          onOpenChart={() => focusChart('impressions')}
+          primaryMetric={
+            <StatPrimaryMetric value={impressionsMain} trend={impressionsTrend} compact />
+          }
+          footer={
+            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+              <StatSecondaryMetricWithChart
+                label="CPM"
+                value={cpmValue}
+                trend={cpmTrend}
+                onOpenChart={() => focusChart('cpm')}
+              />
+              <StatSecondaryMetricWithChart
+                label="Позиция в поиске"
+                value={searchPosition}
+                onOpenChart={() => focusChart('searchPosition')}
+              />
+            </div>
+          }
+        />
+
+        <StatMetricCard
+          title="Клики"
+          onOpenChart={() => focusChart('clicks')}
+          primaryMetric={<StatPrimaryMetric value={clicksMain} trend={clicksTrend} compact />}
+          footer={
+            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+              <StatSecondaryMetricWithChart
+                label="CTR"
+                value={isLowActivityDemo ? '0%' : '0,28%'}
+                trend={
+                  isLowActivityDemo
+                    ? { value: '0%', direction: 'up' }
+                    : { value: '0,03%', direction: 'down', positiveIsGood: false }
+                }
+                onOpenChart={() => focusChart('ctr')}
+              />
+              <StatSecondaryMetricWithChart
+                label="CPC"
+                value={isLowActivityDemo ? '0 ₽' : '61 ₽'}
+                trend={
+                  isLowActivityDemo
+                    ? { value: '0%', direction: 'up' }
+                    : { value: '6,1%', direction: 'up' }
+                }
+                onOpenChart={() => focusChart('cpc')}
+              />
+            </div>
+          }
+        />
+
+        <StatMetricCard
+          title="Заказы"
+          onOpenChart={() => focusChart('orders')}
+          primaryMetric={<StatPrimaryMetric value={ordersMain} trend={ordersTrend} compact />}
+          footer={
+            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+              <StatSecondaryMetricWithChart
+                label="CR"
+                value={isLowActivityDemo ? '0%' : '22,9%'}
+                trend={
+                  isLowActivityDemo
+                    ? { value: '0%', direction: 'down', positiveIsGood: false }
+                    : { value: '1,4%', direction: 'up' }
+                }
+                onOpenChart={() => focusChart('cr')}
+              />
+              <StatSecondaryMetricWithChart
+                label="CPO"
+                value={cpoValue}
+                valueMuted={cpoMuted}
+                onOpenChart={() => focusChart('cpo')}
+              />
+            </div>
+          }
+        />
+
+        <StatMetricCard
+          title="Доля затрат"
+          onOpenChart={() => focusChart('costShare')}
+          primaryMetric={<StatPrimaryMetric value={shareMain} trend={shareTrend} compact />}
+          footer={
+            <div className="grid grid-cols-2 gap-3 border-t border-gray-100 pt-3">
+              <StatSecondaryMetricWithChart
+                label="Сумма заказов"
+                value={orderSum}
+                trend={
+                  isLowActivityDemo
+                    ? { value: '0%', direction: 'down', positiveIsGood: false }
+                    : { value: '5,8%', direction: 'up' }
+                }
+                onOpenChart={() => focusChart('orderSum')}
+              />
+              <StatSecondaryMetricWithChart
+                label={spendLabel}
+                value={spendValue}
+                trend={
+                  isLowActivityDemo
+                    ? { value: '0%', direction: 'up' }
+                    : { value: '5,3%', direction: 'up' }
+                }
+                onOpenChart={() => focusChart('spend')}
+              />
+            </div>
+          }
+        />
+      </div>
+
+      <label className="mt-4 flex cursor-pointer select-none items-center gap-2.5 text-[15px] font-medium text-gray-700">
+        <StatsChartToggleSwitch checked={isChartVisible} onChange={setIsChartVisible} />
+        <span>Показать график</span>
+      </label>
+
+      <div ref={statsChartRef} className="scroll-mt-6" aria-hidden={!isChartVisible} />
+
+      {isChartVisible ? (
+        <div className="mt-4 border-t border-gray-100 pt-5">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <CpcChartSelectDropdown
+                options={CPC_CHART_ALL_METRICS}
+                value={chartMetric}
+                onChange={handleChartMetricChange}
+                isOpen={openChartDropdown === 'metric'}
+                onOpenChange={(open) => setOpenChartDropdown(open ? 'metric' : null)}
+              />
+              {showChartModeTabs ? (
+                <div className="inline-flex shrink-0 rounded-lg bg-[#F2F2F7] p-0.5">
+                  <button
+                    type="button"
+                    disabled={!isDynamicsTabAvailable}
+                    onClick={() => isDynamicsTabAvailable && setChartTab('dynamics')}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      !isDynamicsTabAvailable
+                        ? 'cursor-not-allowed text-gray-400 opacity-50'
+                        : chartTab === 'dynamics'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Calendar className="h-4 w-4 shrink-0" />
+                    По дням
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!isPositionTabAvailable}
+                    onClick={() => isPositionTabAvailable && setChartTab('position')}
+                    className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                      !isPositionTabAvailable
+                        ? 'cursor-not-allowed text-gray-400 opacity-50'
+                        : chartTab === 'position'
+                          ? 'bg-white text-gray-900 shadow-sm'
+                          : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <StatsChartPositionsGridIcon className="shrink-0" />
+                    По позициям
+                  </button>
+                </div>
+              ) : null}
+              {showChartModeTabs && chartTab === 'position' ? (
+                <CpcChartSelectDropdown
+                  options={CPC_CHART_THIRD_METRICS}
+                  value={chartThirdMetric}
+                  onChange={handleChartThirdMetricChange}
+                  isOpen={openChartDropdown === 'thirdMetric'}
+                  onOpenChange={(open) => setOpenChartDropdown(open ? 'thirdMetric' : null)}
+                />
+              ) : null}
+            </div>
+          </div>
+
+          {effectiveChartTab === 'position' ? (
+            <>
+              <div className="relative mt-4">
+                <p className={`${CHART_AXIS_TITLE_CLASS} left-0`}>{positionLeftAxisLabel}</p>
+                <p className={`${CHART_AXIS_TITLE_CLASS} right-0`}>CTR, %</p>
+                <CpcPositionComboChart
+                  thirdMetric={chartThirdMetric}
+                  isLowActivityDemo={isLowActivityDemo}
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-gray-600">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-sm bg-[#9A41FE]" aria-hidden />
+                  {positionLeftAxisLabel}
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-0.5 w-4 rounded bg-[#22C55E]" aria-hidden />
+                  CTR
+                </span>
+              </div>
+              <div className="mt-4 rounded-xl bg-[#F6F2FF] px-4 py-3 text-sm leading-snug text-gray-800">
+                Ваша карточка чаще всего показывалась в поиске на позициях с 11 по 34. Чтобы поднять её
+                выше,{' '}
+                <button
+                  type="button"
+                  onClick={onIncreaseBidClick}
+                  className="font-medium text-blue-600 hover:text-blue-700 hover:underline"
+                >
+                  увеличьте ставку
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="relative mt-4">
+                <p className={`${CHART_AXIS_TITLE_CLASS} left-0`}>{chartMetricLabel}</p>
+                <CpcDynamicsLineChart
+                  isLowActivityDemo={isLowActivityDemo}
+                  primaryLineLabel={chartMetricLabel}
+                  chartMetric={chartMetric}
+                />
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-gray-600">
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-0.5 w-4 rounded bg-[#22C55E]" aria-hidden />
+                  {chartMetricLabel}
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    className="h-0 w-4 border-t-2 border-dashed border-[#22C55E]"
+                    aria-hidden
+                  />
+                  Прошлый период
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -454,7 +1689,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [savedDailyLimit, setSavedDailyLimit] = useState(dailyLimit ? String(dailyLimit) : '');
   const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
   const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
-  const [isStatsChartEnabled, setIsStatsChartEnabled] = useState(false);
+  const productsSectionRef = useRef<HTMLElement>(null);
   const productKey = String(DEMO_CPC_PRODUCT_NM);
   const [productSearchBids, setProductSearchBids] = useState<Record<string, ProductBidEntry>>({
     [productKey]: { draft: '17.9', saved: '17.9' },
@@ -517,10 +1752,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }, [savedDailyLimit]);
 
+  const onUpdateDataRef = useRef(onUpdateData);
+  onUpdateDataRef.current = onUpdateData;
+  const lastSyncedMaxBidRef = useRef<number | null>(null);
+
   useEffect(() => {
-    if (!onUpdateData || maxSavedProductBidRub <= 0) return;
-    onUpdateData({ maxCpcBidRub: maxSavedProductBidRub });
-  }, [maxSavedProductBidRub, onUpdateData]);
+    if (maxSavedProductBidRub <= 0) return;
+    if (lastSyncedMaxBidRef.current === maxSavedProductBidRub) return;
+    lastSyncedMaxBidRef.current = maxSavedProductBidRub;
+    onUpdateDataRef.current?.({ maxCpcBidRub: maxSavedProductBidRub });
+  }, [maxSavedProductBidRub]);
 
   const showDailyLimitBidMismatchHint =
     isDailyLimitEnabled &&
@@ -1055,111 +2296,15 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           />
         )}
 
-        <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 mb-6">
-            <div className="flex flex-wrap items-center gap-4">
-              <h2 className="text-lg font-bold text-gray-900">Статистика</h2>
-              <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                <ToggleSwitch checked={isStatsChartEnabled} onChange={setIsStatsChartEnabled} />
-                <span>График</span>
-              </label>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 rounded-lg border border-gray-200 bg-white hover:bg-gray-50"
-              >
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <span className="tabular-nums">15.04.25—21.04.25</span>
-              </button>
-              <button
-                type="button"
-                className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 rounded-lg border border-gray-200 bg-white hover:bg-gray-50"
-              >
-                <span className="text-gray-500" aria-hidden>
-                  📊
-                </span>
-                Полная статистика
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
-              <p className="text-base font-semibold text-gray-900 mb-1">Показы</p>
-              <StatPrimaryMetric value="29 231" trend={{ value: '3,4%', direction: 'up' }} />
-              <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
-                <StatSecondaryMetric label="CPM" value="175 ₽" trend={{ value: '1,0%', direction: 'up' }} />
-                <StatSecondaryMetric
-                  label="Позиция в поиске"
-                  value="2"
-                  trend={{ value: '123', direction: 'up' }}
-                />
-              </div>
-            </div>
-
-            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
-              <p className="text-base font-semibold text-gray-900 mb-1">Клики</p>
-              <StatPrimaryMetric value="83" trend={{ value: '12,1%', direction: 'up' }} />
-              <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
-                <StatSecondaryMetric
-                  label="CTR"
-                  value="0,28%"
-                  trend={{ value: '0,03%', direction: 'down', positiveIsGood: false }}
-                />
-                <StatSecondaryMetric label="CPC" value="61 ₽" trend={{ value: '6,1%', direction: 'up' }} />
-              </div>
-            </div>
-
-            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
-              <p className="text-base font-semibold text-gray-900 mb-1">Заказы</p>
-              {isCardWorkBonusScenario ? (
-                <>
-                  <StatPrimaryMetric
-                    value="0"
-                    trend={{ value: '0%', direction: 'down', positiveIsGood: false }}
-                  />
-                  <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
-                    <StatSecondaryMetric
-                      label="CR"
-                      value="0%"
-                      trend={{ value: '0%', direction: 'down', positiveIsGood: false }}
-                    />
-                    <StatSecondaryMetric label="CPO" value="—" trend={{ value: '0%', direction: 'down' }} />
-                  </div>
-                </>
-              ) : (
-                <>
-                  <StatPrimaryMetric value="19" trend={{ value: '18,8%', direction: 'up' }} />
-                  <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
-                    <StatSecondaryMetric label="CR" value="22,9%" trend={{ value: '1,4%', direction: 'up' }} />
-                    <StatSecondaryMetric label="CPO" value="269 ₽" trend={{ value: '8,4%', direction: 'up' }} />
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="border border-gray-200 rounded-2xl px-5 py-4 bg-white">
-              <p className="text-base font-semibold text-gray-900 mb-1">Доля затрат</p>
-              <StatPrimaryMetric
-                value="50,6%"
-                trend={{ value: '0,3%', direction: 'down', positiveIsGood: true }}
-              />
-              <div className="border-t border-gray-100 pt-3 grid grid-cols-2 gap-3">
-                <StatSecondaryMetric
-                  label="Сумма заказов"
-                  value={isCardWorkBonusScenario ? '0 ₽' : '196 000 ₽'}
-                  trend={
-                    isCardWorkBonusScenario
-                      ? { value: '0%', direction: 'down', positiveIsGood: false }
-                      : { value: '5,8%', direction: 'up' }
-                  }
-                />
-                <StatSecondaryMetric label="Расход" value="5 115 ₽" trend={{ value: '5,3%', direction: 'up' }} />
-              </div>
-            </div>
-          </div>
-        </section>
+        <CpcCampaignStatisticsSection
+          isLowActivityDemo={isCardWorkBonusScenario}
+          onIncreaseBidClick={() => {
+            productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setToastMessage('Измените ставку в блоке «Товары»');
+            setToastIsError(false);
+            setShowToast(true);
+          }}
+        />
 
         <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8">
           <h2 className="text-lg font-bold text-gray-900 mb-4">Зоны показов</h2>
@@ -1199,7 +2344,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           </div>
         </section>
 
-        <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8">
+        <section
+          ref={productsSectionRef}
+          className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8"
+        >
           <h2 className="mb-5 text-lg font-bold text-gray-900">
             Товары{' '}
             <span className="font-normal text-gray-500">1 шт.</span>
