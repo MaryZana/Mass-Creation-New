@@ -659,10 +659,10 @@ function chartValueKindForMetric(metricId: CpcChartMetricId): CpcChartValueKind 
   if (metricId === 'impressions' || metricId === 'clicks' || metricId === 'orders') {
     return 'count';
   }
-  if (metricId === 'orderSum' || metricId === 'spend' || metricId === 'cpm' || metricId === 'cpc' || metricId === 'cpo') {
+  if (metricId === 'orderSum' || metricId === 'spend' || metricId === 'cpc' || metricId === 'cpo') {
     return 'currency';
   }
-  if (metricId === 'ctr' || metricId === 'cr' || metricId === 'costShare') {
+  if (metricId === 'ctr' || metricId === 'cr' || metricId === 'costShare' || metricId === 'cpm') {
     return 'percent';
   }
   return 'percent';
@@ -817,23 +817,23 @@ const CPC_DYNAMICS_SPEND_CHART_DATA_LOW: CpcDynamicsPoint[] = [
 ];
 
 const CPC_DYNAMICS_CPM_CHART_DATA: CpcDynamicsPoint[] = [
-  { date: '27.06', primary: 172, previous: 168 },
-  { date: '28.06', primary: 173, previous: 169 },
-  { date: '29.06', primary: 174, previous: 170 },
-  { date: '30.06', primary: 174, previous: 171 },
-  { date: '01.07', primary: 175, previous: 172 },
-  { date: '02.07', primary: 175, previous: 173 },
-  { date: '03.07', primary: 175, previous: 174 },
+  { date: '27.06', primary: 0.0096, previous: 0.0099 },
+  { date: '28.06', primary: 0.0097, previous: 0.0098 },
+  { date: '29.06', primary: 0.0098, previous: 0.0097 },
+  { date: '30.06', primary: 0.0099, previous: 0.0096 },
+  { date: '01.07', primary: 0.0099, previous: 0.0098 },
+  { date: '02.07', primary: 0.01, previous: 0.0097 },
+  { date: '03.07', primary: 0.01, previous: 0.0098 },
 ];
 
 const CPC_DYNAMICS_CPM_CHART_DATA_LOW: CpcDynamicsPoint[] = [
-  { date: '27.06', primary: 347, previous: 350 },
-  { date: '28.06', primary: 347, previous: 348 },
-  { date: '29.06', primary: 347, previous: 347 },
-  { date: '30.06', primary: 347, previous: 347 },
-  { date: '01.07', primary: 347, previous: 347 },
-  { date: '02.07', primary: 347, previous: 347 },
-  { date: '03.07', primary: 347, previous: 347 },
+  { date: '27.06', primary: 0, previous: 0 },
+  { date: '28.06', primary: 0, previous: 0 },
+  { date: '29.06', primary: 0, previous: 0 },
+  { date: '30.06', primary: 0, previous: 0 },
+  { date: '01.07', primary: 0, previous: 0 },
+  { date: '02.07', primary: 0, previous: 0 },
+  { date: '03.07', primary: 0, previous: 0 },
 ];
 
 const CPC_DYNAMICS_CPC_CHART_DATA: CpcDynamicsPoint[] = [
@@ -876,12 +876,17 @@ const CPC_DYNAMICS_CPO_CHART_DATA_LOW: CpcDynamicsPoint[] = [
   { date: '03.07', primary: 0, previous: 0 },
 ];
 
+const CPC_DYNAMICS_PERCENT_CHART_DATA_BY_METRIC: Partial<
+  Record<CpcChartMetricId, { normal: CpcDynamicsPoint[]; low: CpcDynamicsPoint[] }>
+> = {
+  cpm: { normal: CPC_DYNAMICS_CPM_CHART_DATA, low: CPC_DYNAMICS_CPM_CHART_DATA_LOW },
+};
+
 const CPC_DYNAMICS_CURRENCY_CHART_DATA_BY_METRIC: Partial<
   Record<CpcChartMetricId, { normal: CpcDynamicsPoint[]; low: CpcDynamicsPoint[] }>
 > = {
   orderSum: { normal: CPC_DYNAMICS_ORDER_SUM_CHART_DATA, low: CPC_DYNAMICS_ORDER_SUM_CHART_DATA_LOW },
   spend: { normal: CPC_DYNAMICS_SPEND_CHART_DATA, low: CPC_DYNAMICS_SPEND_CHART_DATA_LOW },
-  cpm: { normal: CPC_DYNAMICS_CPM_CHART_DATA, low: CPC_DYNAMICS_CPM_CHART_DATA_LOW },
   cpc: { normal: CPC_DYNAMICS_CPC_CHART_DATA, low: CPC_DYNAMICS_CPC_CHART_DATA_LOW },
   cpo: { normal: CPC_DYNAMICS_CPO_CHART_DATA, low: CPC_DYNAMICS_CPO_CHART_DATA_LOW },
 };
@@ -923,6 +928,10 @@ function dynamicsChartDataForMetric(
   const currencySeries = CPC_DYNAMICS_CURRENCY_CHART_DATA_BY_METRIC[metricId];
   if (kind === 'currency' && currencySeries) {
     return isLowActivityDemo ? currencySeries.low : currencySeries.normal;
+  }
+  const percentSeries = CPC_DYNAMICS_PERCENT_CHART_DATA_BY_METRIC[metricId];
+  if (kind === 'percent' && percentSeries) {
+    return isLowActivityDemo ? percentSeries.low : percentSeries.normal;
   }
   return isLowActivityDemo ? CPC_DYNAMICS_PERCENT_CHART_DATA_LOW : CPC_DYNAMICS_PERCENT_CHART_DATA;
 }
@@ -1126,6 +1135,18 @@ function CpcPositionComboChart({
 }) {
   const leftMetric = CPC_POSITION_LEFT_METRIC[thirdMetric];
   const data = isLowActivityDemo ? CPC_POSITION_CHART_DATA_LOW : CPC_POSITION_CHART_DATA;
+  const withoutPromoKey = `${leftMetric.dataKey}WithoutPromo`;
+  const chartData = useMemo(() => {
+    const organicFactor = 0.55;
+    return data.map((row) => {
+      const withPromo = row[leftMetric.dataKey] as number;
+      const withoutPromo =
+        leftMetric.kind === 'share'
+          ? Math.round(withPromo * organicFactor * 1000) / 1000
+          : Math.round(withPromo * organicFactor);
+      return { ...row, [withoutPromoKey]: withoutPromo };
+    });
+  }, [data, leftMetric.dataKey, leftMetric.kind, withoutPromoKey]);
   const leftDomain = leftMetric.kind === 'share' ? ([0, 0.5] as const) : ([0, 'auto'] as const);
   const leftTicks =
     leftMetric.kind === 'share' ? [0, 0.1, 0.2, 0.3, 0.4, 0.5] : undefined;
@@ -1142,7 +1163,13 @@ function CpcPositionComboChart({
   return (
     <div className="mt-2 h-[300px] w-full min-w-0">
       <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={data} margin={{ top: 28, right: 8, left: 4, bottom: 4 }}>
+        <ComposedChart data={chartData} margin={{ top: 28, right: 8, left: 4, bottom: 4 }} barGap={3}>
+          <defs>
+            <linearGradient id="cpcPositionWithoutPromoGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#9A41FE" stopOpacity={0.38} />
+              <stop offset="100%" stopColor="#9A41FE" stopOpacity={0.1} />
+            </linearGradient>
+          </defs>
           <CartesianGrid stroke="#ECECF0" vertical />
           <XAxis
             dataKey="range"
@@ -1181,16 +1208,30 @@ function CpcPositionComboChart({
             }}
             formatter={(value: number, name: string) => {
               if (name === 'ctr') return [`${(value * 100).toFixed(2)}%`, 'CTR'];
+              if (name === 'withoutPromo') {
+                return [formatChartTooltipValue(leftValueKind, value), 'Без продвижения'];
+              }
+              if (name === 'withPromo') {
+                return [formatChartTooltipValue(leftValueKind, value), leftMetric.label];
+              }
               return formatLeftTooltip(value);
             }}
+          />
+          <Bar
+            yAxisId="left"
+            dataKey={withoutPromoKey}
+            fill="url(#cpcPositionWithoutPromoGradient)"
+            radius={[3, 3, 0, 0]}
+            barSize={22}
+            name="withoutPromo"
           />
           <Bar
             yAxisId="left"
             dataKey={leftMetric.dataKey}
             fill="#9A41FE"
             radius={[3, 3, 0, 0]}
-            barSize={28}
-            name="left"
+            barSize={22}
+            name="withPromo"
           />
           <Line
             yAxisId="ctr"
@@ -1608,6 +1649,13 @@ function CpcCampaignStatisticsSection({
                 <span className="inline-flex items-center gap-2">
                   <span className="h-2 w-2 rounded-sm bg-[#9A41FE]" aria-hidden />
                   {positionLeftAxisLabel}
+                </span>
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    className="h-2 w-2 rounded-sm bg-gradient-to-t from-[#9A41FE]/15 to-[#9A41FE]/40"
+                    aria-hidden
+                  />
+                  Без продвижения
                 </span>
                 <span className="inline-flex items-center gap-2">
                   <span className="h-0.5 w-4 rounded bg-[#22C55E]" aria-hidden />
