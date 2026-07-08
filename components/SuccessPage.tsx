@@ -62,6 +62,7 @@ import {
   productTableThumbFallbackUrl,
   resolveProductTableThumbSrc,
   productTableThumbUrl,
+  PREBUILT_LIST_CPC_CAMPAIGN_ID,
 } from './SuccessPageTestData';
 import {
   useProfile,
@@ -4475,7 +4476,7 @@ const { campaigns: MOCK_CAMPAIGNS, productTree: MOCK_PRODUCTS_TREE } = PROFILE_1
 
 // Предсобранная CPC-кампания (вставка в таблицу «Кампании»)
 const PREBUILT_CPC_CAMPAIGN_ID = 'prebuilt-cpc';
-const PREBUILT_CPC_CAMPAIGN_CAMPAIGN_ID = 999999;
+const PREBUILT_CPC_CAMPAIGN_CAMPAIGN_ID = PREBUILT_LIST_CPC_CAMPAIGN_ID;
 const PREBUILT_CPC_CAMPAIGN_BASE =
   MOCK_CAMPAIGNS.find((c) => c.type === 'CPC') ?? MOCK_CAMPAIGNS[0];
 
@@ -5165,6 +5166,8 @@ const DailyLimitCell: React.FC<{
   onClick?: () => void;
 }> = ({ dailyLimit, dailyLimitExhausted, isCpc = true, maxCpcBidRub = 0, onClick }) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+  const [isBidHintTooltipVisible, setIsBidHintTooltipVisible] = useState(false);
+  const bidHintOpenRef = React.useRef(false);
   const hideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const exhausted = !!dailyLimitExhausted;
 
@@ -5213,7 +5216,18 @@ const DailyLimitCell: React.FC<{
           </div>
         </div>
         {bidLimitMismatch ? (
-          <DailyLimitBidMismatchHint recommendedDailyLimitRub={recommendedDailyLimitRub} className="mt-0.5" />
+          <DailyLimitBidMismatchHint
+            recommendedDailyLimitRub={recommendedDailyLimitRub}
+            className="mt-0.5"
+            onVisibilityChange={(open) => {
+              bidHintOpenRef.current = open;
+              setIsBidHintTooltipVisible(open);
+              if (open) {
+                clearHideTimeout();
+                setIsTooltipVisible(false);
+              }
+            }}
+          />
         ) : null}
       </div>
     ) : (
@@ -5224,7 +5238,10 @@ const DailyLimitCell: React.FC<{
     return (
       <div
         className="relative inline-block"
-        onMouseEnter={() => { clearHideTimeout(); setIsTooltipVisible(true); }}
+        onMouseEnter={() => {
+          clearHideTimeout();
+          if (!bidHintOpenRef.current) setIsTooltipVisible(true);
+        }}
         onMouseLeave={scheduleHide}
       >
         <div
@@ -5236,7 +5253,7 @@ const DailyLimitCell: React.FC<{
         >
           {content}
         </div>
-        {isTooltipVisible && tooltipText && (
+        {isTooltipVisible && tooltipText && !isBidHintTooltipVisible && (
           <>
             <div className="absolute left-0 top-full w-64 h-2" onMouseEnter={clearHideTimeout} onMouseLeave={scheduleHide} />
             <div
@@ -10309,7 +10326,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                      {paginatedCampaigns.map(c => (
+                      {paginatedCampaigns.map(c => {
+                          const isCampaignRowSelected = selectedCampaigns.includes(c.id);
+                          const campaignPinnedCellClass = isCampaignRowSelected
+                            ? 'bg-purple-50 group-hover/campaign-row:bg-purple-50'
+                            : 'bg-white group-hover/campaign-row:bg-gray-50';
+                          return (
                           <tr
                             key={c.id}
                             onClick={(e) => {
@@ -10317,9 +10339,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 openListCpcCampaign(c);
                               }
                             }}
-                            className={`transition-colors ${selectedCampaigns.includes(c.id) ? 'bg-purple-50' : 'hover:bg-gray-50'} ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}
+                            className={`group/campaign-row transition-colors ${
+                              isCampaignRowSelected ? 'bg-purple-50' : 'hover:bg-gray-50'
+                            } ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}
                           >
-                      <td className="sticky left-0 z-10 p-4 bg-white" onClick={(e) => e.stopPropagation()}>
+                      <td
+                        className={`sticky left-0 z-10 p-4 ${campaignPinnedCellClass}`}
+                        onClick={(e) => e.stopPropagation()}
+                      >
                                 <Checkbox
                                   checked={selectedCampaigns.includes(c.id)}
                                   onChange={(e) => handleSelectSingle(c.id, e.target.checked)}
@@ -10330,7 +10357,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   }
                                 />
                               </td>
-                              <td className="sticky left-[52px] z-10 p-4 bg-white" onClick={(e) => e.stopPropagation()}>
+                              <td
+                                className={`sticky left-[52px] z-10 p-4 ${campaignPinnedCellClass}`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                   <ToggleSwitch
                                       checked={c.status === 'active'}
                                       onChange={(isChecked) => handleStatusToggle(c.id, isChecked)}
@@ -10338,7 +10368,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   />
                               </td>
                               <td
-                                className={`sticky left-[100px] z-10 p-4 bg-white ${
+                                className={`sticky left-[100px] z-10 p-4 ${campaignPinnedCellClass} ${
                                   hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
                                 }`}
                               >
@@ -10435,7 +10465,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 />
                               </td>
                           </tr>
-                      ))}
+                          );
+                      })}
                   </tbody>
               </table>
           </div>

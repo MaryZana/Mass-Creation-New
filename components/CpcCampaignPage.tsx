@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Checkbox } from 'antd';
 import {
   Wallet,
@@ -11,10 +12,13 @@ import {
   Bell,
   Calendar,
   MoreVertical,
+  Settings,
+  Sparkles,
 } from './Icons';
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
   resolveProductTableThumbSrc,
+  PREBUILT_LIST_CPC_CAMPAIGN_ID,
 } from './SuccessPageTestData';
 import { AppHeader } from './AppHeader';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
@@ -26,7 +30,9 @@ import {
   DAILY_LIMIT_ABSOLUTE_MIN,
   minDailyLimitForMaxBid,
   isDailyLimitBelowRecommendedForMaxBid,
+  shouldPromptRaiseDailyLimitForMaxBid,
   CPC_MAX_BID_RUB,
+  estimateDailyLimitSpendPreview,
 } from '../utils/cpcDailyLimitBid';
 import {
   Bar,
@@ -159,13 +165,22 @@ function HeaderHint({ label, className }: { label: string; className?: string })
   );
 }
 
-function BidHistogramButton({ onClick }: { onClick?: () => void }) {
+function BidHistogramButton({
+  onClick,
+  isActive = false,
+}: {
+  onClick?: () => void;
+  isActive?: boolean;
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+      className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 ${
+        isActive ? 'bg-gray-100' : ''
+      }`}
       aria-label="Статистика ставки"
+      aria-expanded={isActive}
     >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
         <rect x="1" y="8" width="3" height="7" rx="0.5" fill="currentColor" opacity="0.35" />
@@ -178,24 +193,237 @@ function BidHistogramButton({ onClick }: { onClick?: () => void }) {
 
 const PRODUCT_BID_INPUT_WIDTH_CLASS = 'w-[5.75rem]';
 
-/** Индикатор «ставка за позиции 1–2» под полем поиска, когда преследование выключено */
-function SearchBidPositionHint() {
-  const segments = 12;
-  const activeThrough = 4;
+type BidChasingRange = '1-2' | '3-10' | '11-34';
+
+const BID_CHASING_POSITION_OPTIONS: {
+  id: BidChasingRange;
+  label: string;
+  accentClass: string;
+  selectedBgClass: string;
+  segmentActiveClass: string;
+  labelTextClass: string;
+  demoBidRub: number;
+  demoClicksPerDay: number;
+  demoSearchCtr: number;
+}[] = [
+  {
+    id: '1-2',
+    label: '1–2 позиции',
+    accentClass: 'border-l-[#9A41FE]',
+    selectedBgClass: 'bg-[#F6F2FF]',
+    segmentActiveClass: 'bg-[#9A41FE]',
+    labelTextClass: 'text-[#9A41FE]',
+    demoBidRub: 18.56,
+    demoClicksPerDay: 2000,
+    demoSearchCtr: 0.06,
+  },
+  {
+    id: '3-10',
+    label: '3–10 позиции',
+    accentClass: 'border-l-emerald-400',
+    selectedBgClass: 'bg-white',
+    segmentActiveClass: 'bg-emerald-400',
+    labelTextClass: 'text-emerald-600',
+    demoBidRub: 10.53,
+    demoClicksPerDay: 1500,
+    demoSearchCtr: 0.05,
+  },
+  {
+    id: '11-34',
+    label: '11–34 позиции',
+    accentClass: 'border-l-teal-300',
+    selectedBgClass: 'bg-gray-50',
+    segmentActiveClass: 'bg-teal-400',
+    labelTextClass: 'text-teal-600',
+    demoBidRub: 9.97,
+    demoClicksPerDay: 500,
+    demoSearchCtr: 0.04,
+  },
+];
+
+const BID_CHASING_TARGET_AVG_POSITION: Record<BidChasingRange, number> = {
+  '1-2': 2,
+  '3-10': 6,
+  '11-34': 22,
+};
+
+function formatRecommendedBidRub(value: number): string {
+  return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatApproxDailyBudgetRub(bidRub: number, clicksPerDay: number): string {
+  const total = bidRub * clicksPerDay;
+  return total.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+}
+
+function formatApproxClicksPerDay(clicks: number): string {
+  return clicks.toLocaleString('ru-RU');
+}
+
+function bidChasingPositionOption(id: BidChasingRange) {
+  return BID_CHASING_POSITION_OPTIONS.find((o) => o.id === id) ?? BID_CHASING_POSITION_OPTIONS[0];
+}
+
+/** Три сегмента позиций под полем ставки в поиске (когда автобиддер выключен) */
+function SearchBidPositionHint({
+  selectedPosition,
+  onSelectPosition,
+}: {
+  selectedPosition: BidChasingRange;
+  onSelectPosition: (position: BidChasingRange) => void;
+}) {
+  const active = bidChasingPositionOption(selectedPosition);
   return (
     <div className={`mt-1.5 ${PRODUCT_BID_INPUT_WIDTH_CLASS}`}>
-      <div className="flex h-1 gap-px overflow-hidden rounded-full">
-        {Array.from({ length: segments }, (_, i) => (
-          <span
-            key={i}
-            className={`h-full flex-1 rounded-sm ${
-              i < activeThrough ? 'bg-purple-500' : 'bg-gray-200'
-            }`}
-          />
-        ))}
+      <div
+        className="flex h-1 gap-px overflow-hidden rounded-full"
+        role="group"
+        aria-label="Позиция в поиске"
+      >
+        {BID_CHASING_POSITION_OPTIONS.map((tier) => {
+          const selected = selectedPosition === tier.id;
+          return (
+            <button
+              key={tier.id}
+              type="button"
+              onClick={() => onSelectPosition(tier.id)}
+              className={`h-full min-w-0 flex-1 rounded-sm transition-colors ${
+                selected ? tier.segmentActiveClass : 'bg-gray-200 hover:bg-gray-300'
+              }`}
+              aria-label={tier.label}
+              aria-pressed={selected}
+            />
+          );
+        })}
       </div>
-      <p className="mt-1 text-[10px] leading-none text-gray-400 text-right">Ставка за 1–2</p>
+      <p className={`mt-1 text-[10px] leading-snug text-right font-medium ${active.labelTextClass}`}>
+        {active.label}
+      </p>
     </div>
+  );
+}
+
+function SearchBidPositionPicker({
+  anchorRef,
+  popoverRef,
+  selectedPosition,
+  onSelectPosition,
+  onClose,
+}: {
+  anchorRef: React.RefObject<HTMLElement | null>;
+  popoverRef: React.RefObject<HTMLDivElement | null>;
+  selectedPosition: BidChasingRange;
+  onSelectPosition: (position: BidChasingRange) => void;
+  onClose: () => void;
+}) {
+  const pick = (position: BidChasingRange) => {
+    onSelectPosition(position);
+    onClose();
+  };
+
+  const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({
+    position: 'fixed',
+    visibility: 'hidden',
+  });
+
+  useLayoutEffect(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+
+    const updatePosition = () => {
+      const rect = anchor.getBoundingClientRect();
+      const width = Math.min(448, window.innerWidth - 16);
+      let left = rect.right - width;
+      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
+
+      const panel = popoverRef.current;
+      const panelHeight = panel?.offsetHeight ?? 420;
+      const gap = 8;
+      let top = rect.bottom + gap;
+      if (top + panelHeight > window.innerHeight - 8) {
+        top = rect.top - panelHeight - gap;
+      }
+      top = Math.max(8, Math.min(top, window.innerHeight - panelHeight - 8));
+
+      setPanelStyle({
+        position: 'fixed',
+        top,
+        left,
+        width,
+        zIndex: 200,
+        visibility: 'visible',
+      });
+    };
+
+    updatePosition();
+    const raf = requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [anchorRef, popoverRef]);
+
+  return createPortal(
+    <div
+      ref={popoverRef}
+      style={panelStyle}
+      className="rounded-2xl border border-gray-100 bg-white p-4 shadow-xl"
+      role="dialog"
+      aria-label="Выбор позиций в поиске"
+    >
+      <h3 className="text-base font-bold leading-snug text-gray-900">
+        Выберите позиции, которые хотите занимать в поиске
+      </h3>
+      <p className="mt-2 text-xs leading-relaxed text-gray-500">
+        Чтобы удерживать их, установите рекомендованную ставку. Не во всех кластерах можем поставить
+        вашу карточку именно в эти позиции — но в большинстве.
+      </p>
+      <div className="mt-4 flex flex-col gap-2">
+        {BID_CHASING_POSITION_OPTIONS.map((tier) => {
+          const selected = selectedPosition === tier.id;
+          const bidLabel = formatRecommendedBidRub(tier.demoBidRub);
+          return (
+            <div
+              key={tier.id}
+              className={`flex items-stretch gap-2 rounded-xl border border-gray-100 border-l-4 ${tier.accentClass} ${
+                selected ? tier.selectedBgClass : 'bg-white'
+              }`}
+            >
+              <button
+                type="button"
+                onClick={() => pick(tier.id)}
+                className="min-w-0 flex-1 rounded-l-lg px-3 py-3 text-left transition-colors hover:bg-gray-50/80"
+              >
+                <span className="block text-sm font-semibold text-gray-900">{tier.label}</span>
+                <span className="mt-1 block text-xs text-gray-500">
+                  Рекомендуемая ставка: {bidLabel} ₽
+                </span>
+                <span className="mt-0.5 block text-xs text-gray-500">
+                  Клики: ~ {formatApproxClicksPerDay(tier.demoClicksPerDay)} в день
+                </span>
+                <span className="mt-0.5 block text-xs text-gray-500">
+                  Примерный дневной бюджет: ~{' '}
+                  {formatApproxDailyBudgetRub(tier.demoBidRub, tier.demoClicksPerDay)} ₽
+                </span>
+              </button>
+              <div className="flex shrink-0 items-center pr-2">
+                <button
+                  type="button"
+                  onClick={() => pick(tier.id)}
+                  className="rounded-lg bg-gray-100 px-3 py-2 text-sm font-medium tabular-nums text-gray-900 transition-colors hover:bg-gray-200"
+                >
+                  {bidLabel} ₽
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -254,68 +482,6 @@ function ProductBidReadOnly({ value }: { value: string }) {
       <span>{display}</span>
       <span className="shrink-0 text-gray-400">₽</span>
     </div>
-  );
-}
-
-function DisplayZoneSearchArt() {
-  return (
-    <svg
-      width="88"
-      height="48"
-      viewBox="0 0 88 48"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="shrink-0 pointer-events-none select-none"
-      aria-hidden
-    >
-      <rect x="8" y="10" width="72" height="28" rx="8" fill="#F3F0FF" />
-      <rect x="14" y="18" width="44" height="6" rx="3" fill="#E4D9FF" />
-      <circle cx="62" cy="21" r="7" fill="#CBB5FF" />
-      <path
-        d="M59.5 21h5M61.75 18.75v4.5"
-        stroke="#9A41FE"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M65 24l3 3"
-        stroke="#9A41FE"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function DisplayZoneRecommendationsArt() {
-  return (
-    <svg
-      width="88"
-      height="48"
-      viewBox="0 0 88 48"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className="shrink-0 pointer-events-none select-none"
-      aria-hidden
-    >
-      <rect x="10" y="8" width="68" height="32" rx="8" fill="#F3F0FF" />
-      <rect x="16" y="14" width="18" height="18" rx="4" fill="#E4D9FF" />
-      <rect x="38" y="14" width="18" height="8" rx="3" fill="#E4D9FF" />
-      <rect x="38" y="26" width="28" height="6" rx="3" fill="#E4D9FF" />
-      <path
-        d="M22 26c1.2-2.2 3.4-3.5 6-3.5 2.2 0 4 1 5.2 2.6"
-        stroke="#9A41FE"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M19 24.5l1.8 1.8 3.6-4"
-        stroke="#9A41FE"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
 
@@ -1488,7 +1654,7 @@ function CpcCampaignStatisticsSection({
   onIncreaseBidClick: () => void;
 }) {
   const statsChartRef = useRef<HTMLDivElement>(null);
-  const [isChartVisible, setIsChartVisible] = useState(true);
+  const [isChartVisible, setIsChartVisible] = useState(false);
   const [chartTab, setChartTab] = useState<CpcStatsChartTab>('position');
   const [chartMetric, setChartMetric] = useState<CpcChartMetricId>('searchPosition');
   const [chartThirdMetric, setChartThirdMetric] =
@@ -1626,7 +1792,7 @@ function CpcCampaignStatisticsSection({
     <section className="mb-8 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
       <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-lg font-bold text-gray-900">Статистика</h2>
+          <h2 className="text-xl font-bold text-gray-900">Статистика</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -1977,6 +2143,120 @@ function CpcCampaignStatisticsSection({
   );
 }
 
+type DailyLimitSpendSummary = { total: number; spent: number; progress: number };
+
+function DailyLimitSpendSummaryBlock({
+  summary,
+  layout = 'sidebar',
+  compact = false,
+}: {
+  summary: DailyLimitSpendSummary;
+  layout?: 'sidebar' | 'stacked' | 'card';
+  compact?: boolean;
+}) {
+  const progressBarWidthClass =
+    layout === 'sidebar' ? 'w-full max-w-[120px]' : layout === 'card' ? 'w-1/3' : 'w-full max-w-[120px]';
+  const labelClass = compact ? 'text-[11px] text-gray-500' : 'text-xs text-gray-500';
+  const amountClassName = compact
+    ? 'mt-0.5 text-xs leading-snug tabular-nums text-gray-900'
+    : layout === 'sidebar'
+      ? 'mt-1 whitespace-nowrap text-sm leading-none tabular-nums text-gray-900'
+      : 'mt-1 text-sm leading-snug tabular-nums text-gray-900';
+  const progressHeight = compact ? 'h-1' : 'h-1.5';
+  const content = (
+    <>
+      <span className={labelClass}>Истратили</span>
+      <p className={amountClassName}>
+        <span className="font-semibold">{formatForDisplay(summary.spent)} ₽</span>
+        <span className="font-normal text-gray-500"> из {formatForDisplay(summary.total)} ₽</span>
+      </p>
+      <div
+        className={`mt-1 ${progressHeight} overflow-hidden rounded-full bg-gray-200 ${progressBarWidthClass}`}
+      >
+        <div
+          className="h-full rounded-full bg-gray-700 transition-[width] duration-300"
+          style={{ width: `${summary.progress}%` }}
+        />
+      </div>
+    </>
+  );
+
+  if (layout === 'sidebar') {
+    return (
+      <div className="flex w-[min(148px,30%)] shrink-0 flex-col justify-center gap-1 border-l border-gray-200 pl-4">
+        {content}
+      </div>
+    );
+  }
+
+  if (layout === 'card') {
+    return <div className="flex min-w-0 flex-col justify-center gap-1">{content}</div>;
+  }
+
+  return (
+    <div className="flex w-fit max-w-[148px] min-w-0 flex-col justify-center gap-1">{content}</div>
+  );
+}
+
+function AutomationDailyLimitTile({ summary }: { summary: DailyLimitSpendSummary }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-gray-200 bg-white p-2.5 shadow-sm">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Дневной лимит</p>
+        <span className="shrink-0 rounded bg-gray-900 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white">
+          Вкл
+        </span>
+      </div>
+      <DailyLimitSpendSummaryBlock summary={summary} layout="card" compact />
+    </div>
+  );
+}
+
+function AutomationStrategiesTile({ messages }: { messages: string[] }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-emerald-200/90 bg-gradient-to-br from-emerald-50/80 to-white p-2.5 shadow-sm">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800/80">Стратегии</p>
+        <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[9px] font-semibold leading-none text-white">
+          Вкл
+        </span>
+      </div>
+      <div className="space-y-1">
+        {messages.map((message) => (
+          <p key={message} className="text-xs leading-snug text-emerald-950">
+            {message}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AutomationSpendInactiveRow({
+  icon,
+  title,
+  subtitle,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 text-gray-500"
+        aria-hidden
+      >
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="mb-0 text-sm font-semibold text-gray-900">{title}</p>
+        <p className="mt-0.5 text-sm text-gray-400">{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
 export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   campaignId,
   name,
@@ -1989,6 +2269,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   onBack,
   onUpdateData,
 }) => {
+  const isPrebuiltListCpcCampaign = campaignId === PREBUILT_LIST_CPC_CAMPAIGN_ID;
   const { beginRepeatLaunchFlow, profileId } = useProfile();
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(dailyLimit !== null && dailyLimit !== undefined);
@@ -2010,6 +2291,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
   const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
   const productsSectionRef = useRef<HTMLElement>(null);
+  const [campaignProductNmIds, setCampaignProductNmIds] = useState([DEMO_CPC_PRODUCT_NM]);
+  const canRemoveProductFromCampaign = campaignProductNmIds.length > 1;
   const productKey = String(DEMO_CPC_PRODUCT_NM);
   const [productSearchBids, setProductSearchBids] = useState<Record<string, ProductBidEntry>>({
     [productKey]: { draft: '17.9', saved: '17.9' },
@@ -2019,8 +2302,29 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   });
   const [isProductActionsMenuOpen, setIsProductActionsMenuOpen] = useState(false);
   const productActionsMenuRef = useRef<HTMLDivElement>(null);
+  const [isSearchBidPickerOpen, setIsSearchBidPickerOpen] = useState(false);
+  const searchBidPickerRef = useRef<HTMLDivElement>(null);
+  const searchBidPickerPopoverRef = useRef<HTMLDivElement>(null);
   const [isBidChasingEnabled, setIsBidChasingEnabled] = useState(false);
-  const [isBidChasingModalOpen, setIsBidChasingModalOpen] = useState(false);
+  const [autoStrategiesModal, setAutoStrategiesModal] = useState<{
+    tab: 'positions' | 'profit';
+  } | null>(null);
+  const openAutoStrategies = (tab: 'positions' | 'profit' = 'profit') => setAutoStrategiesModal({ tab });
+  const closeAutoStrategies = () => setAutoStrategiesModal(null);
+  const [isAdvancedDailyLimitModalOpen, setIsAdvancedDailyLimitModalOpen] = useState(false);
+  const [advancedDailyLimitSettings, setAdvancedDailyLimitSettings] = useState({
+    strategyId: null as 'spendOptimization' | 'clicksOptimization' | null,
+    strategyGroupLabel: '',
+    autoIncreaseEnabled: false,
+    metric: 'drr' as 'drr' | 'ctr',
+    thresholdPercent: 15,
+    drrThresholdPercent: 15,
+    ctrThresholdPercent: 2.8,
+    drrMetricEnabled: false,
+    ctrMetricEnabled: false,
+    increaseAmountRub: 500,
+    limitIncreasePercent: 25 as 25 | 50 | 100,
+  });
   const [bidChasingPosition, setBidChasingPosition] = useState<'1-2' | '3-10' | '11-34'>('1-2');
   const [bidChasingMaxBid, setBidChasingMaxBid] = useState(11.88);
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
@@ -2038,6 +2342,21 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         position: '1-2' | '3-10' | '11-34';
         maxBid: number;
         shortfall: number;
+      }
+    | null
+  >(null);
+  const [dailyLimitBidRaiseModal, setDailyLimitBidRaiseModal] = useState<
+    | {
+        kind: 'productBid';
+        zone: 'search' | 'recommendations';
+        attemptedBid: number;
+        recommendedLimit: number;
+      }
+    | {
+        kind: 'bidChasing';
+        position: '1-2' | '3-10' | '11-34';
+        maxBid: number;
+        recommendedLimit: number;
       }
     | null
   >(null);
@@ -2071,6 +2390,25 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     const parsed = parseDisplayValue(savedDailyLimit);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
   }, [savedDailyLimit]);
+
+  const dailyLimitTrafficReference = useMemo(() => {
+    if (isBidChasingEnabled) {
+      const tier = bidChasingPositionOption(bidChasingPosition);
+      return {
+        cpcBidRub: tier.demoBidRub,
+        targetAvgPosition: BID_CHASING_TARGET_AVG_POSITION[bidChasingPosition],
+      };
+    }
+    const searchBid = parseDisplayValue(productSearchBids[productKey]?.saved ?? '0');
+    const cpcBidRub = searchBid > 0 ? searchBid : maxSavedProductBidRub;
+    return { cpcBidRub, targetAvgPosition: undefined as number | undefined };
+  }, [
+    isBidChasingEnabled,
+    bidChasingPosition,
+    productSearchBids,
+    productKey,
+    maxSavedProductBidRub,
+  ]);
 
   const onUpdateDataRef = useRef(onUpdateData);
   onUpdateDataRef.current = onUpdateData;
@@ -2148,13 +2486,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         return;
       }
       const bidStr = String(parsed);
-      const otherSaved =
-        zone === 'search'
-          ? parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0')
-          : parseDisplayValue(productSearchBids[productKey]?.saved ?? '0');
-      const chasingCeiling = isBidChasingEnabled ? bidChasingMaxBid : 0;
-      const maxBid = Math.max(parsed, otherSaved, chasingCeiling);
-
       const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
       setter((prev) => ({
         ...prev,
@@ -2164,12 +2495,139 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       setToastIsError(false);
       setShowToast(true);
     },
+    [productKey, productSearchBids, productRecommendationsBids],
+  );
+
+  const maxBidRubAfterProductBid = useCallback(
+    (zone: 'search' | 'recommendations', parsed: number) => {
+      const otherSaved =
+        zone === 'search'
+          ? parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0')
+          : parseDisplayValue(productSearchBids[productKey]?.saved ?? '0');
+      const chasingCeiling = isBidChasingEnabled ? bidChasingMaxBid : 0;
+      return Math.max(parsed, otherSaved, chasingCeiling);
+    },
+    [productKey, productSearchBids, productRecommendationsBids, isBidChasingEnabled, bidChasingMaxBid],
+  );
+
+  const applySavedDailyLimitRub = useCallback(
+    (
+      limit: number,
+      budgetConflict?:
+        | {
+            kind: 'productBid';
+            productKey: string;
+            zone: 'search' | 'recommendations';
+            attemptedBid: number;
+          }
+        | {
+            kind: 'bidChasing';
+            position: '1-2' | '3-10' | '11-34';
+            maxBid: number;
+          },
+    ) => {
+      if (limit > campaignBudget) {
+        if (budgetConflict?.kind === 'productBid') {
+          setBidLimitBudgetConflictModal({
+            kind: 'productBid',
+            productKey: budgetConflict.productKey,
+            zone: budgetConflict.zone,
+            attemptedBid: budgetConflict.attemptedBid,
+            newDailyLimit: limit,
+            shortfall: limit - campaignBudget,
+          });
+        } else if (budgetConflict?.kind === 'bidChasing') {
+          setBidLimitBudgetConflictModal({
+            kind: 'bidChasing',
+            position: budgetConflict.position,
+            maxBid: budgetConflict.maxBid,
+            shortfall: limit - campaignBudget,
+          });
+        }
+        return false;
+      }
+      setIsDailyLimitEnabled(true);
+      setDailyLimitValue(String(limit));
+      setSavedDailyLimit(String(limit));
+      setDailyLimitBudgetShortfall(null);
+      setToastMessage(
+        `Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(limit)}₽ в течении суток равномерно`,
+      );
+      setToastIsError(false);
+      setShowToast(true);
+      if (onUpdateData) {
+        onUpdateData({ dailyLimit: limit, scheduledDailyLimit: null });
+      }
+      return true;
+    },
+    [campaignBudget, onUpdateData],
+  );
+
+  const promptOrCommitProductBid = useCallback(
+    (zone: 'search' | 'recommendations', parsed: number) => {
+      const maxBid = maxBidRubAfterProductBid(zone, parsed);
+      if (
+        shouldPromptRaiseDailyLimitForMaxBid(isDailyLimitEnabled, savedDailyLimitRub, maxBid)
+      ) {
+        setDailyLimitBidRaiseModal({
+          kind: 'productBid',
+          zone,
+          attemptedBid: parsed,
+          recommendedLimit: minDailyLimitForMaxBid(maxBid),
+        });
+        return;
+      }
+      commitProductBid(zone, parsed);
+    },
     [
+      commitProductBid,
+      isDailyLimitEnabled,
+      maxBidRubAfterProductBid,
+      savedDailyLimitRub,
+    ],
+  );
+
+  const applyBidChasingConfig = useCallback(
+    (position: '1-2' | '3-10' | '11-34', maxBid: number) => {
+      setBidChasingPosition(position);
+      setBidChasingMaxBid(maxBid);
+      setIsBidChasingEnabled(true);
+      closeAutoStrategies();
+      setToastMessage('Преследование ставки настроено');
+      setToastIsError(false);
+      setShowToast(true);
+    },
+    [],
+  );
+
+  const promptOrApplyBidChasing = useCallback(
+    (position: '1-2' | '3-10' | '11-34', maxBid: number) => {
+      const otherMax = Math.max(
+        parseDisplayValue(productSearchBids[productKey]?.saved ?? '0'),
+        parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0'),
+      );
+      const effectiveMax = Math.max(maxBid, otherMax);
+      if (
+        shouldPromptRaiseDailyLimitForMaxBid(isDailyLimitEnabled, savedDailyLimitRub, effectiveMax)
+      ) {
+        closeAutoStrategies();
+        setDailyLimitBidRaiseModal({
+          kind: 'bidChasing',
+          position,
+          maxBid,
+          recommendedLimit: minDailyLimitForMaxBid(effectiveMax),
+        });
+        return;
+      }
+      applyBidChasingConfig(position, maxBid);
+    },
+    [
+      applyBidChasingConfig,
+      isDailyLimitEnabled,
       productKey,
-      productSearchBids,
       productRecommendationsBids,
-      isBidChasingEnabled,
-      bidChasingMaxBid,
+      productSearchBids,
+      savedDailyLimitRub,
     ],
   );
 
@@ -2190,6 +2648,18 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     [productKey],
   );
 
+  const handleSearchPositionTierSelect = useCallback(
+    (position: BidChasingRange) => {
+      setBidChasingPosition(position);
+      const bidStr = String(bidChasingPositionOption(position).demoBidRub);
+      setProductSearchBids((prev) => ({
+        ...prev,
+        [productKey]: { draft: bidStr, saved: bidStr },
+      }));
+    },
+    [productKey],
+  );
+
   const handleProductBidBlur = useCallback(
     (zone: 'search' | 'recommendations') => {
       const bids = zone === 'search' ? productSearchBids : productRecommendationsBids;
@@ -2205,9 +2675,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         return;
       }
       if (parseDisplayValue(entry.draft) === parseDisplayValue(entry.saved)) return;
-      commitProductBid(zone, parsed);
+      promptOrCommitProductBid(zone, parsed);
     },
-    [productKey, productSearchBids, productRecommendationsBids, commitProductBid],
+    [productKey, productSearchBids, productRecommendationsBids, promptOrCommitProductBid],
   );
 
   const disableDailyLimit = useCallback(() => {
@@ -2308,6 +2778,22 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     return () => document.removeEventListener('mousedown', onDoc);
   }, [isProductActionsMenuOpen]);
 
+  useEffect(() => {
+    if (!isSearchBidPickerOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        searchBidPickerRef.current?.contains(target) ||
+        searchBidPickerPopoverRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setIsSearchBidPickerOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [isSearchBidPickerOpen]);
+
   const isCardWorkBonusScenario = fromReadyToRepeat && profileId === '2';
 
   const dailyLimitSpendSummary = useMemo(() => {
@@ -2320,6 +2806,49 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     const progress = total > 0 ? Math.min(100, (spent / total) * 100) : 0;
     return { total, spent, progress };
   }, [isDailyLimitEnabled, savedDailyLimit, dailyLimitValue, dailyLimitExhausted]);
+
+  const savedDailyLimitRubDisplay = useMemo(() => {
+    const parsedSaved = parseDisplayValue(savedDailyLimit);
+    const parsedInput = parseDisplayValue(dailyLimitValue);
+    return parsedSaved > 0 ? parsedSaved : parsedInput > 0 ? parsedInput : 0;
+  }, [savedDailyLimit, dailyLimitValue]);
+
+  const budgetDailyLimitStatusLabel = useMemo(() => {
+    if (!isDailyLimitEnabled) return 'Неограничен';
+    if (dailyLimitExhausted) return 'Исчерпан';
+    if (savedDailyLimitRubDisplay > 0) {
+      return `${formatForDisplay(savedDailyLimitRubDisplay)} ₽`;
+    }
+    return 'Не задан';
+  }, [isDailyLimitEnabled, dailyLimitExhausted, savedDailyLimitRubDisplay]);
+
+  const budgetStrategiesStatusLabel = useMemo(() => {
+    const strategiesEnabled =
+      isBidChasingEnabled ||
+      (advancedDailyLimitSettings.autoIncreaseEnabled &&
+        (advancedDailyLimitSettings.drrMetricEnabled || advancedDailyLimitSettings.ctrMetricEnabled));
+    if (strategiesEnabled) return 'Стратегии включены';
+    return 'Не настроены';
+  }, [isBidChasingEnabled, advancedDailyLimitSettings]);
+
+  const budgetAutomationStrategiesActive = useMemo(
+    () => budgetStrategiesStatusLabel === 'Стратегии включены',
+    [budgetStrategiesStatusLabel],
+  );
+
+  const budgetAutomationStrategySummary = useMemo(() => {
+    const messages: string[] = [];
+    const profitStrategyActive =
+      advancedDailyLimitSettings.autoIncreaseEnabled &&
+      (advancedDailyLimitSettings.drrMetricEnabled || advancedDailyLimitSettings.ctrMetricEnabled);
+    if (profitStrategyActive) {
+      messages.push('Выбрана стратегия «Эффективные траты»');
+    }
+    if (isBidChasingEnabled) {
+      messages.push('Выбрана стратегия «Вывести в топ»');
+    }
+    return messages;
+  }, [isBidChasingEnabled, advancedDailyLimitSettings]);
 
   return (
     <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-10">
@@ -2352,6 +2881,77 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           </div>
         </div>
 
+        {isPrebuiltListCpcCampaign ? (
+        <div className="mb-8">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+            <div className="flex min-h-[148px] min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6">
+              <div>
+                <p className="text-xl font-bold leading-none text-gray-900">Остаток</p>
+                <p className="mt-2 text-4xl font-bold leading-none tabular-nums text-gray-900">
+                  {formatCurrency(campaignBudget)}
+                </p>
+              </div>
+              <div className="mt-auto flex flex-wrap items-center gap-4 sm:gap-6">
+                <button
+                  type="button"
+                  onClick={() => setIsBudgetRefillModalOpen(true)}
+                  className="rounded-xl bg-[#F2F2F7] px-6 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
+                >
+                  Пополнить
+                </button>
+                <div className="flex items-center gap-2">
+                  <ToggleSwitch
+                    checked={isAutoRefillEnabled}
+                    onChange={(checked) => {
+                      if (checked) {
+                        setWasAutoRefillToggledOn(true);
+                        setIsAutoRefillModalOpen(true);
+                      } else {
+                        setIsAutoRefillEnabled(false);
+                        setWasAutoRefillToggledOn(false);
+                        setToastMessage('Изменения сохранены');
+                        setShowToast(true);
+                      }
+                    }}
+                  />
+                  <span className="text-sm text-gray-900">Автопополнение</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex min-h-[148px] min-w-0 flex-[1.35] flex-col rounded-2xl border border-gray-100 bg-white p-5">
+              <p className="shrink-0 text-xl font-bold text-gray-900">Автоматизация трат</p>
+              <div className="mt-4 grid min-w-0 flex-1 grid-cols-1 content-start gap-4 sm:grid-cols-2">
+                {isDailyLimitEnabled && dailyLimitSpendSummary ? (
+                  <AutomationDailyLimitTile summary={dailyLimitSpendSummary} />
+                ) : (
+                  <AutomationSpendInactiveRow
+                    icon={<span className="text-lg">∞</span>}
+                    title="Дневной лимит"
+                    subtitle={budgetDailyLimitStatusLabel}
+                  />
+                )}
+                {budgetAutomationStrategiesActive && budgetAutomationStrategySummary.length > 0 ? (
+                  <AutomationStrategiesTile messages={budgetAutomationStrategySummary} />
+                ) : (
+                  <AutomationSpendInactiveRow
+                    icon={<Settings className="h-5 w-5" />}
+                    title="Стратегии"
+                    subtitle={budgetStrategiesStatusLabel}
+                  />
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => openAutoStrategies()}
+                className="mt-4 w-fit shrink-0 rounded-lg bg-[#F2F2F7] px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
+              >
+                Настроить
+              </button>
+            </div>
+          </div>
+        </div>
+        ) : (
         <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
           <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="mb-4 text-sm font-semibold text-gray-900">Остаток бюджета</p>
@@ -2564,27 +3164,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     )}
                   </div>
                 </label>
+                <button
+                  type="button"
+                  onClick={() => setIsAdvancedDailyLimitModalOpen(true)}
+                  className="w-fit text-sm font-medium text-[#6366f1] transition-colors hover:text-purple-700"
+                >
+                  Расширенные настройки
+                </button>
               </div>
 
               {dailyLimitSpendSummary ? (
-                <div className="flex w-[min(148px,30%)] shrink-0 flex-col justify-center gap-1 border-l border-gray-200 pl-4">
-                  <span className="text-xs text-gray-500">Истратили</span>
-                  <p className="whitespace-nowrap text-sm leading-none tabular-nums text-gray-900">
-                    <span className="font-semibold">
-                      {formatForDisplay(dailyLimitSpendSummary.spent)} ₽
-                    </span>
-                    <span className="font-normal text-gray-500">
-                      {' '}
-                      из {formatForDisplay(dailyLimitSpendSummary.total)} ₽
-                    </span>
-                  </p>
-                  <div className="mt-1 h-1.5 w-full max-w-[120px] overflow-hidden rounded-full bg-gray-200">
-                    <div
-                      className="h-full rounded-full bg-gray-700 transition-[width] duration-300"
-                      style={{ width: `${dailyLimitSpendSummary.progress}%` }}
-                    />
-                  </div>
-                </div>
+                <DailyLimitSpendSummaryBlock summary={dailyLimitSpendSummary} layout="sidebar" />
               ) : (
                 <div className="flex w-[min(148px,30%)] shrink-0 flex-col justify-center border-l border-gray-200 pl-4">
                   <p className="text-xs leading-snug text-gray-500">
@@ -2595,6 +3185,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {fromReadyToRepeat && (
           <CampaignRepeatPerformanceBlock
@@ -2627,9 +3218,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         />
 
         <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">Зоны показов</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4">Зоны показов</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 min-h-[4.5rem]">
+            <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 min-h-[4.5rem]">
               <div className="flex items-center gap-2 min-w-0">
                 <ToggleSwitch
                   checked={displayZones.search}
@@ -2643,9 +3234,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 />
                 <span className="text-sm font-medium text-gray-900">Поиск</span>
               </div>
-              <DisplayZoneSearchArt />
             </div>
-            <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 min-h-[4.5rem]">
+            <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 min-h-[4.5rem]">
               <div className="flex items-center gap-2 min-w-0">
                 <ToggleSwitch
                   checked={displayZones.recommendations}
@@ -2659,7 +3249,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 />
                 <span className="text-sm font-medium text-gray-900">Рекомендации</span>
               </div>
-              <DisplayZoneRecommendationsArt />
             </div>
           </div>
         </section>
@@ -2668,9 +3257,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           ref={productsSectionRef}
           className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8"
         >
-          <h2 className="mb-5 text-lg font-bold text-gray-900">
+          <h2 className="mb-5 text-xl font-bold text-gray-900">
             Товары{' '}
-            <span className="font-normal text-gray-500">1 шт.</span>
+            <span className="font-normal text-gray-500">{campaignProductNmIds.length} шт.</span>
           </h2>
 
           <div className="overflow-x-auto">
@@ -2702,7 +3291,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     </span>
                   </th>
                   <th className="pb-3 pr-3 font-normal align-bottom">
-                    <HeaderHint label="Преследование ставки" />
+                    <HeaderHint label="Автобиддер в поиске" />
                   </th>
                   <th className="pb-3 font-normal align-bottom" aria-hidden />
                 </tr>
@@ -2764,17 +3353,29 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                               onChange={(e) => handleProductBidDraftChange('search', e.target.value)}
                               onBlur={() => handleProductBidBlur('search')}
                             />
-                            <SearchBidPositionHint />
+                            <SearchBidPositionHint
+                              selectedPosition={bidChasingPosition}
+                              onSelectPosition={handleSearchPositionTierSelect}
+                            />
                           </>
                         )}
                       </div>
                       {!isBidChasingEnabled ? (
-                        <BidHistogramButton
-                          onClick={() => {
-                            setToastMessage('Статистика ставки в поиске');
-                            setShowToast(true);
-                          }}
-                        />
+                        <div className="relative shrink-0" ref={searchBidPickerRef}>
+                          <BidHistogramButton
+                            isActive={isSearchBidPickerOpen}
+                            onClick={() => setIsSearchBidPickerOpen((open) => !open)}
+                          />
+                          {isSearchBidPickerOpen ? (
+                            <SearchBidPositionPicker
+                              anchorRef={searchBidPickerRef}
+                              popoverRef={searchBidPickerPopoverRef}
+                              selectedPosition={bidChasingPosition}
+                              onSelectPosition={handleSearchPositionTierSelect}
+                              onClose={() => setIsSearchBidPickerOpen(false)}
+                            />
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   </td>
@@ -2784,7 +3385,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                         <button
                           type="button"
                           className="text-left text-sm font-medium leading-snug text-blue-600 hover:text-blue-700 hover:underline"
-                          onClick={() => setIsBidChasingModalOpen(true)}
+                          onClick={() => openAutoStrategies('positions')}
                         >
                           {bidChasingPositionLinkLabel}
                         </button>
@@ -2792,7 +3393,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                         <button
                           type="button"
                           className="h-9 rounded-lg bg-[#F2F2F7] px-4 text-sm font-medium text-gray-800 hover:bg-[#e8e8ed]"
-                          onClick={() => setIsBidChasingModalOpen(true)}
+                          onClick={() => openAutoStrategies('positions')}
                         >
                           Настроить
                         </button>
@@ -2835,10 +3436,25 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                             <button
                               type="button"
                               role="menuitem"
-                              className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                              disabled={!canRemoveProductFromCampaign}
+                              className={`block w-full px-3 py-2 text-left text-sm ${
+                                canRemoveProductFromCampaign
+                                  ? 'text-red-600 hover:bg-red-50'
+                                  : 'cursor-not-allowed text-gray-400'
+                              }`}
                               onClick={() => {
                                 setIsProductActionsMenuOpen(false);
+                                if (!canRemoveProductFromCampaign) {
+                                  setToastMessage('Нельзя удалить единственный товар в кампании');
+                                  setToastIsError(true);
+                                  setShowToast(true);
+                                  return;
+                                }
+                                setCampaignProductNmIds((prev) =>
+                                  prev.filter((id) => id !== DEMO_CPC_PRODUCT_NM),
+                                );
                                 setToastMessage('Товар удалён из кампании');
+                                setToastIsError(false);
                                 setShowToast(true);
                               }}
                             >
@@ -2898,31 +3514,133 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         />
       )}
 
-      <BidChasingClustersModal
-        isOpen={isBidChasingModalOpen}
-        initialPosition={bidChasingPosition}
-        initialMaxBid={bidChasingMaxBid}
-        isDailyLimitEnabled={isDailyLimitEnabled}
-        savedDailyLimitRub={savedDailyLimitRub}
-        otherMaxProductBidRub={Math.max(
-          parseDisplayValue(productSearchBids[productKey]?.saved ?? '0'),
-          parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0'),
-        )}
-        isBidChasingEnabled={isBidChasingEnabled}
-        onDisable={() => {
-          setIsBidChasingEnabled(false);
-          setIsBidChasingModalOpen(false);
-          setToastMessage('Преследование ставки отключено');
-          setToastIsError(false);
-          setShowToast(true);
+      <AutoStrategiesModal
+        isOpen={autoStrategiesModal !== null}
+        tab={autoStrategiesModal?.tab ?? 'profit'}
+        onTabChange={(tab) => setAutoStrategiesModal({ tab })}
+        onClose={closeAutoStrategies}
+        bidChasing={{
+          initialPosition: bidChasingPosition,
+          initialMaxBid: bidChasingMaxBid,
+          isDailyLimitEnabled,
+          savedDailyLimitRub,
+          otherMaxProductBidRub: Math.max(
+            parseDisplayValue(productSearchBids[productKey]?.saved ?? '0'),
+            parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0'),
+          ),
+          isBidChasingEnabled,
+          onDisable: () => {
+            setIsBidChasingEnabled(false);
+            closeAutoStrategies();
+            setToastMessage('Преследование ставки отключено');
+            setToastIsError(false);
+            setShowToast(true);
+          },
+          onApply: ({ position, maxBid }) => {
+            promptOrApplyBidChasing(position, maxBid);
+          },
         }}
-        onClose={() => setIsBidChasingModalOpen(false)}
-        onApply={({ position, maxBid }) => {
-          setBidChasingPosition(position);
-          setBidChasingMaxBid(maxBid);
-          setIsBidChasingEnabled(true);
-          setIsBidChasingModalOpen(false);
-          setToastMessage('Преследование ставки настроено');
+        dailyLimit={{
+          isDailyLimitEnabled,
+          onEnableDailyLimit: applyMinDailyLimitOnEnable,
+          onDisableDailyLimit: disableDailyLimit,
+          dailyLimitValue,
+          onDailyLimitValueChange: setDailyLimitValue,
+          onDailyLimitCommit: (parsed, options) => {
+            if (isNaN(parsed) || parsed < DAILY_LIMIT_ABSOLUTE_MIN) {
+              setDailyLimitValue(savedDailyLimit || '');
+              setToastMessage(
+                `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
+              );
+              setToastIsError(true);
+              setShowToast(true);
+              return;
+            }
+            if (parsed > campaignBudget) {
+              setDailyLimitValue(savedDailyLimit || '');
+              setDailyLimitBudgetShortfall(parsed - campaignBudget);
+              return;
+            }
+            setSavedDailyLimit(dailyLimitValue);
+            setDailyLimitBudgetShortfall(null);
+            if (!options?.silent) {
+              setToastMessage(
+                `Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`,
+              );
+              setToastIsError(false);
+              setShowToast(true);
+            }
+            if (onUpdateData) {
+              onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
+            }
+            setIsDailyLimitEnabled(true);
+          },
+          savedDailyLimit,
+          isCarryoverEnabled,
+          onCarryoverChange: setIsCarryoverEnabled,
+          campaignBudget,
+          initialSettings: advancedDailyLimitSettings,
+          referenceCpcBidRub: dailyLimitTrafficReference.cpcBidRub,
+          targetAvgPosition: dailyLimitTrafficReference.targetAvgPosition,
+          onApply: (settings) => {
+            setAdvancedDailyLimitSettings(settings);
+            closeAutoStrategies();
+            setToastMessage('Настройки стратегии «Тратить эффективно» сохранены');
+            setToastIsError(false);
+            setShowToast(true);
+          },
+        }}
+      />
+
+      <AdvancedDailyLimitModal
+        advancedSettingsOnly
+        isOpen={isAdvancedDailyLimitModalOpen}
+        onClose={() => setIsAdvancedDailyLimitModalOpen(false)}
+        isDailyLimitEnabled={isDailyLimitEnabled}
+        onEnableDailyLimit={applyMinDailyLimitOnEnable}
+        onDisableDailyLimit={disableDailyLimit}
+        dailyLimitValue={dailyLimitValue}
+        onDailyLimitValueChange={setDailyLimitValue}
+        onDailyLimitCommit={(parsed, options) => {
+          if (isNaN(parsed) || parsed < DAILY_LIMIT_ABSOLUTE_MIN) {
+            setDailyLimitValue(savedDailyLimit || '');
+            setToastMessage(
+              `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
+            );
+            setToastIsError(true);
+            setShowToast(true);
+            return;
+          }
+          if (parsed > campaignBudget) {
+            setDailyLimitValue(savedDailyLimit || '');
+            setDailyLimitBudgetShortfall(parsed - campaignBudget);
+            return;
+          }
+          setSavedDailyLimit(dailyLimitValue);
+          setDailyLimitBudgetShortfall(null);
+          if (!options?.silent) {
+            setToastMessage(
+              `Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`,
+            );
+            setToastIsError(false);
+            setShowToast(true);
+          }
+          if (onUpdateData) {
+            onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
+          }
+          setIsDailyLimitEnabled(true);
+        }}
+        savedDailyLimit={savedDailyLimit}
+        isCarryoverEnabled={isCarryoverEnabled}
+        onCarryoverChange={setIsCarryoverEnabled}
+        campaignBudget={campaignBudget}
+        initialSettings={advancedDailyLimitSettings}
+        referenceCpcBidRub={dailyLimitTrafficReference.cpcBidRub}
+        targetAvgPosition={dailyLimitTrafficReference.targetAvgPosition}
+        onApply={(settings) => {
+          setAdvancedDailyLimitSettings(settings);
+          setIsAdvancedDailyLimitModalOpen(false);
+          setToastMessage('Расширенные настройки применены');
           setToastIsError(false);
           setShowToast(true);
         }}
@@ -2947,6 +3665,104 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           currentBudget={campaignBudget}
           showDailyLimitInfo={false}
         />
+      )}
+
+      {dailyLimitBidRaiseModal && (
+        <div
+          className="fixed inset-0 z-[105] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => {
+            const payload = dailyLimitBidRaiseModal;
+            setDailyLimitBidRaiseModal(null);
+            if (payload.kind === 'productBid') {
+              commitProductBid(payload.zone, payload.attemptedBid);
+            } else {
+              applyBidChasingConfig(payload.position, payload.maxBid);
+            }
+          }}
+        >
+          <div
+            className="relative w-full max-w-[480px] rounded-xl bg-white p-6 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => {
+                const payload = dailyLimitBidRaiseModal;
+                setDailyLimitBidRaiseModal(null);
+                if (payload.kind === 'productBid') {
+                  commitProductBid(payload.zone, payload.attemptedBid);
+                } else {
+                  applyBidChasingConfig(payload.position, payload.maxBid);
+                }
+              }}
+              className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+              aria-label="Закрыть"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h2 className="mb-2 pr-8 text-base font-semibold text-gray-900">
+              Поднимите дневной лимит
+            </h2>
+            <p className="mb-6 text-sm leading-relaxed text-gray-600">
+              При текущей ставке кампания может работать некорректно или возможны перекруты. Чтобы
+              этого не было, установите дневной лимит не ниже{' '}
+              <span className="font-semibold text-gray-900">
+                {formatForDisplay(dailyLimitBidRaiseModal.recommendedLimit)} ₽
+              </span>{' '}
+              (до 30 кликов в день по максимальной ставке).
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  const payload = dailyLimitBidRaiseModal;
+                  setDailyLimitBidRaiseModal(null);
+                  if (payload.kind === 'productBid') {
+                    commitProductBid(payload.zone, payload.attemptedBid);
+                  } else {
+                    applyBidChasingConfig(payload.position, payload.maxBid);
+                  }
+                }}
+                className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+              >
+                Закрыть
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const payload = dailyLimitBidRaiseModal;
+                  const budgetConflict =
+                    payload.kind === 'productBid'
+                      ? {
+                          kind: 'productBid' as const,
+                          productKey,
+                          zone: payload.zone,
+                          attemptedBid: payload.attemptedBid,
+                        }
+                      : {
+                          kind: 'bidChasing' as const,
+                          position: payload.position,
+                          maxBid: payload.maxBid,
+                        };
+                  const raised = applySavedDailyLimitRub(
+                    payload.recommendedLimit,
+                    budgetConflict,
+                  );
+                  setDailyLimitBidRaiseModal(null);
+                  if (!raised) return;
+                  if (payload.kind === 'productBid') {
+                    commitProductBid(payload.zone, payload.attemptedBid);
+                  } else {
+                    applyBidChasingConfig(payload.position, payload.maxBid);
+                  }
+                }}
+                className="rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-700"
+              >
+                Поднять лимит до {formatForDisplay(dailyLimitBidRaiseModal.recommendedLimit)} ₽
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {bidLimitBudgetConflictModal && (
@@ -3380,35 +4196,88 @@ const BudgetRefillModal: React.FC<{
 
 const BID_CHASING_MIN_BID_RUB = 1.88;
 
-type BidChasingRange = '1-2' | '3-10' | '11-34';
+type AutoStrategiesTab = 'positions' | 'profit';
 
-const BID_CHASING_POSITION_OPTIONS: {
-  id: BidChasingRange;
-  label: string;
-  accentClass: string;
-  selectedBgClass: string;
-}[] = [
-  {
-    id: '1-2',
-    label: '1–2 позиции',
-    accentClass: 'border-l-[#9A41FE]',
-    selectedBgClass: 'bg-[#F6F2FF]',
-  },
-  {
-    id: '3-10',
-    label: '3–10 позиции',
-    accentClass: 'border-l-emerald-400',
-    selectedBgClass: 'bg-white',
-  },
-  {
-    id: '11-34',
-    label: '11–34 позиции',
-    accentClass: 'border-l-teal-300',
-    selectedBgClass: 'bg-white',
-  },
-];
+const AutoStrategiesModal: React.FC<{
+  isOpen: boolean;
+  tab: AutoStrategiesTab;
+  onTabChange: (tab: AutoStrategiesTab) => void;
+  onClose: () => void;
+  bidChasing: React.ComponentProps<typeof BidChasingClustersModal>;
+  dailyLimit: React.ComponentProps<typeof AdvancedDailyLimitModal>;
+}> = ({ isOpen, tab, onTabChange, onClose, bidChasing, dailyLimit }) => {
+  if (!isOpen) return null;
+
+  const tabClass = (active: boolean) =>
+    `flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+    }`;
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} role="presentation">
+      <div className="flex h-full w-full justify-end" onClick={onClose}>
+        <div className="flex h-full max-h-full min-w-0 items-stretch gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
+              aria-label="Закрыть"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div
+            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="auto-strategies-title"
+          >
+            <div className="shrink-0 px-6 pt-6 pb-4 sm:px-8">
+              <h2 id="auto-strategies-title" className="text-xl font-bold leading-snug text-gray-900">
+                Автостратегии
+              </h2>
+              <div
+                className="mt-4 flex gap-1 rounded-xl bg-[#F2F2F7] p-1"
+                role="tablist"
+                aria-label="Стратегии"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === 'profit'}
+                  className={tabClass(tab === 'profit')}
+                  onClick={() => onTabChange('profit')}
+                >
+                  Тратить эффективно
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === 'positions'}
+                  className={tabClass(tab === 'positions')}
+                  onClick={() => onTabChange('positions')}
+                >
+                  Вывести в топ
+                </button>
+              </div>
+            </div>
+
+            {tab === 'positions' ? (
+              <BidChasingClustersModal {...bidChasing} embedded isOpen onClose={onClose} />
+            ) : (
+              <AdvancedDailyLimitModal {...dailyLimit} embedded isOpen onClose={onClose} />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const BidChasingClustersModal: React.FC<{
+  embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
   onApply: (config: { position: BidChasingRange; maxBid: number }) => void;
@@ -3420,6 +4289,7 @@ const BidChasingClustersModal: React.FC<{
   isBidChasingEnabled: boolean;
   onDisable: () => void;
 }> = ({
+  embedded = false,
   isOpen,
   onClose,
   onApply,
@@ -3457,40 +4327,22 @@ const BidChasingClustersModal: React.FC<{
     onApply({ position, maxBid: parsedMaxBid });
   };
 
-  return (
-    <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} role="presentation">
-      <div className="flex h-full w-full justify-end" onClick={onClose}>
-        <div
-          className="flex h-full max-h-full items-stretch"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
-              aria-label="Закрыть"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+  const body = (
+    <>
+      <div className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto ${embedded ? 'px-6 pb-4 sm:px-8' : 'p-6 sm:p-8'}`}>
+        {!embedded ? (
+          <>
+            <h2 id="bid-chasing-modal-title" className="text-xl font-bold text-gray-900 leading-snug">
+              Автобиддер в поиске
+            </h2>
+            <p className="mt-2 text-sm text-gray-500 leading-relaxed">
+              Алгоритм будет автоматически регулировать ставку, чтобы карточка занимала выбранные позиции в
+              поисковой выдаче
+            </p>
+          </>
+        ) : null}
 
-          <div
-            className="flex h-full w-full max-w-[560px] flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="bid-chasing-modal-title"
-          >
-            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-              <h2 id="bid-chasing-modal-title" className="text-xl font-bold text-gray-900 leading-snug">
-                Преследование ставки в кластерах
-              </h2>
-          <p className="mt-2 text-sm text-gray-500 leading-relaxed">
-            Алгоритм будет автоматически регулировать ставку, чтобы карточка занимала выбранные позиции в
-            поисковой выдаче
-          </p>
-
-          <div className="mt-6 rounded-2xl border border-gray-100 bg-white p-5">
+          <div className={`rounded-2xl border border-gray-100 bg-white p-5 ${embedded ? '' : 'mt-6'}`}>
             <h3 className="text-base font-semibold text-gray-900">Какие позиции хотите занимать в поиске</h3>
             <p className="mt-1 text-sm text-gray-500">Показываем диапазоны ставок для разных позиций</p>
             <div className="mt-4 flex flex-col gap-2">
@@ -3515,7 +4367,16 @@ const BidChasingClustersModal: React.FC<{
                     </span>
                     <span className="min-w-0">
                       <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
-                      <span className="mt-0.5 block text-xs text-gray-400">Ставки: собираем данные</span>
+                      <span className="mt-1 block text-xs text-gray-500">
+                        Рекомендуемая ставка: {formatRecommendedBidRub(opt.demoBidRub)} ₽
+                      </span>
+                      <span className="mt-0.5 block text-xs text-gray-500">
+                        Клики: ~ {formatApproxClicksPerDay(opt.demoClicksPerDay)} в день
+                      </span>
+                      <span className="mt-0.5 block text-xs text-gray-500">
+                        Примерный дневной бюджет: ~{' '}
+                        {formatApproxDailyBudgetRub(opt.demoBidRub, opt.demoClicksPerDay)} ₽
+                      </span>
                     </span>
                   </button>
                 );
@@ -3598,6 +4459,586 @@ const BidChasingClustersModal: React.FC<{
               </button>
               </div>
             </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{body}</div>;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} role="presentation">
+      <div className="flex h-full w-full justify-end" onClick={onClose}>
+        <div
+          className="flex h-full max-h-full items-stretch"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
+              aria-label="Закрыть"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div
+            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bid-chasing-modal-title"
+          >
+            {body}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+type DailyLimitStrategyId = 'spendOptimization' | 'clicksOptimization';
+
+type LimitIncreasePercent = 25 | 50 | 100;
+
+const LIMIT_INCREASE_PERCENT_OPTIONS: LimitIncreasePercent[] = [25, 50, 100];
+
+const DEFAULT_AUTO_INCREASE_THRESHOLD: Record<'drr' | 'ctr', number> = {
+  drr: 15,
+  ctr: 2.8,
+};
+
+function autoIncreaseThresholdLabel(metric: 'drr' | 'ctr') {
+  return metric === 'drr' ? 'При ДРР ниже' : 'При CTR выше';
+}
+
+type AdvancedDailyLimitSettings = {
+  strategyId: DailyLimitStrategyId | null;
+  strategyGroupLabel: string;
+  autoIncreaseEnabled: boolean;
+  /** @deprecated сохраняем для совместимости; дублирует drrThresholdPercent */
+  metric: 'drr' | 'ctr';
+  /** @deprecated сохраняем для совместимости; дублирует drrThresholdPercent */
+  thresholdPercent: number;
+  drrThresholdPercent: number;
+  ctrThresholdPercent: number;
+  drrMetricEnabled: boolean;
+  ctrMetricEnabled: boolean;
+  increaseAmountRub: number;
+  limitIncreasePercent: LimitIncreasePercent;
+};
+
+function resolveAutoIncreaseThresholds(settings: AdvancedDailyLimitSettings) {
+  const drr =
+    settings.drrThresholdPercent ??
+    (settings.metric === 'drr'
+      ? settings.thresholdPercent
+      : DEFAULT_AUTO_INCREASE_THRESHOLD.drr);
+  const ctr =
+    settings.ctrThresholdPercent ??
+    (settings.metric === 'ctr'
+      ? settings.thresholdPercent
+      : DEFAULT_AUTO_INCREASE_THRESHOLD.ctr);
+  return { drr, ctr };
+}
+
+function resolveAutoIncreaseMetricEnabled(settings: AdvancedDailyLimitSettings) {
+  return {
+    drr: settings.drrMetricEnabled ?? settings.metric !== 'ctr',
+    ctr: settings.ctrMetricEnabled ?? settings.metric === 'ctr',
+  };
+}
+
+function isAutoIncreaseThresholdValid(parsed: number) {
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 100;
+}
+
+const DAILY_LIMIT_STRATEGY_PRESETS: {
+  id: DailyLimitStrategyId;
+  title: string;
+  description: string;
+  metric: 'drr' | 'ctr';
+  metricLabel: string;
+  metricHint: string;
+  thresholdPercent: number;
+  thresholdHint: string;
+  increaseAmountRub: number;
+  accentClass: string;
+  selectedBgClass: string;
+}[] = [
+  {
+    id: 'spendOptimization',
+    title: 'Оптимизация расходов',
+    description: 'Повышаем дневной лимит, когда доля расходов ниже, чем у большинства в категории',
+    metric: 'drr',
+    metricLabel: 'ДРР (доля расходов)',
+    metricHint: 'Чем ниже ДРР, тем выгоднее продвижение — можно смелее повышать дневной лимит.',
+    thresholdPercent: 12,
+    thresholdHint: 'Порог ДРР подобран по медиане лидеров категории',
+    increaseAmountRub: 750,
+    accentClass: 'border-l-[#9A41FE]',
+    selectedBgClass: 'bg-[#F6F2FF]',
+  },
+  {
+    id: 'clicksOptimization',
+    title: 'Оптимизация кликов',
+    description: 'Увеличиваем лимит, когда CTR стабильно выше среднего по сильным игрокам категории',
+    metric: 'ctr',
+    metricLabel: 'CTR',
+    metricHint: 'Высокий CTR говорит о востребованности карточки — можно наращивать показы.',
+    thresholdPercent: 2.8,
+    thresholdHint: 'Порог CTR основан на средних показателях лидеров в категории',
+    increaseAmountRub: 500,
+    accentClass: 'border-l-emerald-400',
+    selectedBgClass: 'bg-white',
+  },
+];
+
+const RECOMMENDED_DRR_THRESHOLD_PERCENT = DAILY_LIMIT_STRATEGY_PRESETS.find(
+  (s) => s.id === 'spendOptimization',
+)!.thresholdPercent;
+
+const RECOMMENDED_CTR_THRESHOLD_PERCENT = DAILY_LIMIT_STRATEGY_PRESETS.find(
+  (s) => s.id === 'clicksOptimization',
+)!.thresholdPercent;
+
+function dailyLimitStrategyPreset(id: DailyLimitStrategyId) {
+  return DAILY_LIMIT_STRATEGY_PRESETS.find((s) => s.id === id)!;
+}
+
+function limitIncreasePercentLabel(percent: LimitIncreasePercent) {
+  return `Увеличивать лимит на ${percent}%`;
+}
+
+function LimitIncreasePercentDropdown({
+  value,
+  onChange,
+}: {
+  value: LimitIncreasePercent;
+  onChange: (value: LimitIncreasePercent) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  return (
+    <div ref={ref} className="relative min-w-0 w-full max-w-full">
+      <button
+        type="button"
+        id="limit-increase-percent"
+        onClick={() => setIsOpen((open) => !open)}
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm font-medium text-gray-900 outline-none transition-colors hover:border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+        aria-expanded={isOpen}
+        aria-haspopup="listbox"
+      >
+        <span className="min-w-0 truncate">{limitIncreasePercentLabel(value)}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {isOpen ? (
+        <div
+          className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+          role="listbox"
+          aria-labelledby="limit-increase-percent"
+        >
+          {LIMIT_INCREASE_PERCENT_OPTIONS.map((percent) => (
+            <button
+              key={percent}
+              type="button"
+              role="option"
+              aria-selected={value === percent}
+              className={`w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${
+                value === percent ? 'bg-[#F6F2FF] font-medium text-gray-900' : 'text-gray-700'
+              }`}
+              onClick={() => {
+                onChange(percent);
+                setIsOpen(false);
+              }}
+            >
+              {limitIncreasePercentLabel(percent)}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const AdvancedDailyLimitModal: React.FC<{
+  embedded?: boolean;
+  /** Только блок «Расширенные настройки» (без лимита на день и переноса) */
+  advancedSettingsOnly?: boolean;
+  isOpen: boolean;
+  onClose: () => void;
+  isDailyLimitEnabled: boolean;
+  onEnableDailyLimit: () => void;
+  onDisableDailyLimit: () => void;
+  dailyLimitValue: string;
+  onDailyLimitValueChange: (value: string) => void;
+  onDailyLimitCommit: (parsed: number, options?: { silent?: boolean }) => void;
+  savedDailyLimit: string;
+  isCarryoverEnabled: boolean;
+  onCarryoverChange: (enabled: boolean) => void;
+  campaignBudget: number;
+  initialSettings: AdvancedDailyLimitSettings;
+  onApply: (settings: AdvancedDailyLimitSettings) => void;
+  referenceCpcBidRub: number;
+  targetAvgPosition?: number;
+}> = ({
+  embedded = false,
+  advancedSettingsOnly = false,
+  isOpen,
+  onClose,
+  dailyLimitValue,
+  onDailyLimitValueChange,
+  onDailyLimitCommit,
+  savedDailyLimit,
+  isCarryoverEnabled,
+  onCarryoverChange,
+  campaignBudget,
+  initialSettings,
+  onApply,
+  referenceCpcBidRub,
+  targetAvgPosition,
+}) => {
+  const [strategyId, setStrategyId] = useState<DailyLimitStrategyId | null>(initialSettings.strategyId);
+  const [strategyGroupLabel, setStrategyGroupLabel] = useState(initialSettings.strategyGroupLabel);
+  const [autoIncreaseEnabled, setAutoIncreaseEnabled] = useState(initialSettings.autoIncreaseEnabled);
+  const [thresholdByMetric, setThresholdByMetric] = useState<Record<'drr' | 'ctr', string>>(() => {
+    const resolved = resolveAutoIncreaseThresholds(initialSettings);
+    return {
+      drr: String(resolved.drr),
+      ctr: String(resolved.ctr),
+    };
+  });
+  const [limitIncreasePercent, setLimitIncreasePercent] = useState<LimitIncreasePercent>(
+    initialSettings.limitIncreasePercent ?? 25,
+  );
+  const [metricEnabled, setMetricEnabled] = useState(() =>
+    resolveAutoIncreaseMetricEnabled(initialSettings),
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setStrategyId(initialSettings.strategyId);
+    setStrategyGroupLabel(initialSettings.strategyGroupLabel);
+    const resolved = resolveAutoIncreaseThresholds(initialSettings);
+    setThresholdByMetric({
+      drr: String(resolved.drr),
+      ctr: String(resolved.ctr),
+    });
+    setLimitIncreasePercent(initialSettings.limitIncreasePercent ?? 25);
+    if (advancedSettingsOnly) {
+      setAutoIncreaseEnabled(true);
+      const metrics = resolveAutoIncreaseMetricEnabled(initialSettings);
+      setMetricEnabled(
+        metrics.drr || metrics.ctr ? metrics : { drr: true, ctr: false },
+      );
+    } else {
+      setAutoIncreaseEnabled(initialSettings.autoIncreaseEnabled);
+      setMetricEnabled(resolveAutoIncreaseMetricEnabled(initialSettings));
+    }
+  }, [isOpen, initialSettings, advancedSettingsOnly]);
+
+  useEffect(() => {
+    if (!isOpen || advancedSettingsOnly) return;
+    if (dailyLimitValue.trim() === '') {
+      onDailyLimitValueChange(String(DAILY_LIMIT_ABSOLUTE_MIN));
+    }
+  }, [isOpen, advancedSettingsOnly]);
+
+  const dailyLimitTrafficEstimate = useMemo(() => {
+    if (!isOpen || advancedSettingsOnly) return null;
+    const limit = parseDisplayValue(String(dailyLimitValue).replace(',', '.'));
+    return estimateDailyLimitSpendPreview(limit, referenceCpcBidRub, {
+      targetAvgPosition,
+    });
+  }, [isOpen, advancedSettingsOnly, dailyLimitValue, referenceCpcBidRub, targetAvgPosition]);
+
+  if (!isOpen) return null;
+
+  const parsedDrrThreshold = parseDisplayValue(thresholdByMetric.drr.replace(',', '.'));
+  const parsedCtrThreshold = parseDisplayValue(thresholdByMetric.ctr.replace(',', '.'));
+  const limitRubSource = advancedSettingsOnly
+    ? savedDailyLimit || dailyLimitValue
+    : dailyLimitValue;
+  const parsedDailyLimit = parseDisplayValue(limitRubSource.replace(',', '.'));
+  const drrThresholdValid = isAutoIncreaseThresholdValid(parsedDrrThreshold);
+  const ctrThresholdValid = isAutoIncreaseThresholdValid(parsedCtrThreshold);
+  const anyAutoIncreaseMetricEnabled = metricEnabled.drr || metricEnabled.ctr;
+  const autoIncreaseMetricsValid =
+    anyAutoIncreaseMetricEnabled &&
+    (!metricEnabled.drr || drrThresholdValid) &&
+    (!metricEnabled.ctr || ctrThresholdValid);
+  const dailyLimitValid =
+    Number.isFinite(parsedDailyLimit) &&
+    parsedDailyLimit >= DAILY_LIMIT_ABSOLUTE_MIN &&
+    parsedDailyLimit <= campaignBudget;
+  const canSave = advancedSettingsOnly
+    ? !autoIncreaseEnabled || autoIncreaseMetricsValid
+    : dailyLimitValid && (!autoIncreaseEnabled || autoIncreaseMetricsValid);
+
+  const handleSave = () => {
+    if (!canSave) return;
+    if (!advancedSettingsOnly) {
+      if (parsedDailyLimit > campaignBudget) {
+        onDailyLimitCommit(parsedDailyLimit);
+        return;
+      }
+      onDailyLimitCommit(parsedDailyLimit, { silent: true });
+    }
+    const increaseAmountRub = autoIncreaseEnabled
+      ? Math.max(1, Math.round(parsedDailyLimit * (limitIncreasePercent / 100)))
+      : initialSettings.increaseAmountRub;
+    onApply({
+      strategyId,
+      strategyGroupLabel: strategyGroupLabel.trim(),
+      autoIncreaseEnabled,
+      metric: metricEnabled.ctr && !metricEnabled.drr ? 'ctr' : 'drr',
+      thresholdPercent: metricEnabled.drr
+        ? drrThresholdValid
+          ? parsedDrrThreshold
+          : DEFAULT_AUTO_INCREASE_THRESHOLD.drr
+        : metricEnabled.ctr && ctrThresholdValid
+          ? parsedCtrThreshold
+          : DEFAULT_AUTO_INCREASE_THRESHOLD.ctr,
+      drrThresholdPercent: drrThresholdValid ? parsedDrrThreshold : DEFAULT_AUTO_INCREASE_THRESHOLD.drr,
+      ctrThresholdPercent: ctrThresholdValid ? parsedCtrThreshold : DEFAULT_AUTO_INCREASE_THRESHOLD.ctr,
+      drrMetricEnabled: metricEnabled.drr,
+      ctrMetricEnabled: metricEnabled.ctr,
+      increaseAmountRub,
+      limitIncreasePercent,
+    });
+  };
+
+  const body = (
+    <>
+      <div className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto ${embedded ? 'px-6 pb-4 sm:px-8' : 'p-6 sm:p-8'}`}>
+        {!embedded && !advancedSettingsOnly ? (
+          <>
+            <h2 id="advanced-daily-limit-title" className="text-xl font-bold leading-snug text-gray-900">
+              Расширенные настройки дневного лимита
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-gray-500">
+              Выберите готовую стратегию — её можно назначить сразу на много кампаний. Параметры
+              подстраиваются под средние показатели эффективности лидеров в вашей категории.
+            </p>
+          </>
+        ) : null}
+
+              {!advancedSettingsOnly ? (
+                <div className="rounded-2xl border border-gray-100 bg-white p-5">
+                  <h3 className="text-base font-semibold text-gray-900">Лимит на день</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Распределяем сумму равномерно в течение дня
+                  </p>
+                  <div className="relative mt-4">
+                    <input
+                      type="text"
+                      value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
+                      onChange={(e) => {
+                        const parsed = parseDisplayValue(e.target.value);
+                        if (!isNaN(parsed)) onDailyLimitValueChange(String(parsed));
+                        else if (e.target.value === '') onDailyLimitValueChange('');
+                      }}
+                      className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-base font-medium text-gray-900 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                      placeholder={`Задайте от ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
+                    />
+                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                      ₽
+                    </span>
+                  </div>
+                  <label className="mt-4 flex cursor-pointer items-center gap-2">
+                    <Checkbox
+                      checked={isCarryoverEnabled}
+                      onChange={(e) => onCarryoverChange(e.target.checked)}
+                    />
+                    <span className="text-sm text-gray-700">
+                      Переносить неистраченные деньги
+                    </span>
+                  </label>
+                  {dailyLimitTrafficEstimate ? (
+                    <div className="mt-4 rounded-xl border border-gray-100 bg-[#F9F9FB] px-4 py-3 text-sm text-gray-600">
+                      <p className="text-gray-500">При текущих ставках и лимите:</p>
+                      <p className="mt-2 tabular-nums text-gray-900">
+                        Позиция: ~ {formatApproxClicksPerDay(dailyLimitTrafficEstimate.approxPosition)}
+                      </p>
+                      <p className="mt-1 tabular-nums text-gray-900">
+                        Клики: ~ {formatApproxClicksPerDay(dailyLimitTrafficEstimate.approxClicks)} в день
+                      </p>
+                    </div>
+                  ) : referenceCpcBidRub > 0 ? (
+                    <p className="mt-4 text-xs text-gray-400">
+                      Укажите лимит от {formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽, чтобы увидеть оценку.
+                    </p>
+                  ) : (
+                    <p className="mt-4 text-xs text-gray-400">
+                      Задайте ставку в поиске или включите преследование позиции, чтобы увидеть оценку.
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              <div
+                className={`rounded-2xl border border-gray-100 bg-white p-5 ${advancedSettingsOnly ? '' : 'mt-4'}`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm shadow-fuchsia-200/80"
+                      aria-hidden
+                    >
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <h3 className="text-base font-semibold text-gray-900">Расширенные настройки</h3>
+                  </div>
+                  <ToggleSwitch checked={autoIncreaseEnabled} onChange={setAutoIncreaseEnabled} />
+                </div>
+
+                {autoIncreaseEnabled ? (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label htmlFor="limit-increase-percent" className="sr-only">
+                      Увеличивать лимит
+                    </label>
+                    <LimitIncreasePercentDropdown
+                      value={limitIncreasePercent}
+                      onChange={setLimitIncreasePercent}
+                    />
+                  </div>
+
+                  <div className="space-y-4">
+                      {(['drr', 'ctr'] as const).map((metricKey) => {
+                        const enabled = metricEnabled[metricKey];
+                        const draft = thresholdByMetric[metricKey];
+                        const parsed = parseDisplayValue(draft.replace(',', '.'));
+                        const valid =
+                          !enabled || isAutoIncreaseThresholdValid(parsed) || draft === '';
+                        const inputId =
+                          metricKey === 'drr' ? 'metric-threshold-drr' : 'metric-threshold-ctr';
+                        const recommendedPercent =
+                          metricKey === 'drr'
+                            ? RECOMMENDED_DRR_THRESHOLD_PERCENT
+                            : RECOMMENDED_CTR_THRESHOLD_PERCENT;
+                        return (
+                          <div key={metricKey} className="min-w-0">
+                            <div className="flex min-w-0 items-center justify-between gap-3">
+                              <label
+                                className="min-w-0 flex-1 text-sm font-medium text-gray-900"
+                                htmlFor={inputId}
+                              >
+                                {autoIncreaseThresholdLabel(metricKey)}
+                              </label>
+                              <div className="shrink-0">
+                                <ToggleSwitch
+                                  checked={enabled}
+                                  onChange={(checked) =>
+                                    setMetricEnabled((prev) => ({ ...prev, [metricKey]: checked }))
+                                  }
+                                />
+                              </div>
+                            </div>
+                            {enabled ? (
+                              <>
+                                <div className="relative mt-2 min-w-0">
+                                  <input
+                                    id={inputId}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={draft}
+                                    onChange={(e) => {
+                                      const v = e.target.value.replace(',', '.');
+                                      if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                                        setThresholdByMetric((prev) => ({ ...prev, [metricKey]: v }));
+                                      }
+                                    }}
+                                    className={`w-full rounded-xl border px-4 py-3 pr-10 text-base outline-none ${
+                                      valid
+                                        ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                                        : 'border-red-300'
+                                    }`}
+                                  />
+                                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                                    %
+                                  </span>
+                                </div>
+                                <div className="mt-2 min-w-0 rounded-xl bg-[#F6F2FF] px-3 py-2.5 text-xs leading-relaxed break-words text-gray-600">
+                                  <span className="font-medium text-gray-900">Рекомендуем </span>
+                                  {recommendedPercent}% — порог по медиане эффективных кампаний в категории
+                                </div>
+                              </>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="button"
+                  disabled={!canSave}
+                  onClick={handleSave}
+                  className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                >
+                  Сохранить
+                </button>
+              </div>
+            </div>
+    </>
+  );
+
+  if (embedded) {
+    return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{body}</div>;
+  }
+
+  return (
+    <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} role="presentation">
+      <div className="flex h-full w-full justify-end" onClick={onClose}>
+        <div className="flex h-full max-h-full min-w-0 items-stretch gap-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
+              aria-label="Закрыть"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div
+            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={advancedSettingsOnly ? undefined : 'advanced-daily-limit-title'}
+            aria-label={advancedSettingsOnly ? 'Расширенные настройки' : undefined}
+          >
+            {body}
           </div>
         </div>
       </div>

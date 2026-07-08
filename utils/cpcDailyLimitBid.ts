@@ -16,9 +16,41 @@ export function isDailyLimitBelowRecommendedForMaxBid(
   return dailyLimitRub < minDailyLimitForMaxBid(maxBidRub);
 }
 
+/** Ставка × 30 выше абсолютного минимума лимита и текущий лимит ниже рекомендуемого */
+export function shouldPromptRaiseDailyLimitForMaxBid(
+  isDailyLimitEnabled: boolean,
+  dailyLimitRub: number,
+  maxBidRub: number,
+): boolean {
+  if (!isDailyLimitEnabled || dailyLimitRub <= 0 || maxBidRub <= 0) return false;
+  const recommended = minDailyLimitForMaxBid(maxBidRub);
+  return (
+    recommended > DAILY_LIMIT_ABSOLUTE_MIN &&
+    isDailyLimitBelowRecommendedForMaxBid(dailyLimitRub, maxBidRub)
+  );
+}
+
 export function maxBidRubForDailyLimit(dailyLimitRub: number): number {
   if (!Number.isFinite(dailyLimitRub) || dailyLimitRub <= 0) return 0;
   return Math.floor(dailyLimitRub / DAILY_LIMIT_MIN_CLICKS_PER_DAY);
+}
+
+/** Демо-оценка позиции и кликов при лимите и ставке в поиске (прототип). */
+export function estimateDailyLimitSpendPreview(
+  dailyLimitRub: number,
+  cpcBidRub: number,
+  options?: { targetAvgPosition?: number },
+): { approxPosition: number; approxClicks: number } | null {
+  if (!Number.isFinite(dailyLimitRub) || dailyLimitRub <= 0) return null;
+  if (!Number.isFinite(cpcBidRub) || cpcBidRub <= 0) return null;
+  const limitPerBid = dailyLimitRub / cpcBidRub;
+  if (limitPerBid <= 0) return null;
+  const approxPosition =
+    options?.targetAvgPosition != null
+      ? Math.round(options.targetAvgPosition)
+      : Math.min(300, Math.max(1, Math.round(limitPerBid)));
+  const approxClicks = Math.max(1, Math.round(limitPerBid * 2.15));
+  return { approxPosition, approxClicks };
 }
 
 /** Демо: товары, для которых ставки из Excel не применились из‑за дневного лимита */
