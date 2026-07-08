@@ -209,9 +209,10 @@ interface SuccessPageProps {
     dailyLimitExhausted?: boolean;
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
+    campaignStatus?: 'active' | 'paused';
   }) => void;
-  onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => void;
-  onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => void) => void;
+  onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void;
+  onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void) => void;
   /** Открыть массовую настройку дневного лимита для текущего выделения (панель в App) */
   onRegisterBulkDailyLimitOpener?: (open: () => void) => void;
   onOpenSingleCampaign?: () => void;
@@ -265,6 +266,8 @@ type CampaignListDataPatch = {
   dailyLimit?: number | null;
   scheduledDailyLimit?: number | null;
   maxCpcBidRub?: number;
+  status?: 'active' | 'paused';
+  statusText?: string;
 };
 
 function applyCampaignListPatches(
@@ -282,6 +285,8 @@ function applyCampaignListPatches(
       ...(patch.dailyLimit !== undefined && { dailyLimit: patch.dailyLimit }),
       ...(patch.scheduledDailyLimit !== undefined && { scheduledDailyLimit: patch.scheduledDailyLimit }),
       ...(patch.maxCpcBidRub !== undefined && { maxCpcBidRub: patch.maxCpcBidRub }),
+      ...(patch.status !== undefined && { status: patch.status }),
+      ...(patch.statusText !== undefined && { statusText: patch.statusText }),
     };
   });
 }
@@ -7726,6 +7731,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
           ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
           ...(data.maxCpcBidRub !== undefined && { maxCpcBidRub: data.maxCpcBidRub }),
+          ...(data.status !== undefined && { status: data.status }),
+          ...(data.statusText !== undefined && { statusText: data.statusText }),
         };
       }
       return c;
@@ -9132,6 +9139,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         dailyLimit: c.dailyLimit ?? null,
         scheduledDailyLimit: c.scheduledDailyLimit ?? null,
         dailyLimitExhausted: c.dailyLimitExhausted,
+        campaignStatus:
+          c.status === 'active' || c.status === 'paused'
+            ? c.status
+            : ('active' as const),
       };
       if (c.isBonusCampaign) {
         onOpenCpcCampaign({

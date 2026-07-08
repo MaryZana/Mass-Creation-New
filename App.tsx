@@ -2002,8 +2002,9 @@ export default function App() {
     dailyLimitExhausted?: boolean;
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
+    campaignStatus?: 'active' | 'paused';
   } | null>(null);
-  const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number }) => void) | null>(null);
+  const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void) | null>(null);
   const bulkDailyLimitOpenerRef = useRef<(() => void) | null>(null);
 
   type CampaignListDataPatch = {
@@ -2012,6 +2013,8 @@ export default function App() {
     dailyLimit?: number | null;
     scheduledDailyLimit?: number | null;
     maxCpcBidRub?: number;
+    status?: 'active' | 'paused';
+    statusText?: string;
   };
   const [campaignListPatches, setCampaignListPatches] = useState<Record<number, CampaignListDataPatch>>({});
   const persistCampaignListPatch = useCallback((campaignId: number, data: CampaignListDataPatch) => {
@@ -2893,6 +2896,7 @@ export default function App() {
                       dailyLimitExhausted,
                       fromReadyToRepeat,
                       repeatLaunchPreset,
+                      campaignStatus,
                     }) => {
                       setSelectedCpcCampaign({
                         id: campaignId,
@@ -2903,6 +2907,7 @@ export default function App() {
                         dailyLimitExhausted,
                         fromReadyToRepeat,
                         repeatLaunchPreset,
+                        campaignStatus,
                       });
                       setAppState('cpc-detail' as any);
                     }}
@@ -3116,6 +3121,7 @@ export default function App() {
         dailyLimitExhausted={selectedCpcCampaign.dailyLimitExhausted}
         fromReadyToRepeat={selectedCpcCampaign.fromReadyToRepeat}
         repeatLaunchPreset={selectedCpcCampaign.repeatLaunchPreset}
+        campaignStatus={selectedCpcCampaign.campaignStatus}
         onBack={() => {
           // Update campaign data in SuccessPage before going back
           if (selectedCpcCampaign) {
@@ -3134,6 +3140,7 @@ export default function App() {
               ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
               ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
               ...(data.maxCpcBidRub !== undefined && { maxCpcBidRub: data.maxCpcBidRub }),
+              ...(data.status !== undefined && { campaignStatus: data.status }),
             };
             setSelectedCpcCampaign(updated);
             if (updateCampaignDataRef.current) {
