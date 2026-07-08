@@ -63,6 +63,7 @@ import {
   resolveProductTableThumbSrc,
   productTableThumbUrl,
   PREBUILT_LIST_CPC_CAMPAIGN_ID,
+  PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
 } from './SuccessPageTestData';
 import {
   useProfile,
@@ -4512,15 +4513,55 @@ const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
   image: productTableThumbUrl('pr1', 'Платья'),
 };
 
+const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID = 'prebuilt-single-product-cpc';
+
+const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN: DisplayCampaign = {
+  ...(PREBUILT_CPC_CAMPAIGN_BASE as DisplayCampaign),
+  id: PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
+  campaignId: PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
+  type: 'CPC',
+  status: 'active',
+  statusText: 'активна',
+  name: 'Кампания тест летняя распродажа',
+  remainingBudget: 1500,
+  budget: 1500,
+  autoRefill: false,
+  autoRefillStatus: 'off',
+  spend: 340,
+  impressions: 12400,
+  ctr: 2.7,
+  orders: 12,
+  spendShare: 4.2,
+  tags: [],
+  campaignTags: [],
+  dailyLimit: null,
+  dailyLimitExhausted: false,
+  maxCpcBidRub: 30,
+  productId: 'pr1',
+  productIds: ['pr1'],
+  category: 'Платья',
+  image: productTableThumbUrl('pr1', 'Платья'),
+};
+
 /** 4-я строка в списке кампаний (после предсобранной и двух кампаний pr1): мультитовар без длинной сетки */
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID = '1400002';
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS = ['pr2', 'pr3', 'pr4', 'pr5', 'pr6'] as const;
 
 function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
   const { campaigns } = getProfileListData(profileId);
-  const list = profileId === '2' ? [...campaigns] : [PREBUILT_CPC_CAMPAIGN, ...campaigns];
+  const list =
+    profileId === '2'
+      ? [...campaigns]
+      : [PREBUILT_CPC_CAMPAIGN, PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN, ...campaigns];
   return list.map((c, index) => {
-    let base = index === 1 ? { ...c, isBonusCampaign: true } : c;
+    // Бонусный сценарий «перезапустить кампанию» — не на предсобранных, а на первой обычной строке после них
+    const isBonusRepeatDemoRow = profileId !== '2' ? index === 2 : index === 1;
+    let base =
+      isBonusRepeatDemoRow &&
+      c.id !== PREBUILT_CPC_CAMPAIGN_ID &&
+      c.id !== PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID
+        ? { ...c, isBonusCampaign: true }
+        : { ...c, isBonusCampaign: false };
     if (c.id === CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID) {
       const primaryId = CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[0];
       base = {
@@ -8549,9 +8590,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter((c) => (c.name && c.name.toLowerCase().includes(q)) || String(c.campaignId).toLowerCase().includes(q));
     }
 
-    const prebuilt = allCampaigns.find((c) => c.id === PREBUILT_CPC_CAMPAIGN_ID);
-    if (prebuilt && !insightFilter) {
-      filtered = [prebuilt, ...filtered.filter((c) => c.id !== PREBUILT_CPC_CAMPAIGN_ID)];
+    const prebuiltTop = allCampaigns.filter(
+      (c) => c.id === PREBUILT_CPC_CAMPAIGN_ID || c.id === PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
+    );
+    if (prebuiltTop.length > 0 && !insightFilter) {
+      const prebuiltIds = new Set(prebuiltTop.map((c) => c.id));
+      filtered = [...prebuiltTop, ...filtered.filter((c) => !prebuiltIds.has(c.id))];
     }
 
     return filtered;
