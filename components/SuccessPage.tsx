@@ -11,6 +11,8 @@ import {
   minDailyLimitForMaxBid,
   isDailyLimitBelowRecommendedForMaxBid,
 } from '../utils/cpcDailyLimitBid';
+import { normalizeCpmBidRub } from '../utils/cpmBidRounding';
+import { useCpmBidRoundedAlert } from './CpmBidRoundedAlert';
 import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
@@ -203,6 +205,7 @@ interface SuccessPageProps {
   onOpenCpcCampaign: (payload: {
     campaignId: number;
     name: string;
+    paymentModel?: 'CPC' | 'CPM';
     remainingBudget: number | null;
     dailyLimit: number | null;
     scheduledDailyLimit: number | null;
@@ -1079,11 +1082,15 @@ function ProductBulkBidField({
   onChange,
   presets,
   min,
+  applyCpmStep = false,
+  onCpmBidRounded,
 }: {
   value: number;
   onChange: (value: number) => void;
   presets: number[];
   min: number;
+  applyCpmStep?: boolean;
+  onCpmBidRounded?: (roundedRub: number) => void;
 }) {
   const [inputValue, setInputValue] = useState(String(value || ''));
   useEffect(() => {
@@ -1091,8 +1098,16 @@ function ProductBulkBidField({
   }, [value]);
 
   const commit = (raw: string) => {
-    let numericValue = parseDisplayValue(raw);
-    if (Number.isNaN(numericValue) || numericValue < min) numericValue = min;
+    const parsed = parseDisplayValue(raw);
+    if (Number.isNaN(parsed)) return;
+    let numericValue = parsed;
+    if (applyCpmStep) {
+      const { value: stepped, didRoundFromInput } = normalizeCpmBidRub(numericValue, min);
+      if (didRoundFromInput) onCpmBidRounded?.(stepped);
+      numericValue = stepped;
+    } else if (numericValue < min) {
+      numericValue = min;
+    }
     onChange(numericValue);
     setInputValue(String(numericValue));
   };
@@ -1559,11 +1574,13 @@ function ProductCampaignBidInput({
   value,
   onChange,
   compact = false,
+  onCpmBidRounded,
 }: {
   camp: ProductCampaign;
   value: number;
   onChange: (value: number) => void;
   compact?: boolean;
+  onCpmBidRounded?: (roundedRub: number) => void;
 }) {
   const min = productCampaignBidMin(camp);
   const [inputValue, setInputValue] = useState(String(value || ''));
@@ -1572,8 +1589,16 @@ function ProductCampaignBidInput({
   }, [value]);
 
   const commit = (raw: string) => {
-    let numericValue = parseDisplayValue(raw);
-    if (Number.isNaN(numericValue) || numericValue < min) numericValue = min;
+    const parsed = parseDisplayValue(raw);
+    if (Number.isNaN(parsed)) return;
+    let numericValue = parsed;
+    if (camp.type === 'CPM') {
+      const { value: stepped, didRoundFromInput } = normalizeCpmBidRub(numericValue, min);
+      if (didRoundFromInput) onCpmBidRounded?.(stepped);
+      numericValue = stepped;
+    } else {
+      if (numericValue < min) numericValue = min;
+    }
     onChange(numericValue);
     setInputValue(String(numericValue));
   };
@@ -1610,10 +1635,12 @@ function ProductCampaignBidCell({
   camp,
   overrides,
   onChange,
+  onCpmBidRounded,
 }: {
   camp: ProductCampaign;
   overrides?: ProductCampaignBidOverride;
   onChange: (next: ProductCampaignBidOverride) => void;
+  onCpmBidRounded?: (roundedRub: number) => void;
 }) {
   if (isProductCampaignCpmManual(camp)) {
     const searchVal = overrides?.search ?? defaultProductCampaignSearchBid(camp);
@@ -1627,6 +1654,7 @@ function ProductCampaignBidCell({
             camp={camp}
             value={searchVal}
             compact
+            onCpmBidRounded={onCpmBidRounded}
             onChange={(val) =>
               onChange({ ...overrides, search: val, recommendations: recVal })
             }
@@ -1638,6 +1666,7 @@ function ProductCampaignBidCell({
             camp={camp}
             value={recVal}
             compact
+            onCpmBidRounded={onCpmBidRounded}
             onChange={(val) =>
               onChange({ ...overrides, search: searchVal, recommendations: val })
             }
@@ -1653,6 +1682,7 @@ function ProductCampaignBidCell({
       camp={camp}
       value={unified}
       compact
+      onCpmBidRounded={onCpmBidRounded}
       onChange={(val) => onChange({ unified: val })}
     />
   );
@@ -1666,6 +1696,7 @@ function ProductBidBulkModal({
   campaignCount,
   productCount,
   onApply,
+  onCpmBidRounded,
 }: {
   kind: ProductBidBulkModalKind;
   isOpen: boolean;
@@ -1674,9 +1705,11 @@ function ProductBidBulkModal({
   campaignCount: number;
   productCount: number;
   onApply: () => void;
+  onCpmBidRounded?: (roundedRub: number) => void;
 }) {
   const presets = productBidPresets(kind);
   const min = productBidMin(kind);
+  const applyCpmStep = kind !== 'cpc';
   const multiCategory = categories.length > 1;
   const [singleBid, setSingleBid] = useState(min);
   const [bidsByCategory, setBidsByCategory] = useState<Record<string, number>>({});
@@ -1766,6 +1799,8 @@ function ProductBidBulkModal({
                     }
                     presets={presets}
                     min={min}
+                    applyCpmStep={applyCpmStep}
+                    onCpmBidRounded={onCpmBidRounded}
                   />
                 </div>
               ) : null,
@@ -1782,6 +1817,8 @@ function ProductBidBulkModal({
               onChange={setSingleBid}
               presets={presets}
               min={min}
+              applyCpmStep={applyCpmStep}
+              onCpmBidRounded={onCpmBidRounded}
             />
           </div>
         )}
@@ -7612,6 +7649,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     campaignListPatches,
     onPersistCampaignListPatch,
 }) => {
+  const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const {
     profileId,
     beginRepeatLaunchFlow,
@@ -9135,6 +9173,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       const payload = {
         campaignId: c.campaignId,
         name: c.name,
+        paymentModel: c.type,
         remainingBudget: c.remainingBudget,
         dailyLimit: c.dailyLimit ?? null,
         scheduledDailyLimit: c.scheduledDailyLimit ?? null,
@@ -9147,6 +9186,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       if (c.isBonusCampaign) {
         onOpenCpcCampaign({
           ...payload,
+          paymentModel: 'CPC',
           fromReadyToRepeat: true,
           repeatLaunchPreset: buildRepeatPresetForDisplayCampaign(c, profileId),
         });
@@ -9159,7 +9199,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const openProductNestedCampaign = useCallback(
     (camp: ProductCampaign) => {
-      if (camp.type !== 'CPC') return;
       const display = allCampaigns.find((c) => c.campaignId === camp.campaignId);
       if (display) {
         openListCpcCampaign(display);
@@ -9168,10 +9207,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       onOpenCpcCampaign({
         campaignId: camp.campaignId,
         name: camp.name,
+        paymentModel: camp.type,
         remainingBudget: camp.remainingBudget,
         dailyLimit: camp.dailyLimit ?? null,
         scheduledDailyLimit: null,
         dailyLimitExhausted: camp.dailyLimitExhausted,
+        campaignStatus:
+          camp.status === 'active' || camp.status === 'paused' ? camp.status : 'active',
       });
     },
     [allCampaigns, openListCpcCampaign, onOpenCpcCampaign],
@@ -9404,6 +9446,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           aboveOverlay
         />
       )}
+      {cpmBidRoundedAlertNode}
 
       {isProductPromotionConceptPage && productBidBulkModalKind && (
         <ProductBidBulkModal
@@ -9414,6 +9457,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           campaignCount={selectedProductsCampaignCount}
           productCount={selectedProductsForBidBulk.length}
           onApply={handleProductBidBulkApply}
+          onCpmBidRounded={showCpmBidRoundedAlert}
         />
       )}
 
@@ -10390,13 +10434,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           <tr
                             key={c.id}
                             onClick={(e) => {
-                              if (c.type === 'CPC' && !(e.target as HTMLElement).closest('button')) {
+                              if (
+                                (c.type === 'CPC' || c.type === 'CPM') &&
+                                !(e.target as HTMLElement).closest('button')
+                              ) {
                                 openListCpcCampaign(c);
                               }
                             }}
                             className={`group/campaign-row transition-colors ${
                               isCampaignRowSelected ? 'bg-purple-50' : 'hover:bg-gray-50'
-                            } ${c.type === 'CPC' ? 'cursor-pointer' : ''}`}
+                            } ${c.type === 'CPC' || c.type === 'CPM' ? 'cursor-pointer' : ''}`}
                           >
                       <td
                         className={`sticky left-0 z-10 p-4 ${campaignPinnedCellClass}`}
@@ -11708,7 +11755,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               />
                               <ProductTableThumb productId={product.id} src={product.image} category={product.category} />
                                 <div className="min-w-0 flex-1">
-                                {camp.type === 'CPC' ? (
+                                {camp.type === 'CPC' || camp.type === 'CPM' ? (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -11779,6 +11826,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               <ProductCampaignBidCell
                                 camp={camp}
                                 overrides={productCampaignBidOverride[camp.id]}
+                                onCpmBidRounded={showCpmBidRoundedAlert}
                                 onChange={(next) =>
                                   setProductCampaignBidOverride((prev) => ({
                                     ...prev,

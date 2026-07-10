@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Checkbox } from 'antd';
-import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical } from './Icons';
+import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical, Check, Edit2, Info } from './Icons';
 import { SingleCampaignAddProductsModal } from './SingleCampaignAddProductsModal';
 import { AppHeader } from './AppHeader';
 import { ReferralInviteCreationBanner } from './ReferralInviteCreationBanner';
@@ -11,6 +11,8 @@ import {
   minDailyLimitForMaxBid,
   isDailyLimitBelowRecommendedForMaxBid,
 } from '../utils/cpcDailyLimitBid';
+import { normalizeCpmBidRub } from '../utils/cpmBidRounding';
+import { useCpmBidRoundedAlert } from './CpmBidRoundedAlert';
 import { useProfile } from './ProfileContext';
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
@@ -372,6 +374,139 @@ const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolea
   </button>
 );
 
+const CPC_PAYMENT_BENEFITS = [
+  'Аукцион второй цены',
+  'дневные лимиты',
+  'отсутствие шага ставки',
+] as const;
+
+function SecondPriceAuctionBenefitLabel() {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <span
+      className="relative inline-block"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      <span className="cursor-help underline decoration-dotted decoration-[#AEAEB8] underline-offset-2 hover:text-[#6B6B76]">
+        Аукцион второй цены
+      </span>
+      {isVisible ? (
+        <>
+          <span
+            className="absolute left-0 top-full z-50 h-2 w-[min(18rem,calc(100vw-3rem))]"
+            aria-hidden
+          />
+          <div
+            className="absolute left-0 top-full z-[60] mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-lg bg-gray-900 p-3 text-left text-xs leading-snug text-white shadow-lg"
+            role="tooltip"
+          >
+            <p className="mb-2">
+              Выигрывает самая высокая ставка, а цену клика определяем по следующей за ней.
+            </p>
+            <button
+              type="button"
+              className="p-0 text-left text-xs font-medium text-[#A5B4FC] hover:underline"
+            >
+              Подробнее
+            </button>
+          </div>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
+function SingleCampaignPaymentModelIcon({ model }: { model: 'CPC' | 'CPM' }) {
+  const isCpc = model === 'CPC';
+  return (
+    <div
+      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#F0F0F3]"
+      aria-hidden
+    >
+      <svg
+        width="24"
+        height="24"
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={isCpc ? 'text-[#9A41FE]' : 'text-[#8B8B97]'}
+        aria-hidden
+      >
+        <path
+          d="M5.05 4.05 19.95 10.55a.55.55 0 0 1-.07 1.04l-6.74 1.74a2.2 2.2 0 0 0-1.58 1.58l-1.74 6.74a.55.55 0 0 1-1.04.07L5.05 4.05Z"
+          stroke="currentColor"
+          strokeWidth="1.65"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </div>
+  );
+}
+
+const PAYMENT_MODEL_OPTIONS = [
+  { id: 'CPC' as const, label: 'Оплата за клики CPC' },
+  { id: 'CPM' as const, label: 'Оплата за показы CPM' },
+];
+
+function SingleCampaignPaymentModelDropdown({
+  value,
+  onChange,
+}: {
+  value: 'CPC' | 'CPM';
+  onChange: (model: 'CPC' | 'CPM') => void;
+}) {
+  const [isChangeMenuOpen, setIsChangeMenuOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const isCpc = value === 'CPC';
+  const title = PAYMENT_MODEL_OPTIONS.find((o) => o.id === value)?.label ?? 'Оплата за клики CPC';
+  const switchToLabel = isCpc
+    ? 'Переключиться на оплату за показы CPM'
+    : 'Переключиться на оплату за клики CPC';
+
+  useEffect(() => {
+    if (!isChangeMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setIsChangeMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isChangeMenuOpen]);
+
+  return (
+    <div ref={ref} className="relative inline-block max-w-full">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-base font-bold leading-snug text-gray-900">{title}</span>
+        <button
+          type="button"
+          onClick={() => setIsChangeMenuOpen((open) => !open)}
+          className="rounded-md px-2 py-0.5 text-[13px] font-normal text-[#6366f1] transition-colors hover:bg-indigo-50 hover:text-purple-700"
+          aria-expanded={isChangeMenuOpen}
+        >
+          Изменить
+        </button>
+      </div>
+      {isChangeMenuOpen ? (
+        <div className="absolute left-0 top-full z-50 mt-2 min-w-[min(20rem,calc(100vw-3rem))] rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
+          <button
+            type="button"
+            className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
+            onClick={() => {
+              onChange(isCpc ? 'CPM' : 'CPC');
+              setIsChangeMenuOpen(false);
+            }}
+          >
+            {switchToLabel}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   onBack,
   onNavigateToMassCreation,
@@ -385,7 +520,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   } = useProfile();
   const repeatSeedAppliedRef = useRef(false);
   const [campaignName, setCampaignName] = useState('Кампания от 26.12.2024');
-  const [paymentModel, setPaymentModel] = useState<'CPM' | 'CPC'>('CPM');
+  const [paymentModel, setPaymentModel] = useState<'CPM' | 'CPC'>('CPC');
   const [budget, setBudget] = useState('3000');
 
   useEffect(() => {
@@ -395,6 +530,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   }, [profileId, showReferralInviteCreationBanner]);
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
   const [bidType, setBidType] = useState<'unified' | 'manual'>('unified');
+  const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
   const [unifiedBid, setUnifiedBid] = useState('500');
   const [manualBid, setManualBid] = useState('500');
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
@@ -405,6 +541,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const [isMultiCategoryWarningOpen, setIsMultiCategoryWarningOpen] = useState(false);
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
   const [productBidsByNmId, setProductBidsByNmId] = useState<Record<number, string>>({});
@@ -559,7 +696,20 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   };
 
   const handleProductBidBlur = (nmId: number) => {
-    if (paymentModel !== 'CPC') return;
+    if (paymentModel === 'CPM') {
+      const raw = getProductBidDisplay(nmId);
+      const parsed = parseDisplayValue(raw);
+      if (raw === '' || isNaN(parsed) || parsed <= 0) return;
+      const { value: stepped, didRoundFromInput } = normalizeCpmBidRub(parsed, 150);
+      setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(stepped) }));
+      setProductBidDraftByNmId((prev) => {
+        const next = { ...prev };
+        delete next[nmId];
+        return next;
+      });
+      if (didRoundFromInput) showCpmBidRoundedAlert(stepped);
+      return;
+    }
     const raw = getProductBidDisplay(nmId);
     const parsed = parseDisplayValue(raw);
     const saved = parseDisplayValue(getProductBid(nmId));
@@ -635,75 +785,50 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             <ReferralInviteCreationBanner />
           </div>
         )}
-        {/* Управление кампанией */}
-        <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
-          <div className="flex flex-col gap-6">
-            {/* Заголовок */}
-            <div className="flex justify-between items-start gap-4">
+        {/* Управление кампанией — макет карточки */}
+        <div className="mx-auto w-full max-w-[1200px] overflow-visible rounded-2xl border border-[#EBEBEF] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center justify-between gap-4 px-5 pb-4 pt-5">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <input
                 type="text"
                 value={campaignName}
                 onChange={(e) => setCampaignName(e.target.value)}
-                className="font-heading text-[28px] font-[680] leading-9 text-gray-900 bg-transparent border-none outline-none focus:outline-none text-left flex-1 min-w-0"
+                className="min-w-0 flex-1 border-none bg-transparent p-0 text-left text-[22px] font-bold leading-7 tracking-[-0.02em] text-gray-900 outline-none focus:outline-none"
               />
-              <button className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm flex-shrink-0">
-                <span>Информация</span>
-              </button>
+              <Edit2 className="h-[18px] w-[18px] shrink-0 text-[#AEAEB8]" aria-hidden />
             </div>
+            <button
+              type="button"
+              className="flex shrink-0 items-center gap-1.5 text-sm font-normal text-[#6C5CE7] hover:text-[#5B4BFF]"
+            >
+              <Info className="h-4 w-4" aria-hidden />
+              Инструкция
+            </button>
+          </div>
 
-            {/* Модель оплаты */}
-            <div className="flex items-start gap-6">
-              <div
-                onClick={() => setPaymentModel('CPM')}
-                className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                  paymentModel === 'CPM'
-                    ? 'bg-[#F0F0F3] border-[#F0F0F3]'
-                    : 'bg-white border-[#F0F0F3] hover:border-purple-300'
-                }`}
-                style={{ width: '240px', height: '65px' }}
-              >
-                <div className="flex items-center justify-center w-6 h-6 mt-0.5">
-                  {paymentModel === 'CPM' ? (
-                    <div className="w-[18px] h-[18px] bg-[#9A41FE] rounded-full"></div>
-                  ) : (
-                    <div className="w-[18px] h-[18px] bg-white border-2 border-[#BBB7C9] rounded-full"></div>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="font-body text-base font-normal text-gray-900">
-                    CPM
-                  </span>
-                  <span className="font-body text-xs text-[#77767E]">
-                    Оплата за показы
-                  </span>
-                </div>
-              </div>
+          <div className="border-t border-[#EBEBEF]" />
 
-              <div
-                onClick={() => setPaymentModel('CPC')}
-                className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-all ${
-                  paymentModel === 'CPC'
-                    ? 'bg-[#F0F0F3] border-[#F0F0F3]'
-                    : 'bg-white border-[#F0F0F3] hover:border-purple-300'
-                }`}
-                style={{ width: '240px', height: '65px' }}
-              >
-                <div className="flex items-center justify-center w-6 h-6 mt-0.5">
-                  {paymentModel === 'CPC' ? (
-                    <div className="w-[18px] h-[18px] bg-[#9A41FE] rounded-full"></div>
-                  ) : (
-                    <div className="w-[18px] h-[18px] bg-white border-2 border-[#BBB7C9] rounded-full"></div>
-                  )}
-                </div>
-                <div className="flex flex-col gap-1">
-                  <span className="font-body text-base font-normal text-[#4A4A59]">
-                    CPC
+          <div className="flex items-start gap-4 px-5 py-4">
+            <SingleCampaignPaymentModelIcon model={paymentModel} />
+            <div className="min-w-0 flex-1 pt-0.5">
+              <SingleCampaignPaymentModelDropdown
+                value={paymentModel}
+                onChange={setPaymentModel}
+              />
+
+              {paymentModel === 'CPC' ? (
+                <p className="mb-0 flex items-center gap-1.5 text-sm text-[#8E8E93]">
+                  <Check className="h-4 w-4 shrink-0 text-[#34C759]" aria-hidden />
+                  <span>
+                    <SecondPriceAuctionBenefitLabel />
+                    {CPC_PAYMENT_BENEFITS.slice(1).map((text) => (
+                      <span key={text}>, {text}</span>
+                    ))}
                   </span>
-                  <span className="font-body text-xs text-[#77767E]">
-                    Оплата за клики
-                  </span>
-                </div>
-              </div>
+                </p>
+              ) : (
+                <p className="mb-0 mt-0 text-sm text-[#8E8E93]">Минимальный шаг ставки 100 ₽</p>
+              )}
             </div>
           </div>
         </div>
@@ -922,6 +1047,43 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
         </div>
 
         {/* Зоны показов */}
+        {paymentModel === 'CPC' ? (
+          <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
+            <h2 className="text-xl font-bold text-gray-900 mb-4">Зоны показов</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 min-h-[4.5rem]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ToggleSwitch
+                    checked={displayZones.search}
+                    onChange={(checked) => {
+                      setDisplayZones((prev) => {
+                        const next = { ...prev, search: checked };
+                        if (!next.search && !next.recommendations) return { ...prev, search: true };
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="text-sm font-medium text-gray-900">Поиск</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 min-h-[4.5rem]">
+                <div className="flex items-center gap-2 min-w-0">
+                  <ToggleSwitch
+                    checked={displayZones.recommendations}
+                    onChange={(checked) => {
+                      setDisplayZones((prev) => {
+                        const next = { ...prev, recommendations: checked };
+                        if (!next.search && !next.recommendations) return { ...prev, recommendations: true };
+                        return next;
+                      });
+                    }}
+                  />
+                  <span className="text-sm font-medium text-gray-900">Рекомендации</span>
+                </div>
+              </div>
+            </div>
+          </section>
+        ) : (
         <div className="bg-white rounded-2xl p-6 w-full max-w-[1200px] mx-auto">
           <div className="flex flex-col gap-4">
             <div className="flex items-center gap-1">
@@ -971,24 +1133,20 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             </div>
           </div>
         </div>
+        )}
 
         {/* Товары */}
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
+        <div className="bg-white rounded-2xl px-5 py-0 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
           {products.length === 0 ? (
-            <div className="flex flex-col items-center justify-center px-4 py-10 text-center">
-              <p className="mb-6 max-w-lg text-sm leading-relaxed text-gray-500">
-                Выберите товар для продвижения
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsAddProductsModalOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#2E3038] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#23252c]"
-                >
-                  <Plus className="h-4 w-4 shrink-0" aria-hidden />
-                  Добавить товары
-                </button>
-              </div>
+            <div className="py-4">
+              <button
+                type="button"
+                onClick={() => setIsAddProductsModalOpen(true)}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#2E3038] px-5 py-3 text-sm font-medium text-white transition-colors hover:bg-[#23252c]"
+              >
+                <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                Добавить товары
+              </button>
             </div>
           ) : (
             <>
@@ -1131,6 +1289,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
 
       {/* Toast */}
       <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
+      {cpmBidRoundedAlertNode}
 
       {/* Modal for adding products */}
       <SingleCampaignAddProductsModal

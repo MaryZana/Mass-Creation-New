@@ -48,6 +48,8 @@ import {
   CPC_MAX_BID_RUB,
   estimateDailyLimitSpendPreview,
 } from '../utils/cpcDailyLimitBid';
+import { normalizeCpmBidRub } from '../utils/cpmBidRounding';
+import { useCpmBidRoundedAlert } from './CpmBidRoundedAlert';
 import {
   Bar,
   CartesianGrid,
@@ -217,6 +219,7 @@ type ProductBidEntry = { draft: string; saved: string };
 interface CpcCampaignPageProps {
   campaignId: number;
   name: string;
+  paymentModel?: 'CPC' | 'CPM';
   remainingBudget: number | null;
   dailyLimit: number | null;
   scheduledDailyLimit: number | null;
@@ -2218,6 +2221,7 @@ function AutomationSpendInactiveRow({
 export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   campaignId,
   name,
+  paymentModel = 'CPC',
   remainingBudget,
   dailyLimit,
   scheduledDailyLimit,
@@ -2228,8 +2232,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   onBack,
   onUpdateData,
 }) => {
+  const isCpmCampaign = paymentModel === 'CPM';
+  const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const isPrebuiltListCpcCampaign = campaignId === PREBUILT_LIST_CPC_CAMPAIGN_ID;
   const isSingleProductHeroCampaign = campaignId === PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID;
+  const showSingleProductLayout = isSingleProductHeroCampaign || isCpmCampaign;
   const { beginRepeatLaunchFlow, profileId } = useProfile();
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(dailyLimit !== null && dailyLimit !== undefined);
@@ -2398,6 +2405,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     setCampaignProductNmIds([DEMO_CPC_PRODUCT_NM]);
   }, [isSingleProductHeroCampaign, productKey]);
 
+  useEffect(() => {
+    if (!isCpmCampaign) return;
+    setProductSearchBids({ [productKey]: { draft: '400', saved: '400' } });
+    setProductRecommendationsBids({ [productKey]: { draft: '300', saved: '300' } });
+    setBidChasingPosition('3-10');
+    setIsDailyLimitEnabled(false);
+    setDailyLimitValue('');
+    setSavedDailyLimit('');
+    setCampaignProductNmIds([DEMO_CPC_PRODUCT_NM]);
+  }, [isCpmCampaign, productKey]);
+
   const onUpdateDataRef = useRef(onUpdateData);
   onUpdateDataRef.current = onUpdateData;
   const lastSyncedMaxBidRef = useRef<number | null>(null);
@@ -2410,6 +2428,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   }, [maxSavedProductBidRub]);
 
   const showDailyLimitBidMismatchHint =
+    !isCpmCampaign &&
     isDailyLimitEnabled &&
     savedDailyLimitRub > 0 &&
     maxSavedProductBidRub > 0 &&
@@ -2462,7 +2481,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       const bids = zone === 'search' ? productSearchBids : productRecommendationsBids;
       const entry = bids[productKey];
       if (!entry) return;
-      if (parsed > CPC_MAX_BID_RUB) {
+      let finalBid = parsed;
+      let cpmDidRound = false;
+      if (isCpmCampaign) {
+        const min = 150;
+        const { value: stepped, didRoundFromInput } = normalizeCpmBidRub(parsed, min);
+        finalBid = stepped;
+        cpmDidRound = didRoundFromInput;
+        if (didRoundFromInput) {
+          showCpmBidRoundedAlert(stepped);
+        }
+      } else if (parsed > CPC_MAX_BID_RUB) {
         const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
         setter((prev) => ({
           ...prev,
@@ -2473,17 +2502,19 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         setShowToast(true);
         return;
       }
-      const bidStr = String(parsed);
+      const bidStr = String(finalBid);
       const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
       setter((prev) => ({
         ...prev,
         [productKey]: { draft: bidStr, saved: bidStr },
       }));
-      setToastMessage('Ставка изменена');
-      setToastIsError(false);
-      setShowToast(true);
+      if (!isCpmCampaign || !cpmDidRound) {
+        setToastMessage('Ставка изменена');
+        setToastIsError(false);
+        setShowToast(true);
+      }
     },
-    [productKey, productSearchBids, productRecommendationsBids],
+    [isCpmCampaign, productKey, productSearchBids, productRecommendationsBids, showCpmBidRoundedAlert],
   );
 
   const maxBidRubAfterProductBid = useCallback(
@@ -2553,6 +2584,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 
   const promptOrCommitProductBid = useCallback(
     (zone: 'search' | 'recommendations', parsed: number) => {
+      if (isCpmCampaign) {
+        commitProductBid(zone, parsed);
+        return;
+      }
       const maxBid = maxBidRubAfterProductBid(zone, parsed);
       if (
         shouldPromptRaiseDailyLimitForMaxBid(isDailyLimitEnabled, savedDailyLimitRub, maxBid)
@@ -2569,6 +2604,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     },
     [
       commitProductBid,
+      isCpmCampaign,
       isDailyLimitEnabled,
       maxBidRubAfterProductBid,
       savedDailyLimitRub,
@@ -2590,6 +2626,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 
   const promptOrApplyBidChasing = useCallback(
     (position: '1-2' | '3-10' | '11-34', maxBid: number) => {
+      if (isCpmCampaign) {
+        applyBidChasingConfig(position, maxBid);
+        return;
+      }
       const otherMax = Math.max(
         parseDisplayValue(productSearchBids[productKey]?.saved ?? '0'),
         parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0'),
@@ -2611,6 +2651,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     },
     [
       applyBidChasingConfig,
+      isCpmCampaign,
       isDailyLimitEnabled,
       productKey,
       productRecommendationsBids,
@@ -2715,6 +2756,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   }, [remainingBudget]);
 
   useEffect(() => {
+    if (isCpmCampaign) {
+      setIsDailyLimitEnabled(false);
+      setDailyLimitValue('');
+      setSavedDailyLimit('');
+      return;
+    }
     const isEnabled = dailyLimit !== null && dailyLimit !== undefined;
     setIsDailyLimitEnabled(isEnabled);
     if (isEnabled && dailyLimit) {
@@ -2724,7 +2771,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       setDailyLimitValue('');
       setSavedDailyLimit('');
     }
-  }, [dailyLimit]);
+  }, [dailyLimit, isCpmCampaign]);
 
   useEffect(() => {
     if (isFirstVisit) {
@@ -2904,10 +2951,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 
   return (
     <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-10">
+      {cpmBidRoundedAlertNode}
       <AppHeader onNavigate={onBack} />
 
       <main className="max-w-[1600px] mx-auto px-6 py-8">
-        {isSingleProductHeroCampaign ? (
+        {showSingleProductLayout ? (
           <>
             <CpcSingleProductHeroCard
               campaignName={campaignName}
@@ -2918,7 +2966,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               onFinishCampaign={() => setIsFinishCampaignModalOpen(true)}
               product={{
                 nmId: DEMO_CPC_PRODUCT.nmId,
-                productName: 'Шапка зимняя',
+                productName: isCpmCampaign ? DEMO_CPC_PRODUCT.productName : 'Шапка зимняя',
                 brand: DEMO_CPC_PRODUCT.brand,
                 articleSeller: DEMO_CPC_PRODUCT.articleSeller,
                 category: DEMO_CPC_PRODUCT.category,
@@ -2931,6 +2979,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 setWasAutoRefillToggledOn(false);
                 setIsAutoRefillModalOpen(true);
               }}
+              hideDailyLimit={isCpmCampaign}
+              paymentModelLabel={paymentModel}
               isDailyLimitEnabled={isDailyLimitEnabled}
               onDailyLimitEnabledChange={(checked) => {
                 if (checked) applyMinDailyLimitOnEnable();
@@ -2993,7 +3043,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           </>
         ) : null}
 
-        {!isSingleProductHeroCampaign ? (
+        {!showSingleProductLayout ? (
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{name}</h1>
@@ -3006,7 +3056,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   Кампания за бонусы
                 </span>
               )}
-              <span>CPC</span>
+              <span>{paymentModel}</span>
               <span>ID {campaignId}</span>
             </div>
           </div>
@@ -3021,7 +3071,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         </div>
         ) : null}
 
-        {isPrebuiltListCpcCampaign && !isSingleProductHeroCampaign ? (
+        {isPrebuiltListCpcCampaign && !showSingleProductLayout ? (
         <div className="mb-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
             <div className="flex min-h-[148px] min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6">
@@ -3102,7 +3152,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             </div>
           </div>
         </div>
-        ) : !isSingleProductHeroCampaign ? (
+        ) : !showSingleProductLayout ? (
         <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
           <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="mb-4 text-sm font-semibold text-gray-900">Остаток бюджета</p>
@@ -3324,7 +3374,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         </div>
         ) : null}
 
-        {fromReadyToRepeat && !isSingleProductHeroCampaign ? (
+        {fromReadyToRepeat && !showSingleProductLayout ? (
           <CampaignRepeatPerformanceBlock
             profileId={profileId}
             rankingProduct={
@@ -3356,7 +3406,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           onHoldPositionClick={() => setIsBidChasingSetupModalOpen(true)}
         />
 
-        {!isSingleProductHeroCampaign ? (
+        {!showSingleProductLayout ? (
         <>
         <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Зоны показов</h2>
@@ -4091,7 +4141,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       )}
 
       {/* Toast */}
-      {isSingleProductHeroCampaign && isFinishCampaignModalOpen ? (
+      {showSingleProductLayout && isFinishCampaignModalOpen ? (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
           onClick={() => setIsFinishCampaignModalOpen(false)}

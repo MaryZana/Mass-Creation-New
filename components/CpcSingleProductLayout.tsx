@@ -140,6 +140,8 @@ export function CpcSingleProductHeroCard({
   onOpenAdvancedDailyLimit,
   dailyLimitSpendSummary,
   advancedDailyLimitSettingsApplied = false,
+  hideDailyLimit = false,
+  paymentModelLabel = 'CPC',
 }: {
   campaignName: string;
   campaignId: number;
@@ -167,6 +169,8 @@ export function CpcSingleProductHeroCard({
   onOpenAdvancedDailyLimit: () => void;
   dailyLimitSpendSummary: SingleProductDailyLimitSpendSummary | null;
   advancedDailyLimitSettingsApplied?: boolean;
+  hideDailyLimit?: boolean;
+  paymentModelLabel?: 'CPC' | 'CPM';
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -247,7 +251,7 @@ export function CpcSingleProductHeroCard({
                   Приостановлена
                 </span>
               )}
-              <span className="text-gray-500">CPC</span>
+              <span className="text-gray-500">{paymentModelLabel}</span>
               <span className="text-gray-500">ID {campaignId}</span>
             </div>
             <p className="mb-0 mt-3 text-xs leading-relaxed text-gray-500">
@@ -281,6 +285,7 @@ export function CpcSingleProductHeroCard({
           </div>
 
           <div className="flex min-w-0 flex-nowrap items-start gap-x-8">
+            {!hideDailyLimit ? (
             <div className="flex shrink-0 flex-col gap-2">
               <div className="flex h-5 min-w-0 items-center gap-2">
                 <ToggleSwitch checked={isDailyLimitEnabled} onChange={onDailyLimitEnabledChange} />
@@ -329,8 +334,9 @@ export function CpcSingleProductHeroCard({
                 ) : null}
               </div>
             </div>
+            ) : null}
 
-            {isDailyLimitEnabled && dailyLimitSpendSummary ? (
+            {!hideDailyLimit && isDailyLimitEnabled && dailyLimitSpendSummary ? (
               <div className="flex shrink-0 flex-col gap-2">
                 <p className="mb-0 flex h-5 items-center text-sm text-gray-500">Истратили</p>
                 <div className="min-h-9 flex flex-col justify-center">

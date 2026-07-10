@@ -13,6 +13,8 @@ import { GROWING_DEMAND_PRODUCTS } from './components/BonusCampaignRepeatBanner'
 import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 import { CpcCampaignPage } from './components/CpcCampaignPage';
+import { useCpmBidRoundedAlert } from './components/CpmBidRoundedAlert';
+import { CPM_BID_STEP_RUB, normalizeCpmBidRub } from './utils/cpmBidRounding';
 import { MassEditPage } from './components/MassEditPage';
 import { SingleCampaignPage, MOCK_PRODUCTS as SINGLE_CAMPAIGN_CURATED_CATALOG } from './components/SingleCampaignPage';
 import {
@@ -1394,6 +1396,8 @@ const BidInput = ({
     showApplyToAllTooltip = false,
     onApplyToAll,
     min = 300,
+    bidStepRub,
+    onBidRounded,
 }: {
     value: number;
     onChange: (value: number) => void;
@@ -1401,6 +1405,8 @@ const BidInput = ({
     showApplyToAllTooltip?: boolean;
     onApplyToAll?: (value: number) => void;
     min?: number;
+    bidStepRub?: number;
+    onBidRounded?: (roundedRub: number) => void;
 }) => {
     const [inputValue, setInputValue] = useState(String(value || ''));
     const [isFocused, setIsFocused] = useState(false);
@@ -1409,11 +1415,24 @@ const BidInput = ({
         setInputValue(String(value || ''));
     }, [value]);
 
-    const handleBlur = () => {
-        let numericValue = parseDisplayValue(inputValue);
-        if (isNaN(numericValue) || numericValue < min) {
+    const applyBidValue = (raw: string | number) => {
+        let numericValue = typeof raw === 'number' ? raw : parseDisplayValue(raw);
+        if (isNaN(numericValue)) {
             numericValue = min;
         }
+        if (bidStepRub != null) {
+            const { value: stepped, didRoundFromInput } = normalizeCpmBidRub(numericValue, min);
+            if (didRoundFromInput) onBidRounded?.(stepped);
+            return stepped;
+        }
+        if (numericValue < min) {
+            numericValue = min;
+        }
+        return numericValue;
+    };
+
+    const handleBlur = () => {
+        const numericValue = applyBidValue(inputValue);
         onChange(numericValue);
         setInputValue(String(numericValue));
         setIsFocused(false);
@@ -1466,10 +1485,7 @@ const BidInput = ({
                     className="px-2 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-xs"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
-                      let numericValue = parseDisplayValue(inputValue);
-                      if (isNaN(numericValue) || numericValue < min) {
-                          numericValue = min;
-                      }
+                      let numericValue = applyBidValue(inputValue);
                       onChange(numericValue);
                       onApplyToAll(numericValue);
                       setInputValue(String(numericValue));
@@ -1920,6 +1936,7 @@ export default function App() {
   }, [location.pathname]);
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
   const [showToast, setShowToast] = useState(false);
+  const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const [toastMessage, setToastMessage] = useState('');
   const [templateGroups, setTemplateGroups] = useState<TemplateGroup[]>([]);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
@@ -1996,6 +2013,7 @@ export default function App() {
   const [selectedCpcCampaign, setSelectedCpcCampaign] = useState<{
     id: number;
     name: string;
+    paymentModel?: 'CPC' | 'CPM';
     remainingBudget: number | null;
     dailyLimit: number | null;
     scheduledDailyLimit: number | null;
@@ -2890,6 +2908,7 @@ export default function App() {
                     onOpenCpcCampaign={({
                       campaignId,
                       name,
+                      paymentModel,
                       remainingBudget,
                       dailyLimit,
                       scheduledDailyLimit,
@@ -2901,6 +2920,7 @@ export default function App() {
                       setSelectedCpcCampaign({
                         id: campaignId,
                         name,
+                        paymentModel: paymentModel ?? 'CPC',
                         remainingBudget,
                         dailyLimit,
                         scheduledDailyLimit,
@@ -3049,6 +3069,7 @@ export default function App() {
 
                 {downloadStatus === 'loading' && <DownloadNotification count={downloadCount} />}
                 <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
+                {cpmBidRoundedAlertNode}
       </>
     );
 
@@ -3115,6 +3136,7 @@ export default function App() {
       <CpcCampaignPage
         campaignId={selectedCpcCampaign.id}
         name={selectedCpcCampaign.name}
+        paymentModel={selectedCpcCampaign.paymentModel ?? 'CPC'}
         remainingBudget={selectedCpcCampaign.remainingBudget}
         dailyLimit={selectedCpcCampaign.dailyLimit}
         scheduledDailyLimit={selectedCpcCampaign.scheduledDailyLimit}
@@ -3158,6 +3180,7 @@ export default function App() {
       onLaunchPromotion={() => handleNavigationAttempt(() => setAppState('single-campaign'))}
     />
     <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
+    {cpmBidRoundedAlertNode}
     <UndoToast campaign={lastDeleted?.campaign} onUndo={handleUndoDelete} />
     <AddItemModal isOpen={isAddItemModalOpen} onClose={() => setIsAddItemModalOpen(false)} onSubmit={handleAddItemSubmit} onTemplateDownload={handleTemplateDownload} initialConfig={globalConfig} showToast={setShowToast} setToastMessage={setToastMessage} /> 
     <AutoRefillModal isOpen={isAutoRefillModalOpen} onClose={() => setIsAutoRefillModalOpen(false)} onSave={handleSaveAutoRefill} campaign={campaignForAutoRefill} />
@@ -3636,6 +3659,8 @@ export default function App() {
                         value={row.searchBid ?? defaultZoneBid}
                         min={defaultZoneBid}
                         presets={defaultZoneBid === 30 ? [30, 50, 100] : undefined}
+                        bidStepRub={isCpc ? undefined : CPM_BID_STEP_RUB}
+                        onBidRounded={showCpmBidRoundedAlert}
                         onChange={(val) => handleUpdateCampaign(group.id, row.id, { searchBid: val })}
                         showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
                         onApplyToAll={(val) => {
@@ -3708,6 +3733,8 @@ export default function App() {
                         value={row.recommendationsBid ?? defaultZoneBid}
                         min={defaultZoneBid}
                         presets={defaultZoneBid === 30 ? [30, 50, 100] : undefined}
+                        bidStepRub={isCpc ? undefined : CPM_BID_STEP_RUB}
+                        onBidRounded={showCpmBidRoundedAlert}
                         onChange={(val) => handleUpdateCampaign(group.id, row.id, { recommendationsBid: val })}
                         showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
                         onApplyToAll={(val) => {
@@ -3760,6 +3787,10 @@ export default function App() {
                 {editingGroupId === group.id ? (
                     <BidInput
                       value={row.bid || 0}
+                      bidStepRub={
+                        group.config.paymentModel === PaymentModel.CPM ? CPM_BID_STEP_RUB : undefined
+                      }
+                      onBidRounded={showCpmBidRoundedAlert}
                       onChange={(val) => handleUpdateCampaign(group.id, row.id, { bid: val })}
                       showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
                       onApplyToAll={(val) => {
