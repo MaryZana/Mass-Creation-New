@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, MoreVertical, Settings } from './Icons';
-import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
+import { ChevronDown, MoreVertical, Sparkles } from './Icons';
 import { CpcTopSearchClustersBlock } from './CpcTopSearchClustersBlock';
-import { CPC_TOP_SEARCH_CLUSTERS_ROWS } from '../utils/cpcTopSearchClustersDemo';
 import { ProductBidField, PRODUCT_BID_INPUT_WIDTH_CLASS } from './ProductBidField';
 import { BidHistogramButton, SearchBidPositionPicker } from './SearchBidPositionPicker';
 import type { BidChasingRange } from '../utils/cpcBidChasingPositionTiers';
@@ -90,19 +88,81 @@ const POSITION_RANGE_LABEL: Record<BidChasingRange, string> = {
   '11-34': '14–35',
 };
 
-function SingleProductSpendProgressControls({ summary }: { summary: SingleProductDailyLimitSpendSummary }) {
+function SingleProductSpendProgressControls({
+  summary,
+  compact = false,
+}: {
+  summary: SingleProductDailyLimitSpendSummary;
+  compact?: boolean;
+}) {
   return (
-    <div className="min-w-0">
+    <div className={`min-w-0 w-full ${compact ? 'max-w-[9.5rem]' : 'max-w-[14rem]'}`}>
       <p className="text-sm tabular-nums text-gray-900">
         <span className="font-semibold">{formatSpend(summary.spent)} ₽</span>
         <span className="font-normal text-gray-500"> из {formatSpend(summary.total)} ₽</span>
       </p>
-      <div className="mt-2 h-1.5 w-full min-w-[4rem] max-w-[10rem] overflow-hidden rounded-full bg-gray-200">
+      <div
+        className={`mt-2 h-1.5 overflow-hidden rounded-full bg-gray-200 ${
+          compact ? 'w-[3.15rem]' : 'w-full'
+        }`}
+      >
         <div
           className="h-full rounded-full bg-[#9A41FE] transition-[width] duration-300"
           style={{ width: `${summary.progress}%` }}
         />
       </div>
+    </div>
+  );
+}
+
+export function AutomationColumn({
+  buttonLabel,
+  onButtonClick,
+  settingsApplied = false,
+  activeLinkLabel,
+  activeLinkVariant = 'purple',
+}: {
+  buttonLabel: string;
+  onButtonClick: () => void;
+  settingsApplied?: boolean;
+  /** Если задано — вместо кнопки показываем ссылку (например, выбранная позиция или условие трат) */
+  activeLinkLabel?: string;
+  activeLinkVariant?: 'purple' | 'blue';
+}) {
+  const activeLinkClass =
+    activeLinkVariant === 'blue'
+      ? 'text-blue-600 hover:text-blue-700'
+      : 'text-[#9A41FE] hover:text-purple-700';
+
+  return (
+    <div className="flex w-fit shrink-0 flex-col gap-2.5">
+      <div className="flex h-5 items-center gap-1.5">
+        <Sparkles className="h-4 w-4 shrink-0 text-[#9A41FE]" aria-hidden />
+        <span className="text-sm text-gray-500">Автоматизация</span>
+        {settingsApplied ? (
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#9A41FE]"
+            aria-label="Настройки применены"
+          />
+        ) : null}
+      </div>
+      {activeLinkLabel ? (
+        <button
+          type="button"
+          onClick={onButtonClick}
+          className={`inline-flex min-h-9 max-w-[min(100%,20rem)] items-center text-left text-sm font-medium leading-snug transition-colors hover:underline ${activeLinkClass}`}
+        >
+          {activeLinkLabel}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={onButtonClick}
+          className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#F2F2F7] px-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#e8e8ed]"
+        >
+          {buttonLabel}
+        </button>
+      )}
     </div>
   );
 }
@@ -121,31 +181,27 @@ function SearchBidReadOnly({ value }: { value: string }) {
   );
 }
 
+function SearchPositionIndicator({ positionRangeLabel }: { positionRangeLabel: string }) {
+  return (
+    <p className="mt-0.5 text-[10px] leading-tight tabular-nums text-gray-500">
+      {positionRangeLabel} позиция
+    </p>
+  );
+}
+
 export function CpcSingleProductHeroCard({
   campaignName,
   campaignId,
-  campaignBudget,
   product,
   isCampaignActive,
   onCampaignActiveChange,
   onFinishCampaign,
-  onRefill,
   isAutoRefillEnabled,
   onConfigureAutoRefill,
-  isDailyLimitEnabled,
-  onDailyLimitEnabledChange,
-  dailyLimitValue,
-  onDailyLimitValueChange,
-  onDailyLimitBlur,
-  onOpenAdvancedDailyLimit,
-  dailyLimitSpendSummary,
-  advancedDailyLimitSettingsApplied = false,
-  hideDailyLimit = false,
   paymentModelLabel = 'CPC',
 }: {
   campaignName: string;
   campaignId: number;
-  campaignBudget: number;
   isCampaignActive: boolean;
   onCampaignActiveChange: (active: boolean) => void;
   onFinishCampaign: () => void;
@@ -158,18 +214,8 @@ export function CpcSingleProductHeroCard({
     imageUrl: string;
     stockLabel?: string;
   };
-  onRefill: () => void;
   isAutoRefillEnabled: boolean;
   onConfigureAutoRefill: () => void;
-  isDailyLimitEnabled: boolean;
-  onDailyLimitEnabledChange: (enabled: boolean) => void;
-  dailyLimitValue: string;
-  onDailyLimitValueChange: (v: string) => void;
-  onDailyLimitBlur: () => void;
-  onOpenAdvancedDailyLimit: () => void;
-  dailyLimitSpendSummary: SingleProductDailyLimitSpendSummary | null;
-  advancedDailyLimitSettingsApplied?: boolean;
-  hideDailyLimit?: boolean;
   paymentModelLabel?: 'CPC' | 'CPM';
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -185,167 +231,179 @@ export function CpcSingleProductHeroCard({
   }, [menuOpen]);
 
   return (
-    <div className="mb-4 grid grid-cols-1 items-stretch gap-4 lg:grid-cols-2">
-      <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <div className="flex min-w-0 flex-1 gap-4">
-          <HeroProductThumb
-            nmId={product.nmId}
-            imageUrl={product.imageUrl}
-            category={product.category}
-            alt={product.productName}
-            className="h-[88px] w-[72px] shrink-0 rounded-xl border border-gray-100 bg-gray-50 object-cover"
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex min-w-0 flex-wrap items-center gap-2">
-                <ToggleSwitch checked={isCampaignActive} onChange={onCampaignActiveChange} />
-                <h1 className="mb-0 text-lg font-bold leading-snug text-gray-900">{campaignName}</h1>
-              </div>
-              <div className="relative shrink-0" ref={menuRef}>
-                <button
-                  type="button"
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
-                  aria-label="Действия с кампанией"
-                  aria-expanded={menuOpen}
-                  onClick={() => setMenuOpen((v) => !v)}
+    <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <div className="flex min-w-0 items-start gap-4">
+        <HeroProductThumb
+          nmId={product.nmId}
+          imageUrl={product.imageUrl}
+          category={product.category}
+          alt={product.productName}
+          className="h-11 w-11 shrink-0 rounded-lg border border-gray-100 bg-gray-50 object-cover"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <ToggleSwitch checked={isCampaignActive} onChange={onCampaignActiveChange} />
+              <h1 className="mb-0 min-w-0 text-base font-bold leading-snug text-gray-900 sm:text-lg">
+                {campaignName}
+              </h1>
+            </div>
+            <div className="relative shrink-0" ref={menuRef}>
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                aria-label="Действия с кампанией"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                <MoreVertical className="h-5 w-5" />
+              </button>
+              {menuOpen ? (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
                 >
-                  <MoreVertical className="h-5 w-5" />
-                </button>
-                {menuOpen ? (
-                  <div
-                    role="menu"
-                    className="absolute right-0 top-full z-50 mt-1 min-w-[12rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onConfigureAutoRefill();
+                    }}
                   >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onConfigureAutoRefill();
-                      }}
-                    >
-                      {isAutoRefillEnabled ? 'Автопополнение включено' : 'Автопополнение бюджета'}
-                    </button>
-                    <div className="my-1 border-t border-gray-100" role="separator" />
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        onFinishCampaign();
-                      }}
-                    >
-                      Завершить кампанию
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+                    {isAutoRefillEnabled ? 'Автопополнение включено' : 'Автопополнение бюджета'}
+                  </button>
+                  <div className="my-1 border-t border-gray-100" role="separator" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onFinishCampaign();
+                    }}
+                  >
+                    Завершить кампанию
+                  </button>
+                </div>
+              ) : null}
             </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              {isCampaignActive ? (
-                <span className="rounded-md bg-[#E8F5E9] px-2 py-0.5 font-medium text-[#2E7D32]">Активна</span>
-              ) : (
-                <span className="rounded-md bg-yellow-100 px-2 py-0.5 font-medium text-yellow-700">
-                  Приостановлена
-                </span>
-              )}
-              <span className="text-gray-500">{paymentModelLabel}</span>
-              <span className="text-gray-500">ID {campaignId}</span>
-            </div>
-            <p className="mb-0 mt-3 text-xs leading-relaxed text-gray-500">
-              <span className="text-gray-700">{product.productName}</span>
-              <span className="mx-2 text-gray-300">·</span>
-              {product.stockLabel ?? '1 000 шт'}
-              <span className="mx-2 text-gray-300">·</span>
-              Арт. продавца {product.articleSeller}
-              <span className="mx-2 text-gray-300">·</span>
-              Арт. WB {product.nmId}
-            </p>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+            {isCampaignActive ? (
+              <span className="rounded-md bg-[#E8F5E9] px-2 py-0.5 font-medium text-[#2E7D32]">
+                Активна
+              </span>
+            ) : (
+              <span className="rounded-md bg-yellow-100 px-2 py-0.5 font-medium text-yellow-700">
+                Приостановлена
+              </span>
+            )}
+            <span>{paymentModelLabel}</span>
+            <span>ID {campaignId}</span>
+            <span>{product.productName}</span>
+            <span>{product.stockLabel ?? '1 000 шт'}</span>
+            <span>Арт. продавца {product.articleSeller}</span>
+            <span>Арт. WB {product.nmId}</span>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-        <h2 className="text-base font-bold text-gray-900">Бюджет</h2>
-        <div className="mt-4 flex flex-1 flex-wrap items-start gap-x-8 gap-y-4">
-          <div className="flex shrink-0 flex-col gap-2">
-            <p className="mb-0 flex h-5 items-center text-sm text-gray-500">Денег на кампании</p>
-            <div className="flex h-9 items-center">
-              <button
-                type="button"
-                onClick={onRefill}
-                className="mb-0 text-xl font-bold tabular-nums leading-none text-[#9A41FE] hover:text-purple-700 hover:underline"
-                aria-label="Пополнить бюджет"
-              >
-                {campaignBudget.toLocaleString('ru-RU')} ₽
-              </button>
-            </div>
-          </div>
-
-          <div className="flex min-w-0 flex-nowrap items-start gap-x-8">
-            {!hideDailyLimit ? (
-            <div className="flex shrink-0 flex-col gap-2">
-              <div className="flex h-5 min-w-0 items-center gap-2">
-                <ToggleSwitch checked={isDailyLimitEnabled} onChange={onDailyLimitEnabledChange} />
-                <span className="text-sm text-gray-500">Дневной лимит</span>
-                <DailyLimitInfoTooltip />
-              </div>
-              <div className="flex h-9 items-center">
-                {isDailyLimitEnabled ? (
-                  <div className="flex h-9 w-[220px] shrink-0 items-center gap-1.5">
-                    <div className="relative min-w-0 flex-1">
-                      <input
-                        type="text"
-                        value={dailyLimitValue}
-                        onChange={(e) => onDailyLimitValueChange(e.target.value)}
-                        onBlur={onDailyLimitBlur}
-                        className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 pr-7 text-sm font-semibold tabular-nums text-gray-900 outline-none transition-colors focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
-                        aria-label="Сумма дневного лимита"
-                      />
-                      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                        ₽
-                      </span>
-                    </div>
-                    <div className="group relative shrink-0">
-                      {advancedDailyLimitSettingsApplied ? (
-                        <span
-                          className="pointer-events-none absolute -top-1 left-1/2 z-[1] h-2 w-2 -translate-x-1/2 rounded-full bg-[#9A41FE]"
-                          aria-hidden
-                        />
-                      ) : null}
-                      <div
-                        role="tooltip"
-                        className="pointer-events-none absolute bottom-full left-1/2 z-[100] mb-1.5 -translate-x-1/2 whitespace-nowrap rounded-lg bg-gray-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
-                      >
-                        Расширенные настройки
-                      </div>
-                      <button
-                        type="button"
-                        onClick={onOpenAdvancedDailyLimit}
-                        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-500 transition-colors hover:bg-[#e8e8ed] hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#9A41FE]/40"
-                        aria-label="Расширенные настройки дневного лимита"
-                      >
-                        <Settings className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            ) : null}
-
-            {!hideDailyLimit && isDailyLimitEnabled && dailyLimitSpendSummary ? (
-              <div className="flex shrink-0 flex-col gap-2">
-                <p className="mb-0 flex h-5 items-center text-sm text-gray-500">Истратили</p>
-                <div className="min-h-9 flex flex-col justify-center">
-                  <SingleProductSpendProgressControls summary={dailyLimitSpendSummary} />
-                </div>
-              </div>
-            ) : null}
-          </div>
+export function CpcSingleProductBudgetCard({
+  campaignBudget,
+  onRefill,
+  isDailyLimitEnabled,
+  onDailyLimitEnabledChange,
+  dailyLimitValue,
+  onDailyLimitValueChange,
+  onDailyLimitBlur,
+  onOpenAdvancedDailyLimit,
+  dailyLimitSpendSummary,
+  advancedDailyLimitSettingsApplied = false,
+  spendRulesLinkLabel,
+  showSpendRulesAutomation = false,
+  hideDailyLimit = false,
+}: {
+  campaignBudget: number;
+  onRefill: () => void;
+  isDailyLimitEnabled: boolean;
+  onDailyLimitEnabledChange: (enabled: boolean) => void;
+  dailyLimitValue: string;
+  onDailyLimitValueChange: (v: string) => void;
+  onDailyLimitBlur: () => void;
+  onOpenAdvancedDailyLimit: () => void;
+  dailyLimitSpendSummary: SingleProductDailyLimitSpendSummary | null;
+  advancedDailyLimitSettingsApplied?: boolean;
+  spendRulesLinkLabel?: string;
+  showSpendRulesAutomation?: boolean;
+  hideDailyLimit?: boolean;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <h2 className="text-xl font-bold text-gray-900">Бюджет</h2>
+      <div className="mt-4 flex min-w-0 flex-row flex-nowrap items-start gap-5 overflow-x-auto">
+        <div className="flex shrink-0 flex-col gap-1.5">
+          <p className="mb-0 whitespace-nowrap text-sm text-gray-500">Остаток</p>
+          <button
+            type="button"
+            onClick={onRefill}
+            className="whitespace-nowrap pr-2.5 text-left text-xl font-bold tabular-nums leading-none text-[#9A41FE] transition-colors hover:text-purple-700 hover:underline"
+            aria-label="Пополнить бюджет"
+          >
+            {campaignBudget.toLocaleString('ru-RU')} ₽
+          </button>
         </div>
+
+        {!hideDailyLimit ? (
+          <div className="mr-2.5 flex w-[8.5rem] shrink-0 flex-col gap-1.5 pr-2.5">
+            <div className="flex items-center gap-1.5">
+              <ToggleSwitch
+                checked={isDailyLimitEnabled}
+                onChange={onDailyLimitEnabledChange}
+              />
+              <span className="whitespace-nowrap text-sm text-gray-500">Дневной лимит</span>
+            </div>
+            <div className="relative w-full">
+              <input
+                type="text"
+                disabled={!isDailyLimitEnabled}
+                value={dailyLimitValue}
+                onChange={(e) => onDailyLimitValueChange(e.target.value)}
+                onBlur={onDailyLimitBlur}
+                className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 pr-7 text-sm font-semibold tabular-nums text-gray-900 outline-none transition-colors focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE] disabled:cursor-not-allowed disabled:border-gray-100 disabled:bg-gray-50 disabled:text-gray-400"
+                aria-label="Сумма дневного лимита"
+              />
+              <span
+                className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs ${
+                  isDailyLimitEnabled ? 'text-gray-400' : 'text-gray-300'
+                }`}
+              >
+                ₽
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {!hideDailyLimit && isDailyLimitEnabled && dailyLimitSpendSummary ? (
+          <div className="flex w-[9.5rem] shrink-0 flex-col gap-1.5">
+            <p className="mb-0 whitespace-nowrap text-sm text-gray-500">Истратили</p>
+            <SingleProductSpendProgressControls summary={dailyLimitSpendSummary} compact />
+          </div>
+        ) : null}
+
+        {!hideDailyLimit && showSpendRulesAutomation ? (
+          <AutomationColumn
+            buttonLabel="Задать правила"
+            onButtonClick={onOpenAdvancedDailyLimit}
+            settingsApplied={advancedDailyLimitSettingsApplied}
+            activeLinkLabel={spendRulesLinkLabel}
+            activeLinkVariant="blue"
+          />
+        ) : null}
       </div>
     </div>
   );
@@ -382,7 +440,6 @@ export function CpcSingleProductStrategyCard({
   onOpenPositionStrategy: () => void;
   onSelectManualSearchStrategy: () => void;
 }) {
-  const [searchClustersExpanded, setSearchClustersExpanded] = useState(false);
   const [isSearchBidPickerOpen, setIsSearchBidPickerOpen] = useState(false);
   const searchBidPickerRef = useRef<HTMLDivElement>(null);
   const searchBidPickerPopoverRef = useRef<HTMLDivElement>(null);
@@ -415,69 +472,64 @@ export function CpcSingleProductStrategyCard({
 
   const positionRangeLabel = POSITION_RANGE_LABEL[bidChasingPosition];
 
-  return (
-    <section className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-      <h2 className="text-xl font-bold text-gray-900">Ставки и позиция</h2>
+  const bidInputClass =
+    'h-9 w-full min-w-[5.5rem] rounded-lg border border-gray-200 bg-white px-2.5 pr-7 text-sm font-semibold tabular-nums text-gray-900 outline-none focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]';
 
-      <div className="mt-4 flex flex-wrap items-start gap-[40px]">
-        <div className="flex w-fit shrink-0 flex-col items-start gap-2">
-          <div className="mb-3.5 flex h-5 items-center gap-2">
+  return (
+    <section className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <h2 className="text-xl font-bold text-gray-900">Ставки</h2>
+
+      <div className="mt-4 flex flex-1 flex-col gap-6 sm:flex-row sm:flex-wrap sm:items-start sm:gap-x-6 sm:gap-y-4">
+        <div className="flex w-full min-w-[8.5rem] max-w-[10rem] shrink-0 flex-col">
+          <div className="mb-2 flex h-5 items-center gap-2">
             <ToggleSwitch
               checked={displayZones.recommendations}
               onChange={(c) => setZone('recommendations', c)}
             />
             <span className="text-sm text-gray-500">Рекомендации</span>
           </div>
-          <div className="flex h-9 items-center">
-            {displayZones.recommendations ? (
-              <div className="relative w-[5.5rem]">
-                <input
-                  className="h-9 w-full rounded-lg border border-gray-200 bg-white px-2.5 pr-7 text-sm font-semibold tabular-nums text-gray-900 outline-none focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
-                  value={recommendationsBidDraft}
-                  onChange={(e) => onRecommendationsBidDraftChange(e.target.value.replace(',', '.'))}
-                  onBlur={onRecommendationsBidBlur}
-                  aria-label="Ставка в рекомендациях"
-                />
-                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">
-                  ₽
-                </span>
-              </div>
-            ) : null}
-          </div>
+          {displayZones.recommendations ? (
+            <div className="relative w-full">
+              <input
+                className={bidInputClass}
+                value={recommendationsBidDraft}
+                onChange={(e) => onRecommendationsBidDraftChange(e.target.value.replace(',', '.'))}
+                onBlur={onRecommendationsBidBlur}
+                aria-label="Ставка в рекомендациях"
+              />
+              <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                ₽
+              </span>
+            </div>
+          ) : (
+            <div className="h-9" aria-hidden />
+          )}
         </div>
 
-        <div className="flex w-fit shrink-0 flex-col items-start gap-2">
-          <div className="mb-3.5 flex h-5 items-center gap-2">
+        <div className="flex w-fit shrink-0 flex-col">
+          <div className="mb-2 flex h-5 items-center gap-2">
             <ToggleSwitch checked={displayZones.search} onChange={(c) => setZone('search', c)} />
             <span className="text-sm text-gray-500">Поиск</span>
           </div>
-          <div className="flex h-9 items-center">
-            {displayZones.search ? (
-              isBidChasingEnabled ? (
-                <SearchBidReadOnly value={searchBidDraft} />
-              ) : (
-                <ProductBidField
-                  value={searchBidDraft}
-                  onChange={(e) => onSearchBidDraftChange(e.target.value.replace(',', '.'))}
-                  onBlur={onSearchBidBlur}
-                />
-              )
-            ) : null}
-          </div>
-        </div>
-
-        {displayZones.search ? (
-          <>
-            <div className="flex w-fit shrink-0 flex-col items-start gap-2">
-              <p className="flex h-5 items-center text-sm text-gray-500">Позиция в поиске</p>
-              <div className="flex h-9 items-center gap-2">
-                <div className="inline-flex h-9 min-w-[4.5rem] items-center justify-center rounded-lg border border-gray-200 bg-[#F6F6F9] px-3 text-sm font-semibold tabular-nums text-gray-900">
-                  {positionRangeLabel}
-                </div>
+          {displayZones.search ? (
+            <>
+              <div className="flex items-center gap-1">
+                {isBidChasingEnabled ? (
+                  <SearchBidReadOnly value={searchBidDraft} />
+                ) : (
+                  <ProductBidField
+                    value={searchBidDraft}
+                    onChange={(e) => onSearchBidDraftChange(e.target.value.replace(',', '.'))}
+                    onBlur={onSearchBidBlur}
+                  />
+                )}
                 <div className="relative shrink-0" ref={searchBidPickerRef}>
                   <BidHistogramButton
                     isActive={isSearchBidPickerOpen}
-                    onClick={() => setIsSearchBidPickerOpen((open) => !open)}
+                    onClick={() => {
+                      if (isBidChasingEnabled) onSelectManualSearchStrategy();
+                      setIsSearchBidPickerOpen((open) => !open);
+                    }}
                   />
                   {isSearchBidPickerOpen ? (
                     <SearchBidPositionPicker
@@ -490,53 +542,52 @@ export function CpcSingleProductStrategyCard({
                   ) : null}
                 </div>
               </div>
-            </div>
+              <SearchPositionIndicator positionRangeLabel={positionRangeLabel} />
+            </>
+          ) : (
+            <div className="h-9" aria-hidden />
+          )}
+        </div>
 
-            <div className="flex w-fit shrink-0 flex-col items-start gap-2">
-              <p className="flex h-5 items-center text-sm text-gray-500">Удержание позиции</p>
-              <div className="flex h-9 items-center">
-                {isBidChasingEnabled ? (
-                  <button
-                    type="button"
-                    onClick={onOpenPositionStrategy}
-                    className="max-w-[11rem] truncate text-left text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
-                  >
-                    {bidChasingPositionLabel}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={onOpenPositionStrategy}
-                    className="h-9 shrink-0 rounded-lg bg-[#F2F2F7] px-4 text-sm font-medium text-gray-800 hover:bg-[#e8e8ed]"
-                  >
-                    Настроить
-                  </button>
-                )}
-              </div>
-            </div>
-          </>
-        ) : null}
+        <AutomationColumn
+          buttonLabel="Удерживать позицию"
+          onButtonClick={onOpenPositionStrategy}
+          settingsApplied={isBidChasingEnabled}
+          activeLinkLabel={
+            isBidChasingEnabled
+              ? `${positionRangeLabel.replace(/–/g, '-')} позиция`
+              : undefined
+          }
+        />
       </div>
+    </section>
+  );
+}
 
+export function CpcSingleProductClustersCard() {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <section className="mb-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
       <button
         type="button"
-        onClick={() => setSearchClustersExpanded((v) => !v)}
-        className="mt-5 flex w-full items-center justify-between gap-2 border-t border-gray-100 pt-4 text-left"
-        aria-expanded={searchClustersExpanded}
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 text-left"
+        aria-expanded={expanded}
       >
-        <span className="text-base font-bold text-gray-900">
+        <span className="text-xl font-bold text-gray-900">
           Кластера{' '}
           <span className="font-normal tabular-nums text-gray-500">{SINGLE_PRODUCT_CLUSTER_COUNT}</span>
         </span>
         <ChevronDown
           className={`h-5 w-5 shrink-0 text-gray-500 transition-transform ${
-            searchClustersExpanded ? 'rotate-180' : ''
+            expanded ? 'rotate-180' : ''
           }`}
           aria-hidden
         />
       </button>
-      {searchClustersExpanded ? (
-        <div className="mt-3">
+      {expanded ? (
+        <div className="mt-4 border-t border-gray-100 pt-4">
           <CpcTopSearchClustersBlock nestedInSearchZone />
         </div>
       ) : null}
