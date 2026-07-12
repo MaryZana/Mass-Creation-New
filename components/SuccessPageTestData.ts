@@ -10,9 +10,7 @@ export const BRANDS = ['Zara', 'H&M', 'Nike', 'Adidas', "L'Oreal", 'Oriflame', '
 export type CampaignType = 'CPC' | 'CPM';
 export type CampaignStatus = 'active' | 'paused' | 'draft' | 'error';
 
-/** Предсобранная CPC-кампания — первая строка в списке (profile 1) */
-export const PREBUILT_LIST_CPC_CAMPAIGN_ID = 999999;
-/** CPC 1 товар: концепт с товаром в шапке и единым управлением стратегией */
+/** Предсобранная однотоварная CPC-кампания — первая строка в списке (profile 1) */
 export const PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID = 999998;
 
 export interface CampaignSpec {

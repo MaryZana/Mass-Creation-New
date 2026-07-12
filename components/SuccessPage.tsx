@@ -64,7 +64,6 @@ import {
   productTableThumbFallbackUrl,
   resolveProductTableThumbSrc,
   productTableThumbUrl,
-  PREBUILT_LIST_CPC_CAMPAIGN_ID,
   PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
 } from './SuccessPageTestData';
 import {
@@ -4517,48 +4516,13 @@ export function getProfileListData(profileId: ProfileId) {
 
 const { campaigns: MOCK_CAMPAIGNS, productTree: MOCK_PRODUCTS_TREE } = PROFILE_1_LIST;
 
-// Предсобранная CPC-кампания (вставка в таблицу «Кампании»)
-const PREBUILT_CPC_CAMPAIGN_ID = 'prebuilt-cpc';
-const PREBUILT_CPC_CAMPAIGN_CAMPAIGN_ID = PREBUILT_LIST_CPC_CAMPAIGN_ID;
-const PREBUILT_CPC_CAMPAIGN_BASE =
+// Предсобранная однотоварная CPC-кампания (вставка в таблицу «Кампании»)
+const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID = 'prebuilt-single-product-cpc';
+const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_BASE =
   MOCK_CAMPAIGNS.find((c) => c.type === 'CPC') ?? MOCK_CAMPAIGNS[0];
 
-const PREBUILT_CPC_CAMPAIGN: DisplayCampaign = {
-  ...(PREBUILT_CPC_CAMPAIGN_BASE as DisplayCampaign),
-  id: PREBUILT_CPC_CAMPAIGN_ID,
-  campaignId: PREBUILT_CPC_CAMPAIGN_CAMPAIGN_ID,
-  status: 'paused',
-  statusText: 'приостановлена',
-  // На скрине в этой строке рядом с бюджетом стоит подарок и сумма 5000 ₽
-  remainingBudget: 1000,
-  budget: 1000,
-  autoRefill: true,
-  autoRefillStatus: 'ok',
-  // В скрине по метрикам — нет данных
-  spend: null,
-  impressions: null,
-  ctr: null,
-  orders: null,
-  spendShare: null,
-  // Без бейджей/ошибок в этой вставной кампании
-  tags: [],
-  campaignTags: [],
-  // Чтоб в «Дневном лимите» не показывать прогресс
-  dailyLimit: null,
-  dailyLimitExhausted: false,
-  maxCpcBidRub: 17.9,
-  // Подменим заголовок под «предсобранную» логику
-  name: 'Футболка хлопок мягкая приятная / CPC-кампания за 0 ₽',
-  productId: 'pr1',
-  productIds: ['pr1', 'pr7', 'pr8', 'pr9', 'pr10', 'pr11', 'pr12', 'pr13'],
-  category: 'Платья',
-  image: productTableThumbUrl('pr1', 'Платья'),
-};
-
-const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID = 'prebuilt-single-product-cpc';
-
 const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN: DisplayCampaign = {
-  ...(PREBUILT_CPC_CAMPAIGN_BASE as DisplayCampaign),
+  ...(PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_BASE as DisplayCampaign),
   id: PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
   campaignId: PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
   type: 'CPC',
@@ -4585,7 +4549,7 @@ const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN: DisplayCampaign = {
   image: productTableThumbUrl('pr1', 'Платья'),
 };
 
-/** 4-я строка в списке кампаний (после предсобранной и двух кампаний pr1): мультитовар без длинной сетки */
+/** 3-я строка в списке кампаний (после предсобранной и кампании pr1): мультитовар без длинной сетки */
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID = '1400002';
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS = ['pr2', 'pr3', 'pr4', 'pr5', 'pr6'] as const;
 
@@ -4594,14 +4558,12 @@ function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
   const list =
     profileId === '2'
       ? [...campaigns]
-      : [PREBUILT_CPC_CAMPAIGN, PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN, ...campaigns];
+      : [PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN, ...campaigns];
   return list.map((c, index) => {
-    // Бонусный сценарий «перезапустить кампанию» — не на предсобранных, а на первой обычной строке после них
-    const isBonusRepeatDemoRow = profileId !== '2' ? index === 2 : index === 1;
+    // Бонусный сценарий «перезапустить кампанию» — на первой обычной строке после предсобранной
+    const isBonusRepeatDemoRow = profileId !== '2' ? index === 1 : index === 1;
     let base =
-      isBonusRepeatDemoRow &&
-      c.id !== PREBUILT_CPC_CAMPAIGN_ID &&
-      c.id !== PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID
+      isBonusRepeatDemoRow && c.id !== PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID
         ? { ...c, isBonusCampaign: true }
         : { ...c, isBonusCampaign: false };
     if (c.id === CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID) {
@@ -8635,9 +8597,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       filtered = filtered.filter((c) => (c.name && c.name.toLowerCase().includes(q)) || String(c.campaignId).toLowerCase().includes(q));
     }
 
-    const prebuiltTop = allCampaigns.filter(
-      (c) => c.id === PREBUILT_CPC_CAMPAIGN_ID || c.id === PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
-    );
+    const prebuiltTop = allCampaigns.filter((c) => c.id === PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID);
     if (prebuiltTop.length > 0 && !insightFilter) {
       const prebuiltIds = new Set(prebuiltTop.map((c) => c.id));
       filtered = [...prebuiltTop, ...filtered.filter((c) => !prebuiltIds.has(c.id))];
@@ -10546,19 +10506,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   />
                               </td>
                               <td className="p-4 font-semibold text-gray-900">
-                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatCurrency(c.spend)}
+                                {formatCurrency(c.spend)}
                               </td>
                               <td className="p-4 font-semibold text-gray-900">
-                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatNumber(c.impressions)}
+                                {formatNumber(c.impressions)}
                               </td>
                               <td className="p-4 font-semibold text-gray-900">
-                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatPercentage(c.ctr)}
+                                {formatPercentage(c.ctr)}
                               </td>
                               <td className="p-4 font-semibold text-gray-900">
-                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatNumber(c.orders)}
+                                {formatNumber(c.orders)}
                               </td>
                               <td className="p-4 font-semibold text-gray-900">
-                                {c.id === PREBUILT_CPC_CAMPAIGN_ID ? <span className="text-gray-400 font-semibold">Н/Д</span> : formatPercentage(c.spendShare)}
+                                {formatPercentage(c.spendShare)}
                               </td>
                               <td className={PRODUCTS_STOCK_TD_CLASS} onClick={(e) => e.stopPropagation()}>
                                 <CampaignStockRemainderCell

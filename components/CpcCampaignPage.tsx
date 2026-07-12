@@ -18,7 +18,6 @@ import {
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
   resolveProductTableThumbSrc,
-  PREBUILT_LIST_CPC_CAMPAIGN_ID,
   PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
 } from './SuccessPageTestData';
 import {
@@ -2237,7 +2236,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 }) => {
   const isCpmCampaign = paymentModel === 'CPM';
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
-  const isPrebuiltListCpcCampaign = campaignId === PREBUILT_LIST_CPC_CAMPAIGN_ID;
   const isSingleProductHeroCampaign = campaignId === PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID;
   const showSingleProductLayout = isSingleProductHeroCampaign || isCpmCampaign;
   const { beginRepeatLaunchFlow, profileId } = useProfile();
@@ -2285,31 +2283,20 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [isAdvancedDailyLimitModalOpen, setIsAdvancedDailyLimitModalOpen] = useState(false);
   const [isAutomationDailyLimitModalOpen, setIsAutomationDailyLimitModalOpen] = useState(false);
   const [isBidChasingSetupModalOpen, setIsBidChasingSetupModalOpen] = useState(false);
-  const [hasAppliedAdvancedDailyLimitSettings, setHasAppliedAdvancedDailyLimitSettings] =
-    useState(false);
-  const [advancedDailyLimitSettings, setAdvancedDailyLimitSettings] = useState(() => {
-    const base = {
-      strategyId: null as 'spendOptimization' | 'clicksOptimization' | null,
-      strategyGroupLabel: '',
-      autoIncreaseEnabled: false,
-      metric: 'drr' as 'drr' | 'cr',
-      thresholdPercent: 15,
-      drrThresholdPercent: 15,
-      crThresholdPercent: 2.8,
-      drrMetricEnabled: false,
-      crMetricEnabled: false,
-      increaseAmountRub: 500,
-      limitIncreasePercent: 25 as 25 | 50 | 100,
-    };
-    if (campaignId === PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID) {
-      return {
-        ...base,
-        autoIncreaseEnabled: false,
-        increaseRules: [],
-      };
-    }
-    return base;
-  });
+  const [advancedDailyLimitSettings, setAdvancedDailyLimitSettings] = useState(() => ({
+    strategyId: null as 'spendOptimization' | 'clicksOptimization' | null,
+    strategyGroupLabel: '',
+    autoIncreaseEnabled: false,
+    metric: 'drr' as 'drr' | 'cr',
+    thresholdPercent: 15,
+    drrThresholdPercent: 15,
+    crThresholdPercent: 2.8,
+    drrMetricEnabled: false,
+    crMetricEnabled: false,
+    increaseAmountRub: 500,
+    limitIncreasePercent: 25 as 25 | 50 | 100,
+    increaseRules: [] as DailyLimitIncreaseRule[],
+  }));
   const [bidChasingPosition, setBidChasingPosition] = useState<'1-2' | '3-10' | '11-34'>('1-2');
   const [bidChasingMaxBid, setBidChasingMaxBid] = useState(11.88);
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
@@ -2905,7 +2892,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     const activeRule = rules.find((r) => r.enabled && isDailyLimitIncreaseRuleValid(r));
     if (activeRule) {
       const summary = formatDailyLimitIncreaseConditionsSummary(activeRule.conditions ?? []);
-      if (summary) return summary;
+      return formatDailyLimitSpendRulesActiveLinkLabel(
+        activeRule.limitIncreasePercent,
+        summary,
+      );
     }
     const metrics = resolveAutoIncreaseMetricEnabled(advancedDailyLimitSettings);
     const thresholds = resolveAutoIncreaseThresholds(advancedDailyLimitSettings);
@@ -2920,13 +2910,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         formatDailyLimitConditionPhrase('cr', 'above', thresholds.cr),
       );
     }
-    return parts.length ? parts.join(', ') : undefined;
+    const legacySummary = parts.join(', ');
+    return formatDailyLimitSpendRulesActiveLinkLabel(
+      advancedDailyLimitSettings.limitIncreasePercent ?? 25,
+      legacySummary,
+    );
   }, [advancedDailyLimitSettings, dynamicDailyLimitConfigured]);
-
-  const showDailyLimitEfficiencyTag =
-    hasAppliedAdvancedDailyLimitSettings &&
-    isDailyLimitEnabled &&
-    dynamicDailyLimitConfigured;
 
   const budgetStrategiesStatusLabel = useMemo(() => {
     const strategiesEnabled = isBidChasingEnabled || dynamicDailyLimitConfigured;
@@ -3107,88 +3096,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         </div>
         ) : null}
 
-        {isPrebuiltListCpcCampaign && !showSingleProductLayout ? (
-        <div className="mb-8">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
-            <div className="flex min-h-[148px] min-w-0 flex-1 flex-col gap-4 rounded-2xl border border-gray-100 bg-white p-6">
-              <div>
-                <p className="text-xl font-bold leading-none text-gray-900">Остаток</p>
-                <p className="mt-2 text-4xl font-bold leading-none tabular-nums text-gray-900">
-                  {formatCurrency(campaignBudget)}
-                </p>
-              </div>
-              <div className="mt-auto flex flex-wrap items-center gap-4 sm:gap-6">
-                <button
-                  type="button"
-                  onClick={() => setIsBudgetRefillModalOpen(true)}
-                  className="rounded-xl bg-[#F2F2F7] px-6 py-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
-                >
-                  Пополнить
-                </button>
-                <div className="flex items-center gap-2">
-                  <ToggleSwitch
-                    checked={isAutoRefillEnabled}
-                    onChange={(checked) => {
-                      if (checked) {
-                        setWasAutoRefillToggledOn(true);
-                        setIsAutoRefillModalOpen(true);
-                      } else {
-                        setIsAutoRefillEnabled(false);
-                        setWasAutoRefillToggledOn(false);
-                        setToastMessage('Изменения сохранены');
-                        setShowToast(true);
-                      }
-                    }}
-                  />
-                  <span className="text-sm text-gray-900">Автопополнение</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex min-h-[148px] min-w-0 flex-[1.35] flex-col rounded-2xl border border-gray-100 bg-white p-5">
-              <p className="shrink-0 text-xl font-bold text-gray-900">Автоматизация трат</p>
-              <div className="mt-4 grid min-w-0 flex-1 grid-cols-1 content-start gap-4 sm:grid-cols-2">
-                <div className="flex min-w-0 flex-col gap-3">
-                  {isDailyLimitEnabled && dailyLimitSpendSummary ? (
-                    <AutomationDailyLimitTile summary={dailyLimitSpendSummary} />
-                  ) : (
-                    <AutomationSpendInactiveRow
-                      icon={<span className="text-lg">∞</span>}
-                      title="Дневной лимит"
-                      subtitle={budgetDailyLimitStatusLabel}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setIsAutomationDailyLimitModalOpen(true)}
-                    className="w-fit shrink-0 rounded-lg bg-[#F2F2F7] px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
-                  >
-                    Настроить
-                  </button>
-                </div>
-                <div className="flex min-w-0 flex-col gap-3">
-                  {budgetAutomationStrategiesActive && budgetAutomationStrategySummary.length > 0 ? (
-                    <AutomationStrategiesTile messages={budgetAutomationStrategySummary} />
-                  ) : (
-                    <AutomationSpendInactiveRow
-                      icon={<Settings className="h-5 w-5" />}
-                      title="Держать позицию в поиске"
-                      subtitle={budgetStrategiesStatusLabel}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setIsBidChasingSetupModalOpen(true)}
-                    className="w-fit shrink-0 rounded-lg bg-[#F2F2F7] px-5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
-                  >
-                    Настроить
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        ) : !showSingleProductLayout ? (
+        {!showSingleProductLayout ? (
         <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
           <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="mb-4 text-sm font-semibold text-gray-900">Остаток бюджета</p>
@@ -3339,11 +3247,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     className="mt-1.5"
                   />
                 ) : null}
-                {showDailyLimitEfficiencyTag ? (
-                  <span className="mt-1.5 inline-flex w-fit rounded-lg bg-green-50 px-2.5 py-1 text-xs font-medium text-green-800">
-                    Лимит меняется от эффективности
-                  </span>
-                ) : null}
                 <label className="m-0 flex cursor-pointer items-center gap-2">
                   <Checkbox
                     disabled={!isDailyLimitEnabled}
@@ -3390,13 +3293,20 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               )}
 
               {isDailyLimitEnabled && savedDailyLimitRub >= DAILY_LIMIT_ABSOLUTE_MIN ? (
+                <div
+                  className={
+                    dailyLimitSpendRulesLinkLabel
+                      ? 'min-w-0 max-w-[10rem] shrink'
+                      : 'w-fit shrink-0'
+                  }
+                >
                 <AutomationColumn
                   buttonLabel="Задать правила"
                   onButtonClick={() => setIsAdvancedDailyLimitModalOpen(true)}
                   settingsApplied={dynamicDailyLimitConfigured}
                   activeLinkLabel={dailyLimitSpendRulesLinkLabel}
-                  activeLinkVariant="blue"
                 />
+                </div>
               ) : null}
             </div>
           </div>
@@ -3755,7 +3665,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         }}
         dailyLimit={{
           advancedSettingsOnly: true,
-          conditionRuleBuilder: isSingleProductHeroCampaign,
+          conditionRuleBuilder: true,
           isDailyLimitEnabled,
           onEnableDailyLimit: applyMinDailyLimitOnEnable,
           onDisableDailyLimit: disableDailyLimit,
@@ -3799,7 +3709,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           targetAvgPosition: dailyLimitTrafficReference.targetAvgPosition,
           onApply: (settings) => {
             setAdvancedDailyLimitSettings(settings);
-            setHasAppliedAdvancedDailyLimitSettings(isDynamicDailyLimitConfigured(settings));
             closeAutoStrategies();
             setToastMessage('Настройки стратегии «Тратить эффективно» сохранены');
             setToastIsError(false);
@@ -3810,7 +3719,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 
       <AdvancedDailyLimitModal
         advancedSettingsOnly
-        conditionRuleBuilder={isSingleProductHeroCampaign}
+        conditionRuleBuilder
         isOpen={isAdvancedDailyLimitModalOpen}
         onClose={() => setIsAdvancedDailyLimitModalOpen(false)}
         isDailyLimitEnabled={isDailyLimitEnabled}
@@ -3856,7 +3765,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         targetAvgPosition={dailyLimitTrafficReference.targetAvgPosition}
         onApply={(settings, options) => {
           setAdvancedDailyLimitSettings(settings);
-          setHasAppliedAdvancedDailyLimitSettings(isDynamicDailyLimitConfigured(settings));
           if (options?.reset) return;
           setIsAdvancedDailyLimitModalOpen(false);
           setToastMessage(
@@ -3868,7 +3776,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           setShowToast(true);
         }}
         onAfterResetSettings={() => {
-          setHasAppliedAdvancedDailyLimitSettings(false);
           setToastMessage('Расширенные настройки сброшены');
           setToastIsError(false);
           setShowToast(true);
@@ -3921,7 +3828,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         targetAvgPosition={dailyLimitTrafficReference.targetAvgPosition}
         onApply={(settings) => {
           setAdvancedDailyLimitSettings(settings);
-          setHasAppliedAdvancedDailyLimitSettings(isDynamicDailyLimitConfigured(settings));
           setIsAutomationDailyLimitModalOpen(false);
           setToastMessage('Настройки дневного лимита сохранены');
           setToastIsError(false);
@@ -4881,7 +4787,7 @@ type AdvancedDailyLimitSettings = {
   crMetricEnabled: boolean;
   increaseAmountRub: number;
   limitIncreasePercent: LimitIncreasePercent;
-  /** Конструктор условий (однотоварная демо-кампания) */
+  /** Конструктор условий увеличения дневного лимита */
   increaseRules?: DailyLimitIncreaseRule[];
 };
 
@@ -5033,6 +4939,15 @@ function formatDailyLimitIncreaseConditionsSummary(
       formatDailyLimitConditionPhrase(c.metric, resolveConditionCompare(c), c.threshold),
     );
   return parts.join(', ');
+}
+
+function formatDailyLimitSpendRulesActiveLinkLabel(
+  limitIncreasePercent: number,
+  conditionsSummary: string,
+): string | undefined {
+  const trimmed = conditionsSummary.trim();
+  if (!trimmed) return undefined;
+  return `Увеличим бюджет на ${limitIncreasePercent}% если ${trimmed}`;
 }
 
 function isConditionThresholdValid(metric: DailyLimitConditionMetric, parsed: number) {
@@ -6216,6 +6131,11 @@ const AdvancedDailyLimitModal: React.FC<{
     onAfterResetSettings?.();
   };
 
+  const handleDisableSpendRules = () => {
+    handleResetAdvancedSettings();
+    onClose();
+  };
+
   const body = (
     <>
       <div className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto ${embedded ? 'px-6 pb-4 sm:px-8' : 'p-6 sm:p-8'}`}>
@@ -6433,7 +6353,13 @@ const AdvancedDailyLimitModal: React.FC<{
             <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
                 {conditionRuleBuilder ? (
-                  <span className="hidden sm:block" aria-hidden />
+                  <button
+                    type="button"
+                    onClick={handleDisableSpendRules}
+                    className="rounded-xl px-2 py-2.5 text-left text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:-ml-2"
+                  >
+                    Отключить
+                  </button>
                 ) : !dailyLimitOnly ? (
                   <button
                     type="button"

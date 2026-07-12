@@ -134,8 +134,12 @@ export function AutomationColumn({
       ? 'text-blue-600 hover:text-blue-700'
       : 'text-[#9A41FE] hover:text-purple-700';
 
+  const rootClassName = activeLinkLabel
+    ? 'flex w-fit max-w-[10rem] min-w-0 flex-col items-start gap-2.5'
+    : 'flex w-fit max-w-full shrink-0 flex-col items-start gap-2.5';
+
   return (
-    <div className="flex w-fit shrink-0 flex-col gap-2.5">
+    <div className={rootClassName}>
       <div className="flex h-5 items-center gap-1.5">
         <Sparkles className="h-4 w-4 shrink-0 text-[#9A41FE]" aria-hidden />
         <span className="text-sm text-gray-500">Автоматизация</span>
@@ -150,7 +154,7 @@ export function AutomationColumn({
         <button
           type="button"
           onClick={onButtonClick}
-          className={`inline-flex min-h-9 max-w-[min(100%,20rem)] items-center text-left text-sm font-medium leading-snug transition-colors hover:underline ${activeLinkClass}`}
+          className={`block max-w-full min-w-0 min-h-0 text-left text-[11px] font-medium leading-snug transition-colors hover:underline break-words ${activeLinkClass}`}
         >
           {activeLinkLabel}
         </button>
@@ -158,7 +162,7 @@ export function AutomationColumn({
         <button
           type="button"
           onClick={onButtonClick}
-          className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-[#F2F2F7] px-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#e8e8ed]"
+          className="inline-flex h-9 w-fit shrink-0 self-start items-center justify-center whitespace-nowrap rounded-lg bg-[#F2F2F7] px-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#e8e8ed]"
         >
           {buttonLabel}
         </button>
@@ -343,9 +347,9 @@ export function CpcSingleProductBudgetCard({
   hideDailyLimit?: boolean;
 }) {
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+    <div className="flex h-full min-h-0 min-w-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
       <h2 className="text-xl font-bold text-gray-900">Бюджет</h2>
-      <div className="mt-4 flex min-w-0 flex-row flex-nowrap items-start gap-5 overflow-x-auto">
+      <div className="mt-4 flex min-w-0 max-w-full flex-wrap items-start gap-x-5 gap-y-3 overflow-hidden">
         <div className="flex shrink-0 flex-col gap-1.5">
           <p className="mb-0 whitespace-nowrap text-sm text-gray-500">Остаток</p>
           <button
@@ -396,13 +400,20 @@ export function CpcSingleProductBudgetCard({
         ) : null}
 
         {!hideDailyLimit && showSpendRulesAutomation ? (
-          <AutomationColumn
-            buttonLabel="Задать правила"
-            onButtonClick={onOpenAdvancedDailyLimit}
-            settingsApplied={advancedDailyLimitSettingsApplied}
-            activeLinkLabel={spendRulesLinkLabel}
-            activeLinkVariant="blue"
-          />
+          <div
+            className={
+              spendRulesLinkLabel
+                ? 'min-w-0 max-w-[10rem] shrink'
+                : 'w-fit shrink-0 max-w-full'
+            }
+          >
+            <AutomationColumn
+              buttonLabel="Задать правила"
+              onButtonClick={onOpenAdvancedDailyLimit}
+              settingsApplied={advancedDailyLimitSettingsApplied}
+              activeLinkLabel={spendRulesLinkLabel}
+            />
+          </div>
         ) : null}
       </div>
     </div>
@@ -549,6 +560,13 @@ export function CpcSingleProductStrategyCard({
           )}
         </div>
 
+        <div
+          className={
+            isBidChasingEnabled
+              ? 'min-w-0 max-w-full w-fit shrink-0'
+              : 'w-fit shrink-0 max-w-full'
+          }
+        >
         <AutomationColumn
           buttonLabel="Удерживать позицию"
           onButtonClick={onOpenPositionStrategy}
@@ -559,6 +577,7 @@ export function CpcSingleProductStrategyCard({
               : undefined
           }
         />
+        </div>
       </div>
     </section>
   );
