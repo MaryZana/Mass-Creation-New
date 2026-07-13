@@ -4158,9 +4158,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 };
 
 // Auto Refill Modal Component
-type AutoRefillMode = 'manual' | 'dailyLimit';
+export type AutoRefillMode = 'manual' | 'dailyLimit';
 
-const AutoRefillModal: React.FC<{
+export const AutoRefillModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   onSave: (mode: AutoRefillMode) => void;
@@ -4609,7 +4609,7 @@ const AutoStrategiesModal: React.FC<{
   );
 };
 
-const BidChasingClustersModal: React.FC<{
+export const BidChasingClustersModal: React.FC<{
   embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
@@ -4846,7 +4846,7 @@ function autoIncreaseThresholdLabel(metric: 'drr' | 'cr') {
   return metric === 'drr' ? 'При ДРР ниже' : 'При CR выше';
 }
 
-type AdvancedDailyLimitSettings = {
+export type AdvancedDailyLimitSettings = {
   strategyId: DailyLimitStrategyId | null;
   strategyGroupLabel: string;
   autoIncreaseEnabled: boolean;
@@ -4931,7 +4931,7 @@ function resolveAutoIncreaseMetricEnabled(settings: AdvancedDailyLimitSettings) 
   };
 }
 
-function createDefaultAdvancedDailyLimitSettings(): AdvancedDailyLimitSettings {
+export function createDefaultAdvancedDailyLimitSettings(): AdvancedDailyLimitSettings {
   return {
     strategyId: null,
     strategyGroupLabel: '',
@@ -5900,7 +5900,7 @@ function DailyLimitConditionRulesBuilder({
   );
 }
 
-const AdvancedDailyLimitModal: React.FC<{
+export const AdvancedDailyLimitModal: React.FC<{
   embedded?: boolean;
   /** Только блок «Расширенные настройки» (без лимита на день и переноса) */
   advancedSettingsOnly?: boolean;

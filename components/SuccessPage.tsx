@@ -86,6 +86,11 @@ import {
 import type { BonusNotificationCardVariant } from './BonusCampaignRepeatBanner';
 import { ReferralCampaignCreatedNotice } from './ReferralCampaignCreatedNotice';
 import { BudgetRefillModal } from './BudgetRefillModal';
+import {
+  CampaignListAutomationModals,
+  type CampaignListAutomationKind,
+  type CampaignListAutomationModalTarget,
+} from './CampaignListAutomationModals';
 
 // --- Constants ---
 const TOTAL_PROMO_BONUS = 226660517;
@@ -1156,6 +1161,15 @@ function formatProductCampaignTypeLabel(camp: ProductCampaign): string {
   const details = camp.typeDetails?.trim();
   if (!details) return camp.type;
   return `${camp.type} · ${details}`;
+}
+
+/** Третья строка в блоке кампании в списке: «Единая» / «Ручная» (CPC и CPM). */
+function listCampaignBidModeSubtitle(typeDetails?: string): string | null {
+  const details = typeDetails?.trim();
+  if (!details) return null;
+  if (/един/i.test(details)) return 'Единая ставка';
+  if (/ручн/i.test(details)) return 'Ручная ставка';
+  return null;
 }
 
 function defaultProductCampaignBid(camp: ProductCampaign): number {
@@ -5135,6 +5149,129 @@ const TagDropdown: React.FC<{
   );
 };
 
+type CampaignListAutomationAction = 'searchPosition' | 'flexibleLimit' | 'autoRefill';
+
+const CAMPAIGN_LIST_AUTOMATION_OPTIONS: { id: CampaignListAutomationAction; label: string }[] = [
+  { id: 'searchPosition', label: 'Держать позицию в поиске' },
+  { id: 'flexibleLimit', label: 'Гибкий лимит' },
+  { id: 'autoRefill', label: 'Автопополнение бюджета' },
+];
+
+function getCampaignListAutomationOptions(campaignType: 'CPC' | 'CPM') {
+  return CAMPAIGN_LIST_AUTOMATION_OPTIONS.filter(
+    (option) => campaignType === 'CPC' || option.id !== 'flexibleLimit',
+  );
+}
+
+function CampaignListAutomationCell({
+  campaignType,
+  onSelect,
+}: {
+  campaignType: 'CPC' | 'CPM';
+  onSelect: (action: CampaignListAutomationAction) => void;
+}) {
+  const anchorRef = useRef<HTMLDivElement>(null);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ left: number; top: number } | null>(null);
+
+  const clearHideTimeout = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleHide = () => {
+    clearHideTimeout();
+    hideTimeoutRef.current = setTimeout(() => setIsOpen(false), 120);
+  };
+
+  const updateMenuPosition = useCallback(() => {
+    if (!anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    setMenuPosition({ left: rect.left, top: rect.top - 6 });
+  }, []);
+
+  const openMenu = () => {
+    clearHideTimeout();
+    updateMenuPosition();
+    setIsOpen(true);
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updateMenuPosition();
+    const onLayout = () => updateMenuPosition();
+    window.addEventListener('resize', onLayout);
+    window.addEventListener('scroll', onLayout, true);
+    return () => {
+      window.removeEventListener('resize', onLayout);
+      window.removeEventListener('scroll', onLayout, true);
+    };
+  }, [isOpen, updateMenuPosition]);
+
+  useEffect(() => () => clearHideTimeout(), []);
+
+  const menuOptions = getCampaignListAutomationOptions(campaignType);
+
+  const menu =
+    isOpen && menuPosition
+      ? ReactDOM.createPortal(
+          <div
+            className="fixed z-[400] w-[17.5rem]"
+            style={{ left: menuPosition.left, top: menuPosition.top }}
+            onMouseEnter={openMenu}
+            onMouseLeave={scheduleHide}
+          >
+            <div className="-translate-y-full pb-1.5">
+              <div className="rounded-lg border border-gray-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
+                {menuOptions.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                    onClick={() => {
+                      onSelect(option.id);
+                      setIsOpen(false);
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      <div
+        ref={anchorRef}
+        className="flex max-w-[10.5rem] items-center"
+        onMouseEnter={openMenu}
+        onMouseLeave={scheduleHide}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="inline-flex max-w-full items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-[#9a41fe] transition-colors hover:border-[#9a41fe]/40 hover:bg-[#F6F2FF]"
+        >
+          <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <span className="whitespace-nowrap">Добавить</span>
+          <ChevronDown
+            className={`h-3.5 w-3.5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            aria-hidden
+          />
+        </button>
+      </div>
+      {menu}
+    </>
+  );
+}
+
 const DailyLimitTooltip: React.FC<{
   dailyLimit: number;
   scheduledDailyLimit?: number | null;
@@ -5535,6 +5672,13 @@ function listCampaignMaxCpcBidRub(c: Pick<DisplayCampaign, 'type' | 'maxCpcBidRu
   if (c.type !== 'CPC') return 0;
   if (c.maxCpcBidRub != null && c.maxCpcBidRub > 0) return c.maxCpcBidRub;
   return demoMaxCpcBidForCampaignId(c.campaignId);
+}
+
+function listCampaignAutomationReferenceBidRub(
+  c: Pick<DisplayCampaign, 'type' | 'maxCpcBidRub' | 'campaignId'>,
+): number {
+  if (c.type === 'CPC') return listCampaignMaxCpcBidRub(c);
+  return 150 + (c.campaignId % 351);
 }
 
 type BulkDailyLimitTarget = DisplayCampaign;
@@ -7757,6 +7901,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [isMassBudgetRefillModalOpen, setIsMassBudgetRefillModalOpen] = useState(false);
   const [massBudgetRefillTargetIds, setMassBudgetRefillTargetIds] = useState<string[]>([]);
   const [isDailyLimitModalOpen, setIsDailyLimitModalOpen] = useState(false);
+  const [listAutomationModal, setListAutomationModal] = useState<{
+    target: CampaignListAutomationModalTarget;
+    kind: CampaignListAutomationKind;
+  } | null>(null);
   const [limitShortfallNotification, setLimitShortfallNotification] = useState<{ requestedLimit: number; shortfall: number } | null>(null);
 
   const openDailyLimitModalForCampaign = useCallback(
@@ -9157,6 +9305,30 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [onOpenCpcCampaign, profileId],
   );
 
+  const runListCampaignAutomation = useCallback(
+    (
+      row: { id: string; campaignId: number; type: 'CPC' | 'CPM' },
+      action: CampaignListAutomationAction,
+    ) => {
+      if (row.type !== 'CPC' && row.type !== 'CPM') return;
+      if (action === 'flexibleLimit' && row.type !== 'CPC') return;
+      const display =
+        allCampaigns.find((x) => x.id === row.id) ??
+        allCampaigns.find((x) => x.campaignId === row.campaignId);
+      if (!display) return;
+      setListAutomationModal({
+        kind: action,
+        target: {
+          campaignId: display.campaignId,
+          remainingBudget: display.remainingBudget,
+          dailyLimit: display.dailyLimit ?? null,
+          maxCpcBidRub: listCampaignAutomationReferenceBidRub(display),
+        },
+      });
+    },
+    [allCampaigns],
+  );
+
   const openProductNestedCampaign = useCallback(
     (camp: ProductCampaign) => {
       const display = allCampaigns.find((c) => c.campaignId === camp.campaignId);
@@ -10330,7 +10502,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             }}
           >
               {/* Тень между закреплёнными колонками и прокручиваемыми данными */}
-              <table className="relative w-full text-sm min-w-[1600px]">
+              <table className="relative w-full text-sm min-w-[1680px]">
                   <thead className="bg-gray-50 text-gray-500 font-medium">
                       <tr>
                           <th className="sticky left-0 z-20 p-4 w-12 bg-gray-50">
@@ -10348,8 +10520,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           <th
                             className={`sticky left-[100px] z-20 p-4 text-left min-w-[300px] bg-gray-50 ${
                               isProductPromotionConceptPage ? 'font-normal' : 'font-medium'
-                            } ${
-                              hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
                             }`}
                           >
                             {isProductPromotionConceptPage ? (
@@ -10373,7 +10543,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </div>
                             )}
                             </th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Тип кампании <HelpCircle className="w-4 h-4" /></div></th>
+                          <th
+                            className={`sticky left-[400px] z-20 min-w-[9rem] bg-gray-50 p-4 text-left font-medium ${
+                              hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-1 whitespace-nowrap">
+                              Автоматизация <HelpCircle className="w-4 h-4 shrink-0" />
+                            </div>
+                          </th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Дневной лимит <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4" /></div></th>
@@ -10387,6 +10565,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <tbody className="divide-y divide-gray-100">
                       {paginatedCampaigns.map(c => {
                           const isCampaignRowSelected = selectedCampaigns.includes(c.id);
+                          const campaignBidModeSubtitle = listCampaignBidModeSubtitle(c.typeDetails);
                           const campaignPinnedCellClass = isCampaignRowSelected
                             ? 'bg-purple-50 group-hover/campaign-row:bg-purple-50'
                             : 'bg-white group-hover/campaign-row:bg-gray-50';
@@ -10430,9 +10609,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   />
                               </td>
                               <td
-                                className={`sticky left-[100px] z-10 p-4 ${campaignPinnedCellClass} ${
-                                  hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
-                                }`}
+                                className={`sticky left-[100px] z-10 p-4 ${campaignPinnedCellClass}`}
                               >
                                   <div className="flex items-center gap-3">
                                       <ProductTableThumb
@@ -10441,7 +10618,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                         category={c.category}
                                         alt={c.name}
                                       />
-                                      <div>
+                                      <div className="min-w-0">
                                           <p className="mb-1 font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
                                               <StatusBadge status={c.status} text={c.statusText} />
@@ -10452,15 +10629,30 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                                   </div>
                                               ))}
                                           </div>
+                                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                                            <span className="text-sm font-semibold text-gray-900">{c.type}</span>
+                                            {c.typeIcons.map((icon, i) => (
+                                              <span key={i} className="rounded bg-gray-100 p-1">
+                                                {icon}
+                                              </span>
+                                            ))}
+                                            {campaignBidModeSubtitle ? (
+                                              <span>{campaignBidModeSubtitle}</span>
+                                            ) : null}
+                                          </div>
                                       </div>
                                   </div>
                               </td>
-                              <td className="p-4">
-                                  <div className="font-semibold">{c.type}</div>
-                                  <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1">
-                                      {c.typeDetails && <span>{c.typeDetails}</span>}
-                                      {c.typeIcons.map((icon, i) => <span key={i} className="p-1 bg-gray-100 rounded">{icon}</span>)}
-                                  </div>
+                              <td
+                                className={`sticky left-[400px] z-10 p-4 align-middle ${campaignPinnedCellClass} ${
+                                  hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
+                                }`}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <CampaignListAutomationCell
+                                  campaignType={c.type}
+                                  onSelect={(action) => runListCampaignAutomation(c, action)}
+                                />
                               </td>
                               <td className="p-4" onClick={(e) => e.stopPropagation()}>
                                   <div className="relative inline-flex items-center group" onClick={(e) => e.stopPropagation()}>
@@ -11737,11 +11929,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 )}
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-none text-gray-500">
                                   <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
-                                  {isProductPromotionConceptPage ? (
-                                    <span>{formatProductCampaignTypeLabel(camp)}</span>
-                                  ) : null}
                                   <span>ID {camp.campaignId}</span>
                                 </div>
+                                {listCampaignBidModeSubtitle(camp.typeDetails) ? (
+                                  <p className="mt-1 text-xs text-gray-500">
+                                    {listCampaignBidModeSubtitle(camp.typeDetails)}
+                                  </p>
+                                ) : null}
                               </div>
                             </div>
                           </td>
@@ -11767,7 +11961,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             >
                             <div className="font-semibold text-gray-900">{camp.type}</div>
                             <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
-                              {camp.typeDetails && <span>{camp.typeDetails}</span>}
                                 <span className="p-1 bg-gray-100 rounded">
                                   {camp.type === 'CPC' ? (
                                     <Search className="w-4 h-4 text-gray-400" />
@@ -12019,6 +12212,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           onApply={handleBulkDailyLimitApply}
         />
       )}
+      <CampaignListAutomationModals
+        target={listAutomationModal?.target ?? null}
+        kind={listAutomationModal?.kind ?? null}
+        onClose={() => setListAutomationModal(null)}
+        onAutoRefillSaved={(campaignId) => {
+          setAllCampaigns((prev) =>
+            prev.map((c) => (c.campaignId === campaignId ? { ...c, autoRefill: true } : c)),
+          );
+          setProductBulkNotice('Автопополнение настроено');
+        }}
+        onFlexibleLimitSaved={() => {
+          setProductBulkNotice('Настройки гибкого лимита сохранены');
+        }}
+        onBidChasingSaved={() => {
+          setProductBulkNotice('Автобиддер настроен');
+        }}
+      />
       {isDailyLimitModalOpen && dailyLimitModalCampaign && (
         <DailyLimitModal
           isOpen={isDailyLimitModalOpen}
