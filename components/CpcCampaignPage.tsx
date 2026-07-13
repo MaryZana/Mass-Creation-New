@@ -40,7 +40,6 @@ import {
   isBidChasingHoldOfferedForChartRange,
   type BidChasingRange,
 } from '../utils/cpcBidChasingPositionTiers';
-import { CampaignRepeatPerformanceBlock } from './CampaignRepeatPerformanceBlock';
 import { useProfile, type RepeatLaunchPreset } from './ProfileContext';
 import {
   DAILY_LIMIT_ABSOLUTE_MIN,
@@ -2116,7 +2115,7 @@ function DailyLimitSpendSummaryBlock({
   compact?: boolean;
 }) {
   const progressBarWidthClass =
-    layout === 'sidebar' ? 'w-full max-w-[120px]' : layout === 'card' ? 'w-1/3' : 'w-full max-w-[120px]';
+    layout === 'sidebar' ? 'w-full max-w-[60px]' : layout === 'card' ? 'w-1/3' : 'w-full max-w-[120px]';
   const labelClass = compact ? 'text-[11px] text-gray-500' : 'text-xs text-gray-500';
   const amountClassName = compact
     ? 'mt-0.5 text-xs leading-snug tabular-nums text-gray-900'
@@ -2238,7 +2237,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const isSingleProductHeroCampaign = campaignId === PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID;
   const showSingleProductLayout = isSingleProductHeroCampaign || isCpmCampaign;
-  const { beginRepeatLaunchFlow, profileId } = useProfile();
+  const { profileId } = useProfile();
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(dailyLimit !== null && dailyLimit !== undefined);
   const [dailyLimitValue, setDailyLimitValue] = useState(dailyLimit ? String(dailyLimit) : '');
@@ -2248,6 +2247,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [toastMessage, setToastMessage] = useState('');
   const [toastIsError, setToastIsError] = useState(false);
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
+  const [autoRefillMode, setAutoRefillMode] = useState<AutoRefillMode>('manual');
   const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
   const [campaignBudget, setCampaignBudget] = useState(remainingBudget ?? 1000);
   const [campaignName, setCampaignName] = useState(name);
@@ -2886,6 +2886,26 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     [advancedDailyLimitSettings],
   );
 
+  const enableAutoRefillLinkedToDailyLimit = useCallback(() => {
+    setAutoRefillMode('dailyLimit');
+    setIsAutoRefillEnabled(true);
+  }, []);
+
+  const autoRefillOnRulesTrigger =
+    isAutoRefillEnabled && autoRefillMode === 'dailyLimit';
+
+  const setAutoRefillOnRulesTrigger = useCallback(
+    (enabled: boolean) => {
+      if (enabled) {
+        enableAutoRefillLinkedToDailyLimit();
+      } else {
+        setAutoRefillMode('manual');
+        setIsAutoRefillEnabled(false);
+      }
+    },
+    [enableAutoRefillLinkedToDailyLimit],
+  );
+
   const dailyLimitSpendRulesLinkLabel = useMemo(() => {
     if (!dynamicDailyLimitConfigured) return undefined;
     const rules = advancedDailyLimitSettings.increaseRules ?? [];
@@ -2999,6 +3019,22 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               <CpcSingleProductBudgetCard
                 campaignBudget={campaignBudget}
                 onRefill={() => setIsBudgetRefillModalOpen(true)}
+                isAutoRefillEnabled={isAutoRefillEnabled}
+                onAutoRefillEnabledChange={(checked) => {
+                  if (checked) {
+                    setWasAutoRefillToggledOn(true);
+                    setIsAutoRefillModalOpen(true);
+                  } else {
+                    setIsAutoRefillEnabled(false);
+                    setWasAutoRefillToggledOn(false);
+                    setToastMessage('Изменения сохранены');
+                    setShowToast(true);
+                  }
+                }}
+                onConfigureAutoRefill={() => {
+                  setWasAutoRefillToggledOn(false);
+                  setIsAutoRefillModalOpen(true);
+                }}
                 hideDailyLimit={isCpmCampaign}
                 isDailyLimitEnabled={isDailyLimitEnabled}
                 onDailyLimitEnabledChange={(checked) => {
@@ -3076,11 +3112,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               <span className="px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-medium">
                 Активна
               </span>
-              {fromReadyToRepeat && (
-                <span className="px-2 py-0.5 rounded-full bg-[#f3e8ff] text-[#9a41fe] text-xs font-medium">
-                  Кампания за бонусы
-                </span>
-              )}
               <span>{paymentModel}</span>
               <span>ID {campaignId}</span>
             </div>
@@ -3145,10 +3176,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 </div>
                 <p className="mt-2 text-xs leading-snug text-gray-400">
                   {isAutoRefillEnabled ? (
-                    <>
-                      Если бюджет меньше {formatForDisplay(1000)} ₽, пополнять на{' '}
-                      {formatForDisplay(3000)} ₽ не чаще 1 раза в день
-                    </>
+                    autoRefillMode === 'dailyLimit' ? (
+                      <>
+                        Пополняем бюджет автоматически, если он меньше нужного дневного лимита
+                      </>
+                    ) : (
+                      <>
+                        Если бюджет меньше {formatForDisplay(1000)} ₽, пополнять на{' '}
+                        {formatForDisplay(3000)} ₽ не чаще 1 раза в день
+                      </>
+                    )
                   ) : (
                     <>Включите автопополнение, чтобы кампания не останавливалась</>
                   )}
@@ -3311,26 +3348,6 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             </div>
           </div>
         </div>
-        ) : null}
-
-        {fromReadyToRepeat && !showSingleProductLayout ? (
-          <CampaignRepeatPerformanceBlock
-            profileId={profileId}
-            rankingProduct={
-              repeatLaunchPreset
-                ? {
-                    name: repeatLaunchPreset.product.productName,
-                    imageUrl: repeatLaunchPreset.product.imageUrl,
-                    meta: `${repeatLaunchPreset.product.category} • ${repeatLaunchPreset.product.nmId}`,
-                  }
-                : undefined
-            }
-            onRepeatCampaign={() => {
-              if (repeatLaunchPreset) {
-                beginRepeatLaunchFlow(repeatLaunchPreset);
-              }
-            }}
-          />
         ) : null}
 
         <CpcCampaignStatisticsSection
@@ -3620,6 +3637,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       {isAutoRefillModalOpen && (
         <AutoRefillModal
           isOpen={isAutoRefillModalOpen}
+          initialMode={autoRefillMode}
           onClose={() => {
             setIsAutoRefillModalOpen(false);
             if (wasAutoRefillToggledOn) {
@@ -3627,7 +3645,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               setWasAutoRefillToggledOn(false);
             }
           }}
-          onSave={() => {
+          onSave={(mode) => {
+            setAutoRefillMode(mode);
             setIsAutoRefillEnabled(true);
             setIsAutoRefillModalOpen(false);
             setWasAutoRefillToggledOn(false);
@@ -3707,6 +3726,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           initialSettings: advancedDailyLimitSettings,
           referenceCpcBidRub: dailyLimitTrafficReference.cpcBidRub,
           targetAvgPosition: dailyLimitTrafficReference.targetAvgPosition,
+          autoRefillOnRulesTrigger,
+          onAutoRefillOnRulesTriggerChange: setAutoRefillOnRulesTrigger,
           onApply: (settings) => {
             setAdvancedDailyLimitSettings(settings);
             closeAutoStrategies();
@@ -3763,6 +3784,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         initialSettings={advancedDailyLimitSettings}
         referenceCpcBidRub={dailyLimitTrafficReference.cpcBidRub}
         targetAvgPosition={dailyLimitTrafficReference.targetAvgPosition}
+        autoRefillOnRulesTrigger={autoRefillOnRulesTrigger}
+        onAutoRefillOnRulesTriggerChange={setAutoRefillOnRulesTrigger}
         onApply={(settings, options) => {
           setAdvancedDailyLimitSettings(settings);
           if (options?.reset) return;
@@ -4135,15 +4158,34 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 };
 
 // Auto Refill Modal Component
+type AutoRefillMode = 'manual' | 'dailyLimit';
+
 const AutoRefillModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
-  onSave: () => void;
-}> = ({ isOpen, onClose, onSave }) => {
+  onSave: (mode: AutoRefillMode) => void;
+  initialMode: AutoRefillMode;
+}> = ({
+  isOpen,
+  onClose,
+  onSave,
+  initialMode,
+}) => {
+  const [refillMode, setRefillMode] = useState<AutoRefillMode>(initialMode);
   const [threshold, setThreshold] = useState('1000');
   const [amount, setAmount] = useState('3000');
   const [usePromoBonuses, setUsePromoBonuses] = useState(true);
   const [showPackages, setShowPackages] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setRefillMode(initialMode);
+  }, [isOpen, initialMode]);
+
+  const refillTabClass = (active: boolean) =>
+    `shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+    }`;
 
   const ModalToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
     <button role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${checked ? 'bg-purple-500' : 'bg-gray-300'}`}>
@@ -4175,6 +4217,32 @@ const AutoRefillModal: React.FC<{
         <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
           <div className="bg-gray-50/70 p-6 rounded-xl border border-gray-100">
             <h3 className="text-lg font-bold mb-4">Условия пополнения</h3>
+            <div
+              className="mb-5 inline-flex w-fit max-w-full gap-1 rounded-xl bg-[#F2F2F7] p-1"
+              role="tablist"
+              aria-label="Способ автопополнения"
+            >
+              <button
+                type="button"
+                role="tab"
+                aria-selected={refillMode === 'manual'}
+                className={refillTabClass(refillMode === 'manual')}
+                onClick={() => setRefillMode('manual')}
+              >
+                Ручная настройка
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={refillMode === 'dailyLimit'}
+                className={refillTabClass(refillMode === 'dailyLimit')}
+                onClick={() => setRefillMode('dailyLimit')}
+              >
+                Пополнение от дневного лимита
+              </button>
+            </div>
+
+            {refillMode === 'manual' ? (
             <div className="space-y-4 max-w-lg">
               <div className="grid grid-cols-2 items-center gap-4">
                 <label htmlFor="threshold" className="text-gray-600">Если бюджет меньше</label>
@@ -4191,6 +4259,11 @@ const AutoRefillModal: React.FC<{
                 </div>
               </div>
             </div>
+            ) : (
+              <p className="max-w-lg text-sm leading-relaxed text-gray-600">
+                Пополняем бюджет, если его окажется меньше, чем нужно для текущего дневного лимита.
+              </p>
+            )}
           </div>
           
           <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
@@ -4241,7 +4314,7 @@ const AutoRefillModal: React.FC<{
         </div>
 
         <div className="flex justify-start items-center gap-3 p-6 bg-gray-50/70 border-t border-gray-100 rounded-b-2xl">
-            <button onClick={onSave} className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
+            <button onClick={() => onSave(refillMode)} className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
                 Сохранить
             </button>
             <button onClick={onClose} className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
@@ -5852,6 +5925,9 @@ const AdvancedDailyLimitModal: React.FC<{
   referenceCpcBidRub: number;
   targetAvgPosition?: number;
   onAfterResetSettings?: () => void;
+  /** Автопополнение бюджета при срабатывании правил (конструктор условий) */
+  autoRefillOnRulesTrigger?: boolean;
+  onAutoRefillOnRulesTriggerChange?: (enabled: boolean) => void;
 }> = ({
   embedded = false,
   advancedSettingsOnly = false,
@@ -5871,6 +5947,8 @@ const AdvancedDailyLimitModal: React.FC<{
   referenceCpcBidRub,
   targetAvgPosition,
   onAfterResetSettings,
+  autoRefillOnRulesTrigger = true,
+  onAutoRefillOnRulesTriggerChange,
 }) => {
   const [strategyId, setStrategyId] = useState<DailyLimitStrategyId | null>(initialSettings.strategyId);
   const [strategyGroupLabel, setStrategyGroupLabel] = useState(initialSettings.strategyGroupLabel);
@@ -5902,6 +5980,12 @@ const AdvancedDailyLimitModal: React.FC<{
         : [],
   );
   const [ruleTemplatesRevision, setRuleTemplatesRevision] = useState(0);
+  const [autoRefillOnRules, setAutoRefillOnRules] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen || !conditionRuleBuilder) return;
+    setAutoRefillOnRules(true);
+  }, [isOpen, conditionRuleBuilder]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -6082,6 +6166,7 @@ const AdvancedDailyLimitModal: React.FC<{
       onDailyLimitCommit(parsedDailyLimit);
       if (conditionRuleBuilder) {
         applyAdvancedSettingsPayload({ enableSpendRulesOnlyWhenValid: true });
+        onAutoRefillOnRulesTriggerChange?.(autoRefillOnRules);
       } else {
         onApply(initialSettings);
       }
@@ -6095,6 +6180,9 @@ const AdvancedDailyLimitModal: React.FC<{
       onDailyLimitCommit(parsedDailyLimit, { silent: true });
     }
     applyAdvancedSettingsPayload();
+    if (conditionRuleBuilder) {
+      onAutoRefillOnRulesTriggerChange?.(autoRefillOnRules);
+    }
   };
 
   const applySettingsToForm = (settings: AdvancedDailyLimitSettings) => {
@@ -6349,6 +6437,23 @@ const AdvancedDailyLimitModal: React.FC<{
               </div>
               ) : null}
             </div>
+
+            {conditionRuleBuilder ? (
+              <div className="shrink-0 px-6 pb-4 sm:px-8">
+                <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#F6F2FF] px-4 py-3">
+                  <p className="min-w-0 flex-1 text-sm leading-snug text-gray-800">
+                    Автопополнять бюджет до суммы дневного лимита, если на кампании окажется меньше
+                  </p>
+                  <ToggleSwitch
+                    checked={autoRefillOnRules}
+                    onChange={(checked) => {
+                      setAutoRefillOnRules(checked);
+                      onAutoRefillOnRulesTriggerChange?.(checked);
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">

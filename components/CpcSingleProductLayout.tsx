@@ -143,12 +143,6 @@ export function AutomationColumn({
       <div className="flex h-5 items-center gap-1.5">
         <Sparkles className="h-4 w-4 shrink-0 text-[#9A41FE]" aria-hidden />
         <span className="text-sm text-gray-500">Автоматизация</span>
-        {settingsApplied ? (
-          <span
-            className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#9A41FE]"
-            aria-label="Настройки применены"
-          />
-        ) : null}
       </div>
       {activeLinkLabel ? (
         <button
@@ -320,6 +314,9 @@ export function CpcSingleProductHeroCard({
 export function CpcSingleProductBudgetCard({
   campaignBudget,
   onRefill,
+  isAutoRefillEnabled,
+  onAutoRefillEnabledChange,
+  onConfigureAutoRefill,
   isDailyLimitEnabled,
   onDailyLimitEnabledChange,
   dailyLimitValue,
@@ -334,6 +331,9 @@ export function CpcSingleProductBudgetCard({
 }: {
   campaignBudget: number;
   onRefill: () => void;
+  isAutoRefillEnabled: boolean;
+  onAutoRefillEnabledChange: (enabled: boolean) => void;
+  onConfigureAutoRefill: () => void;
   isDailyLimitEnabled: boolean;
   onDailyLimitEnabledChange: (enabled: boolean) => void;
   dailyLimitValue: string;
@@ -360,6 +360,19 @@ export function CpcSingleProductBudgetCard({
           >
             {campaignBudget.toLocaleString('ru-RU')} ₽
           </button>
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <ToggleSwitch
+              checked={isAutoRefillEnabled}
+              onChange={onAutoRefillEnabledChange}
+            />
+            <button
+              type="button"
+              onClick={onConfigureAutoRefill}
+              className="whitespace-nowrap text-left text-sm text-gray-500 transition-colors hover:text-[#9A41FE]"
+            >
+              Автопополнение
+            </button>
+          </div>
         </div>
 
         {!hideDailyLimit ? (
