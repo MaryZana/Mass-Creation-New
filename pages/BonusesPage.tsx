@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowUp, Calendar, ChevronDown, ChevronRight, Check } from '../components/Icons';
-import { useProfile } from '../components/ProfileContext';
+import { isNewSellerProfile, useProfile } from '../components/ProfileContext';
+import { NEW_SELLER_BONUSES } from '../components/newSeller/newSellerProfileData';
 const REFERRAL_PROMO_BASE = 'https://seller.wildberries.ru/promotion/referral';
 const REFERRAL_CODE_PREFIX = '038';
 
@@ -1197,19 +1198,21 @@ function ListPaginationFooter({
   );
 }
 
-function BonusHistoryPanel() {
+function BonusHistoryPanel({ empty = false }: { empty?: boolean }) {
   const [filterIdx, setFilterIdx] = useState(0);
   const [filterOpen, setFilterOpen] = useState(false);
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
 
-  const totalPages = Math.max(1, Math.ceil(MOCK_HISTORY.length / pageSize));
+  const historyEntries = empty ? [] : MOCK_HISTORY;
+  const referralHistoryEntries = empty ? [] : REFERRAL_HISTORY_ENTRIES;
+  const totalPages = Math.max(1, Math.ceil(historyEntries.length / pageSize));
   const safePage = Math.min(page, totalPages);
 
   const pageItems = useMemo(() => {
     const start = (safePage - 1) * pageSize;
-    return MOCK_HISTORY.slice(start, start + pageSize);
-  }, [safePage, pageSize]);
+    return historyEntries.slice(start, start + pageSize);
+  }, [historyEntries, safePage, pageSize]);
 
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
@@ -1218,6 +1221,9 @@ function BonusHistoryPanel() {
   useEffect(() => {
     setPage(1);
   }, [pageSize, filterIdx]);
+
+  const hasEntries =
+    (filterIdx === 0 && referralHistoryEntries.length > 0) || pageItems.length > 0;
 
   return (
     <div className="mt-6">
@@ -1266,22 +1272,30 @@ function BonusHistoryPanel() {
           </button>
         </div>
 
-        <ul className="divide-y divide-gray-100">
-          {filterIdx === 0 &&
-            REFERRAL_HISTORY_ENTRIES.map((entry) => <HistoryEntryRow key={entry.id} entry={entry} />)}
-          {pageItems.map((entry) => (
-            <HistoryEntryRow key={entry.id} entry={entry} />
-          ))}
-        </ul>
+        {hasEntries ? (
+          <ul className="divide-y divide-gray-100">
+            {filterIdx === 0 &&
+              referralHistoryEntries.map((entry) => <HistoryEntryRow key={entry.id} entry={entry} />)}
+            {pageItems.map((entry) => (
+              <HistoryEntryRow key={entry.id} entry={entry} />
+            ))}
+          </ul>
+        ) : (
+          <div className="px-5 py-12 text-center sm:px-6">
+            <p className="text-sm text-gray-500">Пока нет операций с бонусами</p>
+          </div>
+        )}
 
+        {!empty ? (
         <ListPaginationFooter
-          totalItems={MOCK_HISTORY.length}
+          totalItems={historyEntries.length}
           page={page}
           onPageChange={setPage}
           pageSize={pageSize}
           onPageSizeChange={setPageSize}
           onCloseSiblingDropdown={() => setFilterOpen(false)}
         />
+        ) : null}
       </section>
     </div>
   );
@@ -1352,6 +1366,7 @@ function PromotionProgress({ current, max }: { current: number; max: number }) {
 
 const BonusesPage: React.FC = () => {
   const { profileId } = useProfile();
+  const isNewSeller = isNewSellerProfile(profileId);
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = parseBonusesTab(searchParams.get('tab'));
   const setTab = useCallback(
@@ -1375,9 +1390,9 @@ const BonusesPage: React.FC = () => {
     const raw = searchParams.get('tab');
     const allowed = ['tasks', 'history', 'referral'] as const;
     if (!raw || !(allowed as readonly string[]).includes(raw)) {
-      setSearchParams({ tab: 'tasks' }, { replace: true });
+      setSearchParams({ tab: isNewSeller ? 'referral' : 'tasks' }, { replace: true });
     }
-  }, [searchParams, setSearchParams]);
+  }, [searchParams, setSearchParams, isNewSeller]);
   const [pastPromotionsOn, setPastPromotionsOn] = useState(false);
   const [availableOpen, setAvailableOpen] = useState(true);
   const [invitePage, setInvitePage] = useState(1);
@@ -1386,16 +1401,31 @@ const BonusesPage: React.FC = () => {
   const [inviteSourceFilterOpen, setInviteSourceFilterOpen] = useState(false);
   const inviteSourceFilterRef = useRef<HTMLDivElement>(null);
   const [inviteDateSort, setInviteDateSort] = useState<InviteeDateSort>('desc');
-  const promoTotal = 250_000;
-  const promoSplitPrimary = 150_000;
-  const promoSplitSecondary = 100_000;
+  const promoTotal = isNewSeller ? NEW_SELLER_BONUSES.promoTotal : 250_000;
+  const promoSplitPrimary = isNewSeller ? NEW_SELLER_BONUSES.packages[0].amount : 150_000;
+  const promoSplitSecondary = isNewSeller ? NEW_SELLER_BONUSES.packages[1].amount : 100_000;
+  const promoPrimaryPayLabel = isNewSeller
+    ? NEW_SELLER_BONUSES.packages[0].payShareLabel
+    : 'Оплата до 99% от суммы';
+  const promoSecondaryPayLabel = isNewSeller
+    ? NEW_SELLER_BONUSES.packages[1].payShareLabel
+    : 'Оплата до 50% от суммы';
+  const promoPrimaryBurnLabel = isNewSeller
+    ? NEW_SELLER_BONUSES.packages[0].burnLabel
+    : '300 сгорят 31.06.25';
+  const promoSecondaryBurnLabel = isNewSeller
+    ? NEW_SELLER_BONUSES.packages[1].burnLabel
+    : '300 сгорят 31.06.25';
 
   const profileInvitees = useMemo(
-    () => (profileId === '2' ? [] : MOCK_INVITEES.filter(inviteeHasCompletedTask)),
-    [profileId],
+    () =>
+      profileId === '2' || isNewSeller
+        ? []
+        : MOCK_INVITEES.filter(inviteeHasCompletedTask),
+    [profileId, isNewSeller],
   );
 
-  const referralEarnedBonus = profileId === '2' ? 0 : 10_000;
+  const referralEarnedBonus = profileId === '2' || isNewSeller ? 0 : 10_000;
 
   const referralFirstTaskCompletedCount = useMemo(
     () => profileInvitees.filter(inviteeCompletedFirstTask).length,
@@ -1458,7 +1488,7 @@ const BonusesPage: React.FC = () => {
     <>
       <main
         className={`max-w-[897px] mx-auto px-6 py-8 ${
-          tab === 'tasks' && profileId !== '2' ? 'pb-32' : 'pb-10'
+          tab === 'tasks' && profileId !== '2' && !isNewSeller ? 'pb-32' : 'pb-10'
         }`}
       >
         {/* Сводка промобонусов — Dribbble-style */}
@@ -1480,22 +1510,22 @@ const BonusesPage: React.FC = () => {
             <div className="grid w-full flex-1 grid-cols-1 gap-2 sm:grid-cols-2 lg:max-w-[520px] lg:min-w-0">
               <div className="rounded-xl border border-[#f0f0f0] bg-white px-3.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] sm:px-4 sm:py-3">
                 <p className="text-lg font-bold tracking-tight text-gray-950 tabular-nums sm:text-xl">{formatNum(promoSplitPrimary)}</p>
-                <p className="mt-1 text-xs leading-snug text-[#6e6e73] sm:text-sm">Оплата до 99% от суммы</p>
+                <p className="mt-1 text-xs leading-snug text-[#6e6e73] sm:text-sm">{promoPrimaryPayLabel}</p>
                 <p className="mt-2 text-xs font-semibold leading-snug text-[#FF6B6B] sm:text-sm">
                   <span className="mr-1" aria-hidden>
                     🔥
                   </span>
-                  300 сгорят 31.06.25
+                  {promoPrimaryBurnLabel}
                 </p>
               </div>
               <div className="rounded-xl border border-[#f0f0f0] bg-white px-3.5 py-2.5 shadow-[0_1px_0_rgba(0,0,0,0.04)] sm:px-4 sm:py-3">
                 <p className="text-lg font-bold tracking-tight text-gray-950 tabular-nums sm:text-xl">{formatNum(promoSplitSecondary)}</p>
-                <p className="mt-1 text-xs leading-snug text-[#6e6e73] sm:text-sm">Оплата до 50% от суммы</p>
+                <p className="mt-1 text-xs leading-snug text-[#6e6e73] sm:text-sm">{promoSecondaryPayLabel}</p>
                 <p className="mt-2 text-xs font-semibold leading-snug text-[#FF6B6B] sm:text-sm">
                   <span className="mr-1" aria-hidden>
                     🔥
                   </span>
-                  300 сгорят 31.06.25
+                  {promoSecondaryBurnLabel}
                 </p>
               </div>
             </div>
@@ -1533,6 +1563,7 @@ const BonusesPage: React.FC = () => {
           <div className="mt-8">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
               <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Персональные акции</h2>
+              {!isNewSeller ? (
               <label className="flex items-center gap-3 cursor-pointer select-none sm:shrink-0">
                 <span className="text-sm text-gray-700">Прошедшие акции</span>
                 <button
@@ -1547,8 +1578,18 @@ const BonusesPage: React.FC = () => {
                   />
                 </button>
               </label>
+              ) : null}
             </div>
 
+            {isNewSeller ? (
+              <div className="mt-8 rounded-2xl border border-gray-100 bg-white px-6 py-14 text-center shadow-sm">
+                <p className="text-base font-medium text-gray-900">Пока нет заданий</p>
+                <p className="mt-2 text-sm text-gray-500">
+                  Новые персональные акции появятся здесь. Сейчас доступны акционные пакеты
+                  промобонусов сверху и реферальная программа.
+                </p>
+              </div>
+            ) : (
             <div className="mt-8">
               <button
                 type="button"
@@ -1667,14 +1708,17 @@ const BonusesPage: React.FC = () => {
                 </div>
               )}
             </div>
+            )}
 
+            {!isNewSeller ? (
             <p className="mt-8">
               <button type="button" className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline">
                 Условия и завершенные акции
               </button>
             </p>
+            ) : null}
 
-            <BonusesTasksFaqSection />
+            {!isNewSeller ? <BonusesTasksFaqSection /> : null}
           </div>
         )}
 
@@ -1803,10 +1847,10 @@ const BonusesPage: React.FC = () => {
           </div>
         )}
 
-        {tab === 'history' && <BonusHistoryPanel />}
+        {tab === 'history' && <BonusHistoryPanel empty={isNewSeller} />}
       </main>
 
-      {tab === 'tasks' && profileId !== '2' && (
+      {tab === 'tasks' && profileId !== '2' && !isNewSeller && (
         <div className="fixed bottom-6 left-1/2 z-40 w-full max-w-[897px] -translate-x-1/2 px-6 pointer-events-none">
           <div className="pointer-events-auto flex items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-lg">
             <p className="text-sm text-gray-800 font-medium">

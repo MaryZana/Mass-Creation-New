@@ -1,6 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
-export type ProfileId = '1' | '2';
+export type ProfileId = '1' | '2' | '3';
+
+/** Новый кабинет без кампаний — только экран первой кампании. */
+export const NEW_SELLER_PROFILE_ID: ProfileId = '3';
+
+export function isNewSellerProfile(profileId: ProfileId): boolean {
+  return profileId === NEW_SELLER_PROFILE_ID;
+}
 
 /** Товар, подставляемый на странице создания одной кампании после «Повторить». */
 export type SingleCampaignSeedProduct = {
@@ -21,6 +28,7 @@ export type RepeatLaunchPreset = {
 export const PROFILES = [
   { id: '1' as const, label: 'Профиль 1', company: 'ООО «Первый»' },
   { id: '2' as const, label: 'Профиль 2', company: 'ООО «Второй»' },
+  { id: '3' as const, label: 'Новый селлер', company: 'Новый селлер' },
 ] as const;
 
 type ProfileContextValue = {

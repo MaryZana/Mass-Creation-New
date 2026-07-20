@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Routes, Route, Navigate, NavLink, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
@@ -22,7 +22,13 @@ import {
   type CuratedPickProduct,
 } from './components/CuratedProductPicksSection';
 import { AppHeader } from './components/AppHeader';
-import { useProfile, type RepeatLaunchPreset } from './components/ProfileContext';
+import {
+  isNewSellerProfile,
+  useProfile,
+  type RepeatLaunchPreset,
+} from './components/ProfileContext';
+import { NewSellerFirstCampaignPage } from './components/newSeller/NewSellerFirstCampaignPage';
+import { NEW_SELLER_CREATE_CAMPAIGN_PATH } from './components/AppHeader';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignsWithWidgetsPage from './pages/CampaignsWithWidgetsPage';
 import CampaignsWithWidgets2Page from './pages/CampaignsWithWidgets2Page';
@@ -74,7 +80,12 @@ const SHELL_APP_PATHS = new Set([
   '/stats',
   '/finance',
   '/bonuses',
+  NEW_SELLER_CREATE_CAMPAIGN_PATH,
 ]);
+
+function isNewSellerSecondaryShellPath(pathname: string): boolean {
+  return pathname === '/finance' || pathname.startsWith('/bonuses');
+}
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
@@ -1921,6 +1932,7 @@ export default function App() {
     consumeSingleCampaignNav,
   } = useProfile();
   const location = useLocation();
+  const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     try {
       return sessionStorage.getItem(AUTH_SESSION_KEY) === '1';
@@ -1928,12 +1940,43 @@ export default function App() {
       return false;
     }
   });
-  const [appState, setAppState] = useState<'creation' | 'list' | 'editing' | 'single-campaign'>('list');
+  const [appState, setAppState] = useState<
+    'creation' | 'list' | 'editing' | 'single-campaign' | 'new-seller-first-campaign'
+  >('list');
+
+  const openNewSellerCampaignCreation = useCallback(() => {
+    setAppState('new-seller-first-campaign');
+    if (location.pathname !== NEW_SELLER_CREATE_CAMPAIGN_PATH) {
+      navigate(NEW_SELLER_CREATE_CAMPAIGN_PATH, { replace: true });
+    }
+  }, [location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!isNewSellerProfile(profileId)) {
+      setAppState((prev) => (prev === 'new-seller-first-campaign' ? 'list' : prev));
+      if (location.pathname === NEW_SELLER_CREATE_CAMPAIGN_PATH) {
+        navigate('/campaigns-with-widgets-2', { replace: true });
+      }
+      return;
+    }
+
+    // Финансы / бонусы — обычный shell; всё остальное — экран создания кампании
+    if (isNewSellerSecondaryShellPath(location.pathname)) {
+      setAppState('list');
+      return;
+    }
+
+    setAppState('new-seller-first-campaign');
+    if (location.pathname !== NEW_SELLER_CREATE_CAMPAIGN_PATH) {
+      navigate(NEW_SELLER_CREATE_CAMPAIGN_PATH, { replace: true });
+    }
+  }, [profileId, location.pathname, navigate]);
 
   useEffect(() => {
     if (!SHELL_APP_PATHS.has(location.pathname)) return;
+    if (isNewSellerProfile(profileId)) return;
     setAppState((prev) => (prev === 'cpc-detail' ? prev : 'list'));
-  }, [location.pathname]);
+  }, [location.pathname, profileId]);
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
   const [showToast, setShowToast] = useState(false);
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
@@ -2877,6 +2920,16 @@ export default function App() {
     );
   }
 
+  // Новый селлер: сразу экран создания (не ждём appState — иначе ломается на гонке с Routes)
+  if (isNewSellerProfile(profileId) && !isNewSellerSecondaryShellPath(location.pathname)) {
+    return (
+      <NewSellerFirstCampaignPage
+        onBack={openNewSellerCampaignCreation}
+        onOpenCampaignCreation={openNewSellerCampaignCreation}
+      />
+    );
+  }
+
   if (appState === 'list') {
     const campaignsListContent = (
       <>
@@ -3080,6 +3133,10 @@ export default function App() {
           onLaunchPromotion={() =>
             handleNavigationAttempt(() => setAppState('single-campaign'))
           }
+          onOpenCampaignCreation={
+            isNewSellerProfile(profileId) ? openNewSellerCampaignCreation : undefined
+          }
+          campaignCreationActive={false}
         />
         <CampaignsInsightFilterProvider>
           <OverviewBridgeProvider
@@ -3091,39 +3148,53 @@ export default function App() {
             }}
           >
             <Routes>
-              <Route
-                path="/campaigns"
-                element={<CampaignsPage>{campaignsListContent}</CampaignsPage>}
-              />
-              <Route
-                path="/campaigns-with-widgets"
-                element={
-                  <CampaignsWithWidgetsPage>
-                    <CampaignsPage>{campaignsListContent}</CampaignsPage>
-                  </CampaignsWithWidgetsPage>
-                }
-              />
-              <Route
-                path="/campaigns-with-widgets-2"
-                element={
-                  <CampaignsWithWidgets2Page>
-                    <CampaignsPage>{campaignsListContent}</CampaignsPage>
-                  </CampaignsWithWidgets2Page>
-                }
-              />
-              <Route
-                path="/product-promotion-concept"
-                element={
-                  <ProductPromotionConceptPage>
-                    <CampaignsPage>{campaignsListContent}</CampaignsPage>
-                  </ProductPromotionConceptPage>
-                }
-              />
-              <Route path="/overview" element={<OverviewPage />} />
-              <Route path="/stats" element={<StatsPage />} />
-              <Route path="/finance" element={<FinancePage />} />
-              <Route path="/bonuses" element={<BonusesPage />} />
-              <Route path="/" element={<Navigate to="/campaigns-with-widgets-2" replace />} />
+              {isNewSellerProfile(profileId) ? (
+                <>
+                  <Route path="/finance" element={<FinancePage />} />
+                  <Route path="/bonuses" element={<BonusesPage />} />
+                  {/* Создание кампании рендерится выше Routes; * только с чужих URL */}
+                  <Route
+                    path="*"
+                    element={<Navigate to={NEW_SELLER_CREATE_CAMPAIGN_PATH} replace />}
+                  />
+                </>
+              ) : (
+                <>
+                  <Route
+                    path="/campaigns"
+                    element={<CampaignsPage>{campaignsListContent}</CampaignsPage>}
+                  />
+                  <Route
+                    path="/campaigns-with-widgets"
+                    element={
+                      <CampaignsWithWidgetsPage>
+                        <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                      </CampaignsWithWidgetsPage>
+                    }
+                  />
+                  <Route
+                    path="/campaigns-with-widgets-2"
+                    element={
+                      <CampaignsWithWidgets2Page>
+                        <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                      </CampaignsWithWidgets2Page>
+                    }
+                  />
+                  <Route
+                    path="/product-promotion-concept"
+                    element={
+                      <ProductPromotionConceptPage>
+                        <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                      </ProductPromotionConceptPage>
+                    }
+                  />
+                  <Route path="/overview" element={<OverviewPage />} />
+                  <Route path="/stats" element={<StatsPage />} />
+                  <Route path="/finance" element={<FinancePage />} />
+                  <Route path="/bonuses" element={<BonusesPage />} />
+                  <Route path="/" element={<Navigate to="/campaigns-with-widgets-2" replace />} />
+                </>
+              )}
             </Routes>
           </OverviewBridgeProvider>
         </CampaignsInsightFilterProvider>

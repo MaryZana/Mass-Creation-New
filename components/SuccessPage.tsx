@@ -68,10 +68,12 @@ import {
 } from './SuccessPageTestData';
 import {
   useProfile,
+  isNewSellerProfile,
   type ProfileId,
   type RepeatLaunchPreset,
   type SingleCampaignSeedProduct,
 } from './ProfileContext';
+import { NEW_SELLER_EMPTY_LIST } from './newSeller/newSellerProfileData';
 import {
   BonusCampaignNotificationPeekCard,
   BonusCampaignNotificationStack,
@@ -4524,7 +4526,16 @@ function buildCampaignsAndProductTree(sources: ProductSource[]): { campaigns: Di
 const PROFILE_1_LIST = buildCampaignsAndProductTree(PRODUCTS_SOURCE);
 const PROFILE_2_LIST = buildCampaignsAndProductTree(PRODUCTS_SOURCE_PROFILE_2);
 
-export function getProfileListData(profileId: ProfileId) {
+export function getProfileListData(profileId: ProfileId): {
+  campaigns: DisplayCampaign[];
+  productTree: ProductRow[];
+} {
+  if (isNewSellerProfile(profileId)) {
+    return {
+      campaigns: [...NEW_SELLER_EMPTY_LIST.campaigns] as DisplayCampaign[],
+      productTree: [...NEW_SELLER_EMPTY_LIST.productTree] as ProductRow[],
+    };
+  }
   return profileId === '2' ? PROFILE_2_LIST : PROFILE_1_LIST;
 }
 
@@ -4568,6 +4579,7 @@ const CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID = '1400002';
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS = ['pr2', 'pr3', 'pr4', 'pr5', 'pr6'] as const;
 
 function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
+  if (isNewSellerProfile(profileId)) return [];
   const { campaigns } = getProfileListData(profileId);
   const list =
     profileId === '2'
