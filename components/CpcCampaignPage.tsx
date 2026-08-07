@@ -27,6 +27,10 @@ import {
   CpcSingleProductClustersCard,
   AutomationColumn,
 } from './CpcSingleProductLayout';
+import {
+  BidRecommendationsModal,
+  type BidRecommendationItem,
+} from './BidRecommendationsModal';
 import { AppHeader } from './AppHeader';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
@@ -229,6 +233,12 @@ interface CpcCampaignPageProps {
   fromReadyToRepeat?: boolean;
   repeatLaunchPreset?: RepeatLaunchPreset;
   campaignStatus?: 'active' | 'paused';
+  /** Открыть сайд-панель «Рекомендации» (ставка) при входе */
+  initialOpenBidRecommendations?: boolean;
+  bidRecommendationProduct?: {
+    name: string;
+    image: string;
+  };
   onBack: () => void;
   onUpdateData?: (data: {
     name?: string;
@@ -2230,6 +2240,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   fromReadyToRepeat,
   repeatLaunchPreset,
   campaignStatus = 'active',
+  initialOpenBidRecommendations = false,
+  bidRecommendationProduct,
   onBack,
   onUpdateData,
 }) => {
@@ -2238,6 +2250,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const isSingleProductHeroCampaign = campaignId === PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID;
   const showSingleProductLayout = isSingleProductHeroCampaign || isCpmCampaign;
   const { profileId } = useProfile();
+  const [isBidRecommendationsOpen, setIsBidRecommendationsOpen] = useState(
+    initialOpenBidRecommendations,
+  );
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(dailyLimit !== null && dailyLimit !== undefined);
   const [dailyLimitValue, setDailyLimitValue] = useState(dailyLimit ? String(dailyLimit) : '');
@@ -2698,6 +2713,26 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     },
     [productKey, productSearchBids, productRecommendationsBids, promptOrCommitProductBid],
   );
+
+  const handleApplyBidRecommendation = useCallback(
+    (item: BidRecommendationItem) => {
+      promptOrCommitProductBid(item.zone, item.suggestedBidRub);
+      productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    },
+    [promptOrCommitProductBid],
+  );
+
+  const bidRecommendationProductName =
+    bidRecommendationProduct?.name ??
+    (isCpmCampaign ? DEMO_CPC_PRODUCT.productName : 'Шапка зимняя');
+  const bidRecommendationProductImage =
+    bidRecommendationProduct?.image ||
+    resolveProductTableThumbSrc(
+      String(DEMO_CPC_PRODUCT.nmId),
+      DEMO_CPC_PRODUCT.imageUrl,
+      DEMO_CPC_PRODUCT.category,
+    ) ||
+    PRODUCT_TABLE_THUMB_FALLBACK;
 
   const disableDailyLimit = useCallback(() => {
     setIsDailyLimitEnabled(false);
@@ -4144,6 +4179,14 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           </div>
         </div>
       ) : null}
+
+      <BidRecommendationsModal
+        isOpen={isBidRecommendationsOpen}
+        onClose={() => setIsBidRecommendationsOpen(false)}
+        productName={bidRecommendationProductName}
+        productImage={bidRecommendationProductImage}
+        onApplyBid={handleApplyBidRecommendation}
+      />
 
       <Toast 
         show={showToast} 

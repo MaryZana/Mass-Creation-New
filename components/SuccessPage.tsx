@@ -16,6 +16,7 @@ import { useCpmBidRoundedAlert } from './CpmBidRoundedAlert';
 import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
+import { ConceptPromotionInsightStrip } from './ConceptPromotionInsightStrip';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
@@ -219,6 +220,8 @@ interface SuccessPageProps {
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
     campaignStatus?: 'active' | 'paused';
+    openBidRecommendations?: boolean;
+    bidRecommendationProduct?: { name: string; image: string };
   }) => void;
   onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void;
   onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void) => void;
@@ -8306,7 +8309,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         icon: 'alert',
         iconTone: 'rose',
         item: treeProductItem(p1, 1400002, 'Вечернее платье «Грация»', demoImages[1]),
-        ctaLabel: 'Увеличить ставку',
+        ctaLabel: 'Настроить',
         ctaAction: 'bid-recommendation',
       },
       {
@@ -8373,13 +8376,52 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const openWidgets2BidRecommendation = useCallback(
     (item: Widgets2Card['item']) => {
-      if (item) {
-        openWidgets2Promote(item);
+      const productMatch = item
+        ? profileProductTree.find((row) => {
+            const nm = Number.parseInt(row.articleWb ?? '', 10);
+            return nm === item.nmId || row.name === item.name;
+          })
+        : undefined;
+      const nestedCpc = productMatch?.campaigns?.find((c) => c.type === 'CPC');
+      const listMatch =
+        (nestedCpc
+          ? allCampaigns.find((c) => c.campaignId === nestedCpc.campaignId)
+          : undefined) ??
+        profileCampaigns.find((c) => c.type === 'CPC') ??
+        allCampaigns.find((c) => c.type === 'CPC');
+
+      if (!listMatch) {
+        if (item) openWidgets2Promote(item);
+        else onNavigateToCreation();
         return;
       }
-      onNavigateToCreation();
+
+      onOpenCpcCampaign({
+        campaignId: listMatch.campaignId,
+        name: listMatch.name,
+        paymentModel: listMatch.type,
+        remainingBudget: listMatch.remainingBudget,
+        dailyLimit: listMatch.dailyLimit ?? null,
+        scheduledDailyLimit: listMatch.scheduledDailyLimit ?? null,
+        dailyLimitExhausted: listMatch.dailyLimitExhausted,
+        campaignStatus:
+          listMatch.status === 'active' || listMatch.status === 'paused'
+            ? listMatch.status
+            : 'active',
+        openBidRecommendations: true,
+        bidRecommendationProduct: item
+          ? { name: item.name, image: item.image }
+          : undefined,
+      });
     },
-    [openWidgets2Promote, onNavigateToCreation],
+    [
+      profileProductTree,
+      allCampaigns,
+      profileCampaigns,
+      onOpenCpcCampaign,
+      openWidgets2Promote,
+      onNavigateToCreation,
+    ],
   );
 
   const openWidgets2SetupRecommendations = useCallback(
@@ -9483,6 +9525,22 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     );
   };
 
+  const conceptCreateCampaignControls = isProductPromotionConceptPage ? (
+    <div className="flex shrink-0 items-center gap-2">
+      <CreateCampaignDropdown
+        onNavigateToCreation={onNavigateToCreation}
+        onOpenSingleCampaign={onOpenSingleCampaign}
+        onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
+      />
+      <ExcelActionsDropdown
+        onOpenUpload={onOpenUploadEditsModal}
+        onOpenHistory={onOpenHistoryModal}
+        showUploadHint={showUploadHint}
+        onDismissUploadHint={onDismissUploadHint}
+      />
+    </div>
+  ) : null;
+
   const conceptMainSectionTabs = isProductPromotionConceptPage ? (
     <div
       className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
@@ -9794,24 +9852,31 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           )}
 
-          {isCampaignsWithWidgets2Page ? (
-            <div
-              className={
-                isProductPromotionConceptPage
-                  ? 'flex h-20 w-full min-w-0 items-stretch gap-4 rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm'
-                  : undefined
-              }
-            >
-            <div
-              className={
-                isProductPromotionConceptPage
-                  ? 'flex min-w-0 shrink-0 items-center'
-                  : undefined
-              }
-            >
+          {isProductPromotionConceptPage && (
+            <div className="w-full min-w-0">
+              <ConceptPromotionInsightStrip
+                onBudgetClick={openWidgets2BudgetHint}
+                onPromoteClick={() => {
+                  if (onNavigateToCreationWithGrowingDemand) {
+                    onNavigateToCreationWithGrowingDemand();
+                    return;
+                  }
+                  onNavigateToCreation();
+                }}
+                onBidClick={() => {
+                  const item = widgets2DemoCards.find((c) => c.ctaAction === 'bid-recommendation')?.item;
+                  if (item) openWidgets2BidRecommendation(item);
+                }}
+                onBonusClick={openWidgets2ChooseProducts}
+              />
+            </div>
+          )}
+
+          {isCampaignsWithWidgets2Page && !isProductPromotionConceptPage ? (
+            <div>
+            <div>
             <div className="flex flex-wrap items-center gap-3 lg:flex-nowrap">
-              {!isProductPromotionConceptPage ? (
-                <div className="flex shrink-0 items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                   <div
                     className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
                     role="tablist"
@@ -9851,7 +9916,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     onDismissUploadHint={onDismissUploadHint}
                   />
                 </div>
-              ) : null}
 
               <div className="flex shrink-0 items-center gap-2">
                 <CreateCampaignDropdown
@@ -9859,22 +9923,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   onOpenSingleCampaign={onOpenSingleCampaign}
                   onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
                 />
-                {isProductPromotionConceptPage ? (
-                  <ExcelActionsDropdown
-                    onOpenUpload={onOpenUploadEditsModal}
-                    onOpenHistory={onOpenHistoryModal}
-                    showUploadHint={showUploadHint}
-                    onDismissUploadHint={onDismissUploadHint}
-                  />
-                ) : null}
               </div>
 
-              {!isProductPromotionConceptPage && (
-                <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
-              )}
+              <DateFilter defaultLabel="22.02.2020 — 22.02.2020" variant="toolbar" />
 
-              {!isProductPromotionConceptPage && (
-                <div className="relative min-w-[200px] flex-1">
+              <div className="relative min-w-[200px] flex-1">
                   <Search
                     className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386] pointer-events-none shrink-0"
                     aria-hidden
@@ -9891,10 +9944,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white pl-10 pr-3 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
                   />
                 </div>
-              )}
 
-              {(listTab !== 'products' || isCampaignsWidgetsV1OnlyPage) &&
-                !isProductPromotionConceptPage && (
+              {(listTab !== 'products' || isCampaignsWidgetsV1OnlyPage) && (
                 <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
                   <div className="relative">
                     <button
@@ -9989,13 +10040,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               )}
             </div>
             </div>
-            {isProductPromotionConceptPage ? (
-              <ListHeaderCompactStatsPanel
-                variant="inline"
-                className="h-full min-w-0 flex-1 pl-1"
-                statsJustify="end"
-              />
-            ) : null}
             </div>
           ) : null}
 
@@ -10298,6 +10342,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           {isProductPromotionConceptPage ? (
             <div className="relative z-40 border-b border-gray-100">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3 sm:px-6">
+                {conceptCreateCampaignControls}
                 {conceptMainSectionTabs}
                 <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
                   <div className="inline-flex shrink-0 items-center gap-1.5">
@@ -10894,6 +10939,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             {isProductPromotionConceptPage ? (
               <div className="relative z-40">
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3 sm:px-6">
+                  {conceptCreateCampaignControls}
                   {conceptMainSectionTabs}
                   <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
                     <div className="inline-flex shrink-0 items-center gap-1.5">

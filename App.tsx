@@ -34,6 +34,7 @@ import CampaignsWithWidgetsPage from './pages/CampaignsWithWidgetsPage';
 import CampaignsWithWidgets2Page from './pages/CampaignsWithWidgets2Page';
 import ProductPromotionConceptPage from './pages/ProductPromotionConceptPage';
 import StatsPage from './pages/StatsPage';
+import AudienceMetricsPage from './pages/AudienceMetricsPage';
 import FinancePage from './pages/FinancePage';
 import BonusesPage from './pages/BonusesPage';
 import OverviewPage from './pages/OverviewPage';
@@ -78,11 +79,18 @@ const SHELL_APP_PATHS = new Set([
   '/product-promotion-concept',
   '/overview',
   '/stats',
+  '/stats/acquisition',
+  '/stats/return',
+  '/stats/value',
+  '/audience-metrics',
   '/finance',
   '/bonuses',
   NEW_SELLER_CREATE_CAMPAIGN_PATH,
 ]);
 
+function isShellAppPath(pathname: string): boolean {
+  return SHELL_APP_PATHS.has(pathname) || pathname.startsWith('/stats/');
+}
 function isNewSellerSecondaryShellPath(pathname: string): boolean {
   return pathname === '/finance' || pathname.startsWith('/bonuses');
 }
@@ -1973,7 +1981,7 @@ export default function App() {
   }, [profileId, location.pathname, navigate]);
 
   useEffect(() => {
-    if (!SHELL_APP_PATHS.has(location.pathname)) return;
+    if (!isShellAppPath(location.pathname)) return;
     if (isNewSellerProfile(profileId)) return;
     setAppState((prev) => (prev === 'cpc-detail' ? prev : 'list'));
   }, [location.pathname, profileId]);
@@ -2064,6 +2072,8 @@ export default function App() {
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
     campaignStatus?: 'active' | 'paused';
+    openBidRecommendations?: boolean;
+    bidRecommendationProduct?: { name: string; image: string };
   } | null>(null);
   const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void) | null>(null);
   const bulkDailyLimitOpenerRef = useRef<(() => void) | null>(null);
@@ -2969,6 +2979,8 @@ export default function App() {
                       fromReadyToRepeat,
                       repeatLaunchPreset,
                       campaignStatus,
+                      openBidRecommendations,
+                      bidRecommendationProduct,
                     }) => {
                       setSelectedCpcCampaign({
                         id: campaignId,
@@ -2981,6 +2993,8 @@ export default function App() {
                         fromReadyToRepeat,
                         repeatLaunchPreset,
                         campaignStatus,
+                        openBidRecommendations,
+                        bidRecommendationProduct,
                       });
                       setAppState('cpc-detail' as any);
                     }}
@@ -3190,6 +3204,10 @@ export default function App() {
                   />
                   <Route path="/overview" element={<OverviewPage />} />
                   <Route path="/stats" element={<StatsPage />} />
+                  <Route path="/stats/acquisition" element={<StatsPage />} />
+                  <Route path="/stats/return" element={<StatsPage />} />
+                  <Route path="/stats/value" element={<StatsPage />} />
+                  <Route path="/audience-metrics" element={<AudienceMetricsPage />} />
                   <Route path="/finance" element={<FinancePage />} />
                   <Route path="/bonuses" element={<BonusesPage />} />
                   <Route path="/" element={<Navigate to="/campaigns-with-widgets-2" replace />} />
@@ -3215,6 +3233,8 @@ export default function App() {
         fromReadyToRepeat={selectedCpcCampaign.fromReadyToRepeat}
         repeatLaunchPreset={selectedCpcCampaign.repeatLaunchPreset}
         campaignStatus={selectedCpcCampaign.campaignStatus}
+        initialOpenBidRecommendations={selectedCpcCampaign.openBidRecommendations}
+        bidRecommendationProduct={selectedCpcCampaign.bidRecommendationProduct}
         onBack={() => {
           // Update campaign data in SuccessPage before going back
           if (selectedCpcCampaign) {

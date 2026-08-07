@@ -1,14 +1,26 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   CAMPAIGNS_WITH_WIDGETS_V1_PATH,
   PRODUCT_PROMOTION_CONCEPT_PATH,
 } from '../constants/campaignListRoutes';
-import { Check, ChevronDown } from './Icons';
+import { Check, ChevronDown, MoreVertical } from './Icons';
 import { isNewSellerProfile, PROFILES, useProfile, type ProfileId } from './ProfileContext';
 
 export const NEW_SELLER_CREATE_CAMPAIGN_PATH = '/create-campaign';
 
+type HeaderNavMenuId = 'campaigns' | 'stats' | 'tasks' | 'more' | 'profile';
+
+function headerMenuPanelClass(
+  open: boolean,
+  options?: { align?: 'left' | 'right'; pad?: 'pt-1' | 'pt-1.5' },
+) {
+  const align = options?.align === 'right' ? 'right-0' : 'left-0';
+  const pad = options?.pad ?? 'pt-1.5';
+  return `absolute ${align} top-full z-[60] ${pad} transition-opacity ${
+    open ? 'visible opacity-100' : 'invisible pointer-events-none opacity-0'
+  }`;
+}
 function truncateCompany(name: string, max = 22): string {
   if (name.length <= max) return name;
   return `${name.slice(0, max - 1)}…`;
@@ -45,8 +57,58 @@ function isCampaignsNavPath(pathname: string): boolean {
 
 const OVERVIEW_PATH = '/overview';
 
+const STATS_NAV_ITEMS = [
+  { to: '/stats', label: 'Общая сводка', icon: 'overview' as const },
+  { to: '/stats/return', label: 'Вернувшиеся покупатели', icon: 'return' as const },
+  { to: '/stats/acquisition', label: 'Привлечение', icon: 'acquisition' as const, soon: true },
+  { to: '/stats/value', label: 'Ценность', icon: 'value' as const, soon: true },
+] as const;
+
+function StatsNavItemIcon({
+  name,
+  className,
+}: {
+  name: (typeof STATS_NAV_ITEMS)[number]['icon'];
+  className?: string;
+}) {
+  if (name === 'overview') {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
+        <path d="M3 3.75A.75.75 0 0 1 3.75 3h5.5a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-.75.75h-5.5A.75.75 0 0 1 3 9.25v-5.5Zm8 0A.75.75 0 0 1 11.75 3h5.5a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5ZM3 11.75a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5Zm8 0a.75.75 0 0 1 .75-.75h5.5a.75.75 0 0 1 .75.75v5.5a.75.75 0 0 1-.75.75h-5.5a.75.75 0 0 1-.75-.75v-5.5Z" />
+      </svg>
+    );
+  }
+  if (name === 'acquisition') {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
+        <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.04 16.72A7 7 0 0 1 10 11a7 7 0 0 1 6.96 5.72.75.75 0 0 1-.73.93H3.77a.75.75 0 0 1-.73-.93Z" />
+      </svg>
+    );
+  }
+  if (name === 'return') {
+    return (
+      <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
+        <path
+          fillRule="evenodd"
+          d="M7.78 3.22a.75.75 0 0 1 0 1.06L5.56 6.5H11a6 6 0 0 1 0 12H9.75a.75.75 0 0 1 0-1.5H11a4.5 4.5 0 1 0 0-9H5.56l2.22 2.22a.75.75 0 1 1-1.06 1.06l-3.5-3.5a.75.75 0 0 1 0-1.06l3.5-3.5a.75.75 0 0 1 1.06 0Z"
+          clipRule="evenodd"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
+      <path d="M2.75 14.5a.75.75 0 0 0 0 1.5h14.5a.75.75 0 0 0 0-1.5H2.75ZM4 12.25V7.5a.75.75 0 0 1 1.5 0v4.75a.75.75 0 0 1-1.5 0Zm4.25 0V4.75a.75.75 0 0 1 1.5 0v7.5a.75.75 0 0 1-1.5 0Zm4.25 0V6.5a.75.75 0 0 1 1.5 0v5.75a.75.75 0 0 1-1.5 0Zm4.25 0v-2.5a.75.75 0 0 1 1.5 0v2.5a.75.75 0 0 1-1.5 0Z" />
+    </svg>
+  );
+}
+
+function isStatsNavPath(pathname: string): boolean {
+  return pathname === '/stats' || pathname.startsWith('/stats/');
+}
+
 const navItemClass = (active: boolean) =>
-  `px-4 py-2 rounded-lg transition-colors ${
+  `whitespace-nowrap px-3 py-2 rounded-lg transition-colors ${
     active ? 'bg-gray-100 text-black' : 'text-black hover:bg-gray-50'
   }`;
 
@@ -69,12 +131,42 @@ export function AppHeader({
   const promoBonusTotal = PROMO_BONUS_TOTAL_BY_PROFILE[profileId];
   const newTasksCount = TASKS_DROPDOWN_NEW_COUNT[profileId];
   const campaignsNavActive = isCampaignsNavPath(location.pathname);
+  const statsNavActive = isStatsNavPath(location.pathname);
   const isNewSeller = isNewSellerProfile(profileId);
   const creationNavActive =
     campaignCreationActive ||
     (isNewSeller &&
       location.pathname !== '/finance' &&
       !location.pathname.startsWith('/bonuses'));
+
+  const [openNavMenu, setOpenNavMenu] = useState<HeaderNavMenuId | null>(null);
+  const closeMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const openNavMenuNow = (id: HeaderNavMenuId) => {
+    if (closeMenuTimerRef.current) {
+      clearTimeout(closeMenuTimerRef.current);
+      closeMenuTimerRef.current = null;
+    }
+    setOpenNavMenu(id);
+  };
+
+  const scheduleCloseNavMenu = (id: HeaderNavMenuId) => {
+    if (closeMenuTimerRef.current) clearTimeout(closeMenuTimerRef.current);
+    closeMenuTimerRef.current = setTimeout(() => {
+      setOpenNavMenu((current) => (current === id ? null : current));
+      closeMenuTimerRef.current = null;
+    }, 120);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (closeMenuTimerRef.current) clearTimeout(closeMenuTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    setOpenNavMenu(null);
+  }, [location.pathname]);
 
   const openCampaignCreation = () => {
     if (onOpenCampaignCreation) {
@@ -130,21 +222,24 @@ export function AppHeader({
                 >
                   Обзор
                 </NavLink>
-                <div className="relative group/campaigns">
+                <div
+                  className="relative"
+                  onMouseEnter={() => openNavMenuNow('campaigns')}
+                  onMouseLeave={() => scheduleCloseNavMenu('campaigns')}
+                >
                   <NavLink
-                    to={CAMPAIGNS_WITH_WIDGETS_V1_PATH}
+                    to={PRODUCT_PROMOTION_CONCEPT_PATH}
                     onClick={onNavigate}
-                    className={`inline-flex items-center gap-1 px-4 py-2 rounded-lg transition-colors ${
-                      campaignsNavActive
+                    className={`inline-flex items-center gap-1 whitespace-nowrap px-3 py-2 rounded-lg transition-colors ${
+                      campaignsNavActive || openNavMenu === 'campaigns'
                         ? 'bg-gray-100 text-black'
-                        : 'text-black group-hover/campaigns:bg-gray-100 hover:bg-gray-50'
+                        : 'text-black hover:bg-gray-50'
                     }`}
                   >
                     Кампании
-                    <ChevronDown className="h-4 w-4 text-gray-500 transition-transform group-hover/campaigns:rotate-180" />
                   </NavLink>
 
-                  <div className="invisible absolute left-0 top-full z-[60] pt-1.5 opacity-0 transition-all group-hover/campaigns:visible group-hover/campaigns:opacity-100 group-focus-within/campaigns:visible group-focus-within/campaigns:opacity-100">
+                  <div className={headerMenuPanelClass(openNavMenu === 'campaigns')}>
                     <ul
                       className="min-w-[240px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
                       role="menu"
@@ -171,13 +266,80 @@ export function AppHeader({
                     </ul>
                   </div>
                 </div>
-                <NavLink
-                  to="/stats"
-                  onClick={onNavigate}
-                  className={({ isActive }) => navItemClass(isActive)}
+                <div
+                  className="relative"
+                  onMouseEnter={() => openNavMenuNow('stats')}
+                  onMouseLeave={() => scheduleCloseNavMenu('stats')}
                 >
-                  Статистика
-                </NavLink>
+                  <NavLink
+                    to="/stats"
+                    onClick={onNavigate}
+                    className={`inline-flex items-center gap-1.5 whitespace-nowrap px-3 py-2 rounded-lg transition-colors ${
+                      statsNavActive || openNavMenu === 'stats'
+                        ? 'bg-gray-100 text-black'
+                        : 'text-black hover:bg-gray-50'
+                    }`}
+                  >
+                    Статистика
+                    <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold leading-none tracking-wide text-emerald-800">
+                      Обновили
+                    </span>
+                  </NavLink>
+
+                  <div className={headerMenuPanelClass(openNavMenu === 'stats')}>
+                    <ul
+                      className="w-max min-w-[280px] overflow-hidden rounded-xl bg-white py-1 shadow-lg"
+                      role="menu"
+                      aria-label="Разделы статистики"
+                    >
+                      {STATS_NAV_ITEMS.map((item, index) => {
+                        const soon = 'soon' in item && item.soon;
+                        const active = !soon && location.pathname === item.to;
+                        const icon = (
+                          <StatsNavItemIcon
+                            name={item.icon}
+                            className="h-4 w-4 shrink-0 text-gray-200"
+                          />
+                        );
+                        const row = soon ? (
+                          <div
+                            role="menuitem"
+                            aria-disabled="true"
+                            className="flex cursor-default items-center justify-between gap-3 whitespace-nowrap px-3 py-2.5 text-sm text-gray-400"
+                          >
+                            <span className="flex items-center gap-2">
+                              <span>{item.label}</span>
+                              <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#9A41FE]">
+                                Скоро появится
+                              </span>
+                            </span>
+                            {icon}
+                          </div>
+                        ) : (
+                          <NavLink
+                            to={item.to}
+                            role="menuitem"
+                            onClick={onNavigate}
+                            className={`flex items-center justify-between gap-3 whitespace-nowrap px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
+                              active ? 'bg-violet-50/80 font-medium text-gray-900' : 'text-gray-800'
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            {icon}
+                          </NavLink>
+                        );
+                        return (
+                          <li key={item.to} role="none">
+                            {row}
+                            {index === 0 && (
+                              <div className="my-1 border-t border-gray-100" role="separator" />
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                </div>
                 <NavLink
                   to="/finance"
                   onClick={onNavigate}
@@ -185,18 +347,26 @@ export function AppHeader({
                 >
                   Финансы
                 </NavLink>
-                <div className="relative group/tasks">
+                <div
+                  className="relative"
+                  onMouseEnter={() => openNavMenuNow('tasks')}
+                  onMouseLeave={() => scheduleCloseNavMenu('tasks')}
+                >
                   <NavLink
                     to="/bonuses?tab=tasks"
                     onClick={onNavigate}
                     className={({ isActive }) =>
-                      `block px-4 py-2 rounded-lg transition-colors ${isActive ? 'bg-gray-100 text-black' : 'text-black group-hover/tasks:bg-gray-100'}`
+                      `block whitespace-nowrap px-3 py-2 rounded-lg transition-colors ${
+                        isActive || openNavMenu === 'tasks'
+                          ? 'bg-gray-100 text-black'
+                          : 'text-black hover:bg-gray-50'
+                      }`
                     }
                   >
                     Мои задания
                   </NavLink>
 
-                  <div className="invisible absolute left-0 top-full z-[60] pt-1.5 opacity-0 transition-all group-hover/tasks:visible group-hover/tasks:opacity-100 group-focus-within/tasks:visible group-focus-within/tasks:opacity-100">
+                  <div className={headerMenuPanelClass(openNavMenu === 'tasks')}>
                     <div
                       className="w-[320px] max-w-[calc(100vw-3rem)] rounded-xl border border-gray-100 bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.08)]"
                       onClick={(e: React.MouseEvent) => e.stopPropagation()}
@@ -282,6 +452,52 @@ export function AppHeader({
         </div>
 
         <div className="flex items-center gap-6 text-sm font-medium text-black">
+          <div
+            className="relative"
+            onMouseEnter={() => openNavMenuNow('more')}
+            onMouseLeave={() => scheduleCloseNavMenu('more')}
+          >
+            <button
+              type="button"
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+                location.pathname === '/audience-metrics' || openNavMenu === 'more'
+                  ? 'bg-gray-100 text-black'
+                  : 'text-gray-600 hover:bg-gray-50 hover:text-black'
+              }`}
+              aria-haspopup="menu"
+              aria-expanded={openNavMenu === 'more'}
+              aria-label="Ещё"
+            >
+              <MoreVertical className="h-5 w-5 rotate-90" aria-hidden />
+            </button>
+
+            <div className={headerMenuPanelClass(openNavMenu === 'more', { align: 'right' })}>
+              <ul
+                className="min-w-[180px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                role="menu"
+                aria-label="Дополнительные разделы"
+              >
+                <li role="none">
+                  <NavLink
+                    to="/audience-metrics"
+                    role="menuitem"
+                    onClick={onNavigate}
+                    className={`flex items-center justify-between gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
+                      location.pathname === '/audience-metrics'
+                        ? 'bg-violet-50/80 font-medium text-gray-900'
+                        : 'text-gray-800'
+                    }`}
+                  >
+                    <span>Аудитория</span>
+                    {location.pathname === '/audience-metrics' && (
+                      <Check className="h-4 w-4 shrink-0 text-[#9a41fe]" aria-hidden />
+                    )}
+                  </NavLink>
+                </li>
+              </ul>
+            </div>
+          </div>
+
           <a href="#" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
             Помощь
             <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">3</span>
@@ -291,18 +507,28 @@ export function AppHeader({
             <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">2</span>
           </a>
 
-          <div className="relative group/profile">
+          <div
+            className="relative"
+            onMouseEnter={() => openNavMenuNow('profile')}
+            onMouseLeave={() => scheduleCloseNavMenu('profile')}
+          >
             <button
               type="button"
-              className="flex max-w-[240px] items-center gap-1.5 rounded-lg py-1 pl-1 pr-0.5 text-black transition-colors hover:bg-gray-50 group-hover/profile:bg-gray-50"
+              className={`flex max-w-[240px] items-center gap-1.5 rounded-lg py-1 pl-1 pr-0.5 text-black transition-colors hover:bg-gray-50 ${
+                openNavMenu === 'profile' ? 'bg-gray-50' : ''
+              }`}
               aria-haspopup="listbox"
-              aria-expanded="false"
+              aria-expanded={openNavMenu === 'profile'}
             >
               <span className="truncate text-left">{truncateCompany(activeProfile.company)}</span>
-              <ChevronDown className="h-4 w-4 shrink-0 text-gray-500 transition-transform group-hover/profile:rotate-180" />
+              <ChevronDown
+                className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                  openNavMenu === 'profile' ? 'rotate-180' : ''
+                }`}
+              />
             </button>
 
-            <div className="invisible absolute right-0 top-full z-[60] pt-1 opacity-0 transition-all group-hover/profile:visible group-hover/profile:opacity-100 group-focus-within/profile:visible group-focus-within/profile:opacity-100">
+            <div className={headerMenuPanelClass(openNavMenu === 'profile', { align: 'right', pad: 'pt-1' })}>
               <ul
                 className="min-w-[220px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
                 role="listbox"
