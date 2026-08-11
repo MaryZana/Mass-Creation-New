@@ -6397,138 +6397,11 @@ const ApplyingChangesBlock: React.FC<{ onOpenReview: () => void; onCancel: () =>
   </div>
 );
 
-type DateFilterPreset = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'custom';
-
-function formatDateFilterRangePart(d: Date): string {
-  const parts = d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }).split(' ');
-  if (parts.length >= 2) {
-    const month = parts[1];
-    return `${parts[0]} ${month.charAt(0).toLowerCase()}${month.slice(1)}`;
-  }
-  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-}
-
-function formatDateFilterRangeLabel(start: Date, end: Date): string {
-  return `${formatDateFilterRangePart(start)} — ${formatDateFilterRangePart(end)}`;
-}
-
-function dateToInputValue(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-function rangeForDateFilterPreset(preset: Exclude<DateFilterPreset, 'custom'>): { start: Date; end: Date } {
-  const end = new Date();
-  end.setHours(0, 0, 0, 0);
-  const start = new Date(end);
-  if (preset === 'today') return { start, end };
-  if (preset === 'yesterday') {
-    start.setDate(start.getDate() - 1);
-    const yesterday = new Date(start);
-    return { start: yesterday, end: yesterday };
-  }
-  if (preset === 'week') {
-    start.setDate(start.getDate() - 6);
-    return { start, end };
-  }
-  if (preset === 'month') {
-    start.setDate(start.getDate() - 29);
-    return { start, end };
-  }
-  const month = end.getMonth();
-  const quarterStartMonth = Math.floor(month / 3) * 3;
-  start.setMonth(quarterStartMonth, 1);
-  return { start, end };
-}
-
-/** Concept table toolbar: same footprint as date range control, no border */
+/** Concept table toolbar controls, no border */
 const conceptToolbarControlBgClass =
   'bg-[rgba(74,74,89,0.08)] hover:bg-[rgba(74,74,89,0.12)]';
 const conceptToolbarTextControlClass = `inline-flex h-11 w-auto max-w-full items-center gap-2 rounded-[10px] px-4 text-sm font-medium leading-5 text-gray-900 transition-colors ${conceptToolbarControlBgClass}`;
 const conceptToolbarIconControlClass = `inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[10px] transition-colors ${conceptToolbarControlBgClass}`;
-
-const DateFilterSegmentedToolbar = () => {
-  const [rangeStart, setRangeStart] = useState(() => rangeForDateFilterPreset('month').start);
-  const [rangeEnd, setRangeEnd] = useState(() => rangeForDateFilterPreset('month').end);
-  const [customOpen, setCustomOpen] = useState(false);
-  const [draftStart, setDraftStart] = useState('');
-  const [draftEnd, setDraftEnd] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!customOpen) return;
-    const onMouseDown = (event: MouseEvent) => {
-      if (ref.current?.contains(event.target as Node)) return;
-      setCustomOpen(false);
-    };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
-  }, [customOpen]);
-
-  const openCustomPicker = () => {
-    setDraftStart(dateToInputValue(rangeStart));
-    setDraftEnd(dateToInputValue(rangeEnd));
-    setCustomOpen((o) => !o);
-  };
-
-  const applyCustomRange = () => {
-    if (!draftStart || !draftEnd) return;
-    const start = new Date(draftStart);
-    const end = new Date(draftEnd);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
-    setRangeStart(start);
-    setRangeEnd(end);
-    setCustomOpen(false);
-  };
-
-  const rangeLabel = formatDateFilterRangeLabel(rangeStart, rangeEnd);
-
-  return (
-    <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        onClick={openCustomPicker}
-        aria-label="Период статистики"
-        aria-expanded={customOpen}
-        className={conceptToolbarTextControlClass}
-      >
-        <span className="tabular-nums whitespace-nowrap">{rangeLabel}</span>
-        <ChevronDown
-          className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${customOpen ? 'rotate-180' : ''}`}
-          aria-hidden
-        />
-      </button>
-      {customOpen && (
-        <div className="absolute right-0 top-[calc(100%+6px)] z-30 w-72 rounded-xl border border-gray-200 bg-white p-4 shadow-lg animate-in fade-in zoom-in-95 duration-100">
-          <p className="mb-2 text-sm font-medium text-gray-900">Выбрать период</p>
-          <div className="space-y-2">
-            <input
-              type="date"
-              value={draftStart}
-              onChange={(e) => setDraftStart(e.target.value)}
-              className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
-            />
-            <input
-              type="date"
-              value={draftEnd}
-              onChange={(e) => setDraftEnd(e.target.value)}
-              className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-purple-500 focus:ring-purple-500"
-            />
-          </div>
-          <button
-            type="button"
-            onClick={applyCustomRange}
-            className="mt-3 w-full rounded-lg bg-purple-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
-          >
-            Применить
-          </button>
-        </div>
-      )}
-    </div>
-  );
-};
 
 const DateFilter = ({ defaultLabel, variant = 'default' }: { defaultLabel: string; variant?: 'default' | 'toolbar' }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -10346,7 +10219,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 {conceptMainSectionTabs}
                 <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
                   <div className="inline-flex shrink-0 items-center gap-1.5">
-                    <DateFilterSegmentedToolbar />
                     <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
                       <button
                         type="button"
@@ -10943,7 +10815,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   {conceptMainSectionTabs}
                   <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
                     <div className="inline-flex shrink-0 items-center gap-1.5">
-                      <DateFilterSegmentedToolbar />
                       <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
                         <button
                           type="button"
