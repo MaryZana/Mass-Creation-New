@@ -1,24 +1,21 @@
 import React, { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   Area,
   AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
   ComposedChart,
   Line,
   LineChart,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
-import { ArrowUp, Check, ChevronDown, ChevronRight, HelpCircle, X } from '../components/Icons';
+import { ArrowUp, Check, ChevronDown, ChevronRight, Download, HelpCircle, Search, X } from '../components/Icons';
 
 type TabId = 'repeat' | 'acquisition' | 'value';
 
@@ -34,28 +31,219 @@ export type StatsRangeId =
 
 export type StatsGrainId = 'day' | 'week' | 'month';
 
+export type StatsWarehouseScopeId = 'all' | 'mine' | 'wb';
+
 const STATS_GRAIN_OPTIONS: { id: StatsGrainId; label: string }[] = [
   { id: 'day', label: 'По дням' },
   { id: 'week', label: 'По неделям' },
   { id: 'month', label: 'По месяцам' },
 ];
 
-function defaultGrainForRange(range: StatsRangeId): StatsGrainId {
+/** Мои склады — сильные метрики; WB — слабые; все — база. */
+const WAREHOUSE_SCOPE_FX: Record<
+  StatsWarehouseScopeId,
+  {
+    orders: number;
+    spend: number;
+    spendShare: number;
+    roas: number;
+    ctr: number;
+    organic: number;
+    clients: number;
+    days: number;
+    quality: 1 | 0 | -1;
+  }
+> = {
+  all: {
+    orders: 1,
+    spend: 1,
+    spendShare: 1,
+    roas: 1,
+    ctr: 1,
+    organic: 1,
+    clients: 1,
+    days: 1,
+    quality: 0,
+  },
+  mine: {
+    orders: 1.34,
+    spend: 0.74,
+    spendShare: 0.55,
+    roas: 1.48,
+    ctr: 1.28,
+    organic: 1.62,
+    clients: 1.4,
+    days: 0.52,
+    quality: 1,
+  },
+  wb: {
+    orders: 0.64,
+    spend: 1.42,
+    spendShare: 2.05,
+    roas: 0.52,
+    ctr: 0.68,
+    organic: 0.38,
+    clients: 0.58,
+    days: 1.95,
+    quality: -1,
+  },
+};
+
+function parseStatsMetricNumber(raw: string): number {
+  const normalized = raw.replace(/\s/g, '').replace('%', '').replace('₽', '').replace(',', '.');
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function formatStatsMoney(n: number): string {
+  return `${new Intl.NumberFormat('ru-RU').format(Math.round(n))} ₽`;
+}
+
+function formatStatsPct(n: number, digits = 1): string {
+  return `${n.toFixed(digits).replace('.', ',')} %`;
+}
+
+function formatStatsRoas(n: number): string {
+  return n.toFixed(2).replace('.', ',');
+}
+
+function formatStatsTrendPct(n: number): string {
+  return `${Math.abs(n).toFixed(1).replace('.', ',')}%`;
+}
+
+function warehouseTrend(
+  baseTrend: string,
+  quality: 1 | 0 | -1,
+  opts?: { preferDown?: boolean },
+): { trend: string; trendDown?: boolean } {
+  const base = parseStatsMetricNumber(baseTrend);
+  if (quality === 0) {
+    return { trend: baseTrend, trendDown: opts?.preferDown };
+  }
+  if (quality === 1) {
+    const boosted = Math.round(base * 1.7 * 10) / 10;
+    return {
+      trend: formatStatsTrendPct(boosted),
+      trendDown: opts?.preferDown ? true : undefined,
+    };
+  }
+  // WB: рост затрат / падение выручки и эффективности
+  const worsened = Math.round(base * 1.55 * 10) / 10;
+  if (opts?.preferDown) {
+    return { trend: formatStatsTrendPct(worsened), trendDown: false };
+  }
+  return { trend: formatStatsTrendPct(worsened), trendDown: true };
+}
+
+function scaleSparkForWarehouse(points: number[], quality: 1 | 0 | -1): number[] {
+  if (quality === 0) return points;
+  return points.map((p, i) => {
+    const t = i / Math.max(points.length - 1, 1);
+    if (quality === 1) return Math.max(4, p * (0.92 + 0.28 * t));
+    return Math.max(4, p * (1.08 - 0.42 * t));
+  });
+}
+
+/** Число точек на графике органики: при «По дням» — реальные дни выбранного периода. */
+function organicPointCount(range: StatsRangeId, grain: StatsGrainId): number {
+  if (grain === 'month') return sparkPointCount(range, 'month');
+  if (grain === 'week') return sparkPointCount(range, 'week');
   switch (range) {
     case 'today':
     case 'yesterday':
+      return 8;
     case 'week':
+      return 7;
     case 'month':
-      return 'day';
-    case 'quarter':
-      return 'week';
-    case 'halfYear':
-    case 'year':
+      return 30;
     case 'custom':
-      return 'month';
+      return 45;
+    case 'quarter':
+      return 92;
+    case 'halfYear':
+      return 183;
+    case 'year':
+      return 365;
     default:
-      return 'day';
+      return 30;
   }
+}
+
+function formatDayPill(date: Date): string {
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  return `${dd}.${mm}`;
+}
+
+function formatAxisMonthLabel(date: Date): string {
+  return date.toLocaleDateString('ru-RU', { month: 'long' });
+}
+
+/** Понедельник недели даты (для меток оси). */
+function startOfIsoWeek(date: Date): Date {
+  const d = startOfDay(date);
+  const day = d.getDay();
+  const delta = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + delta);
+  return d;
+}
+
+function sameIsoWeek(a: Date, b: Date): boolean {
+  return startOfIsoWeek(a).getTime() === startOfIsoWeek(b).getTime();
+}
+
+/** Короткая метка недели на оси: «28 июл». */
+function formatAxisWeekLabel(date: Date): string {
+  return startOfIsoWeek(date)
+    .toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
+    .replace('.', '');
+}
+
+/** Метка дня на оси: «пн», «вт»… */
+function formatAxisDayLabel(date: Date): string {
+  return date.toLocaleDateString('ru-RU', { weekday: 'short' }).replace('.', '');
+}
+
+/**
+ * Крупные метки оси зависят от периода:
+ * неделя → дни; месяц → недели; длиннее → месяцы.
+ */
+function organicAxisLabel(
+  date: Date,
+  prevDate: Date | null,
+  range: StatsRangeId,
+  grain: StatsGrainId,
+): string {
+  if (range === 'week') {
+    return formatAxisDayLabel(date);
+  }
+
+  if (range === 'month') {
+    if (grain === 'week') return formatAxisWeekLabel(date);
+    if (!prevDate || !sameIsoWeek(prevDate, date)) return formatAxisWeekLabel(date);
+    return '';
+  }
+
+  if (range === 'today' || range === 'yesterday') {
+    if (!prevDate || date.getHours() !== prevDate.getHours()) {
+      return `${String(date.getHours()).padStart(2, '0')}:00`;
+    }
+    return '';
+  }
+
+  if (grain === 'month') {
+    return formatAxisMonthLabel(date);
+  }
+
+  // квартал / полгода / год / custom — месяцы
+  if (
+    !prevDate ||
+    prevDate.getMonth() !== date.getMonth() ||
+    prevDate.getFullYear() !== date.getFullYear()
+  ) {
+    return formatAxisMonthLabel(date);
+  }
+  return '';
 }
 
 const TABS: { id: TabId; label: string }[] = [
@@ -66,9 +254,7 @@ const TABS: { id: TabId; label: string }[] = [
 
 const fmt = (n: number) => new Intl.NumberFormat('ru-RU').format(n);
 
-const STATS_RANGE_PRESETS: { id: Exclude<StatsRangeId, 'custom'>; label: string }[] = [
-  { id: 'today', label: 'Сегодня' },
-  { id: 'yesterday', label: 'Вчера' },
+const STATS_RANGE_PRESETS: { id: Exclude<StatsRangeId, 'custom' | 'today' | 'yesterday'>; label: string }[] = [
   { id: 'week', label: 'Неделя' },
   { id: 'month', label: 'Месяц' },
   { id: 'quarter', label: 'Квартал' },
@@ -87,10 +273,12 @@ const STATS_RANGE_LABELS: Record<StatsRangeId, string> = {
   custom: '3 мая — 10 июня',
 };
 
-const STATS_RANGE_PRESETS_COMPACT: { id: Exclude<StatsRangeId, 'custom' | 'yesterday'>; label: string }[] = [
-  { id: 'today', label: 'дн' },
-  { id: 'month', label: 'мес' },
+const STATS_RANGE_PRESETS_COMPACT: {
+  id: Exclude<StatsRangeId, 'custom' | 'yesterday' | 'today'>;
+  label: string;
+}[] = [
   { id: 'week', label: 'нд' },
+  { id: 'month', label: 'мес' },
   { id: 'quarter', label: 'кв' },
   { id: 'halfYear', label: '6 мес' },
   { id: 'year', label: '1 год' },
@@ -392,7 +580,15 @@ export function StatsDateRangeBar({
   };
 
   const applyCustomRange = () => {
-    const [from, to] = draftStart <= draftEnd ? [draftStart, draftEnd] : [draftEnd, draftStart];
+    let [from, to] = draftStart <= draftEnd ? [draftStart, draftEnd] : [draftEnd, draftStart];
+    const days = Math.round((to.getTime() - from.getTime()) / 86400000) + 1;
+    if (days < 7) {
+      from = new Date(to);
+      from.setDate(to.getDate() - 6);
+    }
+    setDraftStart(from);
+    setDraftEnd(to);
+    syncInputs(from, to);
     setCustomLabel(formatStatsRangeLabel(from, to));
     onChange('custom');
     setCalendarOpen(false);
@@ -617,8 +813,9 @@ function StatsGrainSelect({
   );
 }
 
-const StatsRangeContext = createContext<StatsRangeId>('month');
+const StatsRangeContext = createContext<StatsRangeId>('week');
 const StatsGrainContext = createContext<StatsGrainId>('day');
+const StatsWarehouseScopeContext = createContext<StatsWarehouseScopeId>('all');
 
 function useStatsRange() {
   return useContext(StatsRangeContext);
@@ -626,6 +823,10 @@ function useStatsRange() {
 
 function useStatsGrain() {
   return useContext(StatsGrainContext);
+}
+
+function useStatsWarehouseScope() {
+  return useContext(StatsWarehouseScopeContext);
 }
 
 function monthsCountForRange(range: StatsRangeId): number {
@@ -2736,69 +2937,126 @@ const ORGANIC_RETURN_MONTHLY = ORGANIC_RETURN_AD_GMV.map(({ month, adGmv }) => {
 
 
 /**
- * Органика под календарь: короткие периоды — по дням, длинные — по месяцам.
- * Значения масштабируются, чтобы «Сегодня» ≠ «Квартал».
- * На дневных точках тот же коэффициент для gmv / clients / orders — форма совпадает.
+ * Органика под календарь и детализацию (день / неделя / месяц).
+ * Ось X показывает крупные метки (месяцы), точки — по выбранной детализации.
  */
-function getOrganicReturnSeries(range: StatsRangeId) {
+function formatOrganicTooltipLabel(date: Date, grain: StatsGrainId, range: StatsRangeId): string {
+  if (grain === 'month') {
+    return capitalizeRu(date.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }));
+  }
+  if (grain === 'week') {
+    const from = startOfDay(date);
+    const to = new Date(from);
+    to.setDate(from.getDate() + 6);
+    const fromPart = from.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
+    const toPart = to.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
+    return `${fromPart} – ${toPart}`;
+  }
+  if (range === 'today' || range === 'yesterday') {
+    const base = capitalizeRu(
+      date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }),
+    );
+    const hh = String(date.getHours()).padStart(2, '0');
+    return `${base}, ${hh}:00`;
+  }
+  return capitalizeRu(
+    date.toLocaleDateString('ru-RU', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+    }),
+  );
+}
+
+function getOrganicReturnSeries(range: StatsRangeId, grain: StatsGrainId = 'day') {
   const base = ORGANIC_RETURN_MONTHLY;
   const last = base[base.length - 1];
   const prev = base[base.length - 2] ?? last;
 
-  const fromAdGmv = (adGmv: number, label: string) => {
+  const fromPoint = (
+    adGmv: number,
+    key: string,
+    axisLabel: string,
+    dateLabel: string,
+    tipLabel: string,
+  ) => {
     const gmv = Math.round(adGmv * ORGANIC_RETURN_SHARE);
     const orders = Math.max(1, Math.round(gmv / ORGANIC_RETURN_AOV));
     const clients = Math.max(1, Math.round(orders / ORGANIC_RETURN_ORDERS_PER_CLIENT));
-    return { label, month: label, adGmv, gmv, clients, orders };
+    return {
+      label: key,
+      month: key,
+      axisLabel,
+      dateLabel,
+      tipLabel,
+      adGmv,
+      gmv,
+      clients,
+      orders,
+    };
   };
 
   const dayWave = (i: number, n: number) =>
     0.72 + 0.45 * Math.sin((i / Math.max(n - 1, 1)) * Math.PI * 1.4);
 
-  if (range === 'today' || range === 'yesterday') {
-    const src = range === 'today' ? last : prev;
-    const label = range === 'today' ? '5 авг' : '4 авг';
-    const factor = range === 'today' ? 1 / 30 : 0.92 / 30;
-    return [fromAdGmv(Math.round(src.adGmv * factor), label)];
-  }
-
-  if (range === 'week') {
-    const labels = ['30 июл', '31 июл', '1 авг', '2 авг', '3 авг', '4 авг', '5 авг'];
-    return labels.map((label, i) => {
-      const factor = dayWave(i, labels.length) / 30;
-      return fromAdGmv(Math.round(last.adGmv * factor), label);
+  if (grain === 'month' && range !== 'week') {
+    if (range === 'today' || range === 'yesterday' || range === 'month') {
+      const src = range === 'yesterday' ? prev : last;
+      const label = range === 'yesterday' ? 'июль' : 'август';
+      const factor =
+        range === 'today' ? 1 : range === 'yesterday' ? 0.92 : 1;
+      return [fromPoint(Math.round(src.adGmv * factor), label, label, label, label)];
+    }
+    const slice =
+      range === 'quarter'
+        ? base.slice(4, 8)
+        : range === 'halfYear'
+          ? base.slice(2, 8)
+          : range === 'custom'
+            ? base.slice(4, 6)
+            : base;
+    return slice.map((r) => {
+      const full = r.month.length <= 3 ? r.month : r.month.toLowerCase();
+      return fromPoint(r.adGmv, r.month, full, r.month, r.month);
     });
   }
 
-  if (range === 'month') {
-    const labels: string[] = [];
-    for (let d = 7; d <= 31; d++) labels.push(`${d} июл`);
-    for (let d = 1; d <= 5; d++) labels.push(`${d} авг`);
-    return labels.map((label, i) => {
-      const t = i / (labels.length - 1);
-      const adBase = (prev.adGmv * (1 - t) + last.adGmv * t) / 30;
-      const adGmv = Math.round(adBase * dayWave(i, labels.length));
-      return fromAdGmv(adGmv, label);
-    });
-  }
+  // Период «неделя» на оси всегда по дням.
+  const seriesGrain: StatsGrainId = range === 'week' ? 'day' : grain;
+  const n = Math.max(1, organicPointCount(range, seriesGrain));
+  const dates = sparkDatesForRange(range, n, seriesGrain);
+  const divisor = seriesGrain === 'week' ? 4.3 : 30;
+  const rangeScale =
+    range === 'today' || range === 'yesterday'
+      ? 0.9
+      : range === 'week'
+        ? 1
+        : range === 'month'
+          ? 1
+          : range === 'quarter'
+            ? 1.05
+            : range === 'halfYear'
+              ? 1.1
+              : 1.15;
 
-  if (range === 'quarter') {
-    return base.slice(4, 8).map((r) => ({ ...r, label: r.month, month: r.month }));
-  }
-
-  if (range === 'halfYear') {
-    return base.slice(2, 8).map((r) => ({ ...r, label: r.month, month: r.month }));
-  }
-
-  if (range === 'year') {
-    return base.map((r) => ({ ...r, label: r.month, month: r.month }));
-  }
-
-  if (range === 'custom') {
-    return base.slice(4, 6).map((r) => ({ ...r, label: r.month, month: r.month }));
-  }
-
-  return base.map((r) => ({ ...r, label: r.month, month: r.month }));
+  return dates.map((date, i) => {
+    const t = n === 1 ? 1 : i / (n - 1);
+    const adBase = ((prev.adGmv * (1 - t) + last.adGmv * t) / divisor) * rangeScale;
+    const adGmv = Math.round(adBase * dayWave(i, n));
+    const prevDate = i > 0 ? dates[i - 1] : null;
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}`;
+    const dateLabel =
+      seriesGrain === 'day' && (range === 'today' || range === 'yesterday')
+        ? `${String(date.getHours()).padStart(2, '0')}:00`
+        : formatDayPill(date);
+    return fromPoint(
+      adGmv,
+      key,
+      organicAxisLabel(date, prevDate, range, seriesGrain),
+      dateLabel,
+      formatOrganicTooltipLabel(date, seriesGrain, range),
+    );
+  });
 }
 
 function getStackSeriesForRange(range: StatsRangeId) {
@@ -2923,193 +3181,6 @@ function momPct(curr: number, prev: number) {
   return Math.round(((curr - prev) / prev) * 100);
 }
 
-type OrganicChartType =
-  | 'line'
-  | 'area'
-  | 'bar'
-  | 'barStack'
-  | 'pie'
-  | 'barCategory';
-
-const ORGANIC_CHART_OPTIONS: {
-  group: string;
-  items: { id: OrganicChartType; label: string; icon: 'line' | 'area' | 'bar' | 'barStack' | 'pie' }[];
-}[] = [
-  {
-    group: 'По времени',
-    items: [
-      { id: 'line', label: 'Линейный график', icon: 'line' },
-      { id: 'area', label: 'Линейный график • с накоплением', icon: 'area' },
-      { id: 'bar', label: 'Столбчатый график', icon: 'bar' },
-      { id: 'barStack', label: 'Столбчатый график • с накоплением', icon: 'barStack' },
-    ],
-  },
-  {
-    group: 'По категориям',
-    items: [
-      { id: 'pie', label: 'Круговая диаграмма', icon: 'pie' },
-      { id: 'barCategory', label: 'Столбчатый график • по категориям', icon: 'bar' },
-    ],
-  },
-];
-
-function ChartTypeIcon({
-  kind,
-  className,
-}: {
-  kind: 'line' | 'area' | 'bar' | 'barStack' | 'pie';
-  className?: string;
-}) {
-  const common = {
-    xmlns: 'http://www.w3.org/2000/svg',
-    width: 18,
-    height: 18,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.8,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    className,
-  };
-  if (kind === 'line') {
-    return (
-      <svg {...common}>
-        <polyline points="3 17 9 11 13 14 21 6" />
-      </svg>
-    );
-  }
-  if (kind === 'area') {
-    return (
-      <svg {...common}>
-        <polyline points="3 17 8 12 13 15 21 7" />
-        <polyline points="3 17 8 14 13 16 21 12 21 17 3 17" opacity="0.35" />
-      </svg>
-    );
-  }
-  if (kind === 'bar') {
-    return (
-      <svg {...common}>
-        <rect x="4" y="10" width="3.5" height="10" rx="0.5" />
-        <rect x="10" y="6" width="3.5" height="14" rx="0.5" />
-        <rect x="16" y="12" width="3.5" height="8" rx="0.5" />
-      </svg>
-    );
-  }
-  if (kind === 'barStack') {
-    return (
-      <svg {...common}>
-        <rect x="5" y="14" width="4" height="6" rx="0.5" />
-        <rect x="5" y="9" width="4" height="4.5" rx="0.5" opacity="0.55" />
-        <rect x="5" y="5" width="4" height="3.5" rx="0.5" opacity="0.35" />
-        <rect x="12" y="12" width="4" height="8" rx="0.5" />
-        <rect x="12" y="8" width="4" height="3.5" rx="0.5" opacity="0.55" />
-      </svg>
-    );
-  }
-  return (
-    <svg {...common}>
-      <path d="M12 3a9 9 0 1 1-7.5 4" />
-      <path d="M12 3v9h9" />
-    </svg>
-  );
-}
-
-function OrganicChartTypeMenu({
-  value,
-  onChange,
-  showTotals,
-  onShowTotalsChange,
-}: {
-  value: OrganicChartType;
-  onChange: (v: OrganicChartType) => void;
-  showTotals: boolean;
-  onShowTotalsChange: (v: boolean) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const current = ORGANIC_CHART_OPTIONS.flatMap((g) => g.items).find((i) => i.id === value)!;
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (rootRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  return (
-    <div className="relative shrink-0" ref={rootRef} data-chart-type-menu>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-0.5 rounded-lg border border-gray-200 bg-white p-1.5 text-gray-600 hover:bg-gray-50"
-        aria-expanded={open}
-        aria-haspopup="menu"
-        aria-label={current.label}
-        title={current.label}
-      >
-        <ChartTypeIcon kind={current.icon} className="h-4 w-4 text-gray-500" />
-        <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 z-40 mt-1.5 w-[300px] overflow-hidden rounded-2xl border border-gray-200 bg-white py-2 shadow-xl"
-        >
-          {ORGANIC_CHART_OPTIONS.map((group) => (
-            <div key={group.group} className="px-1 py-1">
-              <div className="px-3 py-1.5 text-[11px] font-medium text-gray-400">{group.group}</div>
-              {group.items.map((item) => {
-                const selected = value === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      onChange(item.id);
-                      setOpen(false);
-                    }}
-                    className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors ${
-                      selected ? 'bg-gray-50 text-gray-950' : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <ChartTypeIcon kind={item.icon} className="h-4 w-4 shrink-0 text-gray-500" />
-                    <span className="flex-1">{item.label}</span>
-                    {selected && <Check className="h-4 w-4 text-gray-800" />}
-                  </button>
-                );
-              })}
-            </div>
-          ))}
-          <div className="mt-1 border-t border-gray-100 px-1 pt-1">
-            <button
-              type="button"
-              onClick={() => onShowTotalsChange(!showTotals)}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
-            >
-              <span
-                className={`flex h-4 w-4 items-center justify-center rounded border ${
-                  showTotals
-                    ? 'border-gray-900 bg-gray-900 text-white'
-                    : 'border-gray-300 bg-white'
-                }`}
-              >
-                {showTotals && <Check className="h-3 w-3" />}
-              </span>
-              Показывать итого и среднее
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function OrganicMetricMonthChart({
   metricKey,
   series: source,
@@ -3133,9 +3204,8 @@ function OrganicMetricMonthChart({
   /** Клик по заголовку — например, переход на /stats/return?metric=… */
   onTitleClick?: () => void;
 }) {
-  const [chartType, setChartType] = useState<OrganicChartType>('bar');
-  const [showTotals, setShowTotals] = useState(false);
   const meta = ORGANIC_METRIC_META[metricKey];
+  const areaGradId = `organic-metric-fill-${metricKey}`;
   const displayTitle = title ?? meta.label;
   const last = source[source.length - 1];
   const prev = source.length > 1 ? source[source.length - 2] : last;
@@ -3154,10 +3224,6 @@ function OrganicMetricMonthChart({
       cumulative: cum,
     };
   });
-  const total = series[series.length - 1]?.cumulative ?? 0;
-  const avg = series.length ? Math.round(total / series.length) : 0;
-  const useCumulative = chartType === 'area' || chartType === 'barStack';
-  const dataKey = useCumulative ? 'cumulative' : 'value';
   const yFmt = (v: number) => (isGmv ? `${Math.round(v / 1000)}к` : String(v));
 
   const tooltip = ({ active, label }: { active?: boolean; label?: string }) => {
@@ -3172,18 +3238,10 @@ function OrganicMetricMonthChart({
       <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg">
         <div className="font-semibold text-gray-900">{label}</div>
         <div className="mt-1 flex items-center justify-between gap-6 text-gray-600">
-          <span>{useCumulative ? 'Накоплено' : meta.label}</span>
-          <strong className="tabular-nums text-gray-900">
-            {meta.format(useCumulative ? row.cumulative : val)}
-          </strong>
+          <span>{meta.label}</span>
+          <strong className="tabular-nums text-gray-900">{meta.format(val)}</strong>
         </div>
-        {useCumulative && (
-          <div className="mt-1 flex justify-between gap-6 text-gray-500">
-            <span>За месяц</span>
-            <span className="tabular-nums">{meta.format(val)}</span>
-          </div>
-        )}
-        {delta !== null && !useCumulative && (
+        {delta !== null && (
           <div
             className={`mt-1 text-[11px] ${delta >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}
           >
@@ -3191,7 +3249,7 @@ function OrganicMetricMonthChart({
             {delta}% к прошлому месяцу
           </div>
         )}
-        {isGmv && !useCumulative && (
+        {isGmv && (
           <div className="mt-1 text-[11px] text-violet-600">
             {Math.round((row.gmv / row.adGmv) * 1000) / 10}% от рекл. GMV
           </div>
@@ -3218,122 +3276,30 @@ function OrganicMetricMonthChart({
         width={isGmv ? 40 : 32}
         tickFormatter={yFmt}
       />
-      <Tooltip cursor={{ fill: 'rgba(0,0,0,0.03)' }} content={tooltip} />
+      <Tooltip cursor={{ stroke: '#E5E7EB', strokeWidth: 1 }} content={tooltip} />
     </>
   );
 
-  let chart: React.ReactNode;
-  if (chartType === 'line') {
-    chart = (
-      <LineChart data={series} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-        {axes}
-        <Line
-          type="monotone"
-          dataKey="value"
-          stroke={meta.color}
-          strokeWidth={2.5}
-          dot={{ r: 3, fill: meta.color, strokeWidth: 0 }}
-        />
-      </LineChart>
-    );
-  } else if (chartType === 'area') {
-    chart = (
-      <AreaChart data={series} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
-        <defs>
-          <linearGradient id={`org-area-${metricKey}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={meta.color} stopOpacity={0.35} />
-            <stop offset="100%" stopColor={meta.color} stopOpacity={0.02} />
-          </linearGradient>
-        </defs>
-        {axes}
-        <Area
-          type="monotone"
-          dataKey="cumulative"
-          stroke={meta.color}
-          strokeWidth={2.5}
-          fill={`url(#org-area-${metricKey})`}
-        />
-      </AreaChart>
-    );
-  } else if (chartType === 'pie') {
-    chart = (
-      <PieChart>
-        <Pie
-          data={series}
-          dataKey="value"
-          nameKey="month"
-          cx="50%"
-          cy="50%"
-          innerRadius={42}
-          outerRadius={70}
-          paddingAngle={1}
-        >
-          {series.map((row, i) => (
-            <Cell
-              key={row.month}
-              fill={meta.color}
-              fillOpacity={0.35 + (i / series.length) * 0.65}
-            />
-          ))}
-        </Pie>
-        <Tooltip
-          content={({ active, payload }) => {
-            if (!active || !payload?.[0]) return null;
-            const row = payload[0].payload as (typeof series)[number];
-            return (
-              <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg">
-                <div className="font-semibold text-gray-900">{row.month}</div>
-                <div className="mt-1 tabular-nums text-gray-700">{meta.format(row.value)}</div>
-              </div>
-            );
-          }}
-        />
-      </PieChart>
-    );
-  } else if (chartType === 'barCategory') {
-    chart = (
-      <BarChart
-        data={series}
-        layout="vertical"
-        margin={{ top: 4, right: 8, left: 4, bottom: 0 }}
-      >
-        <CartesianGrid stroke="#F3F4F6" horizontal={false} />
-        <XAxis
-          type="number"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 10, fill: '#9CA3AF' }}
-          tickFormatter={yFmt}
-        />
-        <YAxis
-          type="category"
-          dataKey="month"
-          axisLine={false}
-          tickLine={false}
-          tick={{ fontSize: 10, fill: '#6B7280' }}
-          width={36}
-        />
-        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.03)' }} content={tooltip} />
-        <Bar dataKey="value" fill={meta.color} radius={[0, 3, 3, 0]} maxBarSize={12} />
-      </BarChart>
-    );
-  } else {
-    chart = (
-      <BarChart
-        data={series}
-        margin={{ top: 8, right: 4, left: 0, bottom: 0 }}
-        barCategoryGap="28%"
-      >
-        {axes}
-        <Bar
-          dataKey={dataKey}
-          fill={meta.color}
-          radius={[4, 4, 0, 0]}
-          maxBarSize={36}
-        />
-      </BarChart>
-    );
-  }
+  const chart = (
+    <AreaChart data={series} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
+      <defs>
+        <linearGradient id={areaGradId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#9A41FE" stopOpacity={0.28} />
+          <stop offset="100%" stopColor="#9A41FE" stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      {axes}
+      <Area
+        type="monotone"
+        dataKey="value"
+        stroke="#9A41FE"
+        strokeWidth={2.5}
+        fill={`url(#${areaGradId})`}
+        dot={{ r: 3, fill: '#9A41FE', strokeWidth: 0 }}
+        activeDot={{ r: 4, fill: '#9A41FE', stroke: '#fff', strokeWidth: 2 }}
+      />
+    </AreaChart>
+  );
 
   const body = (
     <>
@@ -3363,7 +3329,7 @@ function OrganicMetricMonthChart({
             <TrendBadge value={`${up ? '+' : '−'}${Math.abs(mom)}%`} up={up} />
           </div>
           {shareOfAd !== null && (
-            <div className="mt-1 text-[11px] text-violet-600">
+            <div className="mt-1 text-[11px] text-gray-500">
               {shareOfAd}% от рекламного GMV · доп. прибыль сверх рекламных заказов
             </div>
           )}
@@ -3389,28 +3355,7 @@ function OrganicMetricMonthChart({
             </div>
           )}
         </div>
-        {!compact && (
-          <OrganicChartTypeMenu
-            value={chartType}
-            onChange={setChartType}
-            showTotals={showTotals}
-            onShowTotalsChange={setShowTotals}
-          />
-        )}
       </div>
-
-      {!compact && showTotals && (
-        <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-gray-500">
-          <span>
-            Итого:{' '}
-            <strong className="tabular-nums text-gray-800">{meta.format(total)}</strong>
-          </span>
-          <span>
-            Среднее:{' '}
-            <strong className="tabular-nums text-gray-800">{meta.format(avg)}</strong>
-          </span>
-        </div>
-      )}
 
       {!compact && (
         <div className={`mt-3 ${chartHeightClass}`}>
@@ -3444,12 +3389,48 @@ const MONTH_SHORT: Record<string, string> = {
   Декабрь: 'Дек',
 };
 
-function getDaysToOrganicSeries(range: StatsRangeId) {
-  return getStackSeriesForRange(range).map((r) => ({
-    month: MONTH_SHORT[r.month] ?? r.month,
-    avgDays: r.avgDays,
-    peakMonths: r.peakMonths,
-  }));
+function getDaysToOrganicSeries(range: StatsRangeId, grain: StatsGrainId = 'day') {
+  const monthly = getStackSeriesForRange(range).map((r) => {
+    const short = MONTH_SHORT[r.month] ?? r.month;
+    const axis = short.toLowerCase();
+    return {
+      month: short,
+      axisLabel: axis,
+      dateLabel: axis,
+      tipLabel: r.month,
+      avgDays: r.avgDays,
+      peakMonths: r.peakMonths,
+    };
+  });
+
+  if (grain === 'month' && range !== 'week') {
+    return monthly;
+  }
+
+  const seriesGrain: StatsGrainId = range === 'week' ? 'day' : grain;
+  const n = Math.max(1, organicPointCount(range, seriesGrain));
+  const dates = sparkDatesForRange(range, n, seriesGrain);
+  const baseAvg = monthly.length
+    ? monthly.reduce((s, r) => s + r.avgDays, 0) / monthly.length
+    : 18;
+
+  return dates.map((date, i) => {
+    const wave = 0.85 + 0.22 * Math.sin((i / Math.max(n - 1, 1)) * Math.PI * 1.3);
+    const prevDate = i > 0 ? dates[i - 1] : null;
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${date.getHours()}`;
+    const dateLabel =
+      seriesGrain === 'day' && (range === 'today' || range === 'yesterday')
+        ? `${String(date.getHours()).padStart(2, '0')}:00`
+        : formatDayPill(date);
+    return {
+      month: key,
+      axisLabel: organicAxisLabel(date, prevDate, range, seriesGrain),
+      dateLabel,
+      tipLabel: formatOrganicTooltipLabel(date, seriesGrain, range),
+      avgDays: Math.max(1, Math.round(baseAvg * wave)),
+      peakMonths: '',
+    };
+  });
 }
 
 /**
@@ -3458,9 +3439,10 @@ function getDaysToOrganicSeries(range: StatsRangeId) {
  */
 function OrganicReturnStoryBlock() {
   const range = useStatsRange();
+  const grain = useStatsGrain();
   const stack = useMemo(() => getStackSeriesForRange(range), [range]);
-  const organic = useMemo(() => getOrganicReturnSeries(range), [range]);
-  const days = useMemo(() => getDaysToOrganicSeries(range), [range]);
+  const organic = useMemo(() => getOrganicReturnSeries(range, grain), [range, grain]);
+  const days = useMemo(() => getDaysToOrganicSeries(range, grain), [range, grain]);
 
   const totalAdGmv = stack.reduce((s, r) => s + r.adGmv, 0);
   const totalOrganic = stack.reduce((s, r) => s + r.organic, 0);
@@ -3695,25 +3677,51 @@ function OrganicReturnStoryBlock() {
 /** Три графика + сводные карточки (заказы на человека, срок возврата) */
 function useOrganicReturnInsights() {
   const range = useStatsRange();
-  const source = useMemo(() => getOrganicReturnSeries(range), [range]);
-  const days = useMemo(() => getDaysToOrganicSeries(range), [range]);
+  const grain = useStatsGrain();
+  const warehouseScope = useStatsWarehouseScope();
+  const fx = WAREHOUSE_SCOPE_FX[warehouseScope];
+
+  const source = useMemo(() => {
+    const base = getOrganicReturnSeries(range, grain);
+    if (fx.quality === 0) return base;
+    return base.map((row) => ({
+      ...row,
+      adGmv: Math.round(row.adGmv * fx.orders),
+      gmv: Math.round(row.gmv * fx.organic),
+      clients: Math.max(1, Math.round(row.clients * fx.clients)),
+      orders: Math.max(1, Math.round(row.orders * fx.organic)),
+    }));
+  }, [range, grain, fx]);
+
+  const days = useMemo(() => {
+    const base = getDaysToOrganicSeries(range, grain);
+    if (fx.quality === 0) return base;
+    return base.map((row) => ({
+      ...row,
+      avgDays: Math.max(1, Math.round(row.avgDays * fx.days)),
+    }));
+  }, [range, grain, fx]);
 
   // Не sum(orders)/sum(clients): в моке у каждой точки один и тот же коэффициент,
   // а уникальные клиенты на длинном окне растут медленнее заказов.
-  const ordersPerClient = ordersPerClientForRange(range);
+  const ordersPerClient = Math.round(ordersPerClientForRange(range) * (fx.organic / Math.max(fx.clients, 0.01)) * 100) / 100;
 
   const last = source[source.length - 1];
   const prev = source.length > 1 ? source[source.length - 2] : last;
   const lastOpc = last && last.clients ? last.orders / last.clients : ordersPerClient;
   const prevOpc = prev && prev.clients ? prev.orders / prev.clients : lastOpc;
-  const opcMom = momPct(lastOpc, prevOpc);
+  let opcMom = momPct(lastOpc, prevOpc);
+  if (fx.quality === 1) opcMom = Math.abs(opcMom) + 4;
+  if (fx.quality === -1) opcMom = -(Math.abs(opcMom) + 6);
 
   const avgDays = days.length
     ? Math.round(days.reduce((s, r) => s + r.avgDays, 0) / days.length)
     : 0;
   const lastDays = days[days.length - 1]?.avgDays ?? avgDays;
   const prevDays = days.length > 1 ? days[days.length - 2].avgDays : lastDays;
-  const daysMom = momPct(lastDays, prevDays);
+  let daysMom = momPct(lastDays, prevDays);
+  if (fx.quality === 1) daysMom = -(Math.abs(daysMom) + 5);
+  if (fx.quality === -1) daysMom = Math.abs(daysMom) + 9;
   const daysOk = avgDays <= 45;
   const opcLabel = ordersPerClient.toFixed(2).replace('.', ',');
 
@@ -3779,18 +3787,121 @@ function OrganicReturnInsightCards({
 }
 
 /**
- * Вариант B: выручка слева; справа 4 метрики по 2 в ряд.
- * layout="stack" — hero-график + полоса KPI (страница «Возврат»).
+ * Блок «Вернувшиеся покупатели»: KPI-карточки по 2 в ряд, у каждой свой график.
  */
 type ReturnFocusMetricId = 'gmv' | 'clients' | 'opc' | 'orders' | 'days';
 
-const RETURN_FOCUS_METRIC_IDS: ReturnFocusMetricId[] = ['gmv', 'clients', 'opc', 'orders', 'days'];
+function OrganicReturnFocusMiniChart({
+  series,
+  valueFormat,
+  axisFormat,
+  unit,
+}: {
+  series: Array<{
+    month: string;
+    value: number;
+    tipLabel?: string;
+    axisLabel?: string;
+    dateLabel?: string;
+  }>;
+  valueFormat: (n: number) => string;
+  axisFormat?: (n: number) => string;
+  unit?: string;
+}) {
+  const tickFormat = axisFormat ?? valueFormat;
+  const [hoverX, setHoverX] = useState<number | null>(null);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const hoverRow = hoverIndex != null ? series[hoverIndex] : null;
+  const datePill = hoverRow?.dateLabel ?? null;
+  const monthTicks = useMemo(
+    () => series.filter((row) => row.axisLabel).map((row) => row.month),
+    [series],
+  );
+  const axisByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of series) {
+      if (row.axisLabel) map.set(row.month, row.axisLabel);
+    }
+    return map;
+  }, [series]);
 
-function parseReturnFocusMetric(value: string | null): ReturnFocusMetricId | null {
-  if (!value) return null;
-  return RETURN_FOCUS_METRIC_IDS.includes(value as ReturnFocusMetricId)
-    ? (value as ReturnFocusMetricId)
-    : null;
+  return (
+    <div className="relative mt-3 h-[168px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart
+          data={series}
+          margin={{ top: 8, right: 8, left: 0, bottom: 4 }}
+          onMouseMove={(state) => {
+            if (
+              state?.activeTooltipIndex == null ||
+              state.activeCoordinate?.x == null
+            ) {
+              setHoverX(null);
+              setHoverIndex(null);
+              return;
+            }
+            setHoverIndex(Number(state.activeTooltipIndex));
+            setHoverX(state.activeCoordinate.x);
+          }}
+          onMouseLeave={() => {
+            setHoverX(null);
+            setHoverIndex(null);
+          }}
+        >
+          <CartesianGrid stroke="#F3F4F6" vertical={false} />
+          <XAxis
+            dataKey="month"
+            axisLine={false}
+            tickLine={false}
+            ticks={monthTicks}
+            height={22}
+            tick={{ fontSize: 11, fill: '#9CA3AF' }}
+            tickFormatter={(value: string) => axisByKey.get(value) ?? ''}
+          />
+          <YAxis
+            axisLine={false}
+            tickLine={false}
+            width={36}
+            tick={{ fontSize: 10, fill: '#9CA3AF' }}
+            tickFormatter={tickFormat}
+          />
+          <Tooltip
+            cursor={{ stroke: '#E5E7EB', strokeWidth: 1 }}
+            content={({ active, label }) => {
+              if (!active) return null;
+              const row = series.find((m) => m.month === label);
+              if (!row) return null;
+              return (
+                <div className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-lg">
+                  <div className="font-semibold text-gray-900">{row.tipLabel ?? label}</div>
+                  <div className="mt-1 tabular-nums text-gray-900">
+                    {valueFormat(row.value)}
+                    {unit ? ` ${unit}` : ''}
+                  </div>
+                </div>
+              );
+            }}
+          />
+          <Line
+            type="linear"
+            dataKey="value"
+            stroke="#9A41FE"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{ r: 4, fill: '#9A41FE', stroke: '#fff', strokeWidth: 2 }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+      {hoverX != null && datePill && (
+        <div
+          className="pointer-events-none absolute z-10 -translate-x-1/2 rounded-md bg-[#2C2C2E] px-1.5 py-[3px] text-[11px] font-medium leading-none text-white tabular-nums shadow-sm"
+          style={{ left: hoverX, bottom: 2 }}
+        >
+          {datePill}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function OrganicReturnDynamicsBlockV2({
@@ -3802,13 +3913,17 @@ function OrganicReturnDynamicsBlockV2({
 } = {}) {
   const navigate = useNavigate();
   const range = useStatsRange();
+  const grain = useStatsGrain();
   const { source, opcLabel, opcMom, avgDays, daysMom } = useOrganicReturnInsights();
-  const daysSeries = useMemo(() => getDaysToOrganicSeries(range), [range]);
+  const daysSeries = useMemo(() => getDaysToOrganicSeries(range, grain), [range, grain]);
 
   const opcChartSeries = useMemo(
     () =>
       source.map((row) => ({
         month: row.month,
+        tipLabel: row.tipLabel,
+        axisLabel: row.axisLabel,
+        dateLabel: row.dateLabel,
         value:
           row.clients > 0 ? Math.round((row.orders / row.clients) * 100) / 100 : 0,
       })),
@@ -3816,62 +3931,45 @@ function OrganicReturnDynamicsBlockV2({
   );
 
   const daysChartSeries = useMemo(
-    () => daysSeries.map((row) => ({ month: row.month, value: row.avgDays })),
+    () =>
+      daysSeries.map((row) => ({
+        month: row.month,
+        tipLabel: row.tipLabel,
+        axisLabel: row.axisLabel,
+        dateLabel: row.dateLabel,
+        value: row.avgDays,
+      })),
     [daysSeries],
   );
 
-  const openReturnMetric = (metric: ReturnFocusMetricId) => {
-    navigate(`/stats/return?metric=${metric}`);
-  };
-
-  if (layout === 'stack') {
-    return (
-      <OrganicReturnFocusBlock
-        showVariantLabel={showVariantLabel}
-        range={range}
-        source={source}
-        opcLabel={opcLabel}
-        opcMom={opcMom}
-        avgDays={avgDays}
-        daysMom={daysMom}
-        opcChartSeries={opcChartSeries}
-        daysChartSeries={daysChartSeries}
-      />
-    );
-  }
+  const showSectionTitle = layout === 'grid';
+  const metricsFilter = layout === 'grid' ? 'gmv' : 'all';
 
   return (
-    <section id="organic-return" className="scroll-mt-6 flex flex-col gap-3">
-      {showVariantLabel && (
-        <div className="px-0.5 text-[11px] font-medium uppercase tracking-wide text-gray-400">
-          Вариант B · выручка слева
-        </div>
-      )}
-      <h2 className="text-xl font-bold text-gray-900">
-        <button
-          type="button"
-          onClick={() => navigate('/stats/return')}
-          className="text-left transition-colors hover:text-[#9A41FE]"
-        >
-          Вернувшиеся покупатели
-        </button>
-      </h2>
-      <div className="mb-5">
-        <OrganicMetricMonthChart
-          key={`gmv-${range}`}
-          metricKey="gmv"
-          series={source}
-          chartHeightClass="h-[220px]"
-          onTitleClick={() => openReturnMetric('gmv')}
-        />
-      </div>
-    </section>
+    <OrganicReturnFocusBlock
+      showVariantLabel={showVariantLabel}
+      showSectionTitle={showSectionTitle}
+      metricsFilter={metricsFilter}
+      range={range}
+      grain={grain}
+      source={source}
+      opcLabel={opcLabel}
+      opcMom={opcMom}
+      avgDays={avgDays}
+      daysMom={daysMom}
+      opcChartSeries={opcChartSeries}
+      daysChartSeries={daysChartSeries}
+      onOpenAllMetrics={() => navigate('/stats/return')}
+    />
   );
 }
 
 function OrganicReturnFocusBlock({
   showVariantLabel,
+  showSectionTitle = false,
+  metricsFilter = 'all',
   range,
+  grain,
   source,
   opcLabel,
   opcMom,
@@ -3879,44 +3977,89 @@ function OrganicReturnFocusBlock({
   daysMom,
   opcChartSeries,
   daysChartSeries,
+  onOpenAllMetrics,
 }: {
   showVariantLabel: boolean;
+  showSectionTitle?: boolean;
+  metricsFilter?: 'gmv' | 'all';
   range: StatsRangeId;
+  grain: StatsGrainId;
   source: ReturnType<typeof getOrganicReturnSeries>;
   opcLabel: string;
   opcMom: number;
   avgDays: number;
   daysMom: number;
-  opcChartSeries: Array<{ month: string; value: number }>;
-  daysChartSeries: Array<{ month: string; value: number }>;
+  opcChartSeries: Array<{
+    month: string;
+    value: number;
+    tipLabel?: string;
+    axisLabel?: string;
+    dateLabel?: string;
+  }>;
+  daysChartSeries: Array<{
+    month: string;
+    value: number;
+    tipLabel?: string;
+    axisLabel?: string;
+    dateLabel?: string;
+  }>;
+  onOpenAllMetrics?: () => void;
 }) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const metricFromUrl = parseReturnFocusMetric(searchParams.get('metric'));
-  const [activeMetric, setActiveMetric] = useState<ReturnFocusMetricId>(metricFromUrl ?? 'gmv');
-
-  useEffect(() => {
-    if (metricFromUrl) {
-      setActiveMetric(metricFromUrl);
-    }
-  }, [metricFromUrl]);
-
-  const selectMetric = (id: ReturnFocusMetricId) => {
-    setActiveMetric(id);
-    setSearchParams(
-      (prev) => {
-        const next = new URLSearchParams(prev);
-        next.set('metric', id);
-        return next;
-      },
-      { replace: true },
-    );
-  };
-
+  const warehouseScope = useStatsWarehouseScope();
+  const fx = WAREHOUSE_SCOPE_FX[warehouseScope];
   const last = source[source.length - 1];
   const prev = source.length > 1 ? source[source.length - 2] : last;
-  const gmvMom = momPct(last.gmv, prev.gmv);
-  const clientsMom = momPct(last.clients, prev.clients);
-  const ordersMom = momPct(last.orders, prev.orders);
+  let gmvMom = momPct(last.gmv, prev.gmv);
+  let clientsMom = momPct(last.clients, prev.clients);
+  let ordersMom = momPct(last.orders, prev.orders);
+  if (fx.quality === 1) {
+    gmvMom = Math.abs(gmvMom) + 9;
+    clientsMom = Math.abs(clientsMom) + 7;
+    ordersMom = Math.abs(ordersMom) + 8;
+  } else if (fx.quality === -1) {
+    gmvMom = -(Math.abs(gmvMom) + 14);
+    clientsMom = -(Math.abs(clientsMom) + 11);
+    ordersMom = -(Math.abs(ordersMom) + 12);
+  }
+  const shareOfAd = last.adGmv ? Math.round((last.gmv / last.adGmv) * 1000) / 10 : 5;
+  const returnedSharePct = Math.max(
+    4,
+    Math.round(RETURNED_BUYERS_SHARE.pct * (fx.clients / Math.max(fx.orders, 0.01)) * (fx.quality === -1 ? 0.7 : fx.quality === 1 ? 1.25 : 1)),
+  );
+
+  const gmvSeries = useMemo(
+    () =>
+      source.map((row) => ({
+        month: row.month,
+        value: row.gmv,
+        tipLabel: row.tipLabel,
+        axisLabel: row.axisLabel,
+        dateLabel: row.dateLabel,
+      })),
+    [source],
+  );
+  const clientsSeries = useMemo(
+    () =>
+      source.map((row) => ({
+        month: row.month,
+        value: row.clients,
+        tipLabel: row.tipLabel,
+        axisLabel: row.axisLabel,
+        dateLabel: row.dateLabel,
+      })),
+    [source],
+  );
+  const ordersSeries = useMemo(
+    () =>
+      source.map((row) => ({
+        month: row.month,
+        value: row.orders,
+        tipLabel: row.tipLabel,
+        axisLabel: row.axisLabel,
+        dateLabel: row.dateLabel,
+      })),
+    [source],
+  );
 
   const kpis: Array<{
     id: ReturnFocusMetricId;
@@ -3925,7 +4068,17 @@ function OrganicReturnFocusBlock({
     unit?: string;
     trend: string;
     trendUp: boolean;
+    caption?: string;
     secondary?: { label: string; value: string };
+    series: Array<{
+      month: string;
+      value: number;
+      tipLabel?: string;
+      axisLabel?: string;
+      dateLabel?: string;
+    }>;
+    valueFormat: (n: number) => string;
+    axisFormat?: (n: number) => string;
   }> = [
     {
       id: 'gmv',
@@ -3933,6 +4086,10 @@ function OrganicReturnFocusBlock({
       value: ORGANIC_METRIC_META.gmv.format(last.gmv),
       trend: `${gmvMom >= 0 ? '+' : '−'}${Math.abs(gmvMom)}%`,
       trendUp: gmvMom >= 0,
+      caption: `${shareOfAd}% от рекламного GMV · доп. прибыль сверх рекламных заказов`,
+      series: gmvSeries,
+      valueFormat: (n) => ORGANIC_METRIC_META.gmv.format(n),
+      axisFormat: (n) => `${Math.round(n / 1000)}к`,
     },
     {
       id: 'clients',
@@ -3943,8 +4100,10 @@ function OrganicReturnFocusBlock({
       trendUp: clientsMom >= 0,
       secondary: {
         label: 'Доля вернувшихся покупателей',
-        value: `${RETURNED_BUYERS_SHARE.pct}%`,
+        value: `${returnedSharePct}%`,
       },
+      series: clientsSeries,
+      valueFormat: (n) => ORGANIC_METRIC_META.clients.format(n),
     },
     {
       id: 'orders',
@@ -3953,6 +4112,8 @@ function OrganicReturnFocusBlock({
       unit: 'зак.',
       trend: `${ordersMom >= 0 ? '+' : '−'}${Math.abs(ordersMom)}%`,
       trendUp: ordersMom >= 0,
+      series: ordersSeries,
+      valueFormat: (n) => ORGANIC_METRIC_META.orders.format(n),
     },
     {
       id: 'opc',
@@ -3961,6 +4122,8 @@ function OrganicReturnFocusBlock({
       unit: 'зак. / чел.',
       trend: `${opcMom >= 0 ? '+' : '−'}${Math.abs(opcMom)}%`,
       trendUp: opcMom >= 0,
+      series: opcChartSeries,
+      valueFormat: (n) => n.toFixed(2).replace('.', ','),
     },
     {
       id: 'days',
@@ -3969,8 +4132,12 @@ function OrganicReturnFocusBlock({
       unit: 'дн.',
       trend: `${daysMom > 0 ? '+' : '−'}${Math.abs(daysMom)}%`,
       trendUp: daysMom <= 0,
+      series: daysChartSeries,
+      valueFormat: (n) => String(Math.round(n)),
     },
   ];
+
+  const visibleKpis = metricsFilter === 'gmv' ? kpis.filter((kpi) => kpi.id === 'gmv') : kpis;
 
   return (
     <section id="organic-return" className="scroll-mt-6 flex flex-col gap-3">
@@ -3980,97 +4147,69 @@ function OrganicReturnFocusBlock({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-        {kpis.map((kpi) => {
-          const selected = activeMetric === kpi.id;
-          return (
+      {showSectionTitle && (
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-xl font-bold text-gray-900">
             <button
-              key={kpi.id}
               type="button"
-              onClick={() => selectMetric(kpi.id)}
-              className={`flex h-full flex-col justify-start rounded-2xl px-3 py-3 text-left transition-colors ${
-                selected ? 'bg-white' : 'bg-white/70 hover:bg-white'
-              }`}
+              onClick={onOpenAllMetrics}
+              className="mt-[5px] text-left transition-colors hover:text-[#9A41FE]"
             >
-              <div className="text-[11px] font-medium leading-snug text-gray-500">{kpi.label}</div>
-              <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
-                <span className="text-xl font-bold tabular-nums leading-none text-gray-950">
-                  {kpi.value}
-                </span>
-                {kpi.unit && <span className="text-[11px] text-gray-400">{kpi.unit}</span>}
-              </div>
-              <div className="mt-1.5">
-                <TrendBadge value={kpi.trend} up={kpi.trendUp} />
-              </div>
-              {kpi.secondary && (
-                <div className="mt-2 border-t border-gray-100 pt-2">
-                  <div className="text-[11px] font-medium leading-snug text-gray-500">
-                    {kpi.secondary.label}
-                  </div>
-                  <div className="mt-1 text-sm font-semibold tabular-nums text-gray-900">
-                    {kpi.secondary.value}
-                  </div>
-                </div>
-              )}
+              Вернувшиеся покупатели
             </button>
-          );
-        })}
-      </div>
+          </h2>
+          {onOpenAllMetrics && (
+            <button
+              type="button"
+              onClick={onOpenAllMetrics}
+              className="inline-flex shrink-0 items-center gap-1 pb-[3px] text-sm font-medium text-gray-600 transition-colors hover:text-[#9A41FE]"
+            >
+              Все метрики
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
 
-      <div className="rounded-2xl bg-white p-4">
-        {activeMetric === 'gmv' && (
-          <OrganicMetricMonthChart
-            key={`gmv-${range}-focus`}
-            metricKey="gmv"
-            series={source}
-            chartHeightClass="h-[280px]"
-            embedded
-          />
-        )}
-        {activeMetric === 'clients' && (
-          <OrganicMetricMonthChart
-            key={`clients-${range}-focus`}
-            metricKey="clients"
-            series={source}
-            chartHeightClass="h-[280px]"
-            embedded
-          />
-        )}
-        {activeMetric === 'orders' && (
-          <OrganicMetricMonthChart
-            key={`orders-${range}-focus`}
-            metricKey="orders"
-            series={source}
-            chartHeightClass="h-[280px]"
-            embedded
-          />
-        )}
-        {activeMetric === 'opc' && (
-          <OrganicKpiChartCard
-            title="Повторных органических заказов на человека"
-            valueLabel={opcLabel}
-            unit="зак. / чел."
-            trend={`${opcMom >= 0 ? '+' : '−'}${Math.abs(opcMom)}%`}
-            trendUp={opcMom >= 0}
-            series={opcChartSeries}
-            color="#7C3AED"
-            valueFormat={(n) => n.toFixed(2).replace('.', ',')}
-            embedded
-          />
-        )}
-        {activeMetric === 'days' && (
-          <OrganicKpiChartCard
-            title="От продвижения до первой органической покупки"
-            valueLabel={String(avgDays)}
-            unit="дн."
-            trend={`${daysMom > 0 ? '+' : '−'}${Math.abs(daysMom)}%`}
-            trendUp={daysMom <= 0}
-            series={daysChartSeries}
-            color="#0EA5E9"
-            valueFormat={(n) => String(Math.round(n))}
-            embedded
-          />
-        )}
+      <div
+        className={
+          visibleKpis.length === 1
+            ? 'grid grid-cols-1 gap-3'
+            : 'grid grid-cols-1 gap-3 md:grid-cols-2'
+        }
+      >
+        {visibleKpis.map((kpi) => (
+          <article
+            key={`${kpi.id}-${range}-${grain}`}
+            className={`flex h-full flex-col rounded-2xl bg-white px-4 py-4 ${
+              kpi.id === 'gmv' ? 'md:col-span-2' : ''
+            }`}
+          >
+            <div className="text-[13px] font-medium leading-snug text-gray-500">{kpi.label}</div>
+            <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-2xl font-bold tabular-nums leading-none text-gray-950">
+                {kpi.value}
+              </span>
+              {kpi.unit && <span className="text-[12px] text-gray-400">{kpi.unit}</span>}
+              <TrendBadge value={kpi.trend} up={kpi.trendUp} />
+            </div>
+            {kpi.caption && (
+              <div className="mt-1 text-[11px] text-gray-500">{kpi.caption}</div>
+            )}
+            {kpi.secondary && (
+              <div className="mt-2 text-[11px] leading-4 text-gray-600">
+                <span className="font-medium text-gray-800">{kpi.secondary.label}</span>
+                <span className="tabular-nums text-gray-700"> · {kpi.secondary.value}</span>
+              </div>
+            )}
+            <OrganicReturnFocusMiniChart
+              series={kpi.series}
+              valueFormat={kpi.valueFormat}
+              axisFormat={kpi.axisFormat}
+              unit={kpi.unit}
+            />
+          </article>
+        ))}
       </div>
     </section>
   );
@@ -4823,6 +4962,8 @@ function StatsKpiIsland({
 function StatsKpiIslands() {
   const range = useStatsRange();
   const grain = useStatsGrain();
+  const warehouseScope = useStatsWarehouseScope();
+  const fx = WAREHOUSE_SCOPE_FX[warehouseScope];
 
   const cards = useMemo<StatsKpiCard[]>(() => {
     const byRange: Record<
@@ -4975,52 +5116,61 @@ function StatsKpiIslands() {
     };
 
     const m = byRange[range];
+    const ordersTrend = warehouseTrend(m.ordersTrend, fx.quality);
+    const spendTrend = warehouseTrend(m.spendTrend, fx.quality, { preferDown: true });
+    const spendShareTrend = warehouseTrend(m.spendShareTrend, fx.quality, { preferDown: true });
+    const roasTrend = warehouseTrend(m.roasTrend, fx.quality);
+    const ctrTrend = warehouseTrend(m.ctrTrend, fx.quality);
+
     return [
       {
         label: 'Сумма заказов',
-        value: m.ordersSum,
-        trend: m.ordersTrend,
-        points: kpiSparklinePointsForRange(range, 'orders', grain),
+        value: formatStatsMoney(parseStatsMetricNumber(m.ordersSum) * fx.orders),
+        trend: ordersTrend.trend,
+        trendDown: ordersTrend.trendDown,
+        points: scaleSparkForWarehouse(kpiSparklinePointsForRange(range, 'orders', grain), fx.quality),
         metric: 'orders' as const,
       },
       {
         label: 'Затраты',
-        value: m.spend,
-        trend: m.spendTrend,
-        trendDown: m.spendTrendDown,
-        points: kpiSparklinePointsForRange(range, 'spend', grain),
+        value: formatStatsMoney(parseStatsMetricNumber(m.spend) * fx.spend),
+        trend: spendTrend.trend,
+        trendDown: spendTrend.trendDown ?? m.spendTrendDown,
+        points: scaleSparkForWarehouse(kpiSparklinePointsForRange(range, 'spend', grain), fx.quality),
         metric: 'spend' as const,
       },
       {
         label: 'Доля затрат',
-        value: m.spendShare,
-        trend: m.spendShareTrend,
-        trendDown: m.spendShareTrendDown,
-        points: kpiSparklinePointsForRange(range, 'spendShare', grain),
+        value: formatStatsPct(parseStatsMetricNumber(m.spendShare) * fx.spendShare),
+        trend: spendShareTrend.trend,
+        trendDown: spendShareTrend.trendDown ?? m.spendShareTrendDown,
+        points: scaleSparkForWarehouse(kpiSparklinePointsForRange(range, 'spendShare', grain), fx.quality),
         metric: 'spendShare' as const,
       },
       {
         label: 'ROAS',
-        value: m.roas,
-        trend: m.roasTrend,
-        points: kpiSparklinePointsForRange(range, 'roas', grain),
+        value: formatStatsRoas(parseStatsMetricNumber(m.roas) * fx.roas),
+        trend: roasTrend.trend,
+        trendDown: roasTrend.trendDown,
+        points: scaleSparkForWarehouse(kpiSparklinePointsForRange(range, 'roas', grain), fx.quality),
         metric: 'roas' as const,
       },
       {
         label: 'CTR',
-        value: m.ctr,
-        trend: m.ctrTrend,
-        points: kpiSparklinePointsForRange(range, 'ctr', grain),
+        value: formatStatsPct(parseStatsMetricNumber(m.ctr) * fx.ctr),
+        trend: ctrTrend.trend,
+        trendDown: ctrTrend.trendDown,
+        points: scaleSparkForWarehouse(kpiSparklinePointsForRange(range, 'ctr', grain), fx.quality),
         metric: 'ctr' as const,
       },
     ];
-  }, [range, grain]);
+  }, [range, grain, fx]);
 
   return (
     <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       {cards.map((card) => (
         <StatsKpiIsland
-          key={`${range}-${grain}-${card.label}`}
+          key={`${range}-${grain}-${warehouseScope}-${card.label}`}
           card={card}
           range={range}
           grain={grain}
@@ -5032,6 +5182,19 @@ function StatsKpiIslands() {
 
 export type StatsSectionId = 'overview' | 'acquisition' | 'return' | 'value';
 
+type StatsOverviewTabId = 'summary' | 'campaigns';
+
+const STATS_OVERVIEW_TABS: { id: StatsOverviewTabId; label: string }[] = [
+  { id: 'summary', label: 'Сводка' },
+  { id: 'campaigns', label: 'По кампаниям' },
+];
+
+const STATS_WAREHOUSE_SCOPE_TABS: { id: StatsWarehouseScopeId; label: string }[] = [
+  { id: 'all', label: 'Все склады' },
+  { id: 'mine', label: 'Мои' },
+  { id: 'wb', label: 'WB' },
+];
+
 const STATS_SECTION_TITLES: Record<StatsSectionId, string> = {
   overview: 'Статистика',
   acquisition: 'Привлечение',
@@ -5039,18 +5202,552 @@ const STATS_SECTION_TITLES: Record<StatsSectionId, string> = {
   value: 'Ценность',
 };
 
+type CampaignStatsStatus = 'active' | 'paused' | 'finished';
+
+type CampaignStatsRow = {
+  id: number;
+  name: string;
+  type: string;
+  status: CampaignStatsStatus;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  cr: number;
+  addToCart: number;
+  orderedItems: number;
+  spend: number;
+  spendShare: number;
+  cancellations: number;
+};
+
+const CAMPAIGN_STATS_STATUS_META: Record<
+  CampaignStatsStatus,
+  { label: string; className: string }
+> = {
+  active: { label: 'Активна', className: 'bg-emerald-50 text-emerald-700' },
+  paused: { label: 'На паузе', className: 'bg-amber-50 text-amber-700' },
+  finished: { label: 'Завершена', className: 'bg-gray-100 text-gray-600' },
+};
+
+const CAMPAIGN_STATS_MOCK: CampaignStatsRow[] = [
+  {
+    id: 37121644,
+    name: 'Кампания АБ-теста 484516 портала от 2026-06-03',
+    type: 'Единая ставка',
+    status: 'active',
+    impressions: 18420,
+    clicks: 612,
+    ctr: 3.32,
+    cpc: 18.4,
+    cr: 4.1,
+    addToCart: 96,
+    orderedItems: 38,
+    spend: 11260.8,
+    spendShare: 14.2,
+    cancellations: 3,
+  },
+  {
+    id: 37120891,
+    name: 'Крем SPF 50 — поиск и рекомендации',
+    type: 'Ручная ставка',
+    status: 'active',
+    impressions: 42680,
+    clicks: 1540,
+    ctr: 3.61,
+    cpc: 22.1,
+    cr: 5.2,
+    addToCart: 248,
+    orderedItems: 112,
+    spend: 34034,
+    spendShare: 28.6,
+    cancellations: 9,
+  },
+  {
+    id: 37119402,
+    name: 'Шампунь без сульфатов · каталог',
+    type: 'Единая ставка',
+    status: 'paused',
+    impressions: 9800,
+    clicks: 210,
+    ctr: 2.14,
+    cpc: 15.6,
+    cr: 2.8,
+    addToCart: 41,
+    orderedItems: 12,
+    spend: 3276,
+    spendShare: 4.1,
+    cancellations: 2,
+  },
+  {
+    id: 37118055,
+    name: 'Набор для ухода за лицом 3 в 1',
+    type: 'Ручная ставка',
+    status: 'active',
+    impressions: 27340,
+    clicks: 890,
+    ctr: 3.25,
+    cpc: 19.8,
+    cr: 4.6,
+    addToCart: 156,
+    orderedItems: 64,
+    spend: 17622,
+    spendShare: 16.8,
+    cancellations: 5,
+  },
+  {
+    id: 37116512,
+    name: 'Маска ночная увлажняющая · ретаргет',
+    type: 'Единая ставка',
+    status: 'active',
+    impressions: 15220,
+    clicks: 480,
+    ctr: 3.15,
+    cpc: 17.2,
+    cr: 3.9,
+    addToCart: 72,
+    orderedItems: 28,
+    spend: 8256,
+    spendShare: 8.4,
+    cancellations: 1,
+  },
+  {
+    id: 37115108,
+    name: 'Сыворотка с витамином C — топ поиск',
+    type: 'Ручная ставка',
+    status: 'finished',
+    impressions: 51020,
+    clicks: 2010,
+    ctr: 3.94,
+    cpc: 24.5,
+    cr: 6.1,
+    addToCart: 310,
+    orderedItems: 148,
+    spend: 49245,
+    spendShare: 12.3,
+    cancellations: 14,
+  },
+  {
+    id: 37114077,
+    name: 'Бальзам для губ SPF · рекомендации',
+    type: 'Единая ставка',
+    status: 'active',
+    impressions: 8640,
+    clicks: 198,
+    ctr: 2.29,
+    cpc: 12.8,
+    cr: 2.1,
+    addToCart: 28,
+    orderedItems: 8,
+    spend: 2534.4,
+    spendShare: 2.7,
+    cancellations: 0,
+  },
+  {
+    id: 37112840,
+    name: 'Гель для умывания 200 мл',
+    type: 'Ручная ставка',
+    status: 'paused',
+    impressions: 12100,
+    clicks: 305,
+    ctr: 2.52,
+    cpc: 14.9,
+    cr: 3.0,
+    addToCart: 54,
+    orderedItems: 18,
+    spend: 4544.5,
+    spendShare: 3.9,
+    cancellations: 2,
+  },
+  {
+    id: 37111209,
+    name: 'Тоник с кислотами · автостратегия',
+    type: 'Единая ставка',
+    status: 'active',
+    impressions: 19880,
+    clicks: 720,
+    ctr: 3.62,
+    cpc: 20.3,
+    cr: 4.8,
+    addToCart: 134,
+    orderedItems: 55,
+    spend: 14616,
+    spendShare: 6.5,
+    cancellations: 4,
+  },
+  {
+    id: 37109961,
+    name: 'Патчи под глаза гидрогелевые',
+    type: 'Ручная ставка',
+    status: 'active',
+    impressions: 33450,
+    clicks: 1180,
+    ctr: 3.53,
+    cpc: 16.7,
+    cr: 5.0,
+    addToCart: 210,
+    orderedItems: 92,
+    spend: 19706,
+    spendShare: 2.5,
+    cancellations: 7,
+  },
+];
+
+function fmtRubExact(value: number) {
+  return `${new Intl.NumberFormat('ru-RU', {
+    minimumFractionDigits: value % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value)} ₽`;
+}
+
+function CampaignStatsSortHint() {
+  return <ArrowUp className="h-3 w-3 shrink-0 text-gray-400" />;
+}
+
+function CampaignStatsHelpHint({ text }: { text: string }) {
+  return (
+    <span title={text} className="inline-flex text-gray-400" aria-label={text}>
+      <HelpCircle className="h-3.5 w-3.5" />
+    </span>
+  );
+}
+
+const CAMPAIGN_STATS_TYPE_OPTIONS = [
+  { id: 'all', label: 'Все' },
+  { id: 'Единая ставка', label: 'Единая ставка' },
+  { id: 'Ручная ставка', label: 'Ручная ставка' },
+] as const;
+
+const CAMPAIGN_STATS_STATUS_OPTIONS = [
+  { id: 'all-except-archived', label: 'Все, кроме архивных' },
+  { id: 'all', label: 'Все' },
+  { id: 'active', label: 'Активные' },
+  { id: 'paused', label: 'На паузе' },
+  { id: 'finished', label: 'Завершённые' },
+] as const;
+
+type CampaignStatsTypeFilter = (typeof CAMPAIGN_STATS_TYPE_OPTIONS)[number]['id'];
+type CampaignStatsStatusFilter = (typeof CAMPAIGN_STATS_STATUS_OPTIONS)[number]['id'];
+
+function CampaignStatsToolbarSelect<T extends string>({
+  value,
+  options,
+  onChange,
+  ariaLabel,
+}: {
+  value: T;
+  options: readonly { id: T; label: string }[];
+  onChange: (id: T) => void;
+  ariaLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.id === value) ?? options[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (event: MouseEvent) => {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+
+  return (
+    <div ref={rootRef} className="relative inline-flex shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={ariaLabel}
+        className="inline-flex h-11 items-center gap-2 rounded-[10px] border border-[#e3e4ea] bg-white px-4 text-sm leading-5 text-gray-900 transition-colors hover:bg-gray-50"
+      >
+        <span className="whitespace-nowrap">{selected.label}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+
+      {open && (
+        <ul
+          role="listbox"
+          aria-label={ariaLabel}
+          className="absolute left-0 top-full z-[60] mt-1.5 min-w-full overflow-hidden rounded-[10px] border border-[#e3e4ea] bg-white py-1 shadow-lg"
+        >
+          {options.map((option) => {
+            const active = option.id === value;
+            return (
+              <li key={option.id} role="none">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  onClick={() => {
+                    onChange(option.id);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 whitespace-nowrap px-3 py-2 text-left text-sm transition-colors ${
+                    active
+                      ? 'bg-gray-50 font-medium text-gray-950'
+                      : 'text-gray-700 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="flex-1">{option.label}</span>
+                  {active && <Check className="h-4 w-4 text-gray-800" aria-hidden />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function StatsCampaignsTable() {
+  const idColWidth = 120;
+  const nameColWidth = 300;
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<CampaignStatsTypeFilter>('all');
+  const [statusFilter, setStatusFilter] =
+    useState<CampaignStatsStatusFilter>('all-except-archived');
+  const warehouseScope = useStatsWarehouseScope();
+  const fx = WAREHOUSE_SCOPE_FX[warehouseScope];
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return CAMPAIGN_STATS_MOCK.filter((row) => {
+      if (typeFilter !== 'all' && row.type !== typeFilter) return false;
+      if (statusFilter === 'all-except-archived') {
+        // В моке нет архивных — показываем все статусы
+      } else if (statusFilter !== 'all' && row.status !== statusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return String(row.id).includes(q) || row.name.toLowerCase().includes(q);
+    }).map((row) => ({
+      ...row,
+      impressions: Math.round(row.impressions * (fx.quality === -1 ? 1.15 : fx.quality === 1 ? 0.95 : 1)),
+      clicks: Math.max(1, Math.round(row.clicks * fx.ctr)),
+      ctr: Math.round(row.ctr * fx.ctr * 100) / 100,
+      cpc: Math.round(row.cpc * (fx.spend / Math.max(fx.ctr, 0.01)) * 10) / 10,
+      cr: Math.round(row.cr * fx.roas * 100) / 100,
+      addToCart: Math.max(0, Math.round(row.addToCart * fx.orders)),
+      orderedItems: Math.max(0, Math.round(row.orderedItems * fx.orders)),
+      spend: Math.round(row.spend * fx.spend * 10) / 10,
+      spendShare: Math.round(row.spendShare * fx.spendShare * 10) / 10,
+      cancellations: Math.max(
+        0,
+        Math.round(row.cancellations * (fx.quality === -1 ? 2.2 : fx.quality === 1 ? 0.45 : 1)),
+      ),
+    }));
+  }, [searchQuery, typeFilter, statusFilter, fx]);
+
+  return (
+    <section className="rounded-2xl bg-white">
+      <div className="border-b border-gray-100 px-5 py-4">
+        <h2 className="text-xl font-bold text-gray-900">Статистика по кампаниям</h2>
+
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <div className="relative w-full min-w-[240px] max-w-[420px] flex-1 sm:w-[360px] sm:flex-none">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по ID кампании или названию"
+              aria-label="Поиск по ID кампании или названию"
+              className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white py-2.5 pl-4 pr-11 text-sm leading-5 text-gray-900 placeholder:text-[#767386] outline-none focus:border-[#9a41fe] focus:ring-1 focus:ring-[#9a41fe]"
+            />
+            <Search
+              className="pointer-events-none absolute right-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386]"
+              aria-hidden
+            />
+          </div>
+
+          <CampaignStatsToolbarSelect
+            value={typeFilter}
+            options={CAMPAIGN_STATS_TYPE_OPTIONS}
+            onChange={setTypeFilter}
+            ariaLabel="Тип кампании"
+          />
+          <CampaignStatsToolbarSelect
+            value={statusFilter}
+            options={CAMPAIGN_STATS_STATUS_OPTIONS}
+            onChange={setStatusFilter}
+            ariaLabel="Статус кампании"
+          />
+
+          <button
+            type="button"
+            className="ml-auto inline-flex h-11 shrink-0 items-center gap-2 rounded-[10px] border border-[#e3e4ea] bg-white px-4 text-sm leading-5 text-gray-900 transition-colors hover:bg-gray-50"
+          >
+            <Download className="h-5 w-5 text-[#767386]" aria-hidden />
+            Расширенная статистика
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-max min-w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-left text-[13px] font-semibold text-gray-900">
+              <th
+                className="sticky left-0 z-20 bg-white px-4 py-3"
+                style={{ width: idColWidth, minWidth: idColWidth }}
+              >
+                ID кампании
+              </th>
+              <th
+                className="sticky z-20 border-r border-gray-200 bg-white px-4 py-3 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]"
+                style={{ left: idColWidth, width: nameColWidth, minWidth: nameColWidth }}
+              >
+                Кампания, Тип
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">Статус</th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  Показы
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  Клики
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  CTR %
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  CPC
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  CR (%)
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  Все добавления в корзину
+                  <CampaignStatsHelpHint text="Сумма добавлений товара в корзину по кампании за период" />
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  Все заказанные товары, шт
+                  <CampaignStatsHelpHint text="Количество заказанных единиц товара по кампании" />
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  Затраты
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  Доля затрат (%)
+                  <CampaignStatsHelpHint text="Доля расходов кампании в общих затратах за период" />
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+              <th className="whitespace-nowrap px-4 py-3">
+                <span className="inline-flex items-center gap-1">
+                  Отмены, шт
+                  <CampaignStatsHelpHint text="Количество отменённых заказов, связанных с кампанией" />
+                  <CampaignStatsSortHint />
+                </span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredRows.map((row) => {
+              const status = CAMPAIGN_STATS_STATUS_META[row.status];
+              return (
+                <tr key={row.id} className="border-b border-gray-100 text-gray-800 last:border-b-0">
+                  <td
+                    className="sticky left-0 z-10 bg-white px-4 py-3 tabular-nums text-gray-700"
+                    style={{ width: idColWidth, minWidth: idColWidth }}
+                  >
+                    {row.id}
+                  </td>
+                  <td
+                    className="sticky z-10 border-r border-gray-200 bg-white px-4 py-3 shadow-[4px_0_8px_-4px_rgba(0,0,0,0.08)]"
+                    style={{ left: idColWidth, width: nameColWidth, minWidth: nameColWidth }}
+                  >
+                    <div className="min-w-0">
+                      <a
+                        href="/product-promotion-concept"
+                        className="line-clamp-2 font-medium text-[#2563EB] hover:underline"
+                      >
+                        {row.name}
+                      </a>
+                      <div className="mt-0.5 text-xs text-gray-500">{row.type}</div>
+                    </div>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold leading-none ${status.className}`}
+                    >
+                      {status.label}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{fmt(row.impressions)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{fmt(row.clicks)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                    {row.ctr.toFixed(2).replace('.', ',')}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{fmtRubExact(row.cpc)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                    {row.cr.toFixed(1).replace('.', ',')}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{fmt(row.addToCart)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{fmt(row.orderedItems)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{fmtRubExact(row.spend)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">
+                    {row.spendShare.toFixed(1).replace('.', ',')}
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 tabular-nums">{fmt(row.cancellations)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 /** Компактный экран «Статистика» (/stats и разделы). */
 export function StatsDashboardPage({
   section = 'overview',
 }: {
   section?: StatsSectionId;
 } = {}) {
-  const [range, setRange] = useState<StatsRangeId>('month');
-  const [grain, setGrain] = useState<StatsGrainId>(() => defaultGrainForRange('month'));
+  const [range, setRange] = useState<StatsRangeId>('week');
+  const [grain, setGrain] = useState<StatsGrainId>('day');
+  const [overviewTab, setOverviewTab] = useState<StatsOverviewTabId>('summary');
+  const [warehouseScope, setWarehouseScope] = useState<StatsWarehouseScopeId>('all');
 
   const handleRangeChange = (next: StatsRangeId) => {
     setRange(next);
-    setGrain(defaultGrainForRange(next));
+  };
+
+  const handleGrainChange = (next: StatsGrainId) => {
+    setGrain(next);
   };
 
   useEffect(() => {
@@ -5064,52 +5761,75 @@ export function StatsDashboardPage({
   }, [section]);
 
   const pageTitle = STATS_SECTION_TITLES[section];
+  const showOverviewTabs = section === 'overview';
 
   return (
     <StatsRangeContext.Provider value={range}>
       <StatsGrainContext.Provider value={grain}>
+        <StatsWarehouseScopeContext.Provider value={warehouseScope}>
         <main className="mx-auto w-full max-w-[1600px] px-6 py-6">
           <div className="flex flex-col gap-4">
-            <section className="rounded-2xl bg-white px-5 py-4">
+            <section className="sticky top-14 z-40 rounded-2xl bg-white px-5 py-4 shadow-sm ring-1 ring-black/[0.03]">
               <h1 className="text-2xl font-bold leading-none text-gray-900">{pageTitle}</h1>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
-                <StatsDateRangeBar value={range} onChange={handleRangeChange} compact />
-                {(section === 'overview' || section === 'return') && (
-                  <StatsGrainSelect value={grain} onChange={setGrain} />
+                {showOverviewTabs && (
+                  <div className="flex rounded-lg bg-gray-100 p-0.5 text-sm font-medium">
+                    {STATS_OVERVIEW_TABS.map((tab) => {
+                      const active = overviewTab === tab.id;
+                      return (
+                        <button
+                          key={tab.id}
+                          type="button"
+                          onClick={() => setOverviewTab(tab.id)}
+                          className={`rounded-md px-3 py-1.5 transition-colors ${
+                            active
+                              ? 'bg-white text-gray-950 shadow-sm'
+                              : 'text-gray-500 hover:text-gray-800'
+                          }`}
+                        >
+                          {tab.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
+                <StatsDateRangeBar value={range} onChange={handleRangeChange} compact />
+                {(section === 'overview' || section === 'return') &&
+                  !(showOverviewTabs && overviewTab === 'campaigns') && (
+                    <StatsGrainSelect value={grain} onChange={handleGrainChange} />
+                  )}
+                <div className="ml-auto flex rounded-lg bg-gray-100 p-0.5 text-sm font-medium">
+                  {STATS_WAREHOUSE_SCOPE_TABS.map((tab) => {
+                    const active = warehouseScope === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        onClick={() => setWarehouseScope(tab.id)}
+                        className={`rounded-md px-3 py-1.5 transition-colors ${
+                          active
+                            ? 'bg-white text-gray-950 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-800'
+                        }`}
+                      >
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </section>
 
-            {section === 'overview' && (
+            {section === 'overview' && overviewTab === 'summary' && (
               <>
                 <StatsKpiIslands />
 
                 <OrganicReturnDynamicsBlockV2 showVariantLabel={false} />
-
-                <section className="scroll-mt-6 space-y-3">
-                  <h2 className="text-xl font-bold text-gray-900">Привлечение</h2>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl bg-white p-4">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-medium text-gray-800">Новые покупатели</h3>
-                        <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#9A41FE]">
-                          Скоро появится
-                        </span>
-                      </div>
-                    </div>
-                    <div className="rounded-2xl bg-white p-4">
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-sm font-medium text-gray-800">Стоимость привлечения</h3>
-                        <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#9A41FE]">
-                          Скоро появится
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </section>
               </>
             )}
+
+            {section === 'overview' && overviewTab === 'campaigns' && <StatsCampaignsTable />}
 
             {section === 'acquisition' && (
               <section className="rounded-2xl bg-white p-5">
@@ -5138,6 +5858,7 @@ export function StatsDashboardPage({
             )}
           </div>
         </main>
+        </StatsWarehouseScopeContext.Provider>
       </StatsGrainContext.Provider>
     </StatsRangeContext.Provider>
   );
@@ -5146,7 +5867,7 @@ export function StatsDashboardPage({
 /** Полный экран «Аудитория» (/audience-metrics). */
 const AudienceMetricsPage: React.FC = () => {
   const [tab, setTab] = useState<TabId>('repeat');
-  const [range, setRange] = useState<StatsRangeId>('month');
+  const [range, setRange] = useState<StatsRangeId>('week');
 
   useEffect(() => {
     if (window.location.hash !== '#organic-return') return;
