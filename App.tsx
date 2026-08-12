@@ -195,11 +195,6 @@ const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
   return (
     <div className="fixed inset-0 bg-[#F6F6F9] flex items-center justify-center z-[200]">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
-        <div className="flex items-center gap-2 justify-center mb-8">
-          <span className="text-3xl font-bold text-gray-400">WB</span>
-          <span className="text-2xl text-gray-300">|</span>
-          <span className="text-xl font-medium text-gray-800">Продвижение</span>
-        </div>
         <h1 className="text-xl font-bold text-center mb-6">Вход в систему</h1>
         <div className="flex items-center justify-center mb-4 gap-2 bg-gray-50 rounded-xl p-1">
           <button
