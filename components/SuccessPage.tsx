@@ -17,6 +17,11 @@ import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
 import { ConceptPromotionInsightStrip } from './ConceptPromotionInsightStrip';
+import {
+  NotPromotedBonusCampaignBanner,
+  NotPromotedBonusCampaignModal,
+  CampaignsListBonusBanner,
+} from './NotPromotedBonusCampaignOffer';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
@@ -40,7 +45,6 @@ import {
     ClipboardCheck,
     Clock,
     Settings,
-    Package,
     Gift,
     RefreshCw,
     MoreVertical,
@@ -49,6 +53,7 @@ import {
     Check,
     Sparkles,
     Wallet,
+    TrendingUp,
 } from './Icons';
 import { CampaignRecord } from '../types';
 import {
@@ -955,19 +960,51 @@ const PRODUCTS_MIDDLE_COLUMN_IDS = [
 type ProductsPickTab =
   | 'all_products'
   | 'not_promoted'
+  | 'not_promoted_v2'
+  | 'not_promoted_v3'
+  | 'not_promoted_v4'
   | 'promoted'
   | 'growth'
   | 'high_conversion'
   | 'ab'
   | 'promo';
 
+function isNotPromotedProductsPickTab(tab: ProductsPickTab): boolean {
+  return (
+    tab === 'not_promoted' ||
+    tab === 'not_promoted_v2' ||
+    tab === 'not_promoted_v3' ||
+    tab === 'not_promoted_v4'
+  );
+}
+
+function bonusOfferProductCountForTab(tab: ProductsPickTab): number {
+  if (tab === 'not_promoted') return 4;
+  if (tab === 'not_promoted_v2' || tab === 'not_promoted_v3' || tab === 'not_promoted_v4') {
+    return 3;
+  }
+  if (tab === 'promoted') return 3;
+  return 0;
+}
+
 /** Вкладки товаров на концепте товарного продвижения. */
 const CONCEPT_PRODUCTS_PICK_TABS: {
-  id: Extract<ProductsPickTab, 'all_products' | 'promoted' | 'not_promoted'>;
+  id: Extract<
+    ProductsPickTab,
+    | 'all_products'
+    | 'promoted'
+    | 'not_promoted'
+    | 'not_promoted_v2'
+    | 'not_promoted_v3'
+    | 'not_promoted_v4'
+  >;
   label: string;
 }[] = [
-  { id: 'promoted', label: 'Продвигаются' },
+  { id: 'promoted', label: 'Товары' },
   { id: 'not_promoted', label: 'Без продвижения' },
+  { id: 'not_promoted_v2', label: 'V2' },
+  { id: 'not_promoted_v3', label: 'V3' },
+  { id: 'not_promoted_v4', label: 'V4' },
   { id: 'all_products', label: 'Мультикарточки' },
 ];
 
@@ -984,32 +1021,24 @@ type ProductsSecondaryPickTab = 'all' | 'high_conversion' | 'ab';
 
 const PRODUCTS_PICK_SECONDARY_TABS: { id: ProductsSecondaryPickTab; label: string }[] = [
   { id: 'all', label: 'Все' },
-  { id: 'high_conversion', label: 'Высокая конверсия' },
-  { id: 'ab', label: 'А/Б тест' },
+  { id: 'high_conversion', label: 'Перспективные' },
+  { id: 'ab', label: 'Новые' },
 ];
 
 const PRODUCTS_PICK_SECONDARY_TAB_VISUAL: Record<
   ProductsSecondaryPickTab,
   {
-    Icon: React.FC<{ className?: string }>;
-    iconWrapIdle: string;
-    iconWrapActive: string;
+    Icon: React.FC<{ className?: string }> | null;
   }
 > = {
   all: {
-    Icon: Package,
-    iconWrapIdle: 'bg-gray-200 text-gray-700',
-    iconWrapActive: 'bg-gray-800 text-white',
+    Icon: null,
   },
   high_conversion: {
-    Icon: ThumbsUp,
-    iconWrapIdle: 'bg-violet-200 text-violet-700',
-    iconWrapActive: 'bg-violet-600 text-white',
+    Icon: TrendingUp,
   },
   ab: {
     Icon: Sparkles,
-    iconWrapIdle: 'bg-sky-200 text-sky-700',
-    iconWrapActive: 'bg-sky-600 text-white',
   },
 };
 
@@ -1175,6 +1204,23 @@ function listCampaignBidModeSubtitle(typeDetails?: string): string | null {
   if (/един/i.test(details)) return 'Единая ставка';
   if (/ручн/i.test(details)) return 'Ручная ставка';
   return null;
+}
+
+function ProductCampaignTypeCell({ type }: { type: string }) {
+  return (
+    <>
+      <div className="font-semibold text-gray-900">{type}</div>
+      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+        <span className="rounded bg-gray-100 p-1">
+          {type === 'CPC' ? (
+            <Search className="h-4 w-4 text-gray-400" />
+          ) : (
+            <ThumbsUp className="h-4 w-4 text-gray-400" />
+          )}
+        </span>
+      </div>
+    </>
+  );
 }
 
 function defaultProductCampaignBid(camp: ProductCampaign): number {
@@ -1924,7 +1970,12 @@ function productMatchesProductsPickTab(
     }
     return true;
   }
-  if (tab === 'not_promoted') {
+  if (
+    tab === 'not_promoted' ||
+    tab === 'not_promoted_v2' ||
+    tab === 'not_promoted_v3' ||
+    tab === 'not_promoted_v4'
+  ) {
     if (segmentation === 'concept') {
       return product.campaigns.length === 0;
     }
@@ -2647,6 +2698,10 @@ const CONCEPT_NOT_PROMOTED_STAT_TD_CLASS =
 const CONCEPT_NOT_PROMOTED_TAGS_TH_CLASS =
   'px-2 py-2.5 text-left text-[11px] font-normal leading-tight text-[#767386] w-[1%]';
 const CONCEPT_NOT_PROMOTED_TAGS_TD_CLASS = 'px-2 py-2.5 align-middle w-[1%] max-w-[7.5rem]';
+const CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TH_CLASS =
+  'px-2 py-2.5 text-left align-top text-[11px] font-normal leading-tight text-[#767386]';
+const CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS =
+  'px-2 py-2.5 align-middle';
 const CONCEPT_NOT_PROMOTED_STOCK_TH_CLASS =
   'px-1.5 py-2.5 text-center text-[11px] font-normal leading-tight text-[#767386] whitespace-nowrap';
 const CONCEPT_NOT_PROMOTED_STOCK_TD_CLASS =
@@ -2751,18 +2806,22 @@ const CONCEPT_NOT_PROMOTED_PRODUCT_COL_CLASS =
   'w-[500px] min-w-[500px] max-w-[500px]';
 const CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX = 48;
 const CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX = 120;
+const CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_COL_WIDTH_PX = 168;
 const CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX = 184;
 const CONCEPT_NOT_PROMOTED_REC_BID_CPM_SEARCH_COL_WIDTH_PX = 184;
 const CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX = 168;
 const CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX = 108;
 const CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX = 88;
 
-function conceptNotPromotedTableMinWidthPx(showTagsColumn: boolean): number {
+function conceptNotPromotedTableMinWidthPx(
+  showTagsColumn: boolean,
+  showBonusCampaignColumn = false,
+): number {
   let total =
     CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX + CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX;
   if (showTagsColumn) total += CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX;
+  if (showBonusCampaignColumn) total += CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_COL_WIDTH_PX;
   total +=
-    CONCEPT_NOT_PROMOTED_REC_BID_CPM_SEARCH_COL_WIDTH_PX +
     CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX +
     CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX;
   total +=
@@ -3071,9 +3130,12 @@ function productsPinnedCellProps(
     showPinnedEdgeShadow && lastVisibleProductsPinnedColumnId(visibility) === columnId
       ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS
       : '';
+  const isPinned = visibility[columnId] !== false;
   return {
-    className: [`sticky`, z, widthClass, bg, edgeShadow, extraClass].filter(Boolean).join(' '),
-    style: { left: productsPinnedLeftPx(columnId, visibility, compactProductColumn) },
+    className: [isPinned ? 'sticky' : '', isPinned ? z : '', widthClass, isPinned ? bg : '', edgeShadow, extraClass]
+      .filter(Boolean)
+      .join(' '),
+    style: isPinned ? { left: productsPinnedLeftPx(columnId, visibility, compactProductColumn) } : {},
   };
 }
 
@@ -3081,10 +3143,10 @@ const PRODUCTS_PINNED_TH_CLASS = 'px-4 py-4 text-left font-normal align-middle';
 const PRODUCTS_PINNED_TH_PRODUCT_CLASS = 'pl-[5px] pr-5 py-4 text-left font-normal align-middle';
 
 /** Колонка чекбокса: выравнивание к правому краю ячейки (ближе к колонке «Товар»). */
-const PRODUCTS_SELECT_TH_CLASS = 'flex items-center justify-end pl-2 pr-3 py-4';
-const PRODUCTS_SELECT_TD_CLASS = 'flex items-center justify-end pl-2 pr-3 py-4 align-middle';
-const PRODUCTS_SELECT_TH_CLASS_COMPACT = 'flex items-center justify-end pl-1 pr-4 py-2.5';
-const PRODUCTS_SELECT_TD_CLASS_COMPACT = 'align-middle pl-1 pr-4 py-2.5';
+const PRODUCTS_SELECT_TH_CLASS = 'pl-2 pr-3 py-4 text-right';
+const PRODUCTS_SELECT_TD_CLASS = 'pl-2 pr-3 py-4 align-middle text-right';
+const PRODUCTS_SELECT_TH_CLASS_COMPACT = 'pl-1 pr-4 py-2.5 text-right';
+const PRODUCTS_SELECT_TD_CLASS_COMPACT = 'align-middle pl-1 pr-4 py-2.5 text-right';
 
 /** Мультикарточки: чекбокс ближе к колонке «Товар». */
 const CONCEPT_MULTICARD_SELECT_TH_CLASS = 'flex items-center justify-end pl-1 pr-2.5 py-4';
@@ -4258,6 +4320,53 @@ function ConceptAllTabMulticardRailCell({
   );
 }
 
+const BONUS_GIFT_THUMB_TOOLTIP =
+  'На этот товар есть 5000 бонусов на запуск продвижения';
+
+function BonusGiftThumbBadge() {
+  const badgeRef = useRef<HTMLSpanElement>(null);
+  const [hovered, setHovered] = useState(false);
+  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
+
+  const syncAnchorRect = useCallback(() => {
+    const el = badgeRef.current;
+    if (!el) return;
+    setAnchorRect(el.getBoundingClientRect());
+  }, []);
+
+  return (
+    <>
+      <span
+        ref={badgeRef}
+        className="absolute -right-0.5 -top-0.5 z-[2] flex h-4 w-4 cursor-help items-center justify-center rounded-[4px] bg-[#9A41FE] text-white ring-[1.5px] ring-white"
+        aria-label={BONUS_GIFT_THUMB_TOOLTIP}
+        onMouseEnter={() => {
+          syncAnchorRect();
+          setHovered(true);
+        }}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <Gift className="h-2.5 w-2.5" />
+      </span>
+      {hovered && anchorRect && typeof document !== 'undefined'
+        ? ReactDOM.createPortal(
+            <div
+              role="tooltip"
+              className="fixed z-[220] w-[min(240px,calc(100vw-24px))] rounded-lg bg-gray-900 px-3 py-2 text-left text-xs leading-snug text-white shadow-lg"
+              style={{
+                top: anchorRect.bottom + 6,
+                left: Math.min(anchorRect.left, window.innerWidth - 256),
+              }}
+            >
+              {BONUS_GIFT_THUMB_TOOLTIP}
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 function ProductCollapsedRowCell({
   product,
   expanded,
@@ -4266,6 +4375,10 @@ function ProductCollapsedRowCell({
   reserveExpandGutter = false,
   showPromoteUnderPhoto = false,
   onPromote,
+  showBonusOffer = false,
+  onBonusOffer,
+  showBonusButton = false,
+  promoteButtonLabel = 'Продвигать',
   onProductTitleClick,
   allTabListRowIndex,
   multicardGroupMemberNested = false,
@@ -4279,6 +4392,10 @@ function ProductCollapsedRowCell({
   reserveExpandGutter?: boolean;
   showPromoteUnderPhoto?: boolean;
   onPromote?: (product: ProductRow) => void;
+  showBonusOffer?: boolean;
+  onBonusOffer?: (product: ProductRow) => void;
+  showBonusButton?: boolean;
+  promoteButtonLabel?: string;
   /** Переход на внутреннюю страницу (CPC-кампания товара). */
   onProductTitleClick?: () => void;
   allTabListRowIndex?: number;
@@ -4338,6 +4455,18 @@ function ProductCollapsedRowCell({
     ? CONCEPT_MULTICARD_GROUP_MEMBER_CONTENT_INDENT_CLASS
     : '';
 
+  const productThumb = (
+    <div className="relative shrink-0">
+      <ProductTableThumb
+        productId={product.id}
+        src={product.image}
+        category={product.category}
+        allTabListRowIndex={allTabListRowIndex}
+      />
+      {showBonusOffer ? <BonusGiftThumbBadge /> : null}
+    </div>
+  );
+
   const rowMain = (
     <div
       className={`flex min-w-0 flex-1 items-center gap-2.5 ${nestedIndentClass}`}
@@ -4358,33 +4487,46 @@ function ProductCollapsedRowCell({
         <span className={expandGutterClass} aria-hidden />
       ) : null}
       {showPromoteUnderPhoto ? (
-        <div className="relative flex min-w-0 flex-1 items-center gap-3 pr-28">
-          <ProductTableThumb
-            productId={product.id}
-            src={product.image}
-            category={product.category}
-            allTabListRowIndex={allTabListRowIndex}
-          />
+        <div
+          className={`relative flex min-w-0 flex-1 items-center gap-3 ${
+            showBonusButton
+              ? 'pr-[13.5rem]'
+              : promoteButtonLabel !== 'Продвигать'
+                ? 'pr-44'
+                : 'pr-28'
+          }`}
+        >
+          {productThumb}
           {productMeta}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onPromote?.(product);
-            }}
-            className={`absolute right-0 top-1/2 z-[1] -translate-y-1/2 hidden group-hover/product-row:inline-flex ${promoteBtnClass}`}
-          >
-            Продвигать
-          </button>
+          <div className="absolute right-0 top-1/2 z-[1] hidden -translate-y-1/2 items-center gap-1.5 group-hover/product-row:flex">
+            {showBonusButton ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onBonusOffer?.(product);
+                }}
+                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#F3E8FF] px-3 text-sm font-medium text-[#9A41FE] hover:bg-[#E9D5FF]"
+              >
+                <Gift className="h-3.5 w-3.5" aria-hidden />
+                5 000 B
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPromote?.(product);
+              }}
+              className={promoteBtnClass}
+            >
+              {promoteButtonLabel}
+            </button>
+          </div>
         </div>
       ) : (
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <ProductTableThumb
-            productId={product.id}
-            src={product.image}
-            category={product.category}
-            allTabListRowIndex={allTabListRowIndex}
-          />
+          {productThumb}
           {productMeta}
         </div>
       )}
@@ -7851,6 +7993,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [hasProductsScrollShadow, setHasProductsScrollShadow] = useState(false);
 
   const [isProductsPromoModalOpen, setIsProductsPromoModalOpen] = useState(false);
+  const [dismissedNotPromotedBonusBannerIds, setDismissedNotPromotedBonusBannerIds] = useState<
+    Set<string>
+  >(() => new Set());
+  const [notPromotedBonusModalProducts, setNotPromotedBonusModalProducts] = useState<
+    ProductRow[] | null
+  >(null);
+  const [dismissedCampaignsBonusBanner, setDismissedCampaignsBonusBanner] = useState(false);
 
   const [isProductsColumnSettingsOpen, setIsProductsColumnSettingsOpen] = useState(false);
   const [productsColumnVisibility, setProductsColumnVisibility] = useState<Record<string, boolean>>(
@@ -7873,7 +8022,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     useState<ProductsSecondaryPickTab>('all');
 
   const conceptNotPromotedProductsList =
-    isProductPromotionConceptPage && listTab === 'products' && productsPickTab === 'not_promoted';
+    isProductPromotionConceptPage &&
+    listTab === 'products' &&
+    isNotPromotedProductsPickTab(productsPickTab);
 
   const conceptAllProductsPickTab =
     isProductPromotionConceptPage && listTab === 'products' && productsPickTab === 'all_products';
@@ -7883,7 +8034,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const conceptCompactProductsTable =
     isProductPromotionConceptPage &&
     listTab === 'products' &&
-    productsPickTab === 'not_promoted';
+    isNotPromotedProductsPickTab(productsPickTab);
 
   /** «Продвигаются» + подвкладки «Все» / «Высокая конверсия» / «А/Б» — широкая таблица с шевроном. */
   const conceptPromotedProductsWideTable =
@@ -7951,7 +8102,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           return false;
         }
         if (isConceptNotPromotedRecommendedBidColumnId(columnId)) {
-          return true;
+          return columnId !== PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID;
         }
         if (columnId === PRODUCTS_STOCK_COLUMN_ID) {
           return true;
@@ -7966,13 +8117,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       if (
         columnId === PRODUCTS_STOCK_COLUMN_ID ||
         columnId === PRODUCTS_STAT_SPACER_COLUMN_ID ||
+        columnId === MULTICARD_GLUE_LEADER_COLUMN_ID ||
         isConceptNotPromotedRecommendedBidColumnId(columnId)
       ) {
         return false;
       }
+      if (isProductPromotionConceptPage && columnId === 'bid') {
+        return false;
+      }
       return productsColumnVisibility[columnId] !== false;
     },
-    [productsColumnVisibility, conceptCompactProductsTable, conceptAllProductsTable],
+    [productsColumnVisibility, conceptCompactProductsTable, conceptAllProductsTable, isProductPromotionConceptPage],
   );
 
   const productsPinVisibility = useMemo(() => {
@@ -8005,6 +8160,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         !isProductPromotionConceptPage && productsColumnVisibility.bid !== false,
       campaignType:
         !isProductPromotionConceptPage && productsColumnVisibility.campaignType !== false,
+      budgetRemainder:
+        !isProductPromotionConceptPage && productsColumnVisibility.budgetRemainder !== false,
+      dailyLimit:
+        !isProductPromotionConceptPage && productsColumnVisibility.dailyLimit !== false,
     };
   }, [
     productsColumnVisibility,
@@ -8015,11 +8174,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const conceptNotPromotedShowTagsColumn =
     conceptCompactProductsTable && productsColumnVisibility.tags !== false;
+  const conceptBonusCampaignColumn = conceptNotPromotedProductsList && productsPickTab === 'not_promoted_v3';
 
   const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
     if (!conceptCompactProductsTable) return undefined;
-    return { minWidth: conceptNotPromotedTableMinWidthPx(conceptNotPromotedShowTagsColumn) };
-  }, [conceptCompactProductsTable, conceptNotPromotedShowTagsColumn]);
+    return {
+      minWidth: conceptNotPromotedTableMinWidthPx(
+        conceptNotPromotedShowTagsColumn,
+        conceptBonusCampaignColumn,
+      ),
+    };
+  }, [conceptCompactProductsTable, conceptNotPromotedShowTagsColumn, conceptBonusCampaignColumn]);
 
   const showProductsBidColumn = productsPinVisibility.bid === true;
   const showProductsCampaignTypeColumn = productsPinVisibility.campaignType === true;
@@ -8896,6 +9061,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     listTab,
   ]);
 
+  useEffect(() => {
+    if (productsPickTab !== 'promoted' || listTab !== 'products') return;
+    setExpandedProductIds((prev) => {
+      const firstThreeIds = productsForTable.slice(0, 3).map((p) => p.id);
+      if (firstThreeIds.length === 0) return prev;
+      const next = new Set(prev);
+      let changed = false;
+      for (const id of firstThreeIds) {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [productsPickTab, listTab, productsForTable]);
+
   const conceptMulticardMembershipIndex = useMemo(
     () => buildConceptMulticardMembershipIndex(profileProductTree),
     [profileProductTree],
@@ -9088,6 +9270,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     });
   }, []);
 
+  const bonusOfferProductIds = useMemo(() => {
+    const bonusCount = bonusOfferProductCountForTab(productsPickTab);
+    if (bonusCount <= 0) return new Set<string>();
+    return new Set(sortedProductsForTable.slice(0, bonusCount).map((p) => p.id));
+  }, [productsPickTab, sortedProductsForTable]);
+
+  const selectedProductsAreBonusOnly = useMemo(() => {
+    if (productsPickTab !== 'not_promoted_v4') return false;
+    if (selectedProductIds.length === 0 || bonusOfferProductIds.size === 0) return false;
+    const selected = sortedProductsForTable.filter((p) => selectedProductIds.includes(p.id));
+    return selected.length > 0 && selected.every((p) => bonusOfferProductIds.has(p.id));
+  }, [productsPickTab, selectedProductIds, sortedProductsForTable, bonusOfferProductIds]);
+
   const handlePromoteNotPromotedProduct = useCallback(
     (product: ProductRow) => {
       beginRepeatLaunchFlow(buildPromoteNotPromotedProductPreset(product));
@@ -9096,8 +9291,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   );
 
   const handleBulkCreateCampaignFromProducts = useCallback(() => {
-    const selected = productsForTable.filter((p) => selectedProductIds.includes(p.id));
+    const selected = sortedProductsForTable.filter((p) => selectedProductIds.includes(p.id));
     if (selected.length === 0) return;
+
+    if (selectedProductsAreBonusOnly) {
+      setNotPromotedBonusModalProducts(selected);
+      setSelectedProductIds([]);
+      return;
+    }
+
     const toPromote = conceptCompactProductsTable
         ? selected.filter((p) =>
             productConceptIsNotPromoted(p, productCampaignStatusOverride),
@@ -9122,13 +9324,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     else onNavigateToCreation();
     setSelectedProductIds([]);
   }, [
-    productsForTable,
+    sortedProductsForTable,
     selectedProductIds,
     conceptCompactProductsTable,
     productCampaignStatusOverride,
     beginRepeatLaunchFlow,
     onNavigateToCreationWithProducts,
     onNavigateToCreation,
+    selectedProductsAreBonusOnly,
   ]);
 
   const selectedProductsForBulk = useMemo(
@@ -10424,7 +10627,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             </div>
           )}
           <div
-            className="relative overflow-x-auto"
+            className="relative overflow-x-auto [container-type:inline-size]"
             onScroll={(e) => {
               const target = e.currentTarget;
               setHasCampaignsScrollShadow(target.scrollLeft > 0);
@@ -10447,9 +10650,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           </th>
                           <th className="sticky left-[52px] z-20 p-4 w-10 bg-gray-50"></th>
                           <th
-                            className={`sticky left-[100px] z-20 p-4 text-left min-w-[300px] bg-gray-50 ${
+                            className={`sticky left-[100px] z-20 min-w-[520px] w-[520px] max-w-[520px] overflow-hidden bg-gray-50 p-4 text-left ${
                               isProductPromotionConceptPage ? 'font-normal' : 'font-medium'
-                            }`}
+                            } ${hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''}`}
                           >
                             {isProductPromotionConceptPage ? (
                               <label className="flex min-w-0 items-center gap-2 text-left font-normal text-gray-500">
@@ -10472,11 +10675,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </div>
                             )}
                             </th>
-                          <th
-                            className={`sticky left-[400px] z-20 min-w-[9rem] bg-gray-50 p-4 text-left font-medium ${
-                              hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
-                            }`}
-                          >
+                          <th className="min-w-[9rem] bg-gray-50 p-4 text-left font-medium">
                             <div className="flex items-center gap-1 whitespace-nowrap">
                               Автоматизация <HelpCircle className="w-4 h-4 shrink-0" />
                             </div>
@@ -10492,6 +10691,22 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
+                      {!dismissedCampaignsBonusBanner && profileProductTree[0] ? (
+                        <tr className="hover:bg-transparent">
+                          <td colSpan={32} className="p-0">
+                            <div className="sticky left-0 z-[1] box-border w-[100cqw] max-w-[100cqw] px-4 py-3">
+                              <CampaignsListBonusBanner
+                                image={profileProductTree[0].image}
+                                title={`${profileProductTree[0].articleWb} / ${profileProductTree[0].articleSeller} / ${profileProductTree[0].name}`}
+                                onOpenCampaign={() =>
+                                  setNotPromotedBonusModalProducts([profileProductTree[0]])
+                                }
+                                onDismiss={() => setDismissedCampaignsBonusBanner(true)}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
                       {paginatedCampaigns.map(c => {
                           const isCampaignRowSelected = selectedCampaigns.includes(c.id);
                           const campaignBidModeSubtitle = listCampaignBidModeSubtitle(c.typeDetails);
@@ -10538,7 +10753,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   />
                               </td>
                               <td
-                                className={`sticky left-[100px] z-10 p-4 ${campaignPinnedCellClass}`}
+                                className={`sticky left-[100px] z-10 min-w-[520px] w-[520px] max-w-[520px] overflow-hidden p-4 ${campaignPinnedCellClass} ${
+                                  hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
+                                }`}
                               >
                                   <div className="flex items-center gap-3">
                                       <ProductTableThumb
@@ -10573,9 +10790,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   </div>
                               </td>
                               <td
-                                className={`sticky left-[400px] z-10 p-4 align-middle ${campaignPinnedCellClass} ${
-                                  hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''
-                                }`}
+                                className="p-4 align-middle"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 <CampaignListAutomationCell
@@ -10909,15 +11124,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 {listTab === 'products' && !conceptAllProductsPickTab ? (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-2 bg-white px-4 py-2.5 sm:px-6">
                   <div
-                    className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-2"
+                    className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-2"
                     role="tablist"
                     aria-label="Подборки товаров"
                   >
                     {PRODUCTS_PICK_SECONDARY_TABS.map((tab) => {
                       const count = productsSecondaryPickTabCounts[tab.id];
                       const isSelected = productsSecondaryPickTab === tab.id;
-                      const visual = PRODUCTS_PICK_SECONDARY_TAB_VISUAL[tab.id];
-                      const TabIcon = visual.Icon;
+                      const TabIcon = PRODUCTS_PICK_SECONDARY_TAB_VISUAL[tab.id].Icon;
                       return (
                         <button
                           key={tab.id}
@@ -10926,30 +11140,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           aria-selected={isSelected}
                           aria-label={`${tab.label}, ${count} товаров`}
                           onClick={() => setProductsSecondaryPickTab(tab.id)}
-                          className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-sm leading-5 transition-colors ${
+                          className={`inline-flex items-center gap-1.5 whitespace-nowrap bg-transparent p-0 text-sm leading-5 transition-colors ${
                             isSelected
-                              ? 'bg-gray-100 font-semibold text-gray-900'
-                              : 'bg-transparent font-medium text-[#4A4D57] hover:bg-gray-50'
+                              ? 'font-semibold text-[#9A41FE]'
+                              : 'font-medium text-gray-900 hover:text-[#9A41FE]'
                           }`}
                         >
-                          <span
-                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${
-                              isSelected ? visual.iconWrapActive : visual.iconWrapIdle
-                            }`}
-                            aria-hidden
-                          >
-                            <TabIcon className="h-4 w-4" />
-                          </span>
+                          {TabIcon ? (
+                            <TabIcon className="h-4 w-4 shrink-0" />
+                          ) : null}
                           <span>{tab.label}</span>
-                          <span
-                            className={`min-w-[1.25rem] rounded-md px-1.5 py-0.5 text-center tabular-nums text-xs font-semibold ${
-                              isSelected
-                                ? 'bg-white text-[#767386]'
-                                : 'bg-gray-100 text-[#767386]'
-                            }`}
-                          >
-                            {count}
-                          </span>
+                          <span className="tabular-nums">{count}</span>
                         </button>
                       );
                     })}
@@ -11003,7 +11204,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             ) : null}
 
             <div
-              className="relative z-0 overflow-x-auto"
+              className="relative z-0 overflow-x-auto [container-type:inline-size]"
               onScroll={(e) => {
                 const target = e.currentTarget;
                 setHasProductsScrollShadow(target.scrollLeft > 0);
@@ -11027,8 +11228,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     {conceptNotPromotedShowTagsColumn ? (
                       <col style={{ width: CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX }} />
                     ) : null}
+                    {conceptBonusCampaignColumn ? (
+                      <col style={{ width: CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_COL_WIDTH_PX }} />
+                    ) : null}
                     <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX }} />
-                    <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPM_SEARCH_COL_WIDTH_PX }} />
                     <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX }} />
                     {CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.map((label) => (
                       <col key={label} style={{ width: CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX }} />
@@ -11144,7 +11347,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         )}
                       >
                         <span className="inline-flex items-center justify-start gap-1 text-left leading-tight">
-                          {isProductPromotionConceptPage && productsPickTab === 'not_promoted'
+                          {isProductPromotionConceptPage && isNotPromotedProductsPickTab(productsPickTab)
                             ? 'Рекомендуемая ставка'
                             : 'Ставка'}{' '}
                           <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
@@ -11186,6 +11389,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         }
                       >
                         Ярлыки
+                      </th>
+                    ) : null}
+                    {conceptBonusCampaignColumn ? (
+                      <th className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TH_CLASS}>
+                        <span className="block">Подарочная CPC</span>
+                        <span className="block">кампания на сумму</span>
                       </th>
                     ) : null}
                     {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
@@ -11558,7 +11767,25 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               showExpandControl={rowShowsPromotedProductUi}
                               reserveExpandGutter={rowReserveExpandGutter}
                               showPromoteUnderPhoto={rowShowPromoteUnderPhoto}
-                              onPromote={handlePromoteNotPromotedProduct}
+                              onPromote={
+                                productsPickTab === 'not_promoted_v4' && listRowIndex < 3
+                                  ? () => setNotPromotedBonusModalProducts([product])
+                                  : handlePromoteNotPromotedProduct
+                              }
+                              showBonusOffer={
+                                (productsPickTab === 'not_promoted_v2' ||
+                                  productsPickTab === 'not_promoted_v4') &&
+                                listRowIndex < 3
+                              }
+                              showBonusButton={
+                                productsPickTab === 'not_promoted_v2' && listRowIndex < 3
+                              }
+                              onBonusOffer={() => setNotPromotedBonusModalProducts([product])}
+                              promoteButtonLabel={
+                                productsPickTab === 'not_promoted_v4' && listRowIndex < 3
+                                  ? 'Продвигать за бонусы'
+                                  : 'Продвигать'
+                              }
                               onProductTitleClick={
                                 primaryCpcCampaign
                                   ? () => openProductNestedCampaign(primaryCpcCampaign)
@@ -11686,6 +11913,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           )}
                         </td>
                         ) : null}
+                        {conceptBonusCampaignColumn ? (
+                          <td className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS}>
+                            {listRowIndex < 3 ? (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setNotPromotedBonusModalProducts([product]);
+                                }}
+                                className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#F3E8FF] px-3 text-sm font-medium text-[#9A41FE] transition-colors hover:bg-[#E9D5FF]"
+                              >
+                                <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                5 000 B
+                              </button>
+                            ) : null}
+                          </td>
+                        ) : null}
                         {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
                           <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS}>
                             <ProductRecommendedCpcSearchBidCell product={product} />
@@ -11775,10 +12019,187 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           </td>
                         ) : null}
                       </tr>
+                      {productsPickTab === 'not_promoted' &&
+                      listRowIndex < 4 &&
+                      !dismissedNotPromotedBonusBannerIds.has(product.id) ? (
+                        <tr className="!border-t-0 hover:bg-transparent">
+                          <td colSpan={32} className="px-3 pb-3 pt-0">
+                            <div className="pl-12">
+                              <NotPromotedBonusCampaignBanner
+                                onOpenCampaign={() => setNotPromotedBonusModalProducts([product])}
+                                onDismiss={() =>
+                                  setDismissedNotPromotedBonusBannerIds((prev) => {
+                                    const next = new Set(prev);
+                                    next.add(product.id);
+                                    return next;
+                                  })
+                                }
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
                       {/* Вложенные строки кампаний — вид как на вкладке «Кампании» */}
-                      {rowShowsPromotedProductUi &&
-                        expandedProductIds.has(product.id) &&
-                        product.campaigns.map((camp) => {
+                      {rowShowsPromotedProductUi && expandedProductIds.has(product.id) ? (
+                      <>
+                      {productsPickTab === 'promoted' &&
+                      listRowIndex < 3 &&
+                      !dismissedNotPromotedBonusBannerIds.has(product.id) ? (
+                        <tr className="relative bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                          {(() => {
+                            const pinned = productsTablePinnedCellProps(
+                              'select',
+                              'bodyNested',
+                              PRODUCTS_SELECT_TD_CLASS,
+                            );
+                            return (
+                          <td
+                            className={`${pinned.className} relative overflow-visible`}
+                            style={pinned.style}
+                          >
+                            <div className="pointer-events-none absolute inset-y-0 left-0 z-[13] flex w-[100cqw] max-w-[100cqw] items-center justify-end pr-3">
+                              <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-gray-50/95 py-1 pl-3">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setNotPromotedBonusModalProducts([product]);
+                                  }}
+                                  className="inline-flex items-center rounded-xl bg-[#2E3038] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#23252c]"
+                                >
+                                  К кампании
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Скрыть бонусную кампанию"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDismissedNotPromotedBonusBannerIds((prev) => {
+                                      const next = new Set(prev);
+                                      next.add(product.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-gray-500 shadow-sm ring-1 ring-black/[0.04] transition-colors hover:bg-gray-50 hover:text-gray-800"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                            );
+                          })()}
+                          {productsColVisible('product') ? (
+                            <td
+                              {...productsTablePinnedCellProps(
+                                'product',
+                                'bodyNested',
+                                'px-4 py-3 pl-12 align-middle',
+                              )}
+                            >
+                              <div className="flex items-center gap-3">
+                                <span
+                                  onClick={(e) => e.stopPropagation()}
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                >
+                                  <ToggleSwitch
+                                    checked={false}
+                                    onChange={() => setNotPromotedBonusModalProducts([product])}
+                                  />
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setNotPromotedBonusModalProducts([product]);
+                                    }}
+                                    className="block w-full min-w-0 truncate text-left text-sm font-medium text-gray-800 transition-colors hover:text-[#9A41FE]"
+                                    title="Кампания от 26.12.2024"
+                                  >
+                                    Кампания от 26.12.2024
+                                  </button>
+                                  <span className="mt-1.5 inline-flex rounded-md bg-[#F3E8FF] px-2 py-0.5 text-xs font-medium text-[#7C3AED]">
+                                    Бонусная кампания
+                                  </span>
+                                </div>
+                              </div>
+                            </td>
+                          ) : null}
+                          {showProductsCampaignTypeColumn ? (
+                            <td
+                              {...productsTablePinnedCellProps(
+                                'campaignType',
+                                'bodyNested',
+                                'p-4 align-top',
+                              )}
+                            >
+                              <ProductCampaignTypeCell type="CPC" />
+                            </td>
+                          ) : null}
+                          {showProductsBidColumn ? (
+                            <td
+                              {...productsTablePinnedCellProps('bid', 'bodyNested', 'px-2 py-3 align-top')}
+                            />
+                          ) : null}
+                          {productsColVisible('budgetRemainder') ? (
+                            <td
+                              {...productsTablePinnedCellProps(
+                                'budgetRemainder',
+                                'bodyNested',
+                                'p-4 align-middle',
+                              )}
+                            >
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setNotPromotedBonusModalProducts([product]);
+                                }}
+                                className="inline-flex items-center gap-1 text-sm font-semibold text-[#9A41FE] transition-colors hover:text-[#7C3AED]"
+                              >
+                                <Gift className="h-4 w-4 shrink-0" aria-hidden />
+                                5 000 B
+                              </button>
+                              <div className="mt-1 text-xs text-gray-400">До 22 марта</div>
+                            </td>
+                          ) : null}
+                          {productsColVisible('dailyLimit') ? (
+                            <td
+                              {...productsTablePinnedCellProps(
+                                'dailyLimit',
+                                'bodyNested',
+                                'px-2 py-3 align-top',
+                              )}
+                            />
+                          ) : null}
+                          {productsColVisible('tags') ? <td className="p-4 w-[220px]" /> : null}
+                          {conceptBonusCampaignColumn ? (
+                            <td className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS} />
+                          ) : null}
+                          {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
+                            <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
+                          ) : null}
+                          {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID) ? (
+                            <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
+                          ) : null}
+                          {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID) ? (
+                            <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
+                          ) : null}
+                          {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
+                            <td className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
+                          ) : null}
+                          {PRODUCTS_STAT_COLUMN_LABELS.map((label) =>
+                            productsColVisible(productsStatColumnId(label)) ? (
+                              <td key={label} className={`${PRODUCTS_STAT_TD_CLASS} !align-middle`} />
+                            ) : null,
+                          )}
+                          {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                            <td className={PRODUCTS_STOCK_TD_CLASS} />
+                          ) : null}
+                        </tr>
+                      ) : null}
+                      {product.campaigns.map((camp) => {
                         const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         return (
@@ -11860,7 +12281,21 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
                                   <span>ID {camp.campaignId}</span>
                                 </div>
-                                {listCampaignBidModeSubtitle(camp.typeDetails) ? (
+                                {!showProductsCampaignTypeColumn ? (
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                                    <span className="text-sm font-semibold text-gray-900">{camp.type}</span>
+                                    <span className="rounded bg-gray-100 p-1">
+                                      {camp.type === 'CPC' ? (
+                                        <Search className="h-4 w-4 text-gray-400" />
+                                      ) : (
+                                        <ThumbsUp className="h-4 w-4 text-gray-400" />
+                                      )}
+                                    </span>
+                                    {listCampaignBidModeSubtitle(camp.typeDetails) ? (
+                                      <span>{listCampaignBidModeSubtitle(camp.typeDetails)}</span>
+                                    ) : null}
+                                  </div>
+                                ) : listCampaignBidModeSubtitle(camp.typeDetails) ? (
                                   <p className="mt-1 text-xs text-gray-500">
                                     {listCampaignBidModeSubtitle(camp.typeDetails)}
                                   </p>
@@ -11869,7 +12304,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             </div>
                           </td>
                             ) : null}
-                            {productsColVisible(MULTICARD_GLUE_LEADER_COLUMN_ID) ? (
+                            {conceptAllProductsPickTab && productsColVisible(MULTICARD_GLUE_LEADER_COLUMN_ID) ? (
                               <td
                                 {...productsTablePinnedCellProps(
                                   'glueLeader',
@@ -11888,17 +12323,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 'p-4 align-top',
                               )}
                             >
-                            <div className="font-semibold text-gray-900">{camp.type}</div>
-                            <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-1 flex-wrap">
-                                <span className="p-1 bg-gray-100 rounded">
-                                  {camp.type === 'CPC' ? (
-                                    <Search className="w-4 h-4 text-gray-400" />
-                                  ) : (
-                                    <ThumbsUp className="w-4 h-4 text-gray-400" />
-                                  )}
-                                </span>
-                            </div>
-                          </td>
+                              <ProductCampaignTypeCell type={camp.type} />
+                            </td>
                             ) : null}
                             {showProductsBidColumn ? (
                             <td
@@ -11953,6 +12379,21 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           </td>
                             ) : null}
                             {productsColVisible('tags') ? <td className="p-4 w-[220px]" /> : null}
+                            {conceptBonusCampaignColumn ? (
+                              <td className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS} />
+                            ) : null}
+                            {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
+                              <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
+                            ) : null}
+                            {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID) ? (
+                              <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
+                            ) : null}
+                            {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID) ? (
+                              <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
+                            ) : null}
+                            {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
+                              <td className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
+                            ) : null}
                             {PRODUCTS_STAT_COLUMN_LABELS.map((label) => {
                               if (!productsColVisible(productsStatColumnId(label))) return null;
                               const stats = buildExtendedProductStats(
@@ -11982,9 +12423,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 </td>
                               );
                             })}
+                            {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                              <td className={PRODUCTS_STOCK_TD_CLASS} />
+                            ) : null}
                         </tr>
                         );
                       })}
+                      </>
+                      ) : null}
                       </>
                       ) : null}
                     </React.Fragment>
@@ -12030,7 +12476,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 {!conceptCompactProductsTable ? (
                   <Plus className="h-4 w-4" aria-hidden />
                 ) : null}
-                {conceptCompactProductsTable ? 'Продвигать' : 'Создать кампанию'}
+                {conceptCompactProductsTable
+                  ? selectedProductsAreBonusOnly
+                    ? 'Продвигать за бонусы'
+                    : 'Продвигать'
+                  : 'Создать кампанию'}
               </button>
               {isProductPromotionConceptPage && !conceptCompactProductsTable && (
                 <div
@@ -12198,6 +12648,28 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
         />
       )}
+
+      {notPromotedBonusModalProducts && notPromotedBonusModalProducts.length > 0 ? (
+        <NotPromotedBonusCampaignModal
+          products={notPromotedBonusModalProducts}
+          showCampaignTypeTabs={productsPickTab === 'not_promoted_v4'}
+          onClose={() => setNotPromotedBonusModalProducts(null)}
+          onContinueWithoutBonuses={() => {
+            const selected = notPromotedBonusModalProducts;
+            setNotPromotedBonusModalProducts(null);
+            if (!selected?.length) return;
+            if (selected.length === 1) {
+              handlePromoteNotPromotedProduct(selected[0]);
+              return;
+            }
+            const seeds = selected.map(productRowToSingleCampaignSeed);
+            beginRepeatLaunchFlow({
+              product: seeds[0]!,
+              products: seeds,
+            });
+          }}
+        />
+      ) : null}
 
       {isCampaignsPage && (
         <div
