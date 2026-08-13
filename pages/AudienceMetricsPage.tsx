@@ -16,7 +16,16 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import { ArrowUp, Check, ChevronDown, ChevronRight, Download, HelpCircle, Search, X } from '../components/Icons';
+import {
+  ArrowUp,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  HelpCircle,
+  Search,
+  X,
+} from '../components/Icons';
 
 type TabId = 'repeat' | 'acquisition' | 'value';
 
@@ -4615,7 +4624,7 @@ function OrganicReturnFocusBlock({
       label: 'Органических повторных покупок на человека',
       tip: 'В среднем сколько раз один вернувшийся покупатель заказал снова без рекламы. Чем выше — тем чаще люди возвращаются сами.',
       value: opcLabel,
-      unit: 'зак. / чел.',
+      unit: 'шт',
       trend: `${opcMom >= 0 ? '+' : '−'}${Math.abs(opcMom)}%`,
       trendUp: opcMom >= 0,
       chartVariant: 'line-step',
@@ -4627,7 +4636,7 @@ function OrganicReturnFocusBlock({
       label: 'Время до повторной покупки',
       tip: 'Сколько дней в среднем проходит от первого заказа с рекламы до следующей покупки. Чем меньше — тем быстрее люди возвращаются.',
       value: String(avgDays),
-      unit: 'дн.',
+      unit: 'дней',
       trend: `${daysMom > 0 ? '+' : '−'}${Math.abs(daysMom)}%`,
       trendUp: daysMom <= 0,
       chartVariant: 'line',
@@ -4638,6 +4647,107 @@ function OrganicReturnFocusBlock({
 
   const visibleKpis =
     metricsFilter === 'gmv' ? kpis.filter((kpi) => kpi.id === 'gmv') : kpis;
+
+  const kpiById = Object.fromEntries(visibleKpis.map((kpi) => [kpi.id, kpi])) as Partial<
+    Record<(typeof kpis)[number]['id'], (typeof kpis)[number]>
+  >;
+
+  const renderInsightMetric = (kpi: (typeof kpis)[number]) => (
+    <div
+      key={`${kpi.id}-${range}-${grain}`}
+      className="flex flex-1 flex-col justify-center px-4 py-4"
+    >
+      <div className="text-[13px] font-medium leading-snug text-gray-500">{kpi.label}</div>
+      <div className="mt-2 text-[28px] font-bold leading-none tabular-nums text-gray-950">
+        {kpi.value}
+        {kpi.unit ? ` ${kpi.unit}` : ''}
+      </div>
+      <div className="mt-2">
+        <TrendBadge value={kpi.trend} up={kpi.trendUp} />
+      </div>
+    </div>
+  );
+
+  const renderChartCard = (kpi: (typeof kpis)[number]) => (
+    <article
+      key={`${kpi.id}-${range}-${grain}`}
+      className="flex h-full flex-col rounded-2xl bg-white px-4 py-4"
+    >
+      {kpi.pair ? (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <div className="flex items-start gap-1.5 text-[13px] font-medium leading-snug text-gray-500">
+              <span>{kpi.label}</span>
+              {kpi.tip && <Tip text={kpi.tip} />}
+            </div>
+            <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-2xl font-bold tabular-nums leading-none text-gray-950">
+                {kpi.value}
+              </span>
+              {kpi.unit && <span className="text-[13px] text-gray-900">{kpi.unit}</span>}
+              <TrendBadge value={kpi.trend} up={kpi.trendUp} />
+            </div>
+          </div>
+          <div>
+            <div className="flex items-start gap-1.5 text-[13px] font-medium leading-snug text-gray-500">
+              <span>{kpi.pair.label}</span>
+              {kpi.pair.tip && <Tip text={kpi.pair.tip} />}
+            </div>
+            <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
+              <span className="text-2xl font-bold tabular-nums leading-none text-gray-950">
+                {kpi.pair.value}
+              </span>
+              {kpi.pair.unit && (
+                <span className="text-[13px] text-gray-900">{kpi.pair.unit}</span>
+              )}
+              <TrendBadge value={kpi.pair.trend} up={kpi.pair.trendUp} />
+            </div>
+            {kpi.pair.caption && (
+              <div className="mt-1 text-[11px] text-gray-500">{kpi.pair.caption}</div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-start gap-1.5 text-[13px] font-medium leading-snug text-gray-500">
+            <span>{kpi.label}</span>
+            {kpi.tip && <Tip text={kpi.tip} />}
+          </div>
+          <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
+            <span className="text-2xl font-bold tabular-nums leading-none text-gray-950">
+              {kpi.value}
+            </span>
+            {kpi.unit && <span className="text-[13px] text-gray-900">{kpi.unit}</span>}
+            <TrendBadge value={kpi.trend} up={kpi.trendUp} />
+          </div>
+          {kpi.caption && (
+            <div
+              className={
+                kpi.id === 'gmv' || kpi.id === 'orders'
+                  ? 'mt-2 inline-flex w-fit items-center rounded-lg bg-[#F3E8FF] px-2.5 py-1 text-[12px] font-semibold tabular-nums text-[#7C3AED]'
+                  : 'mt-1 text-[11px] text-gray-500'
+              }
+            >
+              {kpi.caption}
+            </div>
+          )}
+          {kpi.secondary && (
+            <div className="mt-2 text-[11px] leading-4 text-gray-600">
+              <span className="font-medium text-gray-800">{kpi.secondary.label}</span>
+              <span className="tabular-nums text-gray-700"> · {kpi.secondary.value}</span>
+            </div>
+          )}
+        </>
+      )}
+      <OrganicReturnFocusMiniChart
+        variant={kpi.chartVariant}
+        series={kpi.series}
+        valueFormat={kpi.valueFormat}
+        axisFormat={kpi.axisFormat}
+        unit={kpi.unit}
+      />
+    </article>
+  );
 
   return (
     <section id="organic-return" className="scroll-mt-6 flex flex-col gap-3">
@@ -4663,98 +4773,27 @@ function OrganicReturnFocusBlock({
         </div>
       )}
 
-      <div
-        className={
-          visibleKpis.length === 1
-            ? 'grid grid-cols-1 gap-3'
-            : 'grid grid-cols-1 gap-3 md:grid-cols-2'
-        }
-      >
-        {visibleKpis.map((kpi) => (
-          <article
-            key={`${kpi.id}-${range}-${grain}`}
-            className={`flex h-full flex-col rounded-2xl bg-white px-4 py-4 ${
-              kpi.id === 'gmv' || kpi.id === 'orders' ? 'md:col-span-2' : ''
-            }`}
-          >
-            {kpi.pair ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div>
-                  <div className="flex items-start gap-1.5 text-[13px] font-medium leading-snug text-gray-500">
-                    <span>{kpi.label}</span>
-                    {kpi.tip && <Tip text={kpi.tip} />}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
-                    <span className="text-2xl font-bold tabular-nums leading-none text-gray-950">
-                      {kpi.value}
-                    </span>
-                    {kpi.unit && <span className="text-[13px] text-gray-900">{kpi.unit}</span>}
-                    <TrendBadge value={kpi.trend} up={kpi.trendUp} />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-start gap-1.5 text-[13px] font-medium leading-snug text-gray-500">
-                    <span>{kpi.pair.label}</span>
-                    {kpi.pair.tip && <Tip text={kpi.pair.tip} />}
-                  </div>
-                  <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
-                    <span className="text-2xl font-bold tabular-nums leading-none text-gray-950">
-                      {kpi.pair.value}
-                    </span>
-                    {kpi.pair.unit && (
-                      <span className="text-[13px] text-gray-900">{kpi.pair.unit}</span>
-                    )}
-                    <TrendBadge value={kpi.pair.trend} up={kpi.pair.trendUp} />
-                  </div>
-                  {kpi.pair.caption && (
-                    <div className="mt-1 text-[11px] text-gray-500">{kpi.pair.caption}</div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <>
-                <div className="flex items-start gap-1.5 text-[13px] font-medium leading-snug text-gray-500">
-                  <span>{kpi.label}</span>
-                  {kpi.tip && <Tip text={kpi.tip} />}
-                </div>
-                <div className="mt-2 flex flex-wrap items-baseline gap-1.5">
-                  <span className="text-2xl font-bold tabular-nums leading-none text-gray-950">
-                    {kpi.value}
-                  </span>
-                  {kpi.unit && <span className="text-[13px] text-gray-900">{kpi.unit}</span>}
-                  <TrendBadge value={kpi.trend} up={kpi.trendUp} />
-                </div>
-                {kpi.caption && (
-                  <div
-                    className={
-                      kpi.id === 'gmv' || kpi.id === 'orders'
-                        ? 'mt-2 inline-flex w-fit items-center rounded-lg bg-[#F3E8FF] px-2.5 py-1 text-[12px] font-semibold tabular-nums text-[#7C3AED]'
-                        : 'mt-1 text-[11px] text-gray-500'
-                    }
-                  >
-                    {kpi.caption}
-                  </div>
+      {metricsFilter === 'gmv' ? (
+        <div className="grid grid-cols-1 gap-3">
+          {kpiById.gmv && renderChartCard(kpiById.gmv)}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {kpiById.gmv && renderChartCard(kpiById.gmv)}
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(240px,0.5fr)] lg:items-stretch">
+            {kpiById.orders && renderChartCard(kpiById.orders)}
+            {(kpiById.opc || kpiById.days) && (
+              <article className="flex h-full flex-col rounded-2xl bg-white p-4">
+                {kpiById.opc && renderInsightMetric(kpiById.opc)}
+                {kpiById.opc && kpiById.days && (
+                  <div className="mx-4 border-t border-gray-100" role="separator" />
                 )}
-                {kpi.secondary && (
-                  <div className="mt-2 text-[11px] leading-4 text-gray-600">
-                    <span className="font-medium text-gray-800">{kpi.secondary.label}</span>
-                    <span className="tabular-nums text-gray-700"> · {kpi.secondary.value}</span>
-                  </div>
-                )}
-              </>
+                {kpiById.days && renderInsightMetric(kpiById.days)}
+              </article>
             )}
-            {kpi.id !== 'opc' && kpi.id !== 'days' && (
-              <OrganicReturnFocusMiniChart
-                variant={kpi.chartVariant}
-                series={kpi.series}
-                valueFormat={kpi.valueFormat}
-                axisFormat={kpi.axisFormat}
-                unit={kpi.unit}
-              />
-            )}
-          </article>
-        ))}
-      </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
@@ -4854,23 +4893,30 @@ function Tip({ text }: { text: string }) {
 }
 
 function TrendBadge({ value, up = true }: { value: string; up?: boolean }) {
-  const looksDown = value.trim().startsWith('−') || value.trim().startsWith('-');
-  const looksUp = value.trim().startsWith('+');
+  const trimmed = value.trim();
+  const looksDown = trimmed.startsWith('−') || trimmed.startsWith('-');
+  const looksUp = trimmed.startsWith('+');
   const numeric = Number.parseFloat(
-    value.replace(/[^\d.,-]/g, '').replace(',', '.'),
+    trimmed.replace(/[^\d.,-]/g, '').replace(',', '.'),
   );
   const isZero = Number.isFinite(numeric) && numeric === 0;
-  // Цвет = направление стрелки: вниз красная, вверх зелёная
   const isDown = looksDown || (!looksUp && !up);
+  const label = trimmed.replace(/^[−+-]/, '');
 
   return (
     <span
-      className={`inline-flex items-center gap-0.5 text-sm font-semibold tabular-nums ${
-        isZero ? 'text-gray-400' : isDown ? 'text-red-600' : 'text-emerald-600'
+      className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-sm font-medium tabular-nums ${
+        isZero
+          ? 'bg-gray-50 text-gray-500'
+          : isDown
+            ? 'bg-red-50 text-red-700'
+            : 'bg-emerald-50 text-emerald-700'
       }`}
     >
-      <ArrowUp className={`h-3.5 w-3.5 ${isDown ? 'rotate-180' : ''}`} />
-      {value.replace(/^[−+-]/, '')}
+      {!isZero && (
+        <ArrowUp className={`h-3.5 w-3.5 ${isDown ? 'rotate-180' : ''}`} aria-hidden />
+      )}
+      {label}
     </span>
   );
 }
@@ -6302,10 +6348,6 @@ export function StatsDashboardPage({
     setRange(next);
   };
 
-  const handleGrainChange = (next: StatsGrainId) => {
-    setGrain(next);
-  };
-
   useEffect(() => {
     if (section !== 'overview' && section !== 'return') return;
     const scrollToOrganic = () => {
@@ -6351,10 +6393,6 @@ export function StatsDashboardPage({
                   </div>
                 )}
                 <StatsDateRangeBar value={range} onChange={handleRangeChange} compact />
-                {(section === 'overview' || section === 'return') &&
-                  !(showOverviewTabs && overviewTab === 'campaigns') && (
-                    <StatsGrainSelect value={grain} onChange={handleGrainChange} />
-                  )}
                 <div className="ml-auto flex rounded-lg bg-gray-100 p-0.5 text-sm font-medium">
                   {STATS_WAREHOUSE_SCOPE_TABS.map((tab) => {
                     const active = warehouseScope === tab.id;
@@ -6378,11 +6416,7 @@ export function StatsDashboardPage({
             </section>
 
             {section === 'overview' && overviewTab === 'summary' && (
-              <>
-                <StatsKpiIslands />
-
-                <OrganicReturnDynamicsBlockV2 showVariantLabel={false} />
-              </>
+              <OrganicReturnDynamicsBlockV2 showVariantLabel={false} />
             )}
 
             {section === 'overview' && overviewTab === 'campaigns' && <StatsCampaignsTable />}

@@ -60,8 +60,6 @@ const OVERVIEW_PATH = '/overview';
 const STATS_NAV_ITEMS = [
   { to: '/stats', label: 'Общая сводка', icon: 'overview' as const },
   { to: '/stats/return', label: 'Вернувшиеся покупатели', icon: 'return' as const },
-  { to: '/stats/acquisition', label: 'Привлечение', icon: 'acquisition' as const, soon: true },
-  { to: '/stats/value', label: 'Ценность', icon: 'value' as const, soon: true },
 ] as const;
 
 function StatsNavItemIcon({
@@ -78,27 +76,13 @@ function StatsNavItemIcon({
       </svg>
     );
   }
-  if (name === 'acquisition') {
-    return (
-      <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
-        <path d="M10 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM3.04 16.72A7 7 0 0 1 10 11a7 7 0 0 1 6.96 5.72.75.75 0 0 1-.73.93H3.77a.75.75 0 0 1-.73-.93Z" />
-      </svg>
-    );
-  }
-  if (name === 'return') {
-    return (
-      <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
-        <path
-          fillRule="evenodd"
-          d="M7.78 3.22a.75.75 0 0 1 0 1.06L5.56 6.5H11a6 6 0 0 1 0 12H9.75a.75.75 0 0 1 0-1.5H11a4.5 4.5 0 1 0 0-9H5.56l2.22 2.22a.75.75 0 1 1-1.06 1.06l-3.5-3.5a.75.75 0 0 1 0-1.06l3.5-3.5a.75.75 0 0 1 1.06 0Z"
-          clipRule="evenodd"
-        />
-      </svg>
-    );
-  }
   return (
     <svg viewBox="0 0 20 20" fill="currentColor" className={className} aria-hidden>
-      <path d="M2.75 14.5a.75.75 0 0 0 0 1.5h14.5a.75.75 0 0 0 0-1.5H2.75ZM4 12.25V7.5a.75.75 0 0 1 1.5 0v4.75a.75.75 0 0 1-1.5 0Zm4.25 0V4.75a.75.75 0 0 1 1.5 0v7.5a.75.75 0 0 1-1.5 0Zm4.25 0V6.5a.75.75 0 0 1 1.5 0v5.75a.75.75 0 0 1-1.5 0Zm4.25 0v-2.5a.75.75 0 0 1 1.5 0v2.5a.75.75 0 0 1-1.5 0Z" />
+      <path
+        fillRule="evenodd"
+        d="M7.78 3.22a.75.75 0 0 1 0 1.06L5.56 6.5H11a6 6 0 0 1 0 12H9.75a.75.75 0 0 1 0-1.5H11a4.5 4.5 0 1 0 0-9H5.56l2.22 2.22a.75.75 0 1 1-1.06 1.06l-3.5-3.5a.75.75 0 0 1 0-1.06l3.5-3.5a.75.75 0 0 1 1.06 0Z"
+        clipRule="evenodd"
+      />
     </svg>
   );
 }
@@ -287,44 +271,23 @@ export function AppHeader({
                       aria-label="Разделы статистики"
                     >
                       {STATS_NAV_ITEMS.map((item, index) => {
-                        const soon = 'soon' in item && item.soon;
-                        const active = !soon && location.pathname === item.to;
-                        const icon = (
-                          <StatsNavItemIcon
-                            name={item.icon}
-                            className="h-4 w-4 shrink-0 text-gray-200"
-                          />
-                        );
-                        const row = soon ? (
-                          <div
-                            role="menuitem"
-                            aria-disabled="true"
-                            className="flex cursor-default items-center justify-between gap-3 whitespace-nowrap px-3 py-2.5 text-sm text-gray-400"
-                          >
-                            <span className="flex items-center gap-2">
-                              <span>{item.label}</span>
-                              <span className="shrink-0 rounded-md bg-[#F6F2FF] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-[#9A41FE]">
-                                Скоро появится
-                              </span>
-                            </span>
-                            {icon}
-                          </div>
-                        ) : (
-                          <NavLink
-                            to={item.to}
-                            role="menuitem"
-                            onClick={onNavigate}
-                            className={`flex items-center justify-between gap-3 whitespace-nowrap px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
-                              active ? 'bg-violet-50/80 font-medium text-gray-900' : 'text-gray-800'
-                            }`}
-                          >
-                            <span>{item.label}</span>
-                            {icon}
-                          </NavLink>
-                        );
+                        const active = location.pathname === item.to;
                         return (
                           <li key={item.to} role="none">
-                            {row}
+                            <NavLink
+                              to={item.to}
+                              role="menuitem"
+                              onClick={onNavigate}
+                              className={`flex items-center justify-between gap-3 whitespace-nowrap px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
+                                active ? 'bg-violet-50/80 font-medium text-gray-900' : 'text-gray-800'
+                              }`}
+                            >
+                              <span>{item.label}</span>
+                              <StatsNavItemIcon
+                                name={item.icon}
+                                className="h-4 w-4 shrink-0 text-gray-200"
+                              />
+                            </NavLink>
                             {index === 0 && (
                               <div className="my-1 border-t border-gray-100" role="separator" />
                             )}

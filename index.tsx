@@ -46,8 +46,21 @@ if (!rootElement) {
 
 const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, '') || undefined;
 
-const root = ReactDOM.createRoot(rootElement);
-root.render(
+declare global {
+  interface Window {
+    __MASS_CREATION_ROOT__?: ReturnType<typeof ReactDOM.createRoot>;
+  }
+}
+
+// Reuse one createRoot across Vite HMR — a second createRoot on #root stacks a full app duplicate.
+if (!window.__MASS_CREATION_ROOT__) {
+  if (rootElement.childElementCount > 0) {
+    rootElement.replaceChildren();
+  }
+  window.__MASS_CREATION_ROOT__ = ReactDOM.createRoot(rootElement);
+}
+
+window.__MASS_CREATION_ROOT__.render(
   <React.StrictMode>
     <RootErrorBoundary>
       <BrowserRouter basename={routerBasename}>
