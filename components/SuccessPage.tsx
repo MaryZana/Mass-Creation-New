@@ -21,6 +21,7 @@ import {
   NotPromotedBonusCampaignBanner,
   NotPromotedBonusCampaignModal,
   CampaignsListBonusBanner,
+  notPromotedV3BonusOffer,
 } from './NotPromotedBonusCampaignOffer';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
@@ -960,9 +961,7 @@ const PRODUCTS_MIDDLE_COLUMN_IDS = [
 type ProductsPickTab =
   | 'all_products'
   | 'not_promoted'
-  | 'not_promoted_v2'
   | 'not_promoted_v3'
-  | 'not_promoted_v4'
   | 'promoted'
   | 'growth'
   | 'high_conversion'
@@ -970,21 +969,7 @@ type ProductsPickTab =
   | 'promo';
 
 function isNotPromotedProductsPickTab(tab: ProductsPickTab): boolean {
-  return (
-    tab === 'not_promoted' ||
-    tab === 'not_promoted_v2' ||
-    tab === 'not_promoted_v3' ||
-    tab === 'not_promoted_v4'
-  );
-}
-
-function bonusOfferProductCountForTab(tab: ProductsPickTab): number {
-  if (tab === 'not_promoted') return 4;
-  if (tab === 'not_promoted_v2' || tab === 'not_promoted_v3' || tab === 'not_promoted_v4') {
-    return 3;
-  }
-  if (tab === 'promoted') return 3;
-  return 0;
+  return tab === 'not_promoted' || tab === 'not_promoted_v3';
 }
 
 /** Вкладки товаров на концепте товарного продвижения. */
@@ -994,17 +979,13 @@ const CONCEPT_PRODUCTS_PICK_TABS: {
     | 'all_products'
     | 'promoted'
     | 'not_promoted'
-    | 'not_promoted_v2'
     | 'not_promoted_v3'
-    | 'not_promoted_v4'
   >;
   label: string;
 }[] = [
   { id: 'promoted', label: 'Товары' },
   { id: 'not_promoted', label: 'Без продвижения' },
-  { id: 'not_promoted_v2', label: 'V2' },
   { id: 'not_promoted_v3', label: 'V3' },
-  { id: 'not_promoted_v4', label: 'V4' },
   { id: 'all_products', label: 'Мультикарточки' },
 ];
 
@@ -1970,12 +1951,7 @@ function productMatchesProductsPickTab(
     }
     return true;
   }
-  if (
-    tab === 'not_promoted' ||
-    tab === 'not_promoted_v2' ||
-    tab === 'not_promoted_v3' ||
-    tab === 'not_promoted_v4'
-  ) {
+  if (tab === 'not_promoted' || tab === 'not_promoted_v3') {
     if (segmentation === 'concept') {
       return product.campaigns.length === 0;
     }
@@ -4320,53 +4296,6 @@ function ConceptAllTabMulticardRailCell({
   );
 }
 
-const BONUS_GIFT_THUMB_TOOLTIP =
-  'На этот товар есть 5000 бонусов на запуск продвижения';
-
-function BonusGiftThumbBadge() {
-  const badgeRef = useRef<HTMLSpanElement>(null);
-  const [hovered, setHovered] = useState(false);
-  const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
-
-  const syncAnchorRect = useCallback(() => {
-    const el = badgeRef.current;
-    if (!el) return;
-    setAnchorRect(el.getBoundingClientRect());
-  }, []);
-
-  return (
-    <>
-      <span
-        ref={badgeRef}
-        className="absolute -right-0.5 -top-0.5 z-[2] flex h-4 w-4 cursor-help items-center justify-center rounded-[4px] bg-[#9A41FE] text-white ring-[1.5px] ring-white"
-        aria-label={BONUS_GIFT_THUMB_TOOLTIP}
-        onMouseEnter={() => {
-          syncAnchorRect();
-          setHovered(true);
-        }}
-        onMouseLeave={() => setHovered(false)}
-      >
-        <Gift className="h-2.5 w-2.5" />
-      </span>
-      {hovered && anchorRect && typeof document !== 'undefined'
-        ? ReactDOM.createPortal(
-            <div
-              role="tooltip"
-              className="fixed z-[220] w-[min(240px,calc(100vw-24px))] rounded-lg bg-gray-900 px-3 py-2 text-left text-xs leading-snug text-white shadow-lg"
-              style={{
-                top: anchorRect.bottom + 6,
-                left: Math.min(anchorRect.left, window.innerWidth - 256),
-              }}
-            >
-              {BONUS_GIFT_THUMB_TOOLTIP}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
-
 function ProductCollapsedRowCell({
   product,
   expanded,
@@ -4375,10 +4304,6 @@ function ProductCollapsedRowCell({
   reserveExpandGutter = false,
   showPromoteUnderPhoto = false,
   onPromote,
-  showBonusOffer = false,
-  onBonusOffer,
-  showBonusButton = false,
-  promoteButtonLabel = 'Продвигать',
   onProductTitleClick,
   allTabListRowIndex,
   multicardGroupMemberNested = false,
@@ -4392,10 +4317,6 @@ function ProductCollapsedRowCell({
   reserveExpandGutter?: boolean;
   showPromoteUnderPhoto?: boolean;
   onPromote?: (product: ProductRow) => void;
-  showBonusOffer?: boolean;
-  onBonusOffer?: (product: ProductRow) => void;
-  showBonusButton?: boolean;
-  promoteButtonLabel?: string;
   /** Переход на внутреннюю страницу (CPC-кампания товара). */
   onProductTitleClick?: () => void;
   allTabListRowIndex?: number;
@@ -4463,7 +4384,6 @@ function ProductCollapsedRowCell({
         category={product.category}
         allTabListRowIndex={allTabListRowIndex}
       />
-      {showBonusOffer ? <BonusGiftThumbBadge /> : null}
     </div>
   );
 
@@ -4487,31 +4407,10 @@ function ProductCollapsedRowCell({
         <span className={expandGutterClass} aria-hidden />
       ) : null}
       {showPromoteUnderPhoto ? (
-        <div
-          className={`relative flex min-w-0 flex-1 items-center gap-3 ${
-            showBonusButton
-              ? 'pr-[13.5rem]'
-              : promoteButtonLabel !== 'Продвигать'
-                ? 'pr-44'
-                : 'pr-28'
-          }`}
-        >
+        <div className="relative flex min-w-0 flex-1 items-center gap-3 pr-28">
           {productThumb}
           {productMeta}
           <div className="absolute right-0 top-1/2 z-[1] hidden -translate-y-1/2 items-center gap-1.5 group-hover/product-row:flex">
-            {showBonusButton ? (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onBonusOffer?.(product);
-                }}
-                className="inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#F3E8FF] px-3 text-sm font-medium text-[#9A41FE] hover:bg-[#E9D5FF]"
-              >
-                <Gift className="h-3.5 w-3.5" aria-hidden />
-                5 000 B
-              </button>
-            ) : null}
             <button
               type="button"
               onClick={(e) => {
@@ -4520,7 +4419,7 @@ function ProductCollapsedRowCell({
               }}
               className={promoteBtnClass}
             >
-              {promoteButtonLabel}
+              Продвигать
             </button>
           </div>
         </div>
@@ -9270,19 +9169,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     });
   }, []);
 
-  const bonusOfferProductIds = useMemo(() => {
-    const bonusCount = bonusOfferProductCountForTab(productsPickTab);
-    if (bonusCount <= 0) return new Set<string>();
-    return new Set(sortedProductsForTable.slice(0, bonusCount).map((p) => p.id));
-  }, [productsPickTab, sortedProductsForTable]);
-
-  const selectedProductsAreBonusOnly = useMemo(() => {
-    if (productsPickTab !== 'not_promoted_v4') return false;
-    if (selectedProductIds.length === 0 || bonusOfferProductIds.size === 0) return false;
-    const selected = sortedProductsForTable.filter((p) => selectedProductIds.includes(p.id));
-    return selected.length > 0 && selected.every((p) => bonusOfferProductIds.has(p.id));
-  }, [productsPickTab, selectedProductIds, sortedProductsForTable, bonusOfferProductIds]);
-
   const handlePromoteNotPromotedProduct = useCallback(
     (product: ProductRow) => {
       beginRepeatLaunchFlow(buildPromoteNotPromotedProductPreset(product));
@@ -9293,12 +9179,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const handleBulkCreateCampaignFromProducts = useCallback(() => {
     const selected = sortedProductsForTable.filter((p) => selectedProductIds.includes(p.id));
     if (selected.length === 0) return;
-
-    if (selectedProductsAreBonusOnly) {
-      setNotPromotedBonusModalProducts(selected);
-      setSelectedProductIds([]);
-      return;
-    }
 
     const toPromote = conceptCompactProductsTable
         ? selected.filter((p) =>
@@ -9331,13 +9211,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     beginRepeatLaunchFlow,
     onNavigateToCreationWithProducts,
     onNavigateToCreation,
-    selectedProductsAreBonusOnly,
   ]);
 
   const selectedProductsForBulk = useMemo(
     () => productsForTable.filter((p) => selectedProductIds.includes(p.id)),
     [productsForTable, selectedProductIds],
   );
+
+  const selectedV3BonusProducts = useMemo(() => {
+    if (productsPickTab !== 'not_promoted_v3' || selectedProductIds.length === 0) return [];
+    const bonusIds = new Set(sortedProductsForTable.slice(0, 3).map((p) => p.id));
+    return selectedProductsForBulk.filter((p) => bonusIds.has(p.id));
+  }, [productsPickTab, selectedProductIds.length, sortedProductsForTable, selectedProductsForBulk]);
 
   const selectedProductsForBidBulk = useMemo(() => {
     if (!isProductPromotionConceptPage) {
@@ -11393,8 +11278,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     ) : null}
                     {conceptBonusCampaignColumn ? (
                       <th className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TH_CLASS}>
-                        <span className="block">Подарочная CPC</span>
-                        <span className="block">кампания на сумму</span>
+                        <span className="block">Бонусная</span>
+                        <span className="block">CPC кампания</span>
                       </th>
                     ) : null}
                     {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
@@ -11767,25 +11652,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               showExpandControl={rowShowsPromotedProductUi}
                               reserveExpandGutter={rowReserveExpandGutter}
                               showPromoteUnderPhoto={rowShowPromoteUnderPhoto}
-                              onPromote={
-                                productsPickTab === 'not_promoted_v4' && listRowIndex < 3
-                                  ? () => setNotPromotedBonusModalProducts([product])
-                                  : handlePromoteNotPromotedProduct
-                              }
-                              showBonusOffer={
-                                (productsPickTab === 'not_promoted_v2' ||
-                                  productsPickTab === 'not_promoted_v4') &&
-                                listRowIndex < 3
-                              }
-                              showBonusButton={
-                                productsPickTab === 'not_promoted_v2' && listRowIndex < 3
-                              }
-                              onBonusOffer={() => setNotPromotedBonusModalProducts([product])}
-                              promoteButtonLabel={
-                                productsPickTab === 'not_promoted_v4' && listRowIndex < 3
-                                  ? 'Продвигать за бонусы'
-                                  : 'Продвигать'
-                              }
+                              onPromote={handlePromoteNotPromotedProduct}
                               onProductTitleClick={
                                 primaryCpcCampaign
                                   ? () => openProductNestedCampaign(primaryCpcCampaign)
@@ -11914,19 +11781,47 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         </td>
                         ) : null}
                         {conceptBonusCampaignColumn ? (
-                          <td className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS}>
+                          <td
+                            className={
+                              listRowIndex < 3
+                                ? 'group/bonus cursor-pointer px-1.5 py-1.5 align-middle'
+                                : CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS
+                            }
+                            role={listRowIndex < 3 ? 'button' : undefined}
+                            tabIndex={listRowIndex < 3 ? 0 : undefined}
+                            onClick={
+                              listRowIndex < 3
+                                ? (e) => {
+                                    e.stopPropagation();
+                                    setNotPromotedBonusModalProducts([product]);
+                                  }
+                                : undefined
+                            }
+                            onKeyDown={
+                              listRowIndex < 3
+                                ? (e) => {
+                                    if (e.key !== 'Enter' && e.key !== ' ') return;
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setNotPromotedBonusModalProducts([product]);
+                                  }
+                                : undefined
+                            }
+                          >
                             {listRowIndex < 3 ? (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setNotPromotedBonusModalProducts([product]);
-                                }}
-                                className="inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[#F3E8FF] px-3 text-sm font-medium text-[#9A41FE] transition-colors hover:bg-[#E9D5FF]"
-                              >
-                                <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                                5 000 B
-                              </button>
+                              <div className="rounded-[10px] px-2 py-1.5 transition-colors group-hover/bonus:bg-[#F3E8FF] group-focus-visible/bonus:bg-[#F3E8FF]">
+                                <div className="mb-1 text-xs text-gray-400 transition-colors group-hover/bonus:text-gray-950 group-focus-visible/bonus:text-gray-950">
+                                  До 14 сентября
+                                </div>
+                                <div className="inline-flex items-center gap-1.5 text-sm font-medium text-[#9A41FE]">
+                                  <Gift className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                  {listRowIndex === 2 ? '5 000 B' : '3 000 B'}
+                                  <ChevronRight
+                                    className="h-3.5 w-3.5 shrink-0 opacity-0 transition-opacity group-hover/bonus:opacity-100 group-focus-visible/bonus:opacity-100"
+                                    aria-hidden
+                                  />
+                                </div>
+                              </div>
                             ) : null}
                           </td>
                         ) : null}
@@ -12159,9 +12054,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 className="inline-flex items-center gap-1 text-sm font-semibold text-[#9A41FE] transition-colors hover:text-[#7C3AED]"
                               >
                                 <Gift className="h-4 w-4 shrink-0" aria-hidden />
-                                5 000 B
+                                3 000 B
                               </button>
-                              <div className="mt-1 text-xs text-gray-400">До 22 марта</div>
+                              <div className="mt-1 text-xs text-gray-400">До 14 сентября</div>
                             </td>
                           ) : null}
                           {productsColVisible('dailyLimit') ? (
@@ -12477,11 +12372,20 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <Plus className="h-4 w-4" aria-hidden />
                 ) : null}
                 {conceptCompactProductsTable
-                  ? selectedProductsAreBonusOnly
-                    ? 'Продвигать за бонусы'
-                    : 'Продвигать'
+                  ? 'Продвигать'
                   : 'Создать кампанию'}
               </button>
+              {selectedV3BonusProducts.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setNotPromotedBonusModalProducts(selectedV3BonusProducts)}
+                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#F3E8FF] px-4 py-2 text-sm font-semibold text-[#9A41FE] transition-colors hover:bg-[#E9D5FF]"
+                >
+                  <Gift className="h-4 w-4 shrink-0" aria-hidden />
+                  За бонусы {selectedV3BonusProducts.length}{' '}
+                  {getPlural(selectedV3BonusProducts.length, 'товар', 'товара', 'товаров')}
+                </button>
+              ) : null}
               {isProductPromotionConceptPage && !conceptCompactProductsTable && (
                 <div
                   className={`relative group/product-bid ${selectedProductsCampaignCount === 0 ? 'pointer-events-none opacity-50' : ''}`}
@@ -12651,8 +12555,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
       {notPromotedBonusModalProducts && notPromotedBonusModalProducts.length > 0 ? (
         <NotPromotedBonusCampaignModal
-          products={notPromotedBonusModalProducts}
-          showCampaignTypeTabs={productsPickTab === 'not_promoted_v4'}
+          products={notPromotedBonusModalProducts.map((product) => {
+            const listRowIndex = sortedProductsForTable.findIndex((row) => row.id === product.id);
+            return { ...product, ...notPromotedV3BonusOffer(listRowIndex) };
+          })}
           onClose={() => setNotPromotedBonusModalProducts(null)}
           onContinueWithoutBonuses={() => {
             const selected = notPromotedBonusModalProducts;

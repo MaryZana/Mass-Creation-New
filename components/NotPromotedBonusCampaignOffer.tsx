@@ -7,7 +7,40 @@ export type NotPromotedBonusCampaignProduct = {
   image: string;
   articleWb: string;
   articleSeller: string;
+  bonusB?: number;
+  chargeRub?: number;
+  bonusEditable?: boolean;
 };
+
+const DEFAULT_BONUS_B = 5000;
+const DEFAULT_ELS_CHARGE_RUB = 50;
+
+export function notPromotedV3BonusOffer(listRowIndex: number): {
+  bonusB: number;
+  chargeRub: number;
+  bonusEditable: boolean;
+} {
+  if (listRowIndex === 2) {
+    return { bonusB: 5000, chargeRub: 0, bonusEditable: true };
+  }
+  if (listRowIndex >= 0 && listRowIndex < 3) {
+    return { bonusB: 3000, chargeRub: DEFAULT_ELS_CHARGE_RUB, bonusEditable: false };
+  }
+  return { bonusB: DEFAULT_BONUS_B, chargeRub: DEFAULT_ELS_CHARGE_RUB, bonusEditable: false };
+}
+
+function formatGroupedAmount(value: number): string {
+  return value.toLocaleString('ru-RU').replace(/\u00A0/g, ' ');
+}
+
+function campaignPlural(count: number): string {
+  const n = Math.abs(count) % 100;
+  const n1 = n % 10;
+  if (n > 10 && n < 20) return 'кампаний';
+  if (n1 === 1) return 'кампанию';
+  if (n1 >= 2 && n1 <= 4) return 'кампании';
+  return 'кампаний';
+}
 
 const CornerDownRight = ({ className }: { className?: string }) => (
   <svg
@@ -197,15 +230,27 @@ export function NotPromotedBonusCampaignModal({
   const [bids, setBids] = useState<Record<string, string>>(() =>
     Object.fromEntries(items.map((item) => [item.id, '10'])),
   );
+  const [bonusAmounts, setBonusAmounts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      items.map((item) => [item.id, String(item.bonusB ?? DEFAULT_BONUS_B)]),
+    ),
+  );
   const [campaignType, setCampaignType] = useState<'CPC' | 'CPM'>('CPC');
   const isCpmBlocked = showCampaignTypeTabs && campaignType === 'CPM';
 
   if (items.length === 0) return null;
 
+  const isMassBonus = items.length > 1;
+  const totalChargeRub = items.reduce(
+    (sum, item) => sum + (item.chargeRub ?? DEFAULT_ELS_CHARGE_RUB),
+    0,
+  );
+
   return (
     <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4">
+      <div className="flex w-full max-w-[640px] flex-col items-center">
       <div
-        className="relative w-full max-w-[640px] rounded-3xl bg-white p-8 shadow-2xl"
+        className="relative w-full rounded-3xl bg-white p-8 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="bonus-cpc-modal-title"
@@ -278,22 +323,13 @@ export function NotPromotedBonusCampaignModal({
           </>
         ) : (
           <>
-        <div className="mt-5 flex items-start gap-3 rounded-2xl bg-[#F5F6F8] px-4 py-4">
-          <Gift className="mt-0.5 h-6 w-6 shrink-0 text-[#9A41FE]" />
-          <div>
-            <p className="text-sm font-semibold leading-5 text-gray-950">
-              Пополним её бюджет промобонусами на 5 000 ₽
-            </p>
-            <p className="mt-1 text-sm text-gray-500">С единого счёта спишем только 50 ₽</p>
-          </div>
-        </div>
-
-        <div className="mt-6">
-          <div className="flex items-start justify-between gap-4 text-xs text-gray-500">
-            <span>Товары в кампании</span>
-            <span className="inline-flex items-center gap-1">
-              Ставка за 1 клик в поиске
-              <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+        <div className="mt-5">
+          <div className="grid grid-cols-[minmax(0,1fr)_9rem_6.5rem] items-start gap-4 text-xs text-gray-500">
+            <span>{isMassBonus ? '1 товар = 1 кампания' : 'Товар'}</span>
+            <span className="whitespace-nowrap text-right">Пополним бонусами</span>
+            <span className="inline-flex items-center justify-end gap-1 text-right">
+              Ставка
+              <HelpCircle className="h-3.5 w-3.5 shrink-0 text-gray-400" />
             </span>
           </div>
 
@@ -301,10 +337,15 @@ export function NotPromotedBonusCampaignModal({
             {items.map((item) => {
               const sellerCode = item.articleSeller || item.articleWb;
               const bid = bids[item.id] ?? '10';
+              const bonusB = Number(bonusAmounts[item.id] ?? item.bonusB ?? DEFAULT_BONUS_B);
+              const canEditBonus =
+                item.bonusEditable === true ||
+                item.id === 'pr19' ||
+                item.articleWb === '4004003';
               return (
                 <div
                   key={item.id}
-                  className="flex items-center justify-between gap-4 border-y border-gray-100 py-4 -mt-px first:mt-0"
+                  className="grid grid-cols-[minmax(0,1fr)_9rem_6.5rem] items-center gap-4 border-y border-gray-100 py-4 -mt-px first:mt-0"
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <img
@@ -330,8 +371,26 @@ export function NotPromotedBonusCampaignModal({
                     </div>
                   </div>
 
+                  {canEditBonus ? (
+                    <div className="text-right">
+                      <input
+                        value={`${formatGroupedAmount(Number(bonusAmounts[item.id] || '0'))} B`}
+                        onChange={(event) => {
+                          const next = event.target.value.replace(/[^\d]/g, '');
+                          setBonusAmounts((prev) => ({ ...prev, [item.id]: next }));
+                        }}
+                        className="w-[72px] rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm font-semibold text-[#9A41FE] outline-none focus:border-purple-400"
+                        aria-label="Сумма бонусов для пополнения"
+                      />
+                    </div>
+                  ) : (
+                    <div className="text-right text-sm font-semibold tabular-nums text-[#9A41FE]">
+                      {formatGroupedAmount(bonusB)} B
+                    </div>
+                  )}
+
                   <div className="shrink-0 text-right">
-                    <div className="inline-flex items-center gap-2">
+                    <div className="inline-flex items-center justify-end gap-2">
                       <input
                         value={`${bid} ₽`}
                         onChange={(event) => {
@@ -342,12 +401,6 @@ export function NotPromotedBonusCampaignModal({
                       />
                       <BarChartIcon className="h-4 w-4 text-gray-400" />
                     </div>
-                    <div className="mt-2 flex items-center justify-end gap-2">
-                      <div className="h-1.5 w-[72px] overflow-hidden rounded-full bg-gray-200">
-                        <div className="h-full w-[28%] rounded-full bg-emerald-400" />
-                      </div>
-                      <span className="text-[11px] text-gray-500">Ставка за 11-34</span>
-                    </div>
                   </div>
                 </div>
               );
@@ -355,7 +408,12 @@ export function NotPromotedBonusCampaignModal({
           </div>
         </div>
 
-        <div className="mt-8 flex items-center justify-end gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          <p className="mb-0 text-sm text-gray-500">
+            С единого счёта спишем {formatGroupedAmount(totalChargeRub)} ₽
+          </p>
+          <div className="flex items-center gap-3">
+          {isMassBonus ? (
           <button
             type="button"
             className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-200"
@@ -363,6 +421,7 @@ export function NotPromotedBonusCampaignModal({
           >
             Отмена
           </button>
+          ) : null}
           <button
             type="button"
             className="rounded-xl bg-[#9A41FE] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
@@ -371,11 +430,13 @@ export function NotPromotedBonusCampaignModal({
               onClose();
             }}
           >
-            Запустить
+            Запустить {items.length} {campaignPlural(items.length)}
           </button>
+          </div>
         </div>
           </>
         )}
+      </div>
       </div>
     </div>
   );
