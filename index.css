@@ -1,3 +1,63 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@keyframes wb-discount-stripes-move {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 14px 0;
+  }
+}
+
+.wb-discount-stripes {
+  background-color: #eef0f4;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    #d8dce6 0 2px,
+    transparent 2px 5px
+  );
+  background-size: 14px 14px;
+}
+
+.wb-discount-stripes.is-dark {
+  background-color: rgba(255, 255, 255, 0.12);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(255, 255, 255, 0.22) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.wb-discount-stripes.is-animating {
+  animation: wb-discount-stripes-move 0.7s linear infinite;
+}
+
+/* Один непрерывный переход: зелёный в начале, голубой в конце. */
+.wb-discount-fill {
+  background-image: linear-gradient(90deg, #4ade80 0%, #38bdf8 100%);
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  background-position: 0 0;
+}
+
+@keyframes wb-discount-bars-rise {
+  from {
+    transform: scaleY(0.15);
+    opacity: 0.35;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.wb-discount-bars-item {
+  transform-origin: bottom center;
+  animation: wb-discount-bars-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.wb-discount-bars-item--active {
+  background-image: linear-gradient(180deg, #38bdf8 0%, #4ade80 100%);
+}

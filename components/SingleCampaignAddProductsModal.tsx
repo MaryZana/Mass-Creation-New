@@ -8,6 +8,11 @@ import {
 
 const MAX_SELECT = 50;
 
+/** Категории, продвижение которых увеличивает скидку WB. */
+const WB_DISCOUNT_CATEGORIES = new Set(['Косметика']);
+
+const isWbDiscountCategory = (cat: string) => WB_DISCOUNT_CATEGORIES.has(cat);
+
 export type SingleCampaignSelectableProduct = {
   nmId: number;
   productName: string;
@@ -86,7 +91,7 @@ export function SingleCampaignAddProductsModal({
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [sortKey, setSortKey] = useState<'conversion' | 'stalePromotion' | 'highSeason'>('conversion');
-  const [categoryTab, setCategoryTab] = useState<'all' | 'growth' | 'ab' | 'promo'>('all');
+  const [categoryTab, setCategoryTab] = useState<'all' | 'growth'>('all');
   const sortButtonRef = useRef<HTMLButtonElement | null>(null);
   const sortMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -130,11 +135,7 @@ export function SingleCampaignAddProductsModal({
   const tabFilteredProducts = useMemo(() => {
     if (!category) return filteredProducts;
     if (categoryTab === 'all') return filteredProducts;
-    const inPromo = (p: SingleCampaignSelectableProduct) => p.nmId % 7 === 0;
-    const inAbTest = (p: SingleCampaignSelectableProduct) => p.nmId % 9 === 0;
     const inGrowth = (p: SingleCampaignSelectableProduct) => p.nmId % 5 === 0;
-    if (categoryTab === 'promo') return filteredProducts.filter(inPromo);
-    if (categoryTab === 'ab') return filteredProducts.filter(inAbTest);
     return filteredProducts.filter(inGrowth);
   }, [filteredProducts, category, categoryTab]);
 
@@ -398,7 +399,7 @@ export function SingleCampaignAddProductsModal({
                     <button
                       key={cat}
                       type="button"
-                      className={`block w-full px-3 py-2 text-left text-sm hover:bg-gray-50 ${cat === category ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'}`}
+                      className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 ${cat === category ? 'bg-purple-50 font-medium text-purple-700' : 'text-gray-800'}`}
                       onClick={() => {
                         setCategory(cat);
                         setCategoryOpen(false);
@@ -407,7 +408,12 @@ export function SingleCampaignAddProductsModal({
                         setPending([]);
                       }}
                     >
-                      {cat}
+                      <span>{cat}</span>
+                      {isWbDiscountCategory(cat) ? (
+                        <span className="inline-flex shrink-0 items-center rounded-md bg-[#F3E8FF] px-1.5 py-0.5 text-[11px] font-medium leading-none text-[#7C3AED]">
+                          Скидка WB
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>
@@ -428,8 +434,13 @@ export function SingleCampaignAddProductsModal({
 
           {category ? (
             <>
-              <div className="mb-1 flex items-center justify-between gap-3">
-                <p className="text-sm font-medium text-gray-900">{category}</p>
+              <div className="mb-1">
+                <p className="mb-0 text-sm font-medium text-gray-900">{category}</p>
+                {isWbDiscountCategory(category) ? (
+                  <p className="mt-1 text-xs leading-snug text-gray-500">
+                    Продвигая товары из этой категории, вы увеличиваете скидку WB
+                  </p>
+                ) : null}
               </div>
               <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
                 <div
@@ -440,9 +451,7 @@ export function SingleCampaignAddProductsModal({
                   {(
                     [
                       { id: 'all' as const, label: 'Все' },
-                      { id: 'growth' as const, label: 'Рост заказов' },
-                      { id: 'ab' as const, label: 'А/Б тест' },
-                      { id: 'promo' as const, label: 'В акциях' },
+                      { id: 'growth' as const, label: 'Перспективные' },
                     ] as const
                   ).map((tab) => (
                     <button

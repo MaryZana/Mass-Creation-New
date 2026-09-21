@@ -4064,12 +4064,14 @@ function OrganicReturnFocusMiniChart({
   valueFormat,
   axisFormat,
   unit,
+  hideLegend = false,
 }: {
   variant: ReturnFocusChartVariant;
   series: ReturnFocusSeriesPoint[];
   valueFormat: (n: number) => string;
   axisFormat?: (n: number) => string;
   unit?: string;
+  hideLegend?: boolean;
 }) {
   const tickFormat = axisFormat ?? valueFormat;
   const [hoverX, setHoverX] = useState<number | null>(null);
@@ -4349,7 +4351,7 @@ function OrganicReturnFocusMiniChart({
           </div>
         )}
       </div>
-      {hasClientsSeries && (
+      {hasClientsSeries && !hideLegend && (
         <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[12px] text-gray-600">
           <button
             type="button"
@@ -4749,6 +4751,46 @@ function OrganicReturnFocusBlock({
     </article>
   );
 
+  const ordersKpi = kpis.find((kpi) => kpi.id === 'orders');
+
+  const renderHeroBuyersChart = () =>
+    ordersKpi ? (
+      <div className="flex min-w-0 flex-col">
+        <div className="flex flex-wrap items-end gap-8">
+          <div>
+            <div className="flex items-center gap-1.5 text-[13px] font-medium text-gray-500">
+              <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] bg-[#2563EB] text-white">
+                <Check className="h-2.5 w-2.5" />
+              </span>
+              Покупатели
+            </div>
+            <div className="mt-2 text-[32px] font-bold leading-none tabular-nums text-gray-950">
+              {ORGANIC_METRIC_META.clients.format(periodClients)}
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5 text-[13px] font-medium text-gray-500">
+              <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-[3px] bg-[#9A41FE] text-white">
+                <Check className="h-2.5 w-2.5" />
+              </span>
+              Покупки
+            </div>
+            <div className="mt-2 text-[32px] font-bold leading-none tabular-nums text-gray-950">
+              {ORGANIC_METRIC_META.orders.format(periodOrders)}
+            </div>
+          </div>
+        </div>
+        <OrganicReturnFocusMiniChart
+          variant={ordersKpi.chartVariant}
+          series={ordersKpi.series}
+          valueFormat={ordersKpi.valueFormat}
+          axisFormat={ordersKpi.axisFormat}
+          unit={ordersKpi.unit}
+          hideLegend
+        />
+      </div>
+    ) : null;
+
   return (
     <section id="organic-return" className="scroll-mt-6 flex flex-col gap-3">
       {showVariantLabel && (
@@ -4757,41 +4799,53 @@ function OrganicReturnFocusBlock({
         </div>
       )}
 
-      {showSectionTitle && (
-        <div className="flex flex-wrap items-center gap-3">
-          <h2 className="mt-[5px] text-xl font-bold text-gray-900">Вернувшиеся покупатели</h2>
-          {onOpenAllMetrics && (
-            <button
-              type="button"
-              onClick={onOpenAllMetrics}
-              className="inline-flex shrink-0 items-center gap-1 pb-[3px] text-sm font-medium text-gray-600 transition-colors hover:text-[#9A41FE]"
-            >
-              Все метрики
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-      )}
-
       {metricsFilter === 'gmv' ? (
-        <div className="grid grid-cols-1 gap-3">
-          {kpiById.gmv && renderChartCard(kpiById.gmv)}
-        </div>
+        <article className="rounded-2xl bg-white px-4 py-4">
+          {showSectionTitle && (
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="text-xl font-bold text-gray-900">Вернувшиеся покупатели</h2>
+              <Tip text="Люди, которые сначала купили с рекламы, а потом вернулись без ставки." />
+              {onOpenAllMetrics && (
+                <button
+                  type="button"
+                  onClick={onOpenAllMetrics}
+                  className="ml-auto inline-flex shrink-0 items-center gap-1 text-sm font-medium text-gray-600 transition-colors hover:text-[#9A41FE]"
+                >
+                  Все метрики
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
+          <div className="mt-4">{renderHeroBuyersChart()}</div>
+        </article>
       ) : (
         <div className="flex flex-col gap-3">
+          {showSectionTitle && (
+            <div className="flex flex-wrap items-center gap-3">
+              <h2 className="mt-[5px] text-xl font-bold text-gray-900">Вернувшиеся покупатели</h2>
+              {onOpenAllMetrics && (
+                <button
+                  type="button"
+                  onClick={onOpenAllMetrics}
+                  className="inline-flex shrink-0 items-center gap-1 pb-[3px] text-sm font-medium text-gray-600 transition-colors hover:text-[#9A41FE]"
+                >
+                  Все метрики
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          )}
           {kpiById.gmv && renderChartCard(kpiById.gmv)}
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.7fr)_minmax(240px,0.5fr)] lg:items-stretch">
-            {kpiById.orders && renderChartCard(kpiById.orders)}
-            {(kpiById.opc || kpiById.days) && (
-              <article className="flex h-full flex-col rounded-2xl bg-white p-4">
-                {kpiById.opc && renderInsightMetric(kpiById.opc)}
-                {kpiById.opc && kpiById.days && (
-                  <div className="mx-4 border-t border-gray-100" role="separator" />
-                )}
-                {kpiById.days && renderInsightMetric(kpiById.days)}
-              </article>
-            )}
-          </div>
+          <article className="flex flex-col rounded-2xl bg-white px-4 py-4">
+            {renderHeroBuyersChart()}
+          </article>
+          {(kpiById.opc || kpiById.days) && (
+            <article className="grid rounded-2xl bg-white sm:grid-cols-2">
+              {kpiById.opc && renderInsightMetric(kpiById.opc)}
+              {kpiById.days && renderInsightMetric(kpiById.days)}
+            </article>
+          )}
         </div>
       )}
     </section>

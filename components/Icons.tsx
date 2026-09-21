@@ -106,6 +106,25 @@ export const HelpCircle = ({ className }: { className?: string }) => (
   </svg>
 );
 
+/** Знак вопроса с бейджем play — подсказка + видеоинструкция. */
+export const HelpVideoIcon = ({ className }: { className?: string }) => (
+  <span className={`relative inline-flex h-4 w-4 shrink-0 ${className ?? ''}`} aria-hidden>
+    <HelpCircle className="h-4 w-4 text-gray-400" />
+    <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-[#9A41FE] ring-1 ring-white">
+      <svg viewBox="0 0 24 24" className="ml-px h-1.5 w-1.5 text-white" fill="currentColor">
+        <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+      </svg>
+    </span>
+  </span>
+);
+
+export const BookOpen = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+    <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+  </svg>
+);
+
 export const Wallet = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
@@ -148,6 +167,14 @@ export const Clock = ({ className }: { className?: string }) => (
   </svg>
 );
 
+export const History = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+    <path d="M3 3v5h5" />
+    <path d="M12 7v5l4 2" />
+  </svg>
+);
+
 export const SingleAccountIcon = ({ className }: { className?: string }) => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
       <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
@@ -158,6 +185,12 @@ export const SingleAccountIcon = ({ className }: { className?: string }) => (
 export const Plus = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+);
+
+export const Minus = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <line x1="5" y1="12" x2="19" y2="12"></line>
   </svg>
 );
@@ -176,6 +209,21 @@ export const Calendar = ({ className }: { className?: string }) => (
     <line x1="16" y1="2" x2="16" y2="6"></line>
     <line x1="8" y1="2" x2="8" y2="6"></line>
     <line x1="3" y1="10" x2="21" y2="10"></line>
+  </svg>
+);
+
+export const Coins = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <ellipse cx="12" cy="6" rx="7" ry="3" />
+    <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
+    <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+  </svg>
+);
+
+export const Columns2 = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect x="3" y="4" width="7" height="16" rx="1.5" />
+    <rect x="14" y="4" width="7" height="16" rx="1.5" />
   </svg>
 );
 

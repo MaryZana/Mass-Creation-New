@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, MoreVertical, Sparkles } from './Icons';
+import { DynamicDailyLimitMark } from './DynamicDailyLimitMark';
 import { CpcTopSearchClustersBlock } from './CpcTopSearchClustersBlock';
 import { ProductBidField, PRODUCT_BID_INPUT_WIDTH_CLASS } from './ProductBidField';
 import { BidHistogramButton, SearchBidPositionPicker } from './SearchBidPositionPicker';
@@ -197,6 +198,8 @@ export function CpcSingleProductHeroCard({
   isAutoRefillEnabled,
   onConfigureAutoRefill,
   paymentModelLabel = 'CPC',
+  activeBadgeTextOverride,
+  onOpenRankingFactors,
 }: {
   campaignName: string;
   campaignId: number;
@@ -215,6 +218,8 @@ export function CpcSingleProductHeroCard({
   isAutoRefillEnabled: boolean;
   onConfigureAutoRefill: () => void;
   paymentModelLabel?: 'CPC' | 'CPM';
+  activeBadgeTextOverride?: string;
+  onOpenRankingFactors?: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -291,7 +296,7 @@ export function CpcSingleProductHeroCard({
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
             {isCampaignActive ? (
               <span className="rounded-md bg-[#E8F5E9] px-2 py-0.5 font-medium text-[#2E7D32]">
-                Активна
+                {activeBadgeTextOverride ?? 'Активна'}
               </span>
             ) : (
               <span className="rounded-md bg-yellow-100 px-2 py-0.5 font-medium text-yellow-700">
@@ -304,6 +309,15 @@ export function CpcSingleProductHeroCard({
             <span>{product.stockLabel ?? '1 000 шт'}</span>
             <span>Арт. продавца {product.articleSeller}</span>
             <span>Арт. WB {product.nmId}</span>
+            {onOpenRankingFactors ? (
+              <button
+                type="button"
+                onClick={onOpenRankingFactors}
+                className="font-medium text-gray-500 transition-colors hover:text-gray-700"
+              >
+                Факторы ранжирования <span className="text-[#F07167]">-2</span>
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -328,6 +342,8 @@ export function CpcSingleProductBudgetCard({
   spendRulesLinkLabel,
   showSpendRulesAutomation = false,
   hideDailyLimit = false,
+  dynamicDailyLimitCampaignId,
+  dynamicDailyLimitRub = 0,
 }: {
   campaignBudget: number;
   onRefill: () => void;
@@ -345,6 +361,8 @@ export function CpcSingleProductBudgetCard({
   spendRulesLinkLabel?: string;
   showSpendRulesAutomation?: boolean;
   hideDailyLimit?: boolean;
+  dynamicDailyLimitCampaignId?: number;
+  dynamicDailyLimitRub?: number;
 }) {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -383,6 +401,13 @@ export function CpcSingleProductBudgetCard({
                 onChange={onDailyLimitEnabledChange}
               />
               <span className="whitespace-nowrap text-sm text-gray-500">Дневной лимит</span>
+              {advancedDailyLimitSettingsApplied && dynamicDailyLimitRub > 0 ? (
+                <DynamicDailyLimitMark
+                  dailyLimitRub={dynamicDailyLimitRub}
+                  campaignId={dynamicDailyLimitCampaignId}
+                  compact
+                />
+              ) : null}
             </div>
             <div className="relative w-full">
               <input

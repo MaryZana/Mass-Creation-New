@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Gift, HelpCircle, X, ChevronRight, ThumbsUp } from './Icons';
 
 export type NotPromotedBonusCampaignProduct = {
@@ -31,6 +31,10 @@ export function notPromotedV3BonusOffer(listRowIndex: number): {
 
 function formatGroupedAmount(value: number): string {
   return value.toLocaleString('ru-RU').replace(/\u00A0/g, ' ');
+}
+
+function isClutchBonusProduct(item: NotPromotedBonusCampaignProduct): boolean {
+  return item.bonusEditable === true || item.id === 'pr19' || item.articleWb === '4004003';
 }
 
 function campaignPlural(count: number): string {
@@ -94,6 +98,57 @@ const BarChartIcon = ({ className }: { className?: string }) => (
     <path d="M22 20V8" />
   </svg>
 );
+
+function BonusCampaignProductBidRow({
+  item,
+  bid,
+  onBidChange,
+}: {
+  item: NotPromotedBonusCampaignProduct;
+  bid: string;
+  onBidChange: (next: string) => void;
+}) {
+  const sellerCode = item.articleSeller || item.articleWb;
+  return (
+    <div className="flex items-center justify-between gap-4 border-y border-gray-100 py-4 -mt-px first:mt-0">
+      <div className="flex min-w-0 items-center gap-3">
+        <img
+          src={item.image}
+          alt=""
+          className="h-12 w-12 shrink-0 rounded-lg bg-gray-50 object-cover"
+        />
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-gray-950">{item.name}</div>
+          <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
+            <span className="truncate">TOPTOP • {sellerCode}</span>
+            <button
+              type="button"
+              aria-label="Скопировать артикул"
+              className="shrink-0 text-gray-400 hover:text-gray-700"
+              onClick={() => {
+                void navigator.clipboard?.writeText(sellerCode);
+              }}
+            >
+              <CopyIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        <div className="inline-flex items-center justify-end gap-2">
+          <input
+            value={`${bid} ₽`}
+            onChange={(event) => {
+              onBidChange(event.target.value.replace(/[^\d]/g, ''));
+            }}
+            className="w-[72px] rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm text-gray-900 outline-none focus:border-purple-400"
+          />
+          <BarChartIcon className="h-4 w-4 text-gray-400" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function NotPromotedBonusCampaignBanner({
   onOpenCampaign,
@@ -236,11 +291,26 @@ export function NotPromotedBonusCampaignModal({
     ),
   );
   const [campaignType, setCampaignType] = useState<'CPC' | 'CPM'>('CPC');
+  const [lockedBonusTipId, setLockedBonusTipId] = useState<string | null>(null);
   const isCpmBlocked = showCampaignTypeTabs && campaignType === 'CPM';
+
+  useEffect(() => {
+    if (!lockedBonusTipId) return;
+    const onDoc = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-locked-bonus-tip]')) return;
+      setLockedBonusTipId(null);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [lockedBonusTipId]);
 
   if (items.length === 0) return null;
 
   const isMassBonus = items.length > 1;
+  const isClutchSpendLayout = items.length === 1 && isClutchBonusProduct(items[0]!);
+  const clutchItem = items[0];
+  const clutchBonusKey = clutchItem?.id ?? '';
   const totalChargeRub = items.reduce(
     (sum, item) => sum + (item.chargeRub ?? DEFAULT_ELS_CHARGE_RUB),
     0,
@@ -321,11 +391,75 @@ export function NotPromotedBonusCampaignModal({
               </button>
             </div>
           </>
-        ) : (
+        ) : isClutchSpendLayout && clutchItem ? (
+          <>
+            <div className="mt-5 flex items-center gap-3 rounded-2xl bg-[#F5F6F8] px-4 py-4">
+              <Gift className="h-6 w-6 shrink-0 text-[#9A41FE]" />
+              <p className="mb-0 min-w-0 flex-1 text-sm font-semibold leading-5 text-gray-950">
+                Можно потратить до 5 000 промобонусов
+              </p>
+              <label className="relative w-[148px] shrink-0">
+                <span className="sr-only">Сумма промобонусов</span>
+                <input
+                  value={formatGroupedAmount(Number(bonusAmounts[clutchBonusKey] || '0'))}
+                  onChange={(event) => {
+                    const digits = event.target.value.replace(/[^\d]/g, '');
+                    const next = Math.min(DEFAULT_BONUS_B, Number(digits || '0'));
+                    setBonusAmounts((prev) => ({ ...prev, [clutchBonusKey]: String(next) }));
+                  }}
+                  className="w-full rounded-xl border border-gray-200 bg-white py-2 pl-3 pr-[72px] text-sm font-semibold tabular-nums text-gray-950 outline-none focus:border-purple-400"
+                />
+                <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+                  бонусов
+                </span>
+              </label>
+            </div>
+
+            <div className="mt-6">
+              <div className="flex items-start justify-between gap-4 text-xs text-gray-500">
+                <span>Товары в кампании</span>
+                <span className="inline-flex items-center gap-1">
+                  Ставка за 1 клик в поиске
+                  <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                </span>
+              </div>
+
+              <div className="mt-3">
+                <BonusCampaignProductBidRow
+                  item={clutchItem}
+                  bid={bids[clutchItem.id] ?? '10'}
+                  onBidChange={(next) => {
+                    setBids((prev) => ({ ...prev, [clutchItem.id]: next }));
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-200"
+                onClick={onClose}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-[#9A41FE] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
+                onClick={() => {
+                  onLaunch?.();
+                  onClose();
+                }}
+              >
+                Запустить
+              </button>
+            </div>
+          </>
+        ) : isMassBonus ? (
           <>
         <div className="mt-5">
           <div className="grid grid-cols-[minmax(0,1fr)_9rem_6.5rem] items-start gap-4 text-xs text-gray-500">
-            <span>{isMassBonus ? '1 товар = 1 кампания' : 'Товар'}</span>
+            <span>1 товар = 1 кампания</span>
             <span className="whitespace-nowrap text-right">Пополним бонусами</span>
             <span className="inline-flex items-center justify-end gap-1 text-right">
               Ставка
@@ -333,7 +467,7 @@ export function NotPromotedBonusCampaignModal({
             </span>
           </div>
 
-          <div className="mt-3 max-h-[40vh] overflow-y-auto">
+          <div className="mt-3 overflow-visible">
             {items.map((item) => {
               const sellerCode = item.articleSeller || item.articleWb;
               const bid = bids[item.id] ?? '10';
@@ -379,13 +513,39 @@ export function NotPromotedBonusCampaignModal({
                           const next = event.target.value.replace(/[^\d]/g, '');
                           setBonusAmounts((prev) => ({ ...prev, [item.id]: next }));
                         }}
-                        className="w-[72px] rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm font-semibold text-[#9A41FE] outline-none focus:border-purple-400"
+                        className="w-[72px] rounded-lg border border-gray-200 px-2 py-1.5 text-center text-sm font-semibold text-gray-950 outline-none focus:border-purple-400"
                         aria-label="Сумма бонусов для пополнения"
                       />
                     </div>
                   ) : (
-                    <div className="text-right text-sm font-semibold tabular-nums text-[#9A41FE]">
-                      {formatGroupedAmount(bonusB)} B
+                    <div className="relative text-right" data-locked-bonus-tip>
+                      <button
+                        type="button"
+                        className="text-sm font-semibold tabular-nums text-gray-950"
+                        aria-expanded={lockedBonusTipId === item.id}
+                        aria-describedby={
+                          lockedBonusTipId === item.id
+                            ? `locked-bonus-tip-${item.id}`
+                            : undefined
+                        }
+                        onClick={() => {
+                          setLockedBonusTipId((current) =>
+                            current === item.id ? null : item.id,
+                          );
+                        }}
+                      >
+                        {formatGroupedAmount(bonusB)} B
+                      </button>
+                      {lockedBonusTipId === item.id ? (
+                        <div
+                          id={`locked-bonus-tip-${item.id}`}
+                          role="tooltip"
+                          className="absolute right-0 bottom-full z-20 mb-2 w-[240px] rounded-lg bg-gray-900 px-3 py-2 text-left text-xs font-normal leading-snug text-white shadow-lg"
+                        >
+                          В этой кампании нельзя менять кол-во бонусов, на которые
+                          пополним кампанию
+                        </div>
+                      ) : null}
                     </div>
                   )}
 
@@ -413,7 +573,6 @@ export function NotPromotedBonusCampaignModal({
             С единого счёта спишем {formatGroupedAmount(totalChargeRub)} ₽
           </p>
           <div className="flex items-center gap-3">
-          {isMassBonus ? (
           <button
             type="button"
             className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-200"
@@ -421,7 +580,6 @@ export function NotPromotedBonusCampaignModal({
           >
             Отмена
           </button>
-          ) : null}
           <button
             type="button"
             className="rounded-xl bg-[#9A41FE] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
@@ -434,6 +592,65 @@ export function NotPromotedBonusCampaignModal({
           </button>
           </div>
         </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-5 flex items-start gap-3 rounded-2xl bg-[#F5F6F8] px-4 py-4">
+              <Gift className="mt-0.5 h-6 w-6 shrink-0 text-[#9A41FE]" />
+              <div className="min-w-0">
+                <p className="mb-0 text-sm font-semibold leading-5 text-gray-950">
+                  Пополним её бюджет промобонусами на{' '}
+                  {formatGroupedAmount(items[0]?.bonusB ?? DEFAULT_BONUS_B)} ₽
+                </p>
+                <p className="mb-0 mt-1 text-sm leading-5 text-gray-500">
+                  С единого счёта спишем только{' '}
+                  {formatGroupedAmount(items[0]?.chargeRub ?? DEFAULT_ELS_CHARGE_RUB)} ₽
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6">
+              <div className="flex items-start justify-between gap-4 text-xs text-gray-500">
+                <span>Товары в кампании</span>
+                <span className="inline-flex items-center gap-1">
+                  Ставка за 1 клик в поиске
+                  <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                </span>
+              </div>
+
+              <div className="mt-3">
+                {items.map((item) => (
+                  <BonusCampaignProductBidRow
+                    key={item.id}
+                    item={item}
+                    bid={bids[item.id] ?? '10'}
+                    onBidChange={(next) => {
+                      setBids((prev) => ({ ...prev, [item.id]: next }));
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-8 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-200"
+                onClick={onClose}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-[#9A41FE] px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
+                onClick={() => {
+                  onLaunch?.();
+                  onClose();
+                }}
+              >
+                Запустить
+              </button>
+            </div>
           </>
         )}
       </div>

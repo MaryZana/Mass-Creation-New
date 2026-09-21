@@ -10,6 +10,8 @@ interface MultiSelectProps {
   className?: string;
   disabled?: boolean;
   autoApply?: boolean;
+  /** Серый триггер как в шапке массового создания */
+  muted?: boolean;
 }
 
 export const MultiSelect: React.FC<MultiSelectProps> = ({
@@ -20,6 +22,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   className,
   disabled = false,
   autoApply = false,
+  muted = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [tempSelected, setTempSelected] = useState<string[]>([]);
@@ -84,10 +87,12 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
       <div 
         onClick={() => !disabled && setIsOpen(!isOpen)}
         className={`
-          w-full min-h-[46px] px-3 py-2.5 border rounded-lg text-sm flex items-center justify-between transition-all
+          w-full min-h-[44px] px-3 py-2.5 rounded-[10px] text-sm flex items-center justify-between transition-all
           ${disabled 
-            ? 'bg-gray-100 cursor-not-allowed border-gray-200' 
-            : `bg-white cursor-pointer ${isOpen ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-200 hover:border-gray-300'}`
+            ? 'bg-gray-100 cursor-not-allowed border border-gray-200' 
+            : muted
+              ? `cursor-pointer bg-[#E8E8ED] border border-transparent ${isOpen ? 'ring-2 ring-purple-500' : 'hover:bg-[#DEDEE5]'}`
+              : `bg-white cursor-pointer border ${isOpen ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-200 hover:border-gray-300'}`
           }
         `}
       >

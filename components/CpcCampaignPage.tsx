@@ -14,11 +14,20 @@ import {
   Settings,
   Sparkles,
   Plus,
+  DollarSign,
+  Edit2,
+  BookOpen,
+  History,
 } from './Icons';
+import { useDismissibleHoverTooltip, useFeatureVideoGuide } from './FeatureVideoGuide';
+import { RankingFactorsSidePanel } from './RankingFactorsSidePanel';
+import { useNavigate } from 'react-router-dom';
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
   resolveProductTableThumbSrc,
   PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
+  BUDGET_CONCEPT_DEMO_CAMPAIGN_ID,
+  BUDGET_RANGE_CONCEPT_DEMO_CAMPAIGN_ID,
 } from './SuccessPageTestData';
 import {
   CpcSingleProductHeroCard,
@@ -33,7 +42,9 @@ import {
 } from './BidRecommendationsModal';
 import { AppHeader } from './AppHeader';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
+import { DynamicDailyLimitMark } from './DynamicDailyLimitMark';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
+import { BudgetRangeConceptBlock, SpendHistoryModal, BUDGET_CLICKS_SERIES } from './BudgetRangeConceptBlock';
 import { ProductBidField, PRODUCT_BID_INPUT_WIDTH_CLASS } from './ProductBidField';
 import { SearchBidPositionHint } from './SearchBidPositionHint';
 import { BidHistogramButton, SearchBidPositionPicker } from './SearchBidPositionPicker';
@@ -201,6 +212,156 @@ function formatApproxClicksPerDay(clicks: number): string {
   return clicks.toLocaleString('ru-RU');
 }
 
+const CAMPAIGN_PAGE_VIDEO_SRC = '/videos/help-instruction-demo.mp4';
+
+const CAMPAIGN_INSTRUCTION_ITEMS = [
+  {
+    id: 'ranking',
+    title: 'Как работает ранжирование. Почему ваша карточка внизу',
+    duration: '6:38',
+    src: CAMPAIGN_PAGE_VIDEO_SRC,
+    previewClass: 'from-[#CFE4FF] to-[#3D7AE8]',
+  },
+  {
+    id: 'history',
+    title: 'История изменения кампании',
+    duration: '7:20',
+    src: CAMPAIGN_PAGE_VIDEO_SRC,
+    previewClass: 'from-[#E0D4FF] to-[#6A52E8]',
+  },
+] as const;
+
+function CampaignInstructionsMenu({ onBack }: { onBack?: () => void }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const { openGuide, modal: videoModal } = useFeatureVideoGuide();
+
+  return (
+    <div
+      className="relative"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {videoModal}
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="inline-flex h-9 items-center gap-1.5 text-sm font-medium text-[#007AFF] transition-colors hover:text-[#0066d6]"
+      >
+        <BookOpen className="h-4 w-4 shrink-0" aria-hidden />
+        Инструкции
+      </button>
+
+      {open ? (
+        <div className="absolute right-0 top-full z-[70] pt-1.5">
+          <div
+            className="w-[280px] overflow-hidden rounded-xl border border-gray-100 bg-white py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+            role="menu"
+            aria-label="Видеоинструкции"
+          >
+            {CAMPAIGN_INSTRUCTION_ITEMS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  openGuide({
+                    title: item.title,
+                    videoSrc: item.src,
+                    description: `Видеоинструкция · ${item.duration}`,
+                  });
+                }}
+                className="flex w-full items-center gap-2.5 px-2.5 py-1.5 text-left transition-colors hover:bg-gray-50"
+              >
+                <span
+                  className={`relative flex h-9 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gradient-to-br ${item.previewClass}`}
+                  aria-hidden
+                >
+                  <span className="flex h-4 w-4 items-center justify-center rounded-full bg-black/35">
+                    <svg viewBox="0 0 24 24" className="ml-px h-2 w-2 text-white" fill="currentColor">
+                      <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+                    </svg>
+                  </span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-2 text-[12px] font-medium leading-snug text-gray-900">
+                    {item.title}
+                  </span>
+                  <span className="mt-0.5 block text-[10px] tabular-nums text-gray-400">{item.duration}</span>
+                </span>
+              </button>
+            ))}
+            <div className="mt-1 border-t border-gray-100 px-2.5 pt-1.5 pb-0.5">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setOpen(false);
+                  navigate('/help#help-video-heading');
+                  onBack?.();
+                }}
+                className="w-full rounded-lg px-2 py-1.5 text-left text-[12px] font-semibold text-[#007AFF] transition-colors hover:bg-[#F0F7FF]"
+              >
+                Все инструкции
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CampaignHistoryLink() {
+  const { openGuide, modal: videoModal, isOpen: guideOpen } = useFeatureVideoGuide();
+  const tip = useDismissibleHoverTooltip(guideOpen);
+
+  return (
+    <div
+      className="relative inline-flex"
+      onMouseEnter={tip.onMouseEnter}
+      onMouseLeave={tip.onMouseLeave}
+    >
+      {videoModal}
+      <button
+        type="button"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-gray-200 text-gray-800 transition-colors hover:bg-gray-300"
+        aria-label="История изменения"
+      >
+        <History className="h-4 w-4" aria-hidden />
+      </button>
+      {tip.show ? (
+        <div className="absolute right-0 top-full z-30 w-[17rem] pt-1">
+          <div className="rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
+            <p>Тут все изменения по кампании за неделю: ставки, бюджет, дневной лимит и настройки.</p>
+            <button
+              type="button"
+              onClick={() => {
+                tip.dismiss();
+                openGuide({
+                  title: 'История изменения кампании',
+                  videoSrc: CAMPAIGN_PAGE_VIDEO_SRC,
+                  description: 'Видеоинструкция · 7:20',
+                });
+              }}
+              className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/15"
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-400 text-black">
+                <svg viewBox="0 0 24 24" className="ml-px h-2 w-2" fill="currentColor" aria-hidden>
+                  <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+                </svg>
+              </span>
+              Как это работает
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Ставка в поиске при включённом преследовании — только отображение, без поля ввода */
 function ProductBidReadOnly({ value }: { value: string }) {
   const parsed = parseDisplayValue(value);
@@ -230,6 +391,10 @@ interface CpcCampaignPageProps {
   scheduledDailyLimit: number | null;
   /** true = дневной лимит израсходован, показы остановлены до завтра */
   dailyLimitExhausted?: boolean;
+  /** Автопополнение с списка кампаний */
+  autoRefill?: boolean;
+  /** Правила автоувеличения дневного лимита включены (с списка) */
+  dynamicDailyLimit?: boolean;
   fromReadyToRepeat?: boolean;
   repeatLaunchPreset?: RepeatLaunchPreset;
   campaignStatus?: 'active' | 'paused';
@@ -239,6 +404,10 @@ interface CpcCampaignPageProps {
     name: string;
     image: string;
   };
+  /** Дубликат 2-й строки списка: будущий отдельный UI-концепт блока бюджета */
+  budgetConceptDemo?: boolean;
+  /** 4-я кампания: концепт единого блока «Бюджет» (диапазон) */
+  budgetRangeConceptDemo?: boolean;
   onBack: () => void;
   onUpdateData?: (data: {
     name?: string;
@@ -246,13 +415,17 @@ interface CpcCampaignPageProps {
     dailyLimit?: number | null;
     scheduledDailyLimit?: number | null;
     maxCpcBidRub?: number;
+    autoRefill?: boolean;
+    dynamicDailyLimit?: boolean;
     status?: 'active' | 'paused';
     statusText?: string;
   }) => void;
 }
 
-const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) => (
+const ToggleSwitch = ({ id, checked, onChange, disabled = false }: { id?: string; checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) => (
   <button 
+    id={id}
+    type="button"
     role="switch" 
     aria-checked={checked} 
     onClick={() => !disabled && onChange(!checked)} 
@@ -309,7 +482,7 @@ const Toast = ({ show, message, onClose, isSuccess = false, isError = false, dur
   
   const bgClass = isError ? 'bg-red-600' : isSuccess ? 'bg-green-600' : 'bg-gray-900';
   return (
-    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 ${bgClass} text-white px-6 py-3 rounded-lg shadow-xl z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-md ${isError ? 'pointer-events-none' : ''}`}>
+    <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 ${bgClass} text-white px-6 py-3 rounded-lg shadow-xl z-[120] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300 max-w-md ${isError ? 'pointer-events-none' : ''}`}>
       <span className="font-medium whitespace-pre-line">{message}</span>
     </div>
   );
@@ -2119,10 +2292,13 @@ function DailyLimitSpendSummaryBlock({
   summary,
   layout = 'sidebar',
   compact = false,
+  accent = 'neutral',
 }: {
   summary: DailyLimitSpendSummary;
   layout?: 'sidebar' | 'stacked' | 'card';
   compact?: boolean;
+  /** purple — как на макете 2-й кампании */
+  accent?: 'neutral' | 'purple';
 }) {
   const progressBarWidthClass =
     layout === 'sidebar' ? 'w-full max-w-[60px]' : layout === 'card' ? 'w-1/3' : 'w-full max-w-[120px]';
@@ -2133,6 +2309,7 @@ function DailyLimitSpendSummaryBlock({
       ? 'mt-1 whitespace-nowrap text-sm leading-none tabular-nums text-gray-900'
       : 'mt-1 text-sm leading-snug tabular-nums text-gray-900';
   const progressHeight = compact ? 'h-1' : 'h-1.5';
+  const fillClass = accent === 'purple' ? 'bg-[#9A41FE]' : 'bg-gray-700';
   const content = (
     <>
       <span className={labelClass}>Истратили</span>
@@ -2144,7 +2321,7 @@ function DailyLimitSpendSummaryBlock({
         className={`mt-1 ${progressHeight} overflow-hidden rounded-full bg-gray-200 ${progressBarWidthClass}`}
       >
         <div
-          className="h-full rounded-full bg-gray-700 transition-[width] duration-300"
+          className={`h-full rounded-full transition-[width] duration-300 ${fillClass}`}
           style={{ width: `${summary.progress}%` }}
         />
       </div>
@@ -2167,6 +2344,7 @@ function DailyLimitSpendSummaryBlock({
     <div className="flex w-fit max-w-[148px] min-w-0 flex-col justify-center gap-1">{content}</div>
   );
 }
+
 
 function AutomationDailyLimitTile({ summary }: { summary: DailyLimitSpendSummary }) {
   return (
@@ -2237,18 +2415,34 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   dailyLimit,
   scheduledDailyLimit,
   dailyLimitExhausted,
+  autoRefill = false,
+  dynamicDailyLimit = false,
   fromReadyToRepeat,
   repeatLaunchPreset,
   campaignStatus = 'active',
   initialOpenBidRecommendations = false,
   bidRecommendationProduct,
+  budgetConceptDemo: budgetConceptDemoProp,
+  budgetRangeConceptDemo: budgetRangeConceptDemoProp,
   onBack,
   onUpdateData,
 }) => {
   const isCpmCampaign = paymentModel === 'CPM';
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const isSingleProductHeroCampaign = campaignId === PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID;
-  const showSingleProductLayout = isSingleProductHeroCampaign || isCpmCampaign;
+  /** 3-я кампания в списке (концепт бюджета) — блок прозрачности динамичного лимита */
+  const isBudgetConceptDemo =
+    budgetConceptDemoProp === true || campaignId === BUDGET_CONCEPT_DEMO_CAMPAIGN_ID;
+  /** 4-я кампания: единый блок «Бюджет» (диапазон дневного лимита) */
+  const isBudgetRangeConceptDemo =
+    budgetRangeConceptDemoProp === true ||
+    campaignId === BUDGET_RANGE_CONCEPT_DEMO_CAMPAIGN_ID;
+  /** 2-я кампания (бонусная Riviera): компактный дневной лимит с выпадашкой правил */
+  const isBonusCampaignLayout =
+    Boolean(fromReadyToRepeat) && !isBudgetConceptDemo && !isBudgetRangeConceptDemo;
+  // На демо-странице: "герой" (первая кампания) оставляем как есть,
+  // остальные показываем в едином формате с блоками "Остаток бюджета / Автопополнение / Дневной лимит".
+  const showSingleProductLayout = isSingleProductHeroCampaign;
   const { profileId } = useProfile();
   const [isBidRecommendationsOpen, setIsBidRecommendationsOpen] = useState(
     initialOpenBidRecommendations,
@@ -2261,7 +2455,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastIsError, setToastIsError] = useState(false);
-  const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
+  const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(!!autoRefill);
   const [autoRefillMode, setAutoRefillMode] = useState<AutoRefillMode>('manual');
   const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
   const [campaignBudget, setCampaignBudget] = useState(remainingBudget ?? 1000);
@@ -2272,8 +2466,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [isFirstVisit, setIsFirstVisit] = useState(true);
   const [pendingDailyLimit, setPendingDailyLimit] = useState<string | null>(null);
   const [savedDailyLimit, setSavedDailyLimit] = useState(dailyLimit ? String(dailyLimit) : '');
-  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
+  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(isBonusCampaignLayout);
   const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
+  const [isBonusSpendHistoryOpen, setIsBonusSpendHistoryOpen] = useState(false);
   const productsSectionRef = useRef<HTMLElement>(null);
   const [campaignProductNmIds, setCampaignProductNmIds] = useState([DEMO_CPC_PRODUCT_NM]);
   const canRemoveProductFromCampaign = campaignProductNmIds.length > 1;
@@ -2285,6 +2480,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     [productKey]: { draft: '7.9', saved: '7.9' },
   });
   const [isProductActionsMenuOpen, setIsProductActionsMenuOpen] = useState(false);
+  const [isRankingFactorsOpen, setIsRankingFactorsOpen] = useState(false);
   const productActionsMenuRef = useRef<HTMLDivElement>(null);
   const [isSearchBidPickerOpen, setIsSearchBidPickerOpen] = useState(false);
   const searchBidPickerRef = useRef<HTMLDivElement>(null);
@@ -2298,20 +2494,63 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [isAdvancedDailyLimitModalOpen, setIsAdvancedDailyLimitModalOpen] = useState(false);
   const [isAutomationDailyLimitModalOpen, setIsAutomationDailyLimitModalOpen] = useState(false);
   const [isBidChasingSetupModalOpen, setIsBidChasingSetupModalOpen] = useState(false);
-  const [advancedDailyLimitSettings, setAdvancedDailyLimitSettings] = useState(() => ({
-    strategyId: null as 'spendOptimization' | 'clicksOptimization' | null,
-    strategyGroupLabel: '',
-    autoIncreaseEnabled: false,
-    metric: 'drr' as 'drr' | 'cr',
-    thresholdPercent: 15,
-    drrThresholdPercent: 15,
-    crThresholdPercent: 2.8,
-    drrMetricEnabled: false,
-    crMetricEnabled: false,
-    increaseAmountRub: 500,
-    limitIncreasePercent: 25 as 25 | 50 | 100,
-    increaseRules: [] as DailyLimitIncreaseRule[],
-  }));
+  const [advancedDailyLimitSettings, setAdvancedDailyLimitSettings] = useState(() => {
+    // Бонусная (2) и единый бюджет (4): правила включены сразу. Концепт (3) — по seed / после настройки в модалке.
+    if (
+      !dynamicDailyLimit &&
+      !isBonusCampaignLayout &&
+      !isBudgetRangeConceptDemo
+    ) {
+      return {
+        strategyId: null as 'spendOptimization' | 'clicksOptimization' | 'maxSpend' | null,
+        strategyGroupLabel: '',
+        autoIncreaseEnabled: false,
+        metric: 'drr' as 'drr' | 'cr',
+        thresholdPercent: 15,
+        drrThresholdPercent: 15,
+        crThresholdPercent: 2.8,
+        drrMetricEnabled: false,
+        crMetricEnabled: false,
+        increaseAmountRub: 500,
+        limitIncreasePercent: 25 as 25 | 50 | 100,
+        increaseRules: [] as DailyLimitIncreaseRule[],
+      };
+    }
+    const drrThreshold = isBonusCampaignLayout ? 30 : 15;
+    return {
+      strategyId: (isBudgetRangeConceptDemo
+        ? 'spendOptimization'
+        : null) as 'spendOptimization' | 'clicksOptimization' | 'maxSpend' | null,
+      strategyGroupLabel: isBudgetRangeConceptDemo ? 'Гибкий' : '',
+      autoIncreaseEnabled: true,
+      metric: 'drr' as 'drr' | 'cr',
+      thresholdPercent: drrThreshold,
+      drrThresholdPercent: drrThreshold,
+      crThresholdPercent: 2.8,
+      drrMetricEnabled: true,
+      crMetricEnabled: false,
+      increaseAmountRub: 500,
+      limitIncreasePercent: 25 as 25 | 50 | 100,
+      increaseRules: [
+        {
+          id: 'restored-dynamic',
+          enabled: true,
+          metric: 'drr' as const,
+          limitIncreasePercent: 25,
+          conditions: [
+            {
+              id: 'restored-drr',
+              compare: 'below' as const,
+              threshold: drrThreshold,
+              budgetChangeRub: 500,
+            },
+          ],
+          drrBelowPercent: drrThreshold,
+          crAbovePercent: 2.8,
+        },
+      ] as DailyLimitIncreaseRule[],
+    };
+  });
   const [bidChasingPosition, setBidChasingPosition] = useState<'1-2' | '3-10' | '11-34'>('1-2');
   const [bidChasingMaxBid, setBidChasingMaxBid] = useState(11.88);
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
@@ -2446,8 +2685,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       setSavedDailyLimit('');
       setIsCarryoverEnabled(false);
       setDailyLimitBudgetShortfall(null);
+      setAdvancedDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
       if (onUpdateData) {
-        onUpdateData({ dailyLimit: null, scheduledDailyLimit: null });
+        onUpdateData({ dailyLimit: null, scheduledDailyLimit: null, dynamicDailyLimit: false });
       }
       const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
       setter((prev) => ({
@@ -2468,8 +2708,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       setSavedDailyLimit('');
       setIsCarryoverEnabled(false);
       setDailyLimitBudgetShortfall(null);
+      setAdvancedDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
       if (onUpdateData) {
-        onUpdateData({ dailyLimit: null, scheduledDailyLimit: null });
+        onUpdateData({ dailyLimit: null, scheduledDailyLimit: null, dynamicDailyLimit: false });
       }
       setBidChasingPosition(position);
       setBidChasingMaxBid(maxBid);
@@ -2741,11 +2982,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     setSavedDailyLimit('');
     setIsCarryoverEnabled(false);
     setDailyLimitBudgetShortfall(null);
+    setAdvancedDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
     setToastMessage('Дневной лимит отключен');
     setToastIsError(false);
     setShowToast(true);
     if (onUpdateData) {
-      onUpdateData({ dailyLimit: null, scheduledDailyLimit: null });
+      onUpdateData({ dailyLimit: null, scheduledDailyLimit: null, dynamicDailyLimit: false });
     }
   }, [onUpdateData]);
 
@@ -2797,6 +3039,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       setSavedDailyLimit('');
     }
   }, [dailyLimit, isCpmCampaign]);
+
+  useEffect(() => {
+    setIsAutoRefillEnabled(!!autoRefill);
+  }, [autoRefill]);
 
   useEffect(() => {
     if (isFirstVisit) {
@@ -2886,6 +3132,20 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         progress: Math.min(100, Math.round((1010 / 1100) * 100)),
       };
     }
+    // 2-я и 3-я кампании: как на макете — частичный расход + итог чуть выше базы (перенос)
+    if (isBonusCampaignLayout || isBudgetConceptDemo) {
+      const parsedSaved = parseDisplayValue(savedDailyLimit);
+      const parsedInput = parseDisplayValue(dailyLimitValue);
+      const base =
+        parsedSaved > 0 ? parsedSaved : parsedInput > 0 ? parsedInput : 1000;
+      const total = Math.max(base, 1100);
+      const spent = 80;
+      return {
+        total,
+        spent,
+        progress: Math.min(100, Math.round((spent / total) * 100)),
+      };
+    }
     const parsedSaved = parseDisplayValue(savedDailyLimit);
     const parsedInput = parseDisplayValue(dailyLimitValue);
     const total =
@@ -2899,6 +3159,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     dailyLimitValue,
     dailyLimitExhausted,
     isSingleProductHeroCampaign,
+    isBonusCampaignLayout,
+    isBudgetConceptDemo,
   ]);
 
   const savedDailyLimitRubDisplay = useMemo(() => {
@@ -2924,7 +3186,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const enableAutoRefillLinkedToDailyLimit = useCallback(() => {
     setAutoRefillMode('dailyLimit');
     setIsAutoRefillEnabled(true);
-  }, []);
+    onUpdateData?.({ autoRefill: true });
+  }, [onUpdateData]);
 
   const autoRefillOnRulesTrigger =
     isAutoRefillEnabled && autoRefillMode === 'dailyLimit';
@@ -2936,9 +3199,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       } else {
         setAutoRefillMode('manual');
         setIsAutoRefillEnabled(false);
+        onUpdateData?.({ autoRefill: false });
       }
     },
-    [enableAutoRefillLinkedToDailyLimit],
+    [enableAutoRefillLinkedToDailyLimit, onUpdateData],
   );
 
   const dailyLimitSpendRulesLinkLabel = useMemo(() => {
@@ -2946,30 +3210,86 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     const rules = advancedDailyLimitSettings.increaseRules ?? [];
     const activeRule = rules.find((r) => r.enabled && isDailyLimitIncreaseRuleValid(r));
     if (activeRule) {
-      const summary = formatDailyLimitIncreaseConditionsSummary(activeRule.conditions ?? []);
-      return formatDailyLimitSpendRulesActiveLinkLabel(
-        activeRule.limitIncreasePercent,
-        summary,
-      );
+      return formatDailyLimitSpendRulesActiveLinkLabel(activeRule);
     }
     const metrics = resolveAutoIncreaseMetricEnabled(advancedDailyLimitSettings);
     const thresholds = resolveAutoIncreaseThresholds(advancedDailyLimitSettings);
-    const parts: string[] = [];
-    if (metrics.drr) {
-      parts.push(
-        formatDailyLimitConditionPhrase('drr', 'below', thresholds.drr),
-      );
+    const synthetic: DailyLimitIncreaseRule = {
+      id: 'legacy',
+      enabled: true,
+      metric: metrics.drr ? 'drr' : metrics.cr ? 'crOrder' : null,
+      limitIncreasePercent: advancedDailyLimitSettings.limitIncreasePercent ?? 25,
+      conditions: [
+        ...(metrics.drr
+          ? [
+              {
+                id: 'legacy-drr',
+                compare: 'below' as const,
+                threshold: thresholds.drr,
+                budgetChangeRub: advancedDailyLimitSettings.increaseAmountRub || 500,
+              },
+            ]
+          : []),
+        ...(metrics.cr
+          ? [
+              {
+                id: 'legacy-cr',
+                compare: 'above' as const,
+                threshold: thresholds.cr,
+                budgetChangeRub: advancedDailyLimitSettings.increaseAmountRub || 500,
+              },
+            ]
+          : []),
+      ],
+      drrBelowPercent: thresholds.drr,
+      crAbovePercent: thresholds.cr,
+    };
+    return formatDailyLimitSpendRulesActiveLinkLabel(synthetic);
+  }, [advancedDailyLimitSettings, dynamicDailyLimitConfigured]);
+
+  /** Короткая подпись для выпадашки во 2-й кампании (макет: «Увеличить до 30% от ДРР») */
+  const bonusDailyLimitRulesDropdownLabel = useMemo(() => {
+    if (!dynamicDailyLimitConfigured) return 'Новая стратегия';
+    const rules = advancedDailyLimitSettings.increaseRules ?? [];
+    const activeRule = rules.find((r) => r.enabled && isDailyLimitIncreaseRuleValid(r));
+    const metric = activeRule?.metric;
+    const threshold =
+      activeRule?.conditions?.find((c) => c.threshold > 0)?.threshold ??
+      advancedDailyLimitSettings.drrThresholdPercent ??
+      30;
+    if (metric === 'drr' || (!metric && advancedDailyLimitSettings.drrMetricEnabled)) {
+      return `Увеличить до ${threshold}% от ДРР`;
     }
-    if (metrics.cr) {
-      parts.push(
-        formatDailyLimitConditionPhrase('cr', 'above', thresholds.cr),
-      );
+    if (metric === 'crOrder' || metric === 'crCart') {
+      return `Увеличить при CR выше ${threshold}%`;
     }
-    const legacySummary = parts.join(', ');
-    return formatDailyLimitSpendRulesActiveLinkLabel(
-      advancedDailyLimitSettings.limitIncreasePercent ?? 25,
-      legacySummary,
-    );
+    if (metric === 'cpo') {
+      return `Увеличить при CPO ниже ${formatForDisplay(threshold)} ₽`;
+    }
+    return dailyLimitSpendRulesLinkLabel ?? 'Правила включены';
+  }, [
+    advancedDailyLimitSettings,
+    dynamicDailyLimitConfigured,
+    dailyLimitSpendRulesLinkLabel,
+  ]);
+
+  /** Подпись метрики для блока единого бюджета (4-я кампания) */
+  const budgetRangeStrategyLabel = useMemo(() => {
+    if (
+      advancedDailyLimitSettings.strategyId === 'maxSpend' ||
+      advancedDailyLimitSettings.strategyGroupLabel === 'Фиксированный' ||
+      advancedDailyLimitSettings.strategyGroupLabel === 'Максимум списаний'
+    ) {
+      return '';
+    }
+    if (!dynamicDailyLimitConfigured) return 'Без автоувеличения';
+    const rules = advancedDailyLimitSettings.increaseRules ?? [];
+    const activeRule = rules.find((r) => r.enabled && isDailyLimitIncreaseRuleValid(r));
+    const fromMetric = strategyFromConditionMetricLabel(activeRule?.metric);
+    if (fromMetric) return fromMetric;
+    if (advancedDailyLimitSettings.drrMetricEnabled) return 'Стратегия от ДРР';
+    if (advancedDailyLimitSettings.crMetricEnabled) return 'Стратегия от CR в заказ';
+    return '';
   }, [advancedDailyLimitSettings, dynamicDailyLimitConfigured]);
 
   const budgetStrategiesStatusLabel = useMemo(() => {
@@ -2987,7 +3307,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     const messages: string[] = [];
     const profitStrategyActive = dynamicDailyLimitConfigured;
     if (profitStrategyActive) {
-      messages.push('Выбрана стратегия «Эффективные траты»');
+      messages.push('Выбрана стратегия «Гибкий»');
     }
     if (isBidChasingEnabled) {
       messages.push(`Автобиддер держит ${bidChasingPositionLinkLabel}`);
@@ -3049,6 +3369,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 setIsAutoRefillModalOpen(true);
               }}
               paymentModelLabel={paymentModel}
+              activeBadgeTextOverride="Тест верстки"
+              onOpenRankingFactors={() => setIsRankingFactorsOpen(true)}
             />
             <div className="mb-4 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
               <CpcSingleProductBudgetCard
@@ -3062,6 +3384,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   } else {
                     setIsAutoRefillEnabled(false);
                     setWasAutoRefillToggledOn(false);
+                    onUpdateData?.({ autoRefill: false });
                     setToastMessage('Изменения сохранены');
                     setShowToast(true);
                   }
@@ -3094,6 +3417,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 dailyLimitSpendSummary={dailyLimitSpendSummary}
                 advancedDailyLimitSettingsApplied={dynamicDailyLimitConfigured}
                 spendRulesLinkLabel={dailyLimitSpendRulesLinkLabel}
+                dynamicDailyLimitCampaignId={campaignId}
+                dynamicDailyLimitRub={savedDailyLimitRub}
                 showSpendRulesAutomation={
                   isDailyLimitEnabled && savedDailyLimitRub >= DAILY_LIMIT_ABSOLUTE_MIN
                 }
@@ -3152,79 +3477,200 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <CampaignInstructionsMenu onBack={onBack} />
             <button className="px-4 py-2 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900">
               Приостановить
             </button>
-            <button className="px-4 py-2 text-sm font-medium bg-gray-100 text-gray-800 rounded-lg hover:bg-gray-200">
+            <button className="px-4 py-2 text-sm font-medium bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">
               Завершить
             </button>
+            <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
+            <CampaignHistoryLink />
           </div>
         </div>
         ) : null}
 
-        {!showSingleProductLayout ? (
+        {!showSingleProductLayout && isBudgetRangeConceptDemo ? (
+        <BudgetRangeConceptBlock
+          minDailyLimitRub={
+            savedDailyLimitRub >= DAILY_LIMIT_ABSOLUTE_MIN ? savedDailyLimitRub : 1000
+          }
+          maxDailyLimitRub={
+            advancedDailyLimitSettings.strategyId === 'maxSpend'
+              ? advancedDailyLimitSettings.maxSpendLimitRub &&
+                advancedDailyLimitSettings.maxSpendLimitRub >= DAILY_LIMIT_ABSOLUTE_MIN
+                ? advancedDailyLimitSettings.maxSpendLimitRub
+                : savedDailyLimitRub >= DAILY_LIMIT_ABSOLUTE_MIN
+                  ? savedDailyLimitRub
+                  : 1500
+              : Math.max(
+                  savedDailyLimitRub >= DAILY_LIMIT_ABSOLUTE_MIN ? savedDailyLimitRub : 1000,
+                  1500,
+                )
+          }
+          displayMode={
+            advancedDailyLimitSettings.strategyId === 'maxSpend' ||
+            advancedDailyLimitSettings.strategyGroupLabel === 'Фиксированный' ||
+            advancedDailyLimitSettings.strategyGroupLabel === 'Максимум списаний'
+              ? 'maxOnly'
+              : 'range'
+          }
+          maxSpendPeriod={
+            advancedDailyLimitSettings.maxSpendPeriod === 'week' ? 'week' : 'day'
+          }
+          strategyLabel={budgetRangeStrategyLabel}
+          onOpenSettings={() => setIsAdvancedDailyLimitModalOpen(true)}
+        />
+        ) : !showSingleProductLayout && isBudgetConceptDemo ? (
+        <div data-testid="budget-concept-unified-card" className="mb-8">
+          <div className="flex w-full flex-col gap-4 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/[0.03]">
+            <p className="text-base font-semibold text-gray-900">Бюджет</p>
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-stretch">
+            <button
+              type="button"
+              onClick={() => setIsBudgetRefillModalOpen(true)}
+              className="flex min-h-[124px] w-full flex-col rounded-xl border border-gray-200 p-3 text-left transition-colors hover:bg-[#F5F5F7] sm:w-[260px]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-sm text-gray-500">Остаток</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#9A41FE] text-white">
+                  <Plus className="h-4 w-4" aria-hidden />
+                </span>
+              </div>
+              <p className="mt-auto pt-6 text-[22px] font-semibold leading-none tabular-nums text-gray-900">
+                {formatCurrency(campaignBudget)}
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setWasAutoRefillToggledOn(!isAutoRefillEnabled);
+                setIsAutoRefillModalOpen(true);
+              }}
+              className="flex min-h-[124px] w-full flex-col rounded-xl border border-gray-200 p-3 text-left transition-colors hover:bg-[#F5F5F7] sm:w-[260px]"
+            >
+              <span className="text-sm text-gray-500">Автопополнение</span>
+              {isAutoRefillEnabled ? (
+                <p className="mt-auto pt-4 text-sm leading-snug text-gray-900">
+                  {autoRefillMode === 'dailyLimit' ? (
+                    <>Пополняем бюджет автоматически, если он меньше нужного дневного лимита</>
+                  ) : (
+                    <>
+                      Если бюджет меньше {formatForDisplay(1000)} ₽, пополнять на{' '}
+                      {formatForDisplay(3000)} ₽ не чаще 1 раза в день
+                    </>
+                  )}
+                </p>
+              ) : (
+                <span className="mt-auto w-fit rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-900">
+                  Настроить
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsAdvancedDailyLimitModalOpen(true)}
+              className="flex min-h-[124px] w-full flex-col rounded-xl border border-gray-200 p-3 text-left transition-colors hover:bg-[#F5F5F7] sm:w-[260px]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <span className="text-sm text-gray-500">Дневной лимит</span>
+                {isDailyLimitEnabled && dailyLimitSpendSummary ? (
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-700">
+                    <Edit2 className="h-4 w-4" aria-hidden />
+                  </span>
+                ) : null}
+              </div>
+              {isDailyLimitEnabled && dailyLimitSpendSummary ? (
+                <div className="mt-auto pt-4">
+                  <p className="text-sm leading-snug tabular-nums">
+                    <span className="font-semibold text-gray-900">
+                      {formatForDisplay(dailyLimitSpendSummary.spent)} ₽
+                    </span>
+                    <span className="text-gray-500">
+                      {' '}
+                      из {formatForDisplay(dailyLimitSpendSummary.total)} ₽
+                    </span>
+                  </p>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                    <div
+                      className="h-full rounded-full bg-[#9A41FE] transition-[width] duration-300"
+                      style={{ width: `${dailyLimitSpendSummary.progress}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <span className="mt-auto w-fit rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-900">
+                  Настроить
+                </span>
+              )}
+            </button>
+          </div>
+          </div>
+        </div>
+        ) : !showSingleProductLayout ? (
         <div className="mb-8 grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
           <div className="flex min-h-[148px] flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
             <p className="mb-4 text-sm font-semibold text-gray-900">Остаток бюджета</p>
             <div className="flex flex-1 flex-col justify-center gap-4 sm:flex-row sm:items-start sm:justify-between">
               <button
                 type="button"
-                onClick={() => {
-                  setIsBudgetRefillModalOpen(true);
-                }}
+                onClick={() => setIsBudgetRefillModalOpen(true)}
                 className="shrink-0 text-left text-[26px] font-semibold leading-none text-[#6366f1] transition-colors hover:text-purple-700"
               >
                 {formatCurrency(campaignBudget)}
               </button>
               <div className="min-w-0 flex-1 sm:max-w-[320px]">
-                <div className="flex items-center gap-2">
-                  <ToggleSwitch
-                    checked={isAutoRefillEnabled}
-                    onChange={(checked) => {
-                      if (checked) {
-                        setWasAutoRefillToggledOn(true);
-                        setIsAutoRefillModalOpen(true);
-                      } else {
-                        setIsAutoRefillEnabled(false);
-                        setWasAutoRefillToggledOn(false);
-                        setToastMessage('Изменения сохранены');
-                        setShowToast(true);
-                      }
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setWasAutoRefillToggledOn(false);
-                      setIsAutoRefillModalOpen(true);
-                    }}
-                    className="text-sm font-medium text-[#6366f1] transition-colors hover:text-purple-700"
-                  >
-                    Автопополнение бюджета
-                  </button>
-                  <div className="group/autorefill-tip relative inline-block">
-                    <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
-                    <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg group-hover/autorefill-tip:block">
-                      Пополняем бюджет автоматически по заданным условиям, не чаще одного раза в день.
+                    <div className="flex items-center gap-2">
+                      <ToggleSwitch
+                        checked={isAutoRefillEnabled}
+                        onChange={(checked) => {
+                          if (checked) {
+                            setWasAutoRefillToggledOn(true);
+                            setIsAutoRefillModalOpen(true);
+                          } else {
+                            setIsAutoRefillEnabled(false);
+                            setWasAutoRefillToggledOn(false);
+                            onUpdateData?.({ autoRefill: false });
+                            setToastMessage('Изменения сохранены');
+                            setShowToast(true);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setWasAutoRefillToggledOn(false);
+                          setIsAutoRefillModalOpen(true);
+                        }}
+                        className="text-sm font-medium text-[#6366f1] transition-colors hover:text-purple-700"
+                      >
+                        Автопополнение бюджета
+                      </button>
+                      <div className="group/autorefill-tip relative inline-block">
+                        <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
+                        <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg group-hover/autorefill-tip:block">
+                          Пополняем бюджет автоматически по заданным условиям, не чаще одного раза в день.
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-                <p className="mt-2 text-xs leading-snug text-gray-400">
-                  {isAutoRefillEnabled ? (
-                    autoRefillMode === 'dailyLimit' ? (
-                      <>
-                        Пополняем бюджет автоматически, если он меньше нужного дневного лимита
-                      </>
-                    ) : (
-                      <>
-                        Если бюджет меньше {formatForDisplay(1000)} ₽, пополнять на{' '}
-                        {formatForDisplay(3000)} ₽ не чаще 1 раза в день
-                      </>
-                    )
-                  ) : (
-                    <>Включите автопополнение, чтобы кампания не останавливалась</>
-                  )}
-                </p>
+                    <p className="mt-2 text-xs leading-snug text-gray-400">
+                      {isAutoRefillEnabled ? (
+                        autoRefillMode === 'dailyLimit' ? (
+                          <>
+                            Пополняем бюджет автоматически, если он меньше нужного дневного лимита
+                          </>
+                        ) : (
+                          <>
+                            Если бюджет меньше {formatForDisplay(1000)} ₽, пополнять на{' '}
+                            {formatForDisplay(3000)} ₽ не чаще 1 раза в день
+                          </>
+                        )
+                      ) : (
+                        <>Включите автопополнение, чтобы кампания не останавливалась</>
+                      )}
+                    </p>
               </div>
             </div>
           </div>
@@ -3245,11 +3691,183 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold text-gray-900">Дневной лимит</span>
                     <DailyLimitInfoTooltip />
+                    {!isBonusCampaignLayout &&
+                    dynamicDailyLimitConfigured &&
+                    savedDailyLimitRub >= DAILY_LIMIT_ABSOLUTE_MIN ? (
+                      <DynamicDailyLimitMark
+                        dailyLimitRub={savedDailyLimitRub}
+                        campaignId={campaignId}
+                        compact
+                      />
+                    ) : null}
                   </div>
                 </div>
+                {isBonusCampaignLayout &&
+                isDailyLimitEnabled &&
+                dynamicDailyLimitConfigured ? (
+                  <button
+                    type="button"
+                    className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                      isBonusSpendHistoryOpen
+                        ? 'bg-violet-50 text-[#9A41FE]'
+                        : 'text-gray-400 hover:bg-gray-50 hover:text-[#9A41FE]'
+                    }`}
+                    aria-label="История списаний"
+                    aria-expanded={isBonusSpendHistoryOpen}
+                    onClick={() => setIsBonusSpendHistoryOpen(true)}
+                  >
+                    <Clock className="h-4 w-4" aria-hidden />
+                  </button>
+                ) : null}
               </div>
             </div>
 
+            {isBonusCampaignLayout ? (
+              <div className="flex flex-1 items-stretch gap-3">
+                <div className="flex min-w-0 flex-1 flex-col justify-center gap-3">
+                  <div
+                    className={`flex h-11 w-full max-w-[420px] items-stretch overflow-hidden rounded-lg border ${
+                      !isDailyLimitEnabled
+                        ? 'border-gray-200 bg-gray-50'
+                        : 'border-gray-200 bg-white focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500'
+                    }`}
+                  >
+                    <div className="relative min-w-0 flex-1">
+                      <input
+                        type="text"
+                        value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
+                        disabled={!isDailyLimitEnabled}
+                        onChange={(e) => {
+                          const parsed = parseDisplayValue(e.target.value);
+                          if (!isNaN(parsed)) {
+                            setDailyLimitValue(String(parsed));
+                          } else if (e.target.value === '') {
+                            setDailyLimitValue('');
+                          }
+                        }}
+                        onBlur={() => {
+                          if (!isDailyLimitEnabled) return;
+                          const parsed = parseDisplayValue(dailyLimitValue);
+                          if (
+                            dailyLimitValue === '' ||
+                            parseDisplayValue(dailyLimitValue) ===
+                              parseDisplayValue(savedDailyLimit)
+                          ) {
+                            return;
+                          }
+                          if (isNaN(parsed) || parsed < DAILY_LIMIT_ABSOLUTE_MIN) {
+                            setDailyLimitValue(savedDailyLimit || '');
+                            setToastMessage(
+                              `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
+                            );
+                            setToastIsError(true);
+                            setShowToast(true);
+                            return;
+                          }
+                          if (parsed > campaignBudget) {
+                            setDailyLimitValue(savedDailyLimit || '');
+                            setDailyLimitBudgetShortfall(parsed - campaignBudget);
+                            return;
+                          }
+                          setSavedDailyLimit(dailyLimitValue);
+                          setDailyLimitBudgetShortfall(null);
+                          setToastMessage(
+                            `Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`,
+                          );
+                          setShowToast(true);
+                          if (onUpdateData) {
+                            onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
+                          }
+                        }}
+                        className={`h-full w-full border-0 bg-transparent py-2 pl-3 pr-8 text-sm font-medium outline-none ${
+                          !isDailyLimitEnabled
+                            ? 'cursor-not-allowed text-gray-400'
+                            : 'text-gray-900'
+                        }`}
+                        placeholder={formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}
+                        aria-label="Сумма дневного лимита"
+                      />
+                      <span
+                        className={`pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm ${
+                          !isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'
+                        }`}
+                      >
+                        ₽
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!isDailyLimitEnabled}
+                      onClick={() => setIsAdvancedDailyLimitModalOpen(true)}
+                      className={`flex max-w-[55%] shrink-0 items-center gap-1 border-l border-gray-200 px-2.5 text-left text-xs font-medium transition-colors ${
+                        !isDailyLimitEnabled
+                          ? 'cursor-not-allowed text-gray-300'
+                          : dynamicDailyLimitConfigured
+                            ? 'text-gray-700 hover:bg-violet-50 hover:text-[#9A41FE]'
+                            : 'text-gray-400 hover:bg-gray-50 hover:text-gray-500'
+                      }`}
+                      aria-label="Открыть настройки правил дневного лимита"
+                    >
+                      <span className="min-w-0 truncate">{bonusDailyLimitRulesDropdownLabel}</span>
+                      <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                    </button>
+                  </div>
+                  {showDailyLimitBidMismatchHint ? (
+                    <DailyLimitBidMismatchHint
+                      recommendedDailyLimitRub={recommendedDailyLimitForBids}
+                      className="mt-0"
+                    />
+                  ) : null}
+                  <label className="m-0 flex cursor-pointer items-center gap-2">
+                    <Checkbox
+                      disabled={!isDailyLimitEnabled}
+                      checked={isCarryoverEnabled}
+                      onChange={(e) => {
+                        if (!isDailyLimitEnabled) return;
+                        setIsCarryoverEnabled(e.target.checked);
+                        setToastMessage('Настройка переноса лимита сохранена');
+                        setShowToast(true);
+                      }}
+                    />
+                    <span
+                      className={`text-xs ${isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}`}
+                    >
+                      Переносить неистраченные деньги
+                    </span>
+                    <div
+                      className="relative inline-block"
+                      onMouseEnter={() => setIsCarryoverTooltipVisible(true)}
+                      onMouseLeave={() => setIsCarryoverTooltipVisible(false)}
+                    >
+                      <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
+                      {isCarryoverTooltipVisible && (
+                        <div className="absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
+                          <p className="mb-1">Система старается тратить бюджет равномерно.</p>
+                          <p>
+                            Если сегодня потратится меньше дневного лимита, остаток будет добавлен к
+                            лимиту следующего дня. Общая сумма расходов не увеличивается.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </label>
+                </div>
+
+                {dailyLimitSpendSummary ? (
+                  <DailyLimitSpendSummaryBlock
+                    summary={dailyLimitSpendSummary}
+                    layout="sidebar"
+                    accent="purple"
+                  />
+                ) : (
+                  <div className="flex w-[min(148px,30%)] shrink-0 flex-col justify-center border-l border-gray-200 pl-3">
+                    <p className="text-xs leading-snug text-gray-500">
+                      Чем больше ставка, тем больше будет минимальный лимит
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
             <div className="flex flex-1 items-center gap-2">
               <div className="flex min-w-0 flex-col justify-center gap-3">
                 <div className="relative w-full max-w-[240px]">
@@ -3304,6 +3922,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                         : 'border-gray-200 bg-white text-gray-900 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
                     }`}
                     placeholder={`Задайте от ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
+                    aria-label={isBudgetConceptDemo ? 'Базовый дневной лимит' : 'Дневной лимит'}
                   />
                   <span
                     className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm ${
@@ -3381,6 +4000,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 </div>
               ) : null}
             </div>
+            )}
           </div>
         </div>
         ) : null}
@@ -3492,9 +4112,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     <p className="text-sm font-semibold leading-tight text-gray-900">
                       {DEMO_CPC_PRODUCT.productName}
                     </p>
-                    <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
                       <span>{DEMO_CPC_PRODUCT.nmId}</span>
                       <CopyNmIdButton nmId={DEMO_CPC_PRODUCT.nmId} />
+                      <button
+                        type="button"
+                        onClick={() => setIsRankingFactorsOpen(true)}
+                        className="font-medium text-gray-500 transition-colors hover:text-gray-700"
+                      >
+                        Факторы ранжирования <span className="text-[#F07167]">-2</span>
+                      </button>
                     </div>
                   </td>
                   <td className="py-3 pr-3 align-top text-right">
@@ -3685,11 +4312,14 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             setIsAutoRefillEnabled(true);
             setIsAutoRefillModalOpen(false);
             setWasAutoRefillToggledOn(false);
+            onUpdateData?.({ autoRefill: true });
             setToastMessage('Автопополнение настроено');
             setShowToast(true);
           }}
         />
       )}
+
+
 
       <AutoStrategiesModal
         isOpen={autoStrategiesModal !== null}
@@ -3766,6 +4396,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           onApply: (settings) => {
             setAdvancedDailyLimitSettings(settings);
             closeAutoStrategies();
+            onUpdateData?.({
+              dynamicDailyLimit: isDynamicDailyLimitConfigured(settings),
+            });
             setToastMessage('Настройки стратегии «Тратить эффективно» сохранены');
             setToastIsError(false);
             setShowToast(true);
@@ -3773,9 +4406,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         }}
       />
 
+      <SpendHistoryModal
+        isOpen={isBonusSpendHistoryOpen}
+        onClose={() => setIsBonusSpendHistoryOpen(false)}
+        series={BUDGET_CLICKS_SERIES}
+      />
+
       <AdvancedDailyLimitModal
-        advancedSettingsOnly
+        advancedSettingsOnly={!isBudgetConceptDemo}
+        dailyLimitOnly={isBudgetConceptDemo}
         conditionRuleBuilder
+        budgetStrategyTabs={isBudgetRangeConceptDemo}
         isOpen={isAdvancedDailyLimitModalOpen}
         onClose={() => setIsAdvancedDailyLimitModalOpen(false)}
         isDailyLimitEnabled={isDailyLimitEnabled}
@@ -3798,7 +4439,8 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             setDailyLimitBudgetShortfall(parsed - campaignBudget);
             return;
           }
-          setSavedDailyLimit(dailyLimitValue);
+          setSavedDailyLimit(String(parsed));
+          setDailyLimitValue(String(parsed));
           setDailyLimitBudgetShortfall(null);
           if (!options?.silent) {
             setToastMessage(
@@ -3825,15 +4467,23 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           setAdvancedDailyLimitSettings(settings);
           if (options?.reset) return;
           setIsAdvancedDailyLimitModalOpen(false);
+          onUpdateData?.({
+            dynamicDailyLimit: isDynamicDailyLimitConfigured(settings),
+          });
           setToastMessage(
-            isDynamicDailyLimitConfigured(settings)
-              ? 'Настроен динамичный лимит'
-              : 'Настройки дневного лимита сохранены',
+            isBudgetRangeConceptDemo && settings.strategyGroupLabel
+              ? `Стратегия «${settings.strategyGroupLabel}» сохранена`
+              : isBudgetConceptDemo
+                ? 'Настройки дневного лимита сохранены'
+                : isDynamicDailyLimitConfigured(settings)
+                  ? 'Настроен динамичный лимит'
+                  : 'Настройки дневного лимита сохранены',
           );
           setToastIsError(false);
           setShowToast(true);
         }}
         onAfterResetSettings={() => {
+          onUpdateData?.({ dynamicDailyLimit: false });
           setToastMessage('Расширенные настройки сброшены');
           setToastIsError(false);
           setShowToast(true);
@@ -3887,6 +4537,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         onApply={(settings) => {
           setAdvancedDailyLimitSettings(settings);
           setIsAutomationDailyLimitModalOpen(false);
+          onUpdateData?.({
+            dynamicDailyLimit: isDynamicDailyLimitConfigured(settings),
+          });
           setToastMessage('Настройки дневного лимита сохранены');
           setToastIsError(false);
           setShowToast(true);
@@ -4188,6 +4841,20 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         onApplyBid={handleApplyBidRecommendation}
       />
 
+      <RankingFactorsSidePanel
+        open={isRankingFactorsOpen}
+        onClose={() => setIsRankingFactorsOpen(false)}
+        productName={DEMO_CPC_PRODUCT.productName}
+        productImageUrl={
+          resolveProductTableThumbSrc(
+            String(DEMO_CPC_PRODUCT.nmId),
+            DEMO_CPC_PRODUCT.imageUrl,
+            DEMO_CPC_PRODUCT.category,
+          ) || PRODUCT_TABLE_THUMB_FALLBACK
+        }
+        productMeta={`${DEMO_CPC_PRODUCT.category} • ${DEMO_CPC_PRODUCT.brand} • ${DEMO_CPC_PRODUCT.nmId}`}
+      />
+
       <Toast 
         show={showToast} 
         message={toastMessage} 
@@ -4212,23 +4879,12 @@ export const AutoRefillModal: React.FC<{
   isOpen,
   onClose,
   onSave,
-  initialMode,
+  initialMode: _initialMode,
 }) => {
-  const [refillMode, setRefillMode] = useState<AutoRefillMode>(initialMode);
   const [threshold, setThreshold] = useState('1000');
   const [amount, setAmount] = useState('3000');
   const [usePromoBonuses, setUsePromoBonuses] = useState(true);
   const [showPackages, setShowPackages] = useState(true);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    setRefillMode(initialMode);
-  }, [isOpen, initialMode]);
-
-  const refillTabClass = (active: boolean) =>
-    `shrink-0 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-    }`;
 
   const ModalToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
     <button role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${checked ? 'bg-purple-500' : 'bg-gray-300'}`}>
@@ -4260,32 +4916,6 @@ export const AutoRefillModal: React.FC<{
         <div className="p-6 space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar">
           <div className="bg-gray-50/70 p-6 rounded-xl border border-gray-100">
             <h3 className="text-lg font-bold mb-4">Условия пополнения</h3>
-            <div
-              className="mb-5 inline-flex w-fit max-w-full gap-1 rounded-xl bg-[#F2F2F7] p-1"
-              role="tablist"
-              aria-label="Способ автопополнения"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={refillMode === 'manual'}
-                className={refillTabClass(refillMode === 'manual')}
-                onClick={() => setRefillMode('manual')}
-              >
-                Ручная настройка
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={refillMode === 'dailyLimit'}
-                className={refillTabClass(refillMode === 'dailyLimit')}
-                onClick={() => setRefillMode('dailyLimit')}
-              >
-                Пополнение от дневного лимита
-              </button>
-            </div>
-
-            {refillMode === 'manual' ? (
             <div className="space-y-4 max-w-lg">
               <div className="grid grid-cols-2 items-center gap-4">
                 <label htmlFor="threshold" className="text-gray-600">Если бюджет меньше</label>
@@ -4302,11 +4932,6 @@ export const AutoRefillModal: React.FC<{
                 </div>
               </div>
             </div>
-            ) : (
-              <p className="max-w-lg text-sm leading-relaxed text-gray-600">
-                Пополняем бюджет, если его окажется меньше, чем нужно для текущего дневного лимита.
-              </p>
-            )}
           </div>
           
           <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
@@ -4357,7 +4982,7 @@ export const AutoRefillModal: React.FC<{
         </div>
 
         <div className="flex justify-start items-center gap-3 p-6 bg-gray-50/70 border-t border-gray-100 rounded-b-2xl">
-            <button onClick={() => onSave(refillMode)} className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
+            <button onClick={() => onSave('manual')} className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
                 Сохранить
             </button>
             <button onClick={onClose} className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
@@ -4492,11 +5117,10 @@ const BudgetRefillModal: React.FC<{
 
             <div className="pt-4 border-t border-gray-100">
               <div className="flex items-center gap-2 mb-4">
-              <Checkbox
+              <ToggleSwitch
                 id="bonus-toggle"
                 checked={useBonuses}
-                onChange={e => setUseBonuses(e.target.checked)}
-                className="w-5 h-5 text-purple-600 cursor-pointer"
+                onChange={setUseBonuses}
               />
               <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
                 Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
@@ -4874,7 +5498,41 @@ export const BidChasingClustersModal: React.FC<{
   );
 };
 
-type DailyLimitStrategyId = 'spendOptimization' | 'clicksOptimization';
+type DailyLimitStrategyId = 'spendOptimization' | 'clicksOptimization' | 'maxSpend';
+
+type BudgetStrategyTabId = 'maxSpend' | 'spendOptimization';
+
+type MaxSpendPeriod = 'day' | 'week';
+
+const MAX_SPEND_PERIOD_OPTIONS: { value: MaxSpendPeriod; label: string }[] = [
+  { value: 'day', label: 'день' },
+  { value: 'week', label: 'неделя' },
+];
+
+const BUDGET_STRATEGY_TABS: {
+  id: BudgetStrategyTabId;
+  label: string;
+  description: string;
+}[] = [
+  {
+    id: 'spendOptimization',
+    label: 'Гибкий',
+    description:
+      'Поднимаем дневной лимит только когда эффективность хорошая — по вашим правилам на метриках.',
+  },
+  {
+    id: 'maxSpend',
+    label: 'Фиксированный',
+    description:
+      'Задайте максимальную сумму на день. Система не будет контролировать скорость списания — только этот потолок.',
+  },
+];
+
+function resolveBudgetStrategyTab(
+  strategyId: DailyLimitStrategyId | null | undefined,
+): BudgetStrategyTabId {
+  return strategyId === 'maxSpend' ? 'maxSpend' : 'spendOptimization';
+}
 
 type LimitIncreasePercent = 25 | 50 | 100;
 
@@ -4905,17 +5563,30 @@ export type AdvancedDailyLimitSettings = {
   limitIncreasePercent: LimitIncreasePercent;
   /** Конструктор условий увеличения дневного лимита */
   increaseRules?: DailyLimitIncreaseRule[];
+  /** Максимум списаний за день (стратегия maxSpend) */
+  maxSpendLimitRub?: number;
+  /** Период лимита для стратегии maxSpend */
+  maxSpendPeriod?: MaxSpendPeriod;
 };
 
-type DailyLimitConditionMetric = 'drr' | 'cr' | 'impressions';
+type DailyLimitConditionMetric = 'drr' | 'crCart' | 'crOrder' | 'cpo';
 
 type DailyLimitConditionCompare = 'below' | 'above';
 
+type DailyLimitBudgetDirection = 'increase' | 'decrease';
+
 type DailyLimitIncreaseCondition = {
   id: string;
-  metric: DailyLimitConditionMetric | null;
+  /** @deprecated метрика теперь на уровне правила; оставляем для миграции */
+  metric?: DailyLimitConditionMetric | null;
   compare: DailyLimitConditionCompare;
   threshold: number;
+  /** На сколько ₽ изменить дневной лимит при срабатывании (если unit = rub) */
+  budgetChangeRub: number;
+  /** На сколько % изменить дневной лимит при срабатывании (если unit = percent) */
+  budgetChangePercent?: number;
+  /** В чём задаём изменение: рубли или проценты */
+  budgetChangeUnit?: 'rub' | 'percent';
 };
 
 type DailyLimitIncreaseRule = {
@@ -4923,13 +5594,23 @@ type DailyLimitIncreaseRule = {
   enabled: boolean;
   /** Шаблон правила: встроенный, сохранённый пользователем или своё условие */
   presetId?: string;
+  /** Одна метрика на всю стратегию */
+  metric: DailyLimitConditionMetric | null;
+  /** @deprecated совместимость; для conditionRuleBuilder используем budgetChangeRub в условиях */
   limitIncreasePercent: number;
   conditions?: DailyLimitIncreaseCondition[];
   drrBelowPercent: number;
   crAbovePercent: number;
 };
 
-const DAILY_LIMIT_RULE_MAX_CONDITIONS = 5;
+const DAILY_LIMIT_RULE_MAX_CONDITIONS = 3;
+
+const DAILY_LIMIT_CONDITION_METRICS: DailyLimitConditionMetric[] = [
+  'drr',
+  'crCart',
+  'crOrder',
+  'cpo',
+];
 
 function newDailyLimitIncreaseRuleId() {
   return `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -4988,11 +5669,14 @@ export function createDefaultAdvancedDailyLimitSettings(): AdvancedDailyLimitSet
     increaseAmountRub: 500,
     limitIncreasePercent: 25,
     increaseRules: [],
+    maxSpendLimitRub: undefined,
+    maxSpendPeriod: 'day',
   };
 }
 
 function isDynamicDailyLimitConfigured(settings: AdvancedDailyLimitSettings): boolean {
   if (!settings.autoIncreaseEnabled) return false;
+  if (settings.strategyId === 'maxSpend') return true;
   if (settings.increaseRules?.length) {
     return settings.increaseRules.some((r) => r.enabled && isDailyLimitIncreaseRuleValid(r));
   }
@@ -5004,26 +5688,65 @@ function isAutoIncreaseThresholdValid(parsed: number) {
   return Number.isFinite(parsed) && parsed > 0 && parsed <= 100;
 }
 
+function normalizeConditionMetric(
+  metric: string | null | undefined,
+): DailyLimitConditionMetric | null {
+  if (metric == null) return null;
+  if (metric === 'cr' || metric === 'crOrder') return 'crOrder';
+  if (metric === 'crCart') return 'crCart';
+  if (metric === 'cpo') return 'cpo';
+  if (metric === 'drr') return 'drr';
+  return null;
+}
+
 function conditionMetricLabel(metric: DailyLimitConditionMetric) {
   switch (metric) {
     case 'drr':
       return 'ДРР';
-    case 'cr':
-      return 'CR';
-    case 'impressions':
-      return 'Показы';
+    case 'crCart':
+      return 'CR в корзину';
+    case 'crOrder':
+      return 'CR в заказ';
+    case 'cpo':
+      return 'CPO';
   }
 }
 
+function strategyFromConditionMetricLabel(
+  metric: DailyLimitConditionMetric | null | undefined,
+): string | null {
+  const normalized = normalizeConditionMetric(metric);
+  if (!normalized) return null;
+  return `Стратегия от ${conditionMetricLabel(normalized)}`;
+}
+
+function budgetDirectionForMetric(_metric: DailyLimitConditionMetric): DailyLimitBudgetDirection {
+  // Бизнес-цель: при «хорошем» значении метрики наращиваем лимит (проходной поток).
+  // Сейчас все метрики в правилах работают на увеличение; порог (ниже/выше) задаёт система.
+  return 'increase';
+}
+
+function budgetDirectionVerb(direction: DailyLimitBudgetDirection, form: 'inf' | 'future' = 'inf') {
+  if (form === 'future') {
+    return direction === 'increase' ? 'Увеличим' : 'Уменьшим';
+  }
+  return direction === 'increase' ? 'увеличивать' : 'уменьшать';
+}
+
 function defaultCompareForMetric(metric: DailyLimitConditionMetric): DailyLimitConditionCompare {
-  return metric === 'drr' ? 'below' : 'above';
+  // ДРР / CPO: чем ниже, тем лучше → реагируем, когда метрика ниже порога.
+  // CR: чем выше, тем лучше → реагируем, когда метрика выше порога.
+  if (metric === 'drr' || metric === 'cpo') return 'below';
+  return 'above';
 }
 
 function resolveConditionCompare(
   condition: DailyLimitIncreaseCondition,
+  ruleMetric?: DailyLimitConditionMetric | null,
 ): DailyLimitConditionCompare {
-  if (condition.metric == null) return 'below';
-  return condition.compare ?? defaultCompareForMetric(condition.metric);
+  const metric = ruleMetric ?? normalizeConditionMetric(condition.metric ?? null);
+  if (metric == null) return condition.compare ?? 'below';
+  return defaultCompareForMetric(metric);
 }
 
 function conditionCompareLabel(compare: DailyLimitConditionCompare) {
@@ -5031,7 +5754,7 @@ function conditionCompareLabel(compare: DailyLimitConditionCompare) {
 }
 
 function conditionMetricUnit(metric: DailyLimitConditionMetric) {
-  return metric === 'impressions' ? '' : '%';
+  return metric === 'cpo' ? '₽' : '%';
 }
 
 function formatDailyLimitConditionPhrase(
@@ -5040,83 +5763,316 @@ function formatDailyLimitConditionPhrase(
   threshold: number,
 ): string {
   const unit = conditionMetricUnit(metric);
-  const thresholdPart = threshold > 0 ? ` ${threshold}${unit}` : '';
+  const thresholdPart =
+    threshold > 0
+      ? unit === '₽'
+        ? ` ${formatForDisplay(threshold)} ${unit}`
+        : ` ${threshold}${unit}`
+      : '';
   return `${conditionMetricLabel(metric)} ${conditionCompareLabel(compare).toLowerCase()}${thresholdPart}`;
 }
 
 function formatDailyLimitIncreaseConditionsSummary(
+  metric: DailyLimitConditionMetric | null | undefined,
   conditions: DailyLimitIncreaseCondition[],
 ): string {
-  const parts = conditions
-    .filter((c): c is DailyLimitIncreaseCondition & { metric: DailyLimitConditionMetric } =>
-      c.metric != null,
-    )
+  if (!metric) return '';
+  return conditions
+    .filter((c) => c.threshold > 0)
     .map((c) =>
-      formatDailyLimitConditionPhrase(c.metric, resolveConditionCompare(c), c.threshold),
-    );
-  return parts.join(', ');
+      formatDailyLimitConditionPhrase(metric, resolveConditionCompare(c, metric), c.threshold),
+    )
+    .join(', ');
 }
 
 function formatDailyLimitSpendRulesActiveLinkLabel(
-  limitIncreasePercent: number,
-  conditionsSummary: string,
+  rule: DailyLimitIncreaseRule,
 ): string | undefined {
-  const trimmed = conditionsSummary.trim();
-  if (!trimmed) return undefined;
-  return `Увеличим бюджет на ${limitIncreasePercent}% если ${trimmed}`;
+  if (!rule.metric) return undefined;
+  const conditions = (rule.conditions ?? []).filter((c) =>
+    isConditionBudgetChangeConfigured(c) && c.threshold > 0,
+  );
+  if (conditions.length === 0) return undefined;
+  const direction = budgetDirectionForMetric(rule.metric);
+  const verb = budgetDirectionVerb(direction, 'future');
+  const parts = conditions.map((c) => {
+    const phrase = formatDailyLimitConditionPhrase(
+      rule.metric!,
+      resolveConditionCompare(c, rule.metric),
+      c.threshold,
+    );
+    return `${phrase} → ${formatConditionBudgetChangeLabel(c)}`;
+  });
+  return `${verb} лимит: ${parts.join('; ')}`;
+}
+
+const CONDITION_PERCENT_THRESHOLD_MIN = 1;
+const CONDITION_PERCENT_THRESHOLD_MAX = 99;
+const CONDITION_CPO_THRESHOLD_MIN = 1;
+const CONDITION_INCREASE_RUB_MIN = 100;
+
+function minConditionThreshold(metric: DailyLimitConditionMetric) {
+  return metric === 'cpo' ? CONDITION_CPO_THRESHOLD_MIN : CONDITION_PERCENT_THRESHOLD_MIN;
+}
+
+function maxConditionThreshold(metric: DailyLimitConditionMetric) {
+  return metric === 'cpo' ? 99_999_999 : CONDITION_PERCENT_THRESHOLD_MAX;
+}
+
+function clampConditionThreshold(metric: DailyLimitConditionMetric, parsed: number) {
+  if (!Number.isFinite(parsed) || parsed <= 0) return minConditionThreshold(metric);
+  const rounded = metric === 'cpo' ? Math.round(parsed) : parsed;
+  return Math.min(maxConditionThreshold(metric), Math.max(minConditionThreshold(metric), rounded));
+}
+
+function clampConditionIncreaseRub(parsed: number) {
+  if (!Number.isFinite(parsed) || parsed <= 0) return CONDITION_INCREASE_RUB_MIN;
+  return Math.max(CONDITION_INCREASE_RUB_MIN, Math.round(parsed));
 }
 
 function isConditionThresholdValid(metric: DailyLimitConditionMetric, parsed: number) {
   if (!Number.isFinite(parsed) || parsed <= 0) return false;
-  if (metric === 'impressions') return parsed <= 99_999_999;
-  return parsed <= 100;
+  if (metric === 'cpo') return parsed >= CONDITION_CPO_THRESHOLD_MIN && parsed <= 99_999_999;
+  return parsed >= CONDITION_PERCENT_THRESHOLD_MIN && parsed <= CONDITION_PERCENT_THRESHOLD_MAX;
+}
+
+function isConditionBudgetChangeValid(parsed: number) {
+  return Number.isFinite(parsed) && parsed >= CONDITION_INCREASE_RUB_MIN && parsed <= 99_999_999;
+}
+
+function resolveConditionBudgetChangeUnit(
+  condition: DailyLimitIncreaseCondition,
+): 'rub' | 'percent' {
+  return condition.budgetChangeUnit === 'percent' ? 'percent' : 'rub';
+}
+
+function isConditionBudgetChangePercentValid(parsed: number) {
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 100;
+}
+
+function isConditionBudgetChangeConfigured(condition: DailyLimitIncreaseCondition) {
+  if (resolveConditionBudgetChangeUnit(condition) === 'percent') {
+    return isConditionBudgetChangePercentValid(condition.budgetChangePercent ?? 0);
+  }
+  return isConditionBudgetChangeValid(condition.budgetChangeRub);
+}
+
+function formatConditionBudgetChangeLabel(condition: DailyLimitIncreaseCondition) {
+  if (resolveConditionBudgetChangeUnit(condition) === 'percent') {
+    return `${condition.budgetChangePercent ?? 0}%`;
+  }
+  return `${formatForDisplay(condition.budgetChangeRub)} ₽`;
+}
+
+function createEmptyMetricCondition(
+  metric: DailyLimitConditionMetric | null,
+): DailyLimitIncreaseCondition {
+  return {
+    id: newDailyLimitIncreaseConditionId(),
+    compare: metric ? defaultCompareForMetric(metric) : 'below',
+    threshold: 0,
+    budgetChangeRub: 0,
+    budgetChangePercent: 0,
+    budgetChangeUnit: 'rub',
+  };
 }
 
 function migrateLegacyRuleConditions(rule: DailyLimitIncreaseRule): DailyLimitIncreaseRule {
+  let conditions: DailyLimitIncreaseCondition[];
   if (rule.conditions !== undefined) {
-    return {
-      ...rule,
-      conditions: rule.conditions.map((c) => ({
-        ...c,
-        metric: c.metric ?? null,
-        compare:
-          c.compare ??
-          (c.metric != null ? defaultCompareForMetric(c.metric) : 'below'),
-      })),
-    };
+    conditions = rule.conditions
+      .map((c) => {
+        const metric = normalizeConditionMetric(c.metric ?? rule.metric ?? null);
+        return {
+          id: c.id || newDailyLimitIncreaseConditionId(),
+          metric,
+          compare:
+            c.compare ??
+            (metric != null ? defaultCompareForMetric(metric) : ('below' as const)),
+          threshold: c.threshold ?? 0,
+          budgetChangeRub:
+            c.budgetChangeRub > 0
+              ? c.budgetChangeRub
+              : rule.limitIncreasePercent > 0
+                ? Math.max(100, rule.limitIncreasePercent * 10)
+                : 0,
+          budgetChangePercent: c.budgetChangePercent ?? 0,
+          budgetChangeUnit: c.budgetChangeUnit === 'percent' ? 'percent' : 'rub',
+        };
+      })
+      .filter(
+        (c) =>
+          c.metric != null ||
+          c.threshold > 0 ||
+          c.budgetChangeRub > 0 ||
+          (c.budgetChangePercent ?? 0) > 0,
+      );
+  } else {
+    const hasLegacy = rule.drrBelowPercent > 0 || rule.crAbovePercent > 0;
+    conditions = hasLegacy
+      ? [
+          ...(rule.drrBelowPercent > 0
+            ? [
+                {
+                  id: newDailyLimitIncreaseConditionId(),
+                  metric: 'drr' as const,
+                  compare: 'below' as const,
+                  threshold: rule.drrBelowPercent,
+                  budgetChangeRub: Math.max(100, (rule.limitIncreasePercent || 20) * 10),
+                },
+              ]
+            : []),
+          ...(rule.crAbovePercent > 0
+            ? [
+                {
+                  id: newDailyLimitIncreaseConditionId(),
+                  metric: 'crOrder' as const,
+                  compare: 'above' as const,
+                  threshold: rule.crAbovePercent,
+                  budgetChangeRub: Math.max(100, (rule.limitIncreasePercent || 20) * 10),
+                },
+              ]
+            : []),
+        ]
+      : [];
   }
-  const hasLegacy =
-    rule.drrBelowPercent > 0 || rule.crAbovePercent > 0;
-  if (!hasLegacy) {
-    return { ...rule, conditions: [] };
-  }
+
+  const metricsInConditions = conditions
+    .map((c) => normalizeConditionMetric(c.metric ?? null))
+    .filter((m): m is DailyLimitConditionMetric => m != null);
+  const ruleMetric =
+    normalizeConditionMetric(rule.metric) ??
+    (metricsInConditions.length > 0 && metricsInConditions.every((m) => m === metricsInConditions[0])
+      ? metricsInConditions[0]
+      : metricsInConditions[0] ?? null);
+
+  const normalizedConditions = conditions
+    .filter((c) => {
+      const m = normalizeConditionMetric(c.metric ?? null);
+      return m == null || ruleMetric == null || m === ruleMetric;
+    })
+    .slice(0, DAILY_LIMIT_RULE_MAX_CONDITIONS)
+    .map((c) => ({
+      id: c.id,
+      compare: c.compare,
+      threshold: c.threshold,
+      budgetChangeRub: c.budgetChangeRub,
+      budgetChangePercent: c.budgetChangePercent ?? 0,
+      budgetChangeUnit: resolveConditionBudgetChangeUnit(c),
+    }));
+
   return {
     ...rule,
-    conditions: [
-      {
-        id: newDailyLimitIncreaseConditionId(),
-        metric: 'drr',
-        compare: 'below',
-        threshold: rule.drrBelowPercent,
-      },
-      {
-        id: newDailyLimitIncreaseConditionId(),
-        metric: 'cr',
-        compare: 'above',
-        threshold: rule.crAbovePercent,
-      },
-    ],
+    metric: ruleMetric,
+    conditions: normalizedConditions,
   };
 }
 
 function isDailyLimitIncreaseRuleValid(rule: DailyLimitIncreaseRule) {
+  if (rule.metric == null) return false;
   const conditions = rule.conditions ?? [];
   if (conditions.length === 0) return false;
   return conditions.every(
     (condition) =>
-      condition.metric != null &&
-      isConditionThresholdValid(condition.metric, condition.threshold),
+      isConditionThresholdValid(rule.metric!, condition.threshold) &&
+      isConditionBudgetChangeConfigured(condition),
   );
+}
+
+function hasConflictingDailyLimitConditions(rule: DailyLimitIncreaseRule) {
+  const conditions = (rule.conditions ?? []).filter((condition) => condition.threshold > 0);
+  const seen = new Set<string>();
+  for (const condition of conditions) {
+    const key = `${condition.compare}:${condition.threshold}`;
+    if (seen.has(key)) return true;
+    seen.add(key);
+  }
+  return false;
+}
+
+function getDailyLimitIncreaseRulesSaveError(
+  rules: DailyLimitIncreaseRule[],
+  options: {
+    campaignBudget: number;
+    dailyLimitRub: number;
+    allowEmpty?: boolean;
+    allowLimitAboveBudget?: boolean;
+  },
+): string | null {
+  const rule = rules[0];
+  if (!rule?.metric) {
+    return options.allowEmpty ? null : 'Выберите метрику для правил увеличения';
+  }
+  const metric = rule.metric;
+  const unit = conditionMetricUnit(metric);
+  const minThreshold = minConditionThreshold(metric);
+  const thresholdUnitLabel = unit === '₽' ? ' ₽' : '%';
+  const conditions = rule.conditions ?? [];
+  if (conditions.length === 0) {
+    return options.allowEmpty ? null : 'Добавьте хотя бы одно условие';
+  }
+
+  const started = conditions.filter((condition) => {
+    const changeUnit = resolveConditionBudgetChangeUnit(condition);
+    const changeConfigured =
+      changeUnit === 'percent'
+        ? (condition.budgetChangePercent ?? 0) > 0
+        : condition.budgetChangeRub > 0;
+    return condition.threshold > 0 || changeConfigured;
+  });
+  if (started.length === 0) {
+    return options.allowEmpty ? null : 'Заполните условие увеличения лимита';
+  }
+
+  for (const condition of conditions) {
+    const changeUnit = resolveConditionBudgetChangeUnit(condition);
+    const changeConfigured =
+      changeUnit === 'percent'
+        ? (condition.budgetChangePercent ?? 0) > 0
+        : condition.budgetChangeRub > 0;
+    const startedThis = condition.threshold > 0 || changeConfigured;
+    if (!startedThis) {
+      if (conditions.length > 1) {
+        return 'Заполните все условия или удалите лишние';
+      }
+      continue;
+    }
+    if (condition.threshold <= 0) {
+      return `Порог не может быть 0. Минимум — ${minThreshold}${thresholdUnitLabel}`;
+    }
+    if (metric !== 'cpo' && condition.threshold > CONDITION_PERCENT_THRESHOLD_MAX) {
+      return `Порог не может быть больше ${CONDITION_PERCENT_THRESHOLD_MAX}%`;
+    }
+    if (changeUnit === 'percent') {
+      if (!isConditionBudgetChangePercentValid(condition.budgetChangePercent ?? 0)) {
+        return 'Укажите увеличение от 1% до 100%';
+      }
+    } else {
+      if (condition.budgetChangeRub <= 0) {
+        return `Нельзя увеличить на 0 ₽. Минимум — ${formatForDisplay(CONDITION_INCREASE_RUB_MIN)} ₽`;
+      }
+      if (condition.budgetChangeRub < CONDITION_INCREASE_RUB_MIN) {
+        return `Минимальное увеличение — ${formatForDisplay(CONDITION_INCREASE_RUB_MIN)} ₽`;
+      }
+      if (!options.allowLimitAboveBudget) {
+        if (condition.budgetChangeRub > options.campaignBudget) {
+          return 'Увеличение больше остатка бюджета кампании';
+        }
+        if (
+          options.dailyLimitRub > 0 &&
+          options.dailyLimitRub + condition.budgetChangeRub > options.campaignBudget
+        ) {
+          return 'После увеличения лимит станет больше остатка бюджета';
+        }
+      }
+    }
+  }
+
+  if (hasConflictingDailyLimitConditions(rule)) {
+    return 'Условия противоречат друг другу. Для одного порога нельзя задать две разные суммы увеличения';
+  }
+
+  return null;
 }
 
 function areDailyLimitIncreaseRulesValid(rules: DailyLimitIncreaseRule[]) {
@@ -5248,9 +6204,6 @@ function LimitIncreasePercentDropdown({
   );
 }
 
-const conditionRuleValueInputClass =
-  'w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-3 pr-7 text-sm font-medium tabular-nums text-gray-900 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500';
-
 function ConditionRuleFieldDropdown<T extends string>({
   value,
   options,
@@ -5291,7 +6244,7 @@ function ConditionRuleFieldDropdown<T extends string>({
           if (disabled) return;
           setIsOpen((open) => !open);
         }}
-        className={`flex w-full items-center justify-between gap-2 rounded-lg border border-gray-200 py-2.5 pl-3 pr-2.5 text-left text-sm font-medium outline-none transition-colors ${
+        className={`flex w-full items-center justify-between gap-2 rounded-xl border border-gray-200 py-2.5 pl-3 pr-2.5 text-left text-sm font-medium outline-none transition-colors ${
           disabled
             ? 'cursor-not-allowed bg-gray-50 text-gray-400'
             : 'bg-white text-gray-900 hover:border-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
@@ -5312,7 +6265,7 @@ function ConditionRuleFieldDropdown<T extends string>({
       </button>
       {isOpen && !disabled ? (
         <div
-          className="absolute left-0 right-0 top-full z-[60] mt-1 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+          className="absolute left-0 right-0 top-full z-[60] mt-1.5 overflow-hidden rounded-2xl border border-black/[0.06] bg-white py-1 shadow-[0_8px_28px_rgba(0,0,0,0.12)]"
           role="listbox"
         >
           {options.map((option) => (
@@ -5321,9 +6274,9 @@ function ConditionRuleFieldDropdown<T extends string>({
               type="button"
               role="option"
               aria-selected={value === option.value}
-              className={`w-full px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${
+              className={`w-full px-3.5 py-2.5 text-left text-[15px] transition-colors hover:bg-[#F2F2F7] ${
                 value === option.value
-                  ? 'bg-[#F6F2FF] font-medium text-gray-900'
+                  ? 'font-medium text-gray-900'
                   : 'text-gray-700'
               }`}
               onClick={() => {
@@ -5343,23 +6296,26 @@ function ConditionRuleFieldDropdown<T extends string>({
 const DAILY_LIMIT_RULE_TEMPLATE_STORAGE_KEY = 'massCreation.dailyLimitIncreaseRuleTemplates';
 
 type DailyLimitRuleTemplateConditionDef = {
-  metric: DailyLimitConditionMetric;
   compare: DailyLimitConditionCompare;
   threshold: number;
+  budgetChangeRub: number;
+  budgetChangePercent?: number;
+  budgetChangeUnit?: 'rub' | 'percent';
 };
 
 type DailyLimitRuleTemplateDef = {
   id: string;
   label: string;
-  limitIncreasePercent: number;
+  metric: DailyLimitConditionMetric;
   conditions: DailyLimitRuleTemplateConditionDef[];
 };
 
 function formatDailyLimitRuleTemplateConditionsSummary(
+  metric: DailyLimitConditionMetric,
   defs: DailyLimitRuleTemplateConditionDef[],
 ): string {
   return defs
-    .map((def) => formatDailyLimitConditionPhrase(def.metric, def.compare, def.threshold))
+    .map((def) => formatDailyLimitConditionPhrase(metric, def.compare, def.threshold))
     .join(', ');
 }
 
@@ -5367,17 +6323,17 @@ const DAILY_LIMIT_INCREASE_RULE_BUILTIN_PRESETS: DailyLimitRuleTemplateDef[] = [
   {
     id: 'raise-from-drr',
     label: 'Стратегия от ДРР',
-    limitIncreasePercent: 50,
+    metric: 'drr',
     conditions: [
-      { metric: 'drr', compare: 'below', threshold: 5 },
-      { metric: 'cr', compare: 'above', threshold: 10 },
+      { compare: 'below', threshold: 30, budgetChangeRub: 1000 },
+      { compare: 'below', threshold: 15, budgetChangeRub: 3000 },
     ],
   },
   {
-    id: 'raise-from-profit',
-    label: 'Стратегия от прибыли',
-    limitIncreasePercent: 25,
-    conditions: [{ metric: 'cr', compare: 'above', threshold: RECOMMENDED_CR_THRESHOLD_PERCENT }],
+    id: 'raise-from-cr-order',
+    label: 'Стратегия от CR в заказ',
+    metric: 'crOrder',
+    conditions: [{ compare: 'above', threshold: RECOMMENDED_CR_THRESHOLD_PERCENT, budgetChangeRub: 1000 }],
   },
 ];
 
@@ -5387,7 +6343,9 @@ function loadUserDailyLimitRuleTemplates(): DailyLimitRuleTemplateDef[] {
     const raw = window.localStorage.getItem(DAILY_LIMIT_RULE_TEMPLATE_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as DailyLimitRuleTemplateDef[];
-    return Array.isArray(parsed) ? parsed.filter((t) => t?.id && t?.label) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((t) => t?.id && t?.label && normalizeConditionMetric(t.metric))
+      : [];
   } catch {
     return [];
   }
@@ -5402,21 +6360,19 @@ function persistUserDailyLimitRuleTemplate(template: DailyLimitRuleTemplateDef) 
 function saveDailyLimitIncreaseRuleAsUserTemplate(
   rule: DailyLimitIncreaseRule,
 ): DailyLimitRuleTemplateDef | null {
-  if (!isDailyLimitIncreaseRuleValid(rule)) return null;
-  const label = formatDailyLimitIncreaseConditionsSummary(rule.conditions ?? []);
+  if (!isDailyLimitIncreaseRuleValid(rule) || !rule.metric) return null;
+  const label = formatDailyLimitIncreaseConditionsSummary(rule.metric, rule.conditions ?? []);
   if (!label) return null;
-  const conditions = (rule.conditions ?? []).filter(
-    (c): c is DailyLimitIncreaseCondition & { metric: DailyLimitConditionMetric } =>
-      c.metric != null,
-  );
   const template: DailyLimitRuleTemplateDef = {
     id: `user-${Date.now()}`,
     label,
-    limitIncreasePercent: rule.limitIncreasePercent,
-    conditions: conditions.map((c) => ({
-      metric: c.metric,
-      compare: resolveConditionCompare(c),
+    metric: rule.metric,
+    conditions: (rule.conditions ?? []).map((c) => ({
+      compare: resolveConditionCompare(c, rule.metric),
       threshold: c.threshold,
+      budgetChangeRub: c.budgetChangeRub,
+      budgetChangePercent: c.budgetChangePercent ?? 0,
+      budgetChangeUnit: resolveConditionBudgetChangeUnit(c),
     })),
   };
   persistUserDailyLimitRuleTemplate(template);
@@ -5428,9 +6384,11 @@ function buildConditionsFromTemplateDefs(
 ): DailyLimitIncreaseCondition[] {
   return defs.map((def) => ({
     id: newDailyLimitIncreaseConditionId(),
-    metric: def.metric,
     compare: def.compare,
     threshold: def.threshold,
+    budgetChangeRub: def.budgetChangeRub,
+    budgetChangePercent: def.budgetChangePercent ?? 0,
+    budgetChangeUnit: def.budgetChangeUnit === 'percent' ? 'percent' : 'rub',
   }));
 }
 
@@ -5456,21 +6414,22 @@ function ruleFromTemplatePreset(
     return { ...rule, presetId: 'custom' };
   }
   const conditions = buildConditionsFromTemplateDefs(template.conditions);
-  const drrCondition = conditions.find(
-    (c) => c.metric === 'drr' && resolveConditionCompare(c) === 'below',
-  );
-  const crCondition = conditions.find(
-    (c) => c.metric === 'cr' && resolveConditionCompare(c) === 'above',
-  );
-  const drrAny = conditions.find((c) => c.metric === 'drr');
-  const crAny = conditions.find((c) => c.metric === 'cr');
+  const drrCondition =
+    template.metric === 'drr'
+      ? conditions.find((c) => resolveConditionCompare(c, template.metric) === 'below')
+      : undefined;
+  const crCondition =
+    template.metric === 'crOrder' || template.metric === 'crCart'
+      ? conditions.find((c) => resolveConditionCompare(c, template.metric) === 'above')
+      : undefined;
   return {
     ...rule,
     presetId: presetKey,
-    limitIncreasePercent: template.limitIncreasePercent,
+    metric: template.metric,
+    limitIncreasePercent: 0,
     conditions,
-    drrBelowPercent: (drrCondition ?? drrAny)?.threshold ?? 0,
-    crAbovePercent: (crCondition ?? crAny)?.threshold ?? 0,
+    drrBelowPercent: drrCondition?.threshold ?? 0,
+    crAbovePercent: crCondition?.threshold ?? 0,
   };
 }
 
@@ -5485,7 +6444,8 @@ function createEmptyCustomDailyLimitRule(existingId?: string): DailyLimitIncreas
     id: existingId ?? newDailyLimitIncreaseRuleId(),
     enabled: true,
     presetId: 'custom',
-    limitIncreasePercent: 20,
+    metric: null,
+    limitIncreasePercent: 0,
     conditions: [],
     drrBelowPercent: 0,
     crAbovePercent: 0,
@@ -5499,16 +6459,22 @@ function createDefaultDailyLimitIncreaseRule(): DailyLimitIncreaseRule {
 function dailyLimitRulePresetDisplayLabel(
   presetKey: string,
   userTemplates: DailyLimitRuleTemplateDef[],
-  customConditions?: DailyLimitIncreaseCondition[],
+  rule?: DailyLimitIncreaseRule,
 ): string {
   if (presetKey === 'custom') {
-    const summary = formatDailyLimitIncreaseConditionsSummary(customConditions ?? []);
+    const summary = formatDailyLimitIncreaseConditionsSummary(
+      rule?.metric ?? null,
+      rule?.conditions ?? [],
+    );
     return summary || 'Шаблон не выбран';
   }
   const template = findDailyLimitRuleTemplate(presetKey, userTemplates);
   if (!template) return 'Шаблон не выбран';
   if (presetKey.startsWith('user:')) {
-    return formatDailyLimitRuleTemplateConditionsSummary(template.conditions) || template.label;
+    return (
+      formatDailyLimitRuleTemplateConditionsSummary(template.metric, template.conditions) ||
+      template.label
+    );
   }
   return template.label;
 }
@@ -5516,21 +6482,17 @@ function dailyLimitRulePresetDisplayLabel(
 function DailyLimitStrategyTemplateDropdown({
   presetKey,
   userTemplates,
-  customConditions,
+  rule,
   onSelectPreset,
 }: {
   presetKey: string;
   userTemplates: DailyLimitRuleTemplateDef[];
-  customConditions?: DailyLimitIncreaseCondition[];
+  rule?: DailyLimitIncreaseRule;
   onSelectPreset: (key: string) => void;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const triggerLabel = dailyLimitRulePresetDisplayLabel(
-    presetKey,
-    userTemplates,
-    customConditions,
-  );
+  const triggerLabel = dailyLimitRulePresetDisplayLabel(presetKey, userTemplates, rule);
   const isUnsetTemplate = triggerLabel === 'Шаблон не выбран';
 
   const templateOptions: { key: string; label: string }[] = [
@@ -5540,7 +6502,9 @@ function DailyLimitStrategyTemplateDropdown({
     })),
     ...userTemplates.map((preset) => ({
       key: `user:${preset.id}`,
-      label: formatDailyLimitRuleTemplateConditionsSummary(preset.conditions) || preset.label,
+      label:
+        formatDailyLimitRuleTemplateConditionsSummary(preset.metric, preset.conditions) ||
+        preset.label,
     })),
   ];
 
@@ -5619,326 +6583,291 @@ function DailyLimitStrategyTemplateDropdown({
 function DailyLimitConditionRulesBuilder({
   rules,
   onChange,
-  templatesRevision = 0,
+  campaignBudget,
+  allowLimitAboveBudget = false,
 }: {
   rules: DailyLimitIncreaseRule[];
   onChange: (rules: DailyLimitIncreaseRule[]) => void;
-  templatesRevision?: number;
+  campaignBudget?: number;
+  allowLimitAboveBudget?: boolean;
 }) {
-  const [userTemplates, setUserTemplates] = useState<DailyLimitRuleTemplateDef[]>(() =>
-    loadUserDailyLimitRuleTemplates(),
-  );
-
-  const refreshUserTemplates = () => {
-    setUserTemplates(loadUserDailyLimitRuleTemplates());
-  };
-
-  useEffect(() => {
-    refreshUserTemplates();
-  }, [templatesRevision]);
-
   useEffect(() => {
     if (rules.length === 0) {
       onChange([createDefaultDailyLimitIncreaseRule()]);
     }
   }, [rules.length, onChange]);
 
-  const patchRules = (next: DailyLimitIncreaseRule[]) => {
-    onChange(next);
-  };
-
-  const updateRule = (id: string, patch: Partial<DailyLimitIncreaseRule>) => {
-    const touchesPreset =
-      patch.limitIncreasePercent !== undefined ||
-      patch.conditions !== undefined ||
-      patch.drrBelowPercent !== undefined ||
-      patch.crAbovePercent !== undefined;
-    patchRules(
-      rules.map((rule) => {
-        if (rule.id !== id) return rule;
-        const merged = { ...rule, ...patch };
-        if (touchesPreset && patch.presetId === undefined) {
-          merged.presetId = 'custom';
-        }
-        return merged;
-      }),
+  const rule = rules[0] ?? createDefaultDailyLimitIncreaseRule();
+  const conditions = rule.conditions ?? [];
+  const metric = rule.metric;
+  const direction = metric ? budgetDirectionForMetric(metric) : null;
+  const unit = metric ? conditionMetricUnit(metric) : '%';
+  const canAddCondition =
+    metric != null &&
+    conditions.length < DAILY_LIMIT_RULE_MAX_CONDITIONS &&
+    conditions.every(
+      (c) =>
+        isConditionThresholdValid(metric, c.threshold) &&
+        isConditionBudgetChangeConfigured(c),
     );
+
+  const patchRule = (patch: Partial<DailyLimitIncreaseRule>) => {
+    onChange([{ ...rule, ...patch, presetId: patch.presetId ?? 'custom' }]);
   };
 
-  const removeRule = (id: string) => {
-    patchRules(rules.filter((rule) => rule.id !== id));
+  const setMetric = (nextMetric: DailyLimitConditionMetric) => {
+    const keepComparable =
+      metric != null &&
+      conditionMetricUnit(metric) === conditionMetricUnit(nextMetric) &&
+      conditions.length > 0;
+    patchRule({
+      metric: nextMetric,
+      conditions: keepComparable
+        ? conditions.map((c) => ({
+            ...c,
+            compare: defaultCompareForMetric(nextMetric),
+          }))
+        : [createEmptyMetricCondition(nextMetric)],
+      drrBelowPercent: 0,
+      crAbovePercent: 0,
+    });
   };
 
   const updateCondition = (
-    ruleId: string,
     conditionId: string,
     patch: Partial<DailyLimitIncreaseCondition>,
   ) => {
-    patchRules(
-      markRuleAsCustomPreset(
-        rules.map((rule) =>
-          rule.id === ruleId
-            ? {
-                ...rule,
-                presetId: 'custom',
-                conditions: (rule.conditions ?? []).map((condition) =>
-                  condition.id === conditionId ? { ...condition, ...patch } : condition,
-                ),
-              }
-            : rule,
-        ),
-        ruleId,
+    patchRule({
+      conditions: conditions.map((condition) =>
+        condition.id === conditionId ? { ...condition, ...patch } : condition,
       ),
-    );
+    });
   };
 
-  const removeCondition = (ruleId: string, conditionId: string) => {
-    patchRules(
-      markRuleAsCustomPreset(
-        rules.map((rule) => {
-          if (rule.id !== ruleId) return rule;
-          return {
-            ...rule,
-            presetId: 'custom',
-            conditions: (rule.conditions ?? []).filter((c) => c.id !== conditionId),
-          };
-        }),
-        ruleId,
-      ),
-    );
+  const removeCondition = (conditionId: string) => {
+    patchRule({
+      conditions: conditions.filter((c) => c.id !== conditionId),
+    });
   };
 
-  const addConditionSlot = (ruleId: string) => {
-    patchRules(
-      markRuleAsCustomPreset(
-        rules.map((rule) =>
-          rule.id === ruleId
-            ? {
-                ...rule,
-                presetId: 'custom',
-                conditions: [
-                  ...(rule.conditions ?? []),
-                  {
-                    id: newDailyLimitIncreaseConditionId(),
-                    metric: null,
-                    compare: 'below',
-                    threshold: 0,
-                  },
-                ],
-              }
-            : rule,
-        ),
-        ruleId,
-      ),
-    );
+  const addCondition = () => {
+    if (!canAddCondition || !metric) return;
+    patchRule({
+      conditions: [...conditions, createEmptyMetricCondition(metric)],
+    });
   };
 
-  const applyPresetToRule = (ruleId: string, presetKey: string) => {
-    if (presetKey === 'custom') {
-      patchRules(
-        rules.map((rule) =>
-          rule.id === ruleId ? createEmptyCustomDailyLimitRule(rule.id) : rule,
-        ),
-      );
-      return;
-    }
-    patchRules(
-      rules.map((rule) =>
-        rule.id === ruleId ? ruleFromTemplatePreset(rule, presetKey, userTemplates) : rule,
-      ),
-    );
-  };
-
-  const conditionLogicBadgeClass =
-    'inline-flex min-w-[2.75rem] items-center justify-center rounded-md bg-[#F3E8FF] px-2 py-1 text-xs font-semibold text-[#7C3AED]';
-
-  const conditionRuleRowClass = 'flex items-center gap-2';
-  const conditionRuleLabelGutterClass = 'flex w-[2.75rem] shrink-0 justify-start';
-  const conditionRuleActionGutterClass = 'flex w-8 shrink-0 justify-center';
-  const conditionRuleFieldsGridClass =
-    'grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_4.25rem] items-center gap-2';
+  const [fieldDrafts, setFieldDrafts] = useState<
+    Record<string, { threshold?: string; amount?: string }>
+  >({});
 
   return (
     <div className="mt-4 min-w-0 max-w-full space-y-4">
-      <ul className="space-y-3">
-        {rules.map((rule, index) => {
-          const conditions = rule.conditions ?? [];
-          const usedMetrics = new Set(
-            conditions
-              .map((c) => c.metric)
-              .filter((m): m is DailyLimitConditionMetric => m != null),
-          );
-          const canAddConditionSlot =
-            conditions.length < DAILY_LIMIT_RULE_MAX_CONDITIONS &&
-            !conditions.some((c) => c.metric == null);
-          const presetSelectValue = rule.presetId ?? 'custom';
-          const budgetPercentDraft =
-            rule.limitIncreasePercent > 0 ? String(rule.limitIncreasePercent) : '20';
+      <ConditionRuleFieldDropdown
+        value={metric ?? ''}
+        placeholder="Выберите метрику"
+        ariaLabel="Метрика"
+        options={DAILY_LIMIT_CONDITION_METRICS.map((m) => ({
+          value: m,
+          label: conditionMetricLabel(m),
+        }))}
+        onChange={setMetric}
+      />
 
-          return (
-            <li key={rule.id} className="py-1">
-              <div className="flex flex-col gap-3">
-                <div className={conditionRuleRowClass}>
-                  <div className={conditionRuleLabelGutterClass} aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <DailyLimitStrategyTemplateDropdown
-                      presetKey={presetSelectValue}
-                      userTemplates={userTemplates}
-                      customConditions={conditions}
-                      onSelectPreset={(key) => applyPresetToRule(rule.id, key)}
-                    />
-                  </div>
-                  <div className={conditionRuleActionGutterClass} aria-hidden />
-                </div>
-
-                <div className={conditionRuleRowClass}>
-                  <div className={conditionRuleLabelGutterClass} aria-hidden />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex overflow-hidden rounded-xl border border-gray-200">
-                      <div className="flex min-w-0 flex-1 items-center bg-[#F2F2F7] px-4 py-3 text-sm font-medium text-gray-900">
-                        Увеличивать бюджет на
-                      </div>
-                      <div className="relative w-[5.5rem] shrink-0 border-l border-gray-200 bg-white">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={budgetPercentDraft}
-                          onChange={(e) => {
-                            const v = e.target.value.replace(/\D/g, '');
-                            if (v === '') {
-                              updateRule(rule.id, { limitIncreasePercent: 20 });
-                              return;
-                            }
-                            const parsed = Math.min(100, Math.max(1, parseInt(v, 10)));
-                            if (!Number.isNaN(parsed)) {
-                              updateRule(rule.id, { limitIncreasePercent: parsed });
-                            }
-                          }}
-                          className="w-full bg-transparent py-3 pl-3 pr-7 text-center text-sm font-medium tabular-nums text-gray-900 outline-none"
-                          aria-label={`Процент увеличения бюджета, правило ${index + 1}`}
-                        />
-                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                          %
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className={conditionRuleActionGutterClass} aria-hidden />
-                </div>
-
-                {conditions.length > 0 ? (
-                <div className="space-y-2">
-                  {conditions.map((condition, conditionIndex) => {
-                    const unit = condition.metric != null ? conditionMetricUnit(condition.metric) : '%';
-                    const metricsForSelect = (['drr', 'cr', 'impressions'] as const).filter(
-                      (metric) => metric === condition.metric || !usedMetrics.has(metric),
-                    );
-
-                    return (
-                      <div key={condition.id} className={conditionRuleRowClass}>
-                        <div className={conditionRuleLabelGutterClass}>
-                          <span className={conditionLogicBadgeClass}>
-                            {conditionIndex === 0 ? 'Если' : 'И'}
-                          </span>
-                        </div>
-
-                        <div className={conditionRuleFieldsGridClass}>
-                        <ConditionRuleFieldDropdown
-                          value={condition.metric ?? ''}
-                          placeholder="Метрика"
-                          ariaLabel={`Метрика, правило ${index + 1}`}
-                          options={metricsForSelect.map((metric) => ({
-                            value: metric,
-                            label: conditionMetricLabel(metric),
-                          }))}
-                          onChange={(metric) => {
-                            updateCondition(rule.id, condition.id, {
-                              metric,
-                              compare: defaultCompareForMetric(metric),
-                              threshold: condition.threshold > 0 ? condition.threshold : 0,
-                            });
-                          }}
-                        />
-
-                        <ConditionRuleFieldDropdown
-                          value={condition.metric == null ? '' : resolveConditionCompare(condition)}
-                          disabled={condition.metric == null}
-                          ariaLabel={`Сравнение, правило ${index + 1}`}
-                          options={[
-                            { value: 'below' as const, label: conditionCompareLabel('below') },
-                            { value: 'above' as const, label: conditionCompareLabel('above') },
-                          ]}
-                          onChange={(compare) =>
-                            updateCondition(rule.id, condition.id, { compare })
+      {metric && direction ? (
+        <div className="space-y-2.5">
+          {conditions.map((condition, conditionIndex) => {
+            const compare = defaultCompareForMetric(metric);
+            const thresholdDraft = fieldDrafts[condition.id]?.threshold;
+            const amountDraft = fieldDrafts[condition.id]?.amount;
+            const thresholdDisplay =
+              thresholdDraft !== undefined
+                ? thresholdDraft
+                : condition.threshold > 0
+                  ? String(condition.threshold)
+                  : '';
+            const amountDisplay =
+              amountDraft !== undefined
+                ? amountDraft
+                : condition.budgetChangeRub > 0
+                  ? formatForDisplay(condition.budgetChangeRub)
+                  : '';
+            const thresholdInvalid =
+              (condition.threshold > 0 && !isConditionThresholdValid(metric, condition.threshold)) ||
+              (condition.budgetChangeRub > 0 && condition.threshold <= 0);
+            const amountInvalid =
+              (condition.budgetChangeRub > 0 &&
+                !isConditionBudgetChangeValid(condition.budgetChangeRub)) ||
+              (condition.threshold > 0 && condition.budgetChangeRub <= 0) ||
+              (!allowLimitAboveBudget &&
+                typeof campaignBudget === 'number' &&
+                condition.budgetChangeRub > campaignBudget);
+            const isDuplicateThreshold =
+              condition.threshold > 0 &&
+              conditions.some(
+                (other) =>
+                  other.id !== condition.id && other.threshold === condition.threshold,
+              );
+            return (
+              <div key={condition.id} className="flex min-w-0 items-center gap-2">
+                <div
+                  className={`flex min-h-[48px] min-w-0 flex-1 items-center gap-2 rounded-xl border bg-white px-3 ${
+                    thresholdInvalid || isDuplicateThreshold
+                      ? 'border-red-300'
+                      : 'border-gray-200'
+                  }`}
+                >
+                  <p className="min-w-0 shrink text-[13px] leading-snug text-gray-600">
+                    Если {conditionMetricLabel(metric)} {conditionCompareLabel(compare).toLowerCase()}
+                  </p>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={thresholdDisplay}
+                    placeholder={String(minConditionThreshold(metric))}
+                    onChange={(e) => {
+                      const v = e.target.value.replace(',', '.');
+                      if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                        const parsed = parseDisplayValue(v);
+                        setFieldDrafts((prev) => ({
+                          ...prev,
+                          [condition.id]: { ...prev[condition.id], threshold: v },
+                        }));
+                        if (v === '' || !Number.isNaN(parsed)) {
+                          updateCondition(condition.id, {
+                            compare,
+                            threshold: v === '' ? 0 : parsed,
+                          });
+                        }
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const raw = e.currentTarget.value.trim().replace(',', '.');
+                      setFieldDrafts((prev) => {
+                        const next = { ...prev };
+                        if (next[condition.id]) {
+                          delete next[condition.id].threshold;
+                          if (
+                            next[condition.id].threshold === undefined &&
+                            next[condition.id].amount === undefined
+                          ) {
+                            delete next[condition.id];
                           }
-                        />
-
-                        <div className="relative min-w-0">
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            disabled={condition.metric == null}
-                            value={condition.threshold > 0 ? String(condition.threshold) : ''}
-                            placeholder="—"
-                            onChange={(e) => {
-                              const v = e.target.value.replace(',', '.');
-                              if (v === '' || /^\d*\.?\d*$/.test(v)) {
-                                const parsed = parseDisplayValue(v);
-                                if (v === '' || !Number.isNaN(parsed)) {
-                                  updateCondition(rule.id, condition.id, {
-                                    threshold: v === '' ? 0 : parsed,
-                                  });
-                                }
-                              }
-                            }}
-                            className={`${conditionRuleValueInputClass} disabled:cursor-not-allowed disabled:bg-gray-50 disabled:text-gray-400`}
-                            aria-label={`Порог, правило ${index + 1}`}
-                          />
-                          {unit ? (
-                            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                              {unit}
-                            </span>
-                          ) : null}
-                        </div>
-                        </div>
-
-                        <div className={conditionRuleActionGutterClass}>
-                        <button
-                          type="button"
-                          onClick={() => removeCondition(rule.id, condition.id)}
-                          className="flex h-8 w-8 items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
-                          aria-label="Убрать условие"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                        }
+                        return next;
+                      });
+                      if (raw === '') return;
+                      const parsed = parseDisplayValue(raw);
+                      updateCondition(condition.id, {
+                        compare,
+                        threshold: clampConditionThreshold(metric, parsed),
+                      });
+                    }}
+                    className="w-12 shrink-0 border-0 bg-transparent py-2 text-right text-sm font-medium tabular-nums text-gray-900 outline-none placeholder:text-gray-300"
+                    aria-label={`Порог, условие ${conditionIndex + 1}`}
+                  />
+                  <span className="shrink-0 text-sm text-gray-400">{unit}</span>
                 </div>
-                ) : null}
 
-                {canAddConditionSlot ? (
-                  <div className={conditionRuleRowClass}>
-                    <div className={conditionRuleLabelGutterClass} aria-hidden />
-                    <div className="min-w-0 flex-1">
+                <div
+                  className={`flex min-h-[48px] min-w-0 flex-1 items-center gap-2 rounded-xl border bg-white px-3 ${
+                    amountInvalid ? 'border-red-300' : 'border-gray-200'
+                  }`}
+                >
+                  <p className="min-w-0 shrink text-[13px] leading-snug text-gray-600">
+                    Увеличивать на
+                  </p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={amountDisplay}
+                    placeholder={formatForDisplay(CONDITION_INCREASE_RUB_MIN)}
+                    onChange={(e) => {
+                      const parsed = parseDisplayValue(e.target.value);
+                      if (e.target.value === '') {
+                        setFieldDrafts((prev) => ({
+                          ...prev,
+                          [condition.id]: { ...prev[condition.id], amount: '' },
+                        }));
+                        updateCondition(condition.id, {
+                          budgetChangeRub: 0,
+                          budgetChangeUnit: 'rub',
+                          compare,
+                        });
+                        return;
+                      }
+                      if (!Number.isNaN(parsed)) {
+                        setFieldDrafts((prev) => ({
+                          ...prev,
+                          [condition.id]: {
+                            ...prev[condition.id],
+                            amount: e.target.value,
+                          },
+                        }));
+                        updateCondition(condition.id, {
+                          compare,
+                          budgetChangeRub: Math.max(0, Math.round(parsed)),
+                          budgetChangeUnit: 'rub',
+                        });
+                      }
+                    }}
+                    onBlur={(e) => {
+                      const raw = e.currentTarget.value.trim();
+                      setFieldDrafts((prev) => {
+                        const next = { ...prev };
+                        if (next[condition.id]) {
+                          delete next[condition.id].amount;
+                          if (
+                            next[condition.id].threshold === undefined &&
+                            next[condition.id].amount === undefined
+                          ) {
+                            delete next[condition.id];
+                          }
+                        }
+                        return next;
+                      });
+                      if (raw === '') return;
+                      const parsed = parseDisplayValue(raw);
+                      updateCondition(condition.id, {
+                        compare,
+                        budgetChangeRub: clampConditionIncreaseRub(parsed),
+                        budgetChangeUnit: 'rub',
+                      });
+                    }}
+                    className="min-w-0 flex-1 border-0 bg-transparent py-2 text-right text-sm font-medium tabular-nums text-gray-900 outline-none placeholder:text-gray-300"
+                    aria-label={`Сумма, условие ${conditionIndex + 1}`}
+                  />
+                  <span className="shrink-0 text-sm text-gray-400">₽</span>
+                </div>
+
+                {conditions.length > 1 ? (
                   <button
                     type="button"
-                    onClick={() => addConditionSlot(rule.id)}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-800 transition-colors hover:bg-[#e8e8ed]"
-                    aria-label={`Добавить условие (${conditions.length}/${DAILY_LIMIT_RULE_MAX_CONDITIONS})`}
+                    onClick={() => removeCondition(condition.id)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center text-gray-400 transition-colors hover:text-gray-700"
+                    aria-label="Убрать условие"
                   >
-                    <Plus className="h-4 w-4 shrink-0" />
+                    <X className="h-4 w-4" />
                   </button>
-                    </div>
-                    <div className={conditionRuleActionGutterClass} aria-hidden />
-                  </div>
-                ) : null}
+                ) : (
+                  <span className="h-8 w-8 shrink-0" aria-hidden />
+                )}
               </div>
-            </li>
-          );
-        })}
-      </ul>
+            );
+          })}
+
+          {canAddCondition ? (
+            <button
+              type="button"
+              onClick={addCondition}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#F2F2F7] px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-[#e8e8ed]"
+            >
+              <Plus className="h-4 w-4 shrink-0" />
+              Условие
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -5951,6 +6880,8 @@ export const AdvancedDailyLimitModal: React.FC<{
   dailyLimitOnly?: boolean;
   /** Конструктор условий вместо одного процента и двух порогов */
   conditionRuleBuilder?: boolean;
+  /** Вкладки стратегий «Фиксированный» / «Гибкий» (4-я кампания) */
+  budgetStrategyTabs?: boolean;
   isOpen: boolean;
   onClose: () => void;
   isDailyLimitEnabled: boolean;
@@ -5971,11 +6902,14 @@ export const AdvancedDailyLimitModal: React.FC<{
   /** Автопополнение бюджета при срабатывании правил (конструктор условий) */
   autoRefillOnRulesTrigger?: boolean;
   onAutoRefillOnRulesTriggerChange?: (enabled: boolean) => void;
+  /** Создание кампании: лимит можно сохранить выше текущего бюджета */
+  allowLimitAboveBudget?: boolean;
 }> = ({
   embedded = false,
   advancedSettingsOnly = false,
   dailyLimitOnly = false,
   conditionRuleBuilder = false,
+  budgetStrategyTabs = false,
   isOpen,
   onClose,
   dailyLimitValue,
@@ -5992,8 +6926,16 @@ export const AdvancedDailyLimitModal: React.FC<{
   onAfterResetSettings,
   autoRefillOnRulesTrigger = true,
   onAutoRefillOnRulesTriggerChange,
+  allowLimitAboveBudget = false,
 }) => {
-  const [strategyId, setStrategyId] = useState<DailyLimitStrategyId | null>(initialSettings.strategyId);
+  const [strategyId, setStrategyId] = useState<DailyLimitStrategyId | null>(
+    budgetStrategyTabs
+      ? resolveBudgetStrategyTab(initialSettings.strategyId)
+      : initialSettings.strategyId,
+  );
+  const [budgetStrategyTab, setBudgetStrategyTab] = useState<BudgetStrategyTabId>(() =>
+    resolveBudgetStrategyTab(initialSettings.strategyId),
+  );
   const [strategyGroupLabel, setStrategyGroupLabel] = useState(initialSettings.strategyGroupLabel);
   const [autoIncreaseEnabled, setAutoIncreaseEnabled] = useState(() =>
     dailyLimitOnly && conditionRuleBuilder
@@ -6022,17 +6964,40 @@ export const AdvancedDailyLimitModal: React.FC<{
         ? [createDefaultDailyLimitIncreaseRule()]
         : [],
   );
-  const [ruleTemplatesRevision, setRuleTemplatesRevision] = useState(0);
-  const [autoRefillOnRules, setAutoRefillOnRules] = useState(true);
+  const [autoRefillOnRules, setAutoRefillOnRules] = useState(autoRefillOnRulesTrigger);
+  const [saveErrorMessage, setSaveErrorMessage] = useState('');
+  const [showSaveError, setShowSaveError] = useState(false);
+  const [maxSpendLimitDraft, setMaxSpendLimitDraft] = useState(() => {
+    const fromSettings = initialSettings.maxSpendLimitRub;
+    if (fromSettings && fromSettings > 0) return String(fromSettings);
+    const fromSaved = parseDisplayValue((savedDailyLimit || dailyLimitValue || '').replace(',', '.'));
+    return String(Number.isFinite(fromSaved) && fromSaved > 0 ? fromSaved : 1500);
+  });
+  const [maxSpendPeriod, setMaxSpendPeriod] = useState<MaxSpendPeriod>(
+    initialSettings.maxSpendPeriod === 'week' ? 'week' : 'day',
+  );
+
+  useEffect(() => {
+    if (!isOpen) {
+      setShowSaveError(false);
+      setSaveErrorMessage('');
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !conditionRuleBuilder) return;
-    setAutoRefillOnRules(true);
-  }, [isOpen, conditionRuleBuilder]);
+    setAutoRefillOnRules(autoRefillOnRulesTrigger);
+  }, [isOpen, conditionRuleBuilder, autoRefillOnRulesTrigger]);
 
   useEffect(() => {
     if (!isOpen) return;
-    setStrategyId(initialSettings.strategyId);
+    const nextStrategyId = budgetStrategyTabs
+      ? resolveBudgetStrategyTab(initialSettings.strategyId)
+      : initialSettings.strategyId;
+    setStrategyId(nextStrategyId);
+    if (budgetStrategyTabs) {
+      setBudgetStrategyTab(resolveBudgetStrategyTab(initialSettings.strategyId));
+    }
     setStrategyGroupLabel(initialSettings.strategyGroupLabel);
     const resolved = resolveAutoIncreaseThresholds(initialSettings);
     setThresholdByMetric({
@@ -6040,6 +7005,18 @@ export const AdvancedDailyLimitModal: React.FC<{
       cr: String(resolved.cr),
     });
     setLimitIncreasePercent(initialSettings.limitIncreasePercent ?? 25);
+    const fromSettings = initialSettings.maxSpendLimitRub;
+    const fromSaved = parseDisplayValue((savedDailyLimit || dailyLimitValue || '').replace(',', '.'));
+    setMaxSpendLimitDraft(
+      String(
+        fromSettings && fromSettings > 0
+          ? fromSettings
+          : Number.isFinite(fromSaved) && fromSaved > 0
+            ? fromSaved
+            : 1500,
+      ),
+    );
+    setMaxSpendPeriod(initialSettings.maxSpendPeriod === 'week' ? 'week' : 'day');
     if (initialSettings.increaseRules?.length) {
       setIncreaseRules(
         initialSettings.increaseRules.map((rule) => migrateLegacyRuleConditions({ ...rule })),
@@ -6063,98 +7040,145 @@ export const AdvancedDailyLimitModal: React.FC<{
       );
       setMetricEnabled(resolveAutoIncreaseMetricEnabled(initialSettings));
     }
-  }, [isOpen, initialSettings, advancedSettingsOnly, conditionRuleBuilder, dailyLimitOnly]);
+  }, [isOpen, initialSettings, advancedSettingsOnly, conditionRuleBuilder, dailyLimitOnly, budgetStrategyTabs, savedDailyLimit, dailyLimitValue]);
 
   useEffect(() => {
-    if (!isOpen || advancedSettingsOnly) return;
+    if (!isOpen) return;
+    if (advancedSettingsOnly && budgetStrategyTabs) {
+      if (dailyLimitValue.trim() === '' && savedDailyLimit.trim() !== '') {
+        onDailyLimitValueChange(savedDailyLimit);
+      } else if (dailyLimitValue.trim() === '') {
+        onDailyLimitValueChange(String(DAILY_LIMIT_ABSOLUTE_MIN));
+      }
+      return;
+    }
+    if (advancedSettingsOnly) return;
     if (dailyLimitValue.trim() === '') {
       onDailyLimitValueChange(String(DAILY_LIMIT_ABSOLUTE_MIN));
     }
-  }, [isOpen, advancedSettingsOnly, dailyLimitOnly]);
+  }, [isOpen, advancedSettingsOnly, budgetStrategyTabs, dailyLimitOnly]);
 
   if (!isOpen) return null;
 
+  const activeBudgetTab = budgetStrategyTabs ? budgetStrategyTab : null;
+  const showEfficientRules =
+    conditionRuleBuilder && (!budgetStrategyTabs || activeBudgetTab === 'spendOptimization');
+  const showMaxSpendPanel = budgetStrategyTabs && activeBudgetTab === 'maxSpend';
+
   const parsedDrrThreshold = parseDisplayValue(thresholdByMetric.drr.replace(',', '.'));
   const parsedCrThreshold = parseDisplayValue(thresholdByMetric.cr.replace(',', '.'));
-  const limitRubSource = advancedSettingsOnly
-    ? savedDailyLimit || dailyLimitValue
-    : dailyLimitValue;
+  const limitRubSource =
+    advancedSettingsOnly && !(budgetStrategyTabs && activeBudgetTab === 'spendOptimization')
+      ? savedDailyLimit || dailyLimitValue
+      : dailyLimitValue || savedDailyLimit;
   const parsedDailyLimit = parseDisplayValue(limitRubSource.replace(',', '.'));
+  const parsedMaxSpendLimit = parseDisplayValue(maxSpendLimitDraft.replace(',', '.'));
+  /** На создании кампании лимит может быть выше бюджета — не блокируем сохранение */
+  const effectiveCampaignBudget = allowLimitAboveBudget
+    ? Number.MAX_SAFE_INTEGER
+    : campaignBudget;
+  const maxSpendLimitValid =
+    Number.isFinite(parsedMaxSpendLimit) &&
+    parsedMaxSpendLimit >= DAILY_LIMIT_ABSOLUTE_MIN &&
+    parsedMaxSpendLimit <= effectiveCampaignBudget;
   const drrThresholdValid = isAutoIncreaseThresholdValid(parsedDrrThreshold);
   const crThresholdValid = isAutoIncreaseThresholdValid(parsedCrThreshold);
-  const anyAutoIncreaseMetricEnabled = metricEnabled.drr || metricEnabled.cr;
-  const autoIncreaseMetricsValid = conditionRuleBuilder
-    ? areDailyLimitIncreaseRulesValid(increaseRules)
-    : anyAutoIncreaseMetricEnabled &&
-      (!metricEnabled.drr || drrThresholdValid) &&
-      (!metricEnabled.cr || crThresholdValid);
   const dailyLimitValid =
     Number.isFinite(parsedDailyLimit) &&
     parsedDailyLimit >= DAILY_LIMIT_ABSOLUTE_MIN &&
-    parsedDailyLimit <= campaignBudget;
-  const advancedAutoIncreaseOk = conditionRuleBuilder
-    ? dailyLimitOnly
-      ? !autoIncreaseEnabled || autoIncreaseMetricsValid
-      : autoIncreaseMetricsValid
-    : !autoIncreaseEnabled || autoIncreaseMetricsValid;
-  const spendRulesIncomplete =
-    conditionRuleBuilder &&
-    autoIncreaseEnabled &&
-    increaseRules.some(
-      (r) =>
-        r.enabled &&
-        (r.conditions?.length ?? 0) > 0 &&
-        !isDailyLimitIncreaseRuleValid(r),
-    );
-  const canSave = dailyLimitOnly
-    ? dailyLimitValid && !spendRulesIncomplete
-    : advancedSettingsOnly
-      ? advancedAutoIncreaseOk
-      : dailyLimitValid && advancedAutoIncreaseOk;
-  const primaryIncreaseRule = increaseRules[0];
-  const canSaveRuleTemplate =
-    conditionRuleBuilder &&
-    autoIncreaseEnabled &&
-    primaryIncreaseRule != null &&
-    isDailyLimitIncreaseRuleValid(primaryIncreaseRule);
+    parsedDailyLimit <= effectiveCampaignBudget;
+  const canSave = showMaxSpendPanel
+    ? maxSpendLimitValid
+    : dailyLimitOnly
+      ? dailyLimitValid
+      : advancedSettingsOnly
+        ? !budgetStrategyTabs || dailyLimitValid
+        : dailyLimitValid;
 
-  const handleSaveRuleTemplate = () => {
-    if (!primaryIncreaseRule) return;
-    const template = saveDailyLimitIncreaseRuleAsUserTemplate(primaryIncreaseRule);
-    if (!template) return;
-    setIncreaseRules(
-      increaseRules.map((rule) =>
-        rule.id === primaryIncreaseRule.id
-          ? { ...rule, presetId: `user:${template.id}` }
-          : rule,
-      ),
+  const selectBudgetStrategyTab = (tab: BudgetStrategyTabId) => {
+    setBudgetStrategyTab(tab);
+    setStrategyId(tab);
+    setStrategyGroupLabel(
+      BUDGET_STRATEGY_TABS.find((item) => item.id === tab)?.label ?? '',
     );
-    setRuleTemplatesRevision((revision) => revision + 1);
+    if (tab === 'maxSpend') {
+      setAutoIncreaseEnabled(true);
+    }
   };
 
   const handleSave = () => {
+    if (conditionRuleBuilder && !showMaxSpendPanel) {
+      const rulesError = getDailyLimitIncreaseRulesSaveError(increaseRules, {
+        campaignBudget: effectiveCampaignBudget,
+        dailyLimitRub: Number.isFinite(parsedDailyLimit) ? parsedDailyLimit : 0,
+        allowEmpty: Boolean(dailyLimitOnly),
+        allowLimitAboveBudget,
+      });
+      if (rulesError) {
+        setSaveErrorMessage(rulesError);
+        setShowSaveError(true);
+        return;
+      }
+    }
+
     if (!canSave) return;
 
     const applyAdvancedSettingsPayload = (options?: { enableSpendRulesOnlyWhenValid?: boolean }) => {
+      const isMaxSpendStrategy =
+        budgetStrategyTabs &&
+        (activeBudgetTab === 'maxSpend' || strategyId === 'maxSpend');
       const hasValidSpendRules = increaseRules.some(
         (r) => r.enabled && isDailyLimitIncreaseRuleValid(r),
       );
-      const effectiveAutoIncreaseEnabled = conditionRuleBuilder
-        ? options?.enableSpendRulesOnlyWhenValid
-          ? autoIncreaseEnabled && hasValidSpendRules
-          : dailyLimitOnly
-            ? autoIncreaseEnabled
-            : true
-        : autoIncreaseEnabled;
-      const increaseAmountRub = effectiveAutoIncreaseEnabled
-        ? Math.max(1, Math.round(parsedDailyLimit * (limitIncreasePercent / 100)))
-        : initialSettings.increaseAmountRub;
+      const effectiveAutoIncreaseEnabled = isMaxSpendStrategy
+        ? true
+        : conditionRuleBuilder
+          ? options?.enableSpendRulesOnlyWhenValid
+            ? autoIncreaseEnabled && hasValidSpendRules
+            : dailyLimitOnly
+              ? autoIncreaseEnabled
+              : true
+          : autoIncreaseEnabled;
+      const effectiveStrategyId: DailyLimitStrategyId | null = isMaxSpendStrategy
+        ? 'maxSpend'
+        : budgetStrategyTabs
+          ? 'spendOptimization'
+          : strategyId;
+      const effectiveStrategyLabel = isMaxSpendStrategy
+        ? 'Фиксированный'
+        : budgetStrategyTabs
+          ? 'Гибкий'
+          : strategyGroupLabel.trim();
+      const limitForCalc = isMaxSpendStrategy ? parsedMaxSpendLimit : parsedDailyLimit;
+      const increaseAmountRub = isMaxSpendStrategy
+        ? parsedMaxSpendLimit
+        : effectiveAutoIncreaseEnabled
+          ? Math.max(1, Math.round(limitForCalc * (limitIncreasePercent / 100)))
+          : initialSettings.increaseAmountRub;
       const firstActiveRule = increaseRules.find((r) => r.enabled);
+      const firstConfiguredCondition = firstActiveRule?.conditions?.find((c) =>
+        isConditionBudgetChangeConfigured(c),
+      );
+      const firstConditionAmount = firstConfiguredCondition
+        ? resolveConditionBudgetChangeUnit(firstConfiguredCondition) === 'percent'
+          ? Math.max(
+              1,
+              Math.round(
+                limitForCalc * ((firstConfiguredCondition.budgetChangePercent ?? 0) / 100),
+              ),
+            )
+          : firstConfiguredCondition.budgetChangeRub
+        : 0;
       onApply({
-        strategyId,
-        strategyGroupLabel: strategyGroupLabel.trim(),
+        strategyId: effectiveStrategyId,
+        strategyGroupLabel: effectiveStrategyLabel,
         autoIncreaseEnabled: effectiveAutoIncreaseEnabled,
-        metric: metricEnabled.cr && !metricEnabled.drr ? 'cr' : 'drr',
+        metric:
+          conditionRuleBuilder && firstActiveRule?.metric === 'drr'
+            ? 'drr'
+            : metricEnabled.cr && !metricEnabled.drr
+              ? 'cr'
+              : 'drr',
         thresholdPercent: metricEnabled.drr
           ? drrThresholdValid
             ? parsedDrrThreshold
@@ -6164,45 +7188,64 @@ export const AdvancedDailyLimitModal: React.FC<{
             : DEFAULT_AUTO_INCREASE_THRESHOLD.cr,
         drrThresholdPercent: drrThresholdValid ? parsedDrrThreshold : DEFAULT_AUTO_INCREASE_THRESHOLD.drr,
         crThresholdPercent: crThresholdValid ? parsedCrThreshold : DEFAULT_AUTO_INCREASE_THRESHOLD.cr,
-        drrMetricEnabled: conditionRuleBuilder ? true : metricEnabled.drr,
-        crMetricEnabled: conditionRuleBuilder ? true : metricEnabled.cr,
+        drrMetricEnabled: conditionRuleBuilder
+          ? firstActiveRule?.metric === 'drr'
+          : metricEnabled.drr,
+        crMetricEnabled: conditionRuleBuilder
+          ? firstActiveRule?.metric === 'crCart' ||
+            firstActiveRule?.metric === 'crOrder' ||
+            firstActiveRule?.metric === 'cpo'
+          : metricEnabled.cr,
         increaseAmountRub:
-          conditionRuleBuilder && firstActiveRule
-            ? Math.max(
-                1,
-                Math.round(parsedDailyLimit * (firstActiveRule.limitIncreasePercent / 100)),
-              )
+          conditionRuleBuilder && !isMaxSpendStrategy && firstConditionAmount > 0
+            ? firstConditionAmount
             : increaseAmountRub,
         limitIncreasePercent:
-          conditionRuleBuilder && firstActiveRule
-            ? firstActiveRule.limitIncreasePercent
+          conditionRuleBuilder && firstActiveRule && !isMaxSpendStrategy
+            ? (([25, 50, 100].includes(firstActiveRule.limitIncreasePercent)
+                ? firstActiveRule.limitIncreasePercent
+                : 25) as LimitIncreasePercent)
             : limitIncreasePercent,
+        maxSpendLimitRub: isMaxSpendStrategy ? parsedMaxSpendLimit : undefined,
+        maxSpendPeriod: isMaxSpendStrategy ? maxSpendPeriod : undefined,
         ...(conditionRuleBuilder
           ? {
-              increaseRules: increaseRules.map((rule) => {
-                const conditions = rule.conditions ?? [];
-                const drrCondition = conditions.find(
-                  (c) => c.metric === 'drr' && resolveConditionCompare(c) === 'below',
-                );
-                const crCondition = conditions.find(
-                  (c) => c.metric === 'cr' && resolveConditionCompare(c) === 'above',
-                );
-                const drrAny = conditions.find((c) => c.metric === 'drr');
-                const crAny = conditions.find((c) => c.metric === 'cr');
-                return {
-                  ...rule,
-                  conditions,
-                  drrBelowPercent: (drrCondition ?? drrAny)?.threshold ?? 0,
-                  crAbovePercent: (crCondition ?? crAny)?.threshold ?? 0,
-                };
-              }),
+              increaseRules: isMaxSpendStrategy
+                ? []
+                : increaseRules.map((rule) => {
+                    const conditions = (rule.conditions ?? []).map((c) => ({
+                      ...c,
+                      compare: rule.metric
+                        ? defaultCompareForMetric(rule.metric)
+                        : c.compare,
+                    }));
+                    const primary = conditions[0];
+                    return {
+                      ...rule,
+                      metric: rule.metric,
+                      conditions,
+                      drrBelowPercent:
+                        rule.metric === 'drr' ? primary?.threshold ?? 0 : 0,
+                      crAbovePercent:
+                        rule.metric === 'crOrder' || rule.metric === 'crCart'
+                          ? primary?.threshold ?? 0
+                          : 0,
+                    };
+                  }),
             }
           : {}),
       });
     };
 
+    if (showMaxSpendPanel && maxSpendLimitValid) {
+      onDailyLimitValueChange(String(parsedMaxSpendLimit));
+      onDailyLimitCommit(parsedMaxSpendLimit, { silent: true });
+      applyAdvancedSettingsPayload();
+      return;
+    }
+
     if (dailyLimitOnly) {
-      if (parsedDailyLimit > campaignBudget) {
+      if (parsedDailyLimit > campaignBudget && !allowLimitAboveBudget) {
         onDailyLimitCommit(parsedDailyLimit);
         return;
       }
@@ -6216,10 +7259,12 @@ export const AdvancedDailyLimitModal: React.FC<{
       return;
     }
     if (!advancedSettingsOnly) {
-      if (parsedDailyLimit > campaignBudget) {
+      if (parsedDailyLimit > campaignBudget && !allowLimitAboveBudget) {
         onDailyLimitCommit(parsedDailyLimit);
         return;
       }
+      onDailyLimitCommit(parsedDailyLimit, { silent: true });
+    } else if (budgetStrategyTabs && dailyLimitValid) {
       onDailyLimitCommit(parsedDailyLimit, { silent: true });
     }
     applyAdvancedSettingsPayload();
@@ -6229,7 +7274,13 @@ export const AdvancedDailyLimitModal: React.FC<{
   };
 
   const applySettingsToForm = (settings: AdvancedDailyLimitSettings) => {
-    setStrategyId(settings.strategyId);
+    const nextStrategyId = budgetStrategyTabs
+      ? resolveBudgetStrategyTab(settings.strategyId)
+      : settings.strategyId;
+    setStrategyId(nextStrategyId);
+    if (budgetStrategyTabs) {
+      setBudgetStrategyTab(resolveBudgetStrategyTab(settings.strategyId));
+    }
     setStrategyGroupLabel(settings.strategyGroupLabel);
     const resolved = resolveAutoIncreaseThresholds(settings);
     setThresholdByMetric({
@@ -6237,6 +7288,10 @@ export const AdvancedDailyLimitModal: React.FC<{
       cr: String(resolved.cr),
     });
     setLimitIncreasePercent(settings.limitIncreasePercent ?? 25);
+    if (settings.maxSpendLimitRub && settings.maxSpendLimitRub > 0) {
+      setMaxSpendLimitDraft(String(settings.maxSpendLimitRub));
+    }
+    setMaxSpendPeriod(settings.maxSpendPeriod === 'week' ? 'week' : 'day');
     setIncreaseRules(
       settings.increaseRules?.length
         ? settings.increaseRules.map((rule) => migrateLegacyRuleConditions({ ...rule }))
@@ -6267,24 +7322,22 @@ export const AdvancedDailyLimitModal: React.FC<{
     onClose();
   };
 
+  const budgetTabClass = (active: boolean) =>
+    `flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+    }`;
+
   const body = (
     <>
       <div className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto ${embedded ? 'px-6 pb-4 sm:px-8' : 'p-6 sm:p-8'}`}>
         {!embedded && dailyLimitOnly ? (
-          <>
-            <h2 id="daily-limit-setup-title" className="text-xl font-bold leading-snug text-gray-900">
-              Дневной лимит
-            </h2>
-            <p className="mt-2 text-sm leading-relaxed text-gray-500">
-              {conditionRuleBuilder
-                ? 'Задайте сумму на день и при необходимости правила автоматического увеличения лимита'
-                : 'Задайте сумму на день — распределим её равномерно в течение суток'}
-            </p>
-          </>
+          <h2 id="daily-limit-setup-title" className="text-xl font-bold leading-snug text-gray-900">
+            Дневной лимит
+          </h2>
         ) : !embedded && !dailyLimitOnly ? (
           <>
             <div className="flex items-center gap-3">
-              {conditionRuleBuilder ? (
+              {conditionRuleBuilder && !budgetStrategyTabs ? (
                 <div
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-sm shadow-fuchsia-200/80"
                   aria-hidden
@@ -6293,12 +7346,33 @@ export const AdvancedDailyLimitModal: React.FC<{
                 </div>
               ) : null}
               <h2 id="advanced-daily-limit-title" className="mb-0 text-xl font-bold leading-snug text-gray-900">
-                {conditionRuleBuilder
-                  ? 'Настройка правил'
-                  : 'Расширенные настройки дневного лимита'}
+                {budgetStrategyTabs
+                  ? 'Бюджет'
+                  : conditionRuleBuilder
+                    ? 'Настройка правил'
+                    : 'Расширенные настройки дневного лимита'}
               </h2>
             </div>
-            {!conditionRuleBuilder ? (
+            {budgetStrategyTabs ? (
+              <div
+                className="mt-4 flex gap-1 rounded-xl bg-[#F2F2F7] p-1"
+                role="tablist"
+                aria-label="Стратегии бюджета"
+              >
+                {BUDGET_STRATEGY_TABS.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={budgetStrategyTab === tab.id}
+                    className={budgetTabClass(budgetStrategyTab === tab.id)}
+                    onClick={() => selectBudgetStrategyTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            ) : !conditionRuleBuilder ? (
               <p className="mt-2 text-sm leading-relaxed text-gray-500">
                 {advancedSettingsOnly
                   ? 'Настройте автоматическое увеличение лимита по метрикам эффективности.'
@@ -6309,10 +7383,22 @@ export const AdvancedDailyLimitModal: React.FC<{
         ) : null}
 
               {!advancedSettingsOnly ? (
-                <div className="rounded-2xl border border-gray-100 bg-white p-5">
-                  <h3 className="text-base font-semibold text-gray-900">Лимит на день</h3>
-                  <p className="mt-1 text-sm text-gray-500">
-                    Распределяем сумму равномерно в течение дня
+                <div
+                  className={
+                    dailyLimitOnly && conditionRuleBuilder
+                      ? 'mt-6 rounded-2xl border border-gray-200 bg-white p-5'
+                      : 'rounded-2xl border border-gray-100 bg-white p-5'
+                  }
+                >
+                  <h3 className="text-base font-semibold text-gray-900">
+                    {dailyLimitOnly && conditionRuleBuilder
+                      ? 'Установите дневной лимит'
+                      : 'Лимит на день'}
+                  </h3>
+                  <p className="mt-1 text-sm leading-relaxed text-gray-500">
+                    {dailyLimitOnly && conditionRuleBuilder
+                      ? 'Равномерно распределим сумму в течение суток'
+                      : 'Распределяем сумму равномерно в течение дня'}
                   </p>
                   <div className="relative mt-4">
                     <input
@@ -6323,7 +7409,7 @@ export const AdvancedDailyLimitModal: React.FC<{
                         if (!isNaN(parsed)) onDailyLimitValueChange(String(parsed));
                         else if (e.target.value === '') onDailyLimitValueChange('');
                       }}
-                      className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-base font-medium text-gray-900 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                      className="w-full rounded-xl border border-gray-200 px-4 py-3.5 pr-10 text-base font-medium text-gray-900 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                       placeholder={`Задайте от ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
                     />
                     <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
@@ -6338,29 +7424,115 @@ export const AdvancedDailyLimitModal: React.FC<{
                     <span className="text-sm text-gray-700">
                       Переносить неистраченные деньги
                     </span>
+                    {dailyLimitOnly && conditionRuleBuilder ? (
+                      <div className="group/carryover-tip relative inline-flex">
+                        <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
+                        <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-72 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg group-hover/carryover-tip:block">
+                          <p className="mb-1">Система старается тратить бюджет равномерно.</p>
+                          <p>
+                            Если сегодня потратится меньше дневного лимита, остаток будет добавлен к
+                            лимиту следующего дня. Общая сумма расходов не увеличивается.
+                          </p>
+                        </div>
+                      </div>
+                    ) : null}
                   </label>
                 </div>
               ) : null}
 
-              {conditionRuleBuilder || !dailyLimitOnly ? (
+              {showMaxSpendPanel ? (
+                <div className="mt-6">
+                  <div className="flex items-stretch gap-3">
+                    <div className="relative min-w-0 flex-1">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={
+                          maxSpendLimitDraft
+                            ? formatForDisplay(maxSpendLimitDraft)
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const parsed = parseDisplayValue(e.target.value);
+                          if (!isNaN(parsed)) setMaxSpendLimitDraft(String(parsed));
+                          else if (e.target.value === '') setMaxSpendLimitDraft('');
+                        }}
+                        className={`h-14 w-full rounded-xl border px-5 py-4 pr-12 text-lg font-medium text-gray-900 outline-none transition-colors ${
+                          maxSpendLimitValid || maxSpendLimitDraft === ''
+                            ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                            : 'border-red-300 focus:border-red-400 focus:ring-1 focus:ring-red-400'
+                        }`}
+                        placeholder={`От ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
+                        aria-label="Максимум списаний"
+                      />
+                      <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-base text-gray-400">
+                        ₽
+                      </span>
+                    </div>
+                    <div className="w-[148px] shrink-0 [&_button]:h-14 [&_button]:rounded-xl [&_button]:px-4 [&_button]:text-base">
+                      <ConditionRuleFieldDropdown
+                        value={maxSpendPeriod}
+                        options={MAX_SPEND_PERIOD_OPTIONS}
+                        onChange={setMaxSpendPeriod}
+                        ariaLabel="Период лимита"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-5 rounded-2xl bg-[#F6F6F9] px-5 py-4 text-base leading-relaxed text-gray-600">
+                    Система не будет контролировать скорость списания — только этот максимум
+                    {maxSpendPeriod === 'week' ? ' за неделю' : ' за день'}.
+                    {maxSpendPeriod === 'day'
+                      ? ' Деньги могут уйти быстрее или медленнее в течение суток.'
+                      : ''}
+                  </div>
+                </div>
+              ) : null}
+
+              {(conditionRuleBuilder || !dailyLimitOnly) && !showMaxSpendPanel ? (
               <div
                 className={
                   conditionRuleBuilder
                     ? dailyLimitOnly
-                      ? 'mt-6'
+                      ? 'mt-6 rounded-2xl border border-gray-200 bg-white p-5'
                       : 'mt-4'
                     : 'mt-4 rounded-2xl border border-gray-100 bg-white p-5'
                 }
               >
+                {budgetStrategyTabs && showEfficientRules ? (
+                  <div className="mb-4 rounded-2xl border border-gray-100 bg-white p-5">
+                    <h3 className="text-base font-semibold text-gray-900">Равномерно откручивать в день</h3>
+                    <div className="relative mt-4">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
+                        onChange={(e) => {
+                          const parsed = parseDisplayValue(e.target.value);
+                          if (!isNaN(parsed)) onDailyLimitValueChange(String(parsed));
+                          else if (e.target.value === '') onDailyLimitValueChange('');
+                        }}
+                        className={`w-full rounded-xl border px-4 py-3 pr-10 text-base font-medium text-gray-900 outline-none transition-colors ${
+                          dailyLimitValid || dailyLimitValue === ''
+                            ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                            : 'border-red-300 focus:border-red-400 focus:ring-1 focus:ring-red-400'
+                        }`}
+                        placeholder={`От ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)}`}
+                        aria-label="Дневной лимит"
+                      />
+                      <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                        ₽
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
                 {dailyLimitOnly && conditionRuleBuilder ? (
                   <div className="mb-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <h3 className="text-base font-semibold text-gray-900">Автоматизация трат</h3>
-                      <ToggleSwitch
-                        checked={autoIncreaseEnabled}
-                        onChange={setAutoIncreaseEnabled}
-                      />
-                    </div>
+                    <h3 className="text-base font-semibold text-gray-900">
+                      Установить правила увеличения
+                    </h3>
+                    <p className="mt-1 text-sm leading-relaxed text-gray-500">
+                      Настройте увеличение лимита в зависимости от эффективности кампании
+                    </p>
                   </div>
                 ) : null}
                 {!conditionRuleBuilder && !dailyLimitOnly ? (
@@ -6375,28 +7547,28 @@ export const AdvancedDailyLimitModal: React.FC<{
                 </div>
                 ) : null}
 
-                {(conditionRuleBuilder
-                  ? dailyLimitOnly
-                    ? autoIncreaseEnabled
-                    : true
-                  : autoIncreaseEnabled) ? (
-                conditionRuleBuilder ? (
-                  <>
+                {(conditionRuleBuilder || autoIncreaseEnabled) ? (
+                showEfficientRules ? (
+                  budgetStrategyTabs ? (
+                    <div className="rounded-2xl border border-gray-100 bg-white p-5">
+                      <h3 className="text-base font-semibold text-gray-900">Гибкий лимит</h3>
+                      <div className="mt-4">
+                        <DailyLimitConditionRulesBuilder
+                          rules={increaseRules}
+                          onChange={setIncreaseRules}
+                          campaignBudget={effectiveCampaignBudget}
+                          allowLimitAboveBudget={allowLimitAboveBudget}
+                        />
+                      </div>
+                    </div>
+                  ) : (
                     <DailyLimitConditionRulesBuilder
                       rules={increaseRules}
                       onChange={setIncreaseRules}
-                      templatesRevision={ruleTemplatesRevision}
+                      campaignBudget={effectiveCampaignBudget}
+                      allowLimitAboveBudget={allowLimitAboveBudget}
                     />
-                    {canSaveRuleTemplate ? (
-                      <button
-                        type="button"
-                        onClick={handleSaveRuleTemplate}
-                        className="mt-4 rounded-xl px-2 py-2.5 text-left text-sm font-medium text-[#6C5CE7] hover:text-[#5B4BFF]"
-                      >
-                        Сохранить шаблон
-                      </button>
-                    ) : null}
-                  </>
+                  )
                 ) : (
                 <div className="mt-4 space-y-4">
                   <div>
@@ -6481,26 +7653,9 @@ export const AdvancedDailyLimitModal: React.FC<{
               ) : null}
             </div>
 
-            {conditionRuleBuilder ? (
-              <div className="shrink-0 px-6 pb-4 sm:px-8">
-                <div className="flex items-center justify-between gap-3 rounded-2xl bg-[#F6F2FF] px-4 py-3">
-                  <p className="min-w-0 flex-1 text-sm leading-snug text-gray-800">
-                    Автопополнять бюджет до суммы дневного лимита, если на кампании окажется меньше
-                  </p>
-                  <ToggleSwitch
-                    checked={autoRefillOnRules}
-                    onChange={(checked) => {
-                      setAutoRefillOnRules(checked);
-                      onAutoRefillOnRulesTriggerChange?.(checked);
-                    }}
-                  />
-                </div>
-              </div>
-            ) : null}
-
             <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-                {conditionRuleBuilder ? (
+                {conditionRuleBuilder && !showMaxSpendPanel ? (
                   <button
                     type="button"
                     onClick={handleDisableSpendRules}
@@ -6508,7 +7663,7 @@ export const AdvancedDailyLimitModal: React.FC<{
                   >
                     Отключить
                   </button>
-                ) : !dailyLimitOnly ? (
+                ) : !dailyLimitOnly && !showMaxSpendPanel ? (
                   <button
                     type="button"
                     onClick={handleResetAdvancedSettings}
@@ -6542,11 +7697,29 @@ export const AdvancedDailyLimitModal: React.FC<{
   );
 
   if (embedded) {
-    return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{body}</div>;
+    return (
+      <>
+        <Toast
+          show={showSaveError}
+          message={saveErrorMessage}
+          onClose={() => setShowSaveError(false)}
+          isError
+          durationMs={4000}
+        />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{body}</div>
+      </>
+    );
   }
 
   return (
     <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} role="presentation">
+      <Toast
+        show={showSaveError}
+        message={saveErrorMessage}
+        onClose={() => setShowSaveError(false)}
+        isError
+        durationMs={4000}
+      />
       <div className="flex h-full w-full justify-end" onClick={onClose}>
         <div className="flex h-full max-h-full min-w-0 items-stretch gap-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
@@ -6570,11 +7743,13 @@ export const AdvancedDailyLimitModal: React.FC<{
                 : 'advanced-daily-limit-title'
             }
             aria-label={
-              advancedSettingsOnly
-                ? 'Расширенные настройки'
-                : dailyLimitOnly
-                  ? 'Дневной лимит'
-                  : undefined
+              budgetStrategyTabs
+                ? 'Бюджет'
+                : advancedSettingsOnly
+                  ? 'Расширенные настройки'
+                  : dailyLimitOnly
+                    ? 'Дневной лимит'
+                    : undefined
             }
           >
             {body}

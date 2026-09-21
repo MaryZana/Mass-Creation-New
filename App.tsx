@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'reac
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar, Coins, Columns2
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -12,15 +12,26 @@ import { SuccessPage } from './components/SuccessPage';
 import { GROWING_DEMAND_PRODUCTS } from './components/BonusCampaignRepeatBanner';
 import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
-import { CpcCampaignPage } from './components/CpcCampaignPage';
+import {
+  AdvancedDailyLimitModal,
+  CpcCampaignPage,
+  createDefaultAdvancedDailyLimitSettings,
+  type AdvancedDailyLimitSettings,
+} from './components/CpcCampaignPage';
+import { MassCreationIsland } from './components/CpcMassCreationIsland';
 import { useCpmBidRoundedAlert } from './components/CpmBidRoundedAlert';
 import { CPM_BID_STEP_RUB, normalizeCpmBidRub } from './utils/cpmBidRounding';
+import { DAILY_LIMIT_ABSOLUTE_MIN } from './utils/cpcDailyLimitBid';
 import { MassEditPage } from './components/MassEditPage';
 import { SingleCampaignPage, MOCK_PRODUCTS as SINGLE_CAMPAIGN_CURATED_CATALOG } from './components/SingleCampaignPage';
 import {
   CuratedProductPicksSection,
   type CuratedPickProduct,
 } from './components/CuratedProductPicksSection';
+import {
+  BulkPaymentModelModal,
+  type BulkPaymentModelProduct,
+} from './components/BulkPaymentModelModal';
 import { AppHeader } from './components/AppHeader';
 import {
   isNewSellerProfile,
@@ -36,8 +47,12 @@ import ProductPromotionConceptPage from './pages/ProductPromotionConceptPage';
 import StatsPage from './pages/StatsPage';
 import AudienceMetricsPage from './pages/AudienceMetricsPage';
 import FinancePage from './pages/FinancePage';
+import FinanceTopUpPage from './pages/FinanceTopUpPage';
 import BonusesPage from './pages/BonusesPage';
 import OverviewPage from './pages/OverviewPage';
+import HelpPage from './pages/HelpPage';
+import MediaPage from './pages/MediaPage';
+import MediaCampaignCreatePage from './pages/MediaCampaignCreatePage';
 import { CampaignsInsightFilterProvider } from './context/CampaignsInsightFilterContext';
 import { OverviewBridgeProvider } from './context/OverviewBridgeContext';
 
@@ -77,6 +92,7 @@ const SHELL_APP_PATHS = new Set([
   '/campaigns-with-widgets',
   '/campaigns-with-widgets-2',
   '/product-promotion-concept',
+  '/media',
   '/overview',
   '/stats',
   '/stats/acquisition',
@@ -85,14 +101,20 @@ const SHELL_APP_PATHS = new Set([
   '/audience-metrics',
   '/finance',
   '/bonuses',
+  '/help',
   NEW_SELLER_CREATE_CAMPAIGN_PATH,
 ]);
 
 function isShellAppPath(pathname: string): boolean {
-  return SHELL_APP_PATHS.has(pathname) || pathname.startsWith('/stats/');
+  return (
+    SHELL_APP_PATHS.has(pathname) ||
+    pathname.startsWith('/stats/') ||
+    pathname.startsWith('/finance/') ||
+    pathname.startsWith('/media/')
+  );
 }
 function isNewSellerSecondaryShellPath(pathname: string): boolean {
-  return pathname === '/finance' || pathname.startsWith('/bonuses');
+  return pathname === '/finance' || pathname.startsWith('/finance/') || pathname.startsWith('/bonuses');
 }
 
 const BONUS_PACKAGES: BonusPackage[] = [
@@ -526,10 +548,11 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                 autoReplenishment: false,
                 fundingSource: 'Единый счёт',
                 status: CampaignStatus.VALID,
-                usePromoBonuses: true,
+                usePromoBonuses: false,
                 source: excelSource,
                 cpcCompatible: p.cpcCompatible,
                 bonusAmount: 0,
+                bonusPackageId: 'p1',
             };
     
             if (tempConfig.paymentModel === PaymentModel.CPM) {
@@ -549,11 +572,23 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
             } else {
                 // CPC: зоны Поиск и Рекомендации по выбору в модалке (manualZones)
                 const withSearch = manualZones.search ? { searchBid: 30 } : {};
-                const withRecs = manualZones.recommendations ? { recommendationsBid: 30 } : {};
+                const withRecs = manualZones.recommendations ? { recommendationsBid: 200 } : {};
                 if (!manualZones.search && !manualZones.recommendations) {
-                    return { ...campaignBase, searchBid: 30 } as CampaignRecord;
+                    return {
+                      ...campaignBase,
+                      searchBid: 30,
+                      recommendationsBid: 200,
+                      dailyLimit: 1000,
+                      autoReplenishment: true,
+                    } as CampaignRecord;
                 }
-                return { ...campaignBase, ...withSearch, ...withRecs } as CampaignRecord;
+                return {
+                  ...campaignBase,
+                  ...withSearch,
+                  ...withRecs,
+                  dailyLimit: 1000,
+                  autoReplenishment: true,
+                } as CampaignRecord;
             }
         });
         onSubmit({paymentModel: tempConfig.paymentModel, bidType: tempConfig.bidType}, finalCampaigns);
@@ -1375,34 +1410,6 @@ const Pagination = ({ total, pageSize, current, onChange }: { total: number, pag
     return ( <div className="pagination-container"> <button onClick={handlePrev} className={`pagination-item ${current === 1 ? 'disabled' : ''}`} disabled={current === 1}>&lt;</button> {uniqueItems.map((item, index) => ( <button key={index} onClick={() => typeof item === 'number' && onChange(item)} className={`pagination-item ${current === item ? 'active' : ''} ${typeof item !== 'number' ? 'disabled' : ''}`} disabled={typeof item !== 'number'}> {item} </button> ))} <button onClick={handleNext} className={`pagination-item ${current === totalPages ? 'disabled' : ''}`} disabled={current === totalPages}>&gt;</button> </div> );
 };
 
-const ExcelProcessingLoader = ({ statusText }: { statusText: string }) => (
-    <section className="bg-white rounded-2xl shadow-sm p-6 space-y-4 border border-purple-100 overflow-hidden relative">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-purple-100">
-            <div className="h-1 bg-purple-500 animate-loader-progress"></div>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-gray-600 font-medium pt-2">
-            <Loader className="w-4 h-4 animate-spin text-purple-600" />
-            <span>{statusText}</span>
-        </div>
-        <div className="space-y-3 pt-2">
-            <div className="h-10 bg-gray-100 rounded-lg opacity-70"></div>
-            <div className="h-10 bg-gray-100 rounded-lg opacity-60"></div>
-            <div className="h-10 bg-gray-100 rounded-lg opacity-50"></div>
-            <div className="h-10 bg-gray-100 rounded-lg opacity-40"></div>
-            <div className="h-10 bg-gray-100 rounded-lg opacity-30"></div>
-        </div>
-        <style>{`
-            @keyframes loader-progress {
-                0% { transform: translateX(-100%); }
-                100% { transform: translateX(100%); }
-            }
-            .animate-loader-progress {
-                animation: loader-progress 1.5s ease-in-out infinite;
-            }
-        `}</style>
-    </section>
-);
-
 const BidInput = ({
     value,
     onChange,
@@ -1915,6 +1922,81 @@ const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onDailyLim
     )
 }
 
+const creationBarBtnClass =
+  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#F3F4F6] px-3.5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-200';
+
+const CreationSelectionBar = ({
+  count,
+  onBudget,
+  onDailyLimit,
+  onAutoRefill,
+  onBid,
+  onZones,
+  onDelete,
+  onClear,
+}: {
+  count: number;
+  onBudget: () => void;
+  onDailyLimit: () => void;
+  onAutoRefill: () => void;
+  onBid: () => void;
+  onZones: () => void;
+  onDelete: () => void;
+  onClear: () => void;
+}) => {
+  const countLabel = `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
+
+  return (
+    <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
+      <span className="whitespace-nowrap px-1 text-sm font-medium text-gray-400">
+        Выбрано {countLabel}
+      </span>
+      <div className="h-6 w-px shrink-0 bg-gray-200" />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBudget} className={creationBarBtnClass}>
+          <Coins className="h-4 w-4 text-gray-700" />
+          <span>Бюджет</span>
+        </button>
+        <button type="button" onClick={onDailyLimit} className={creationBarBtnClass}>
+          <Calendar className="h-4 w-4 text-gray-700" />
+          <span>Дневной лимит</span>
+        </button>
+        <button type="button" onClick={onAutoRefill} className={creationBarBtnClass}>
+          <RefreshCw className="h-4 w-4 text-gray-700" />
+          <span>Автопополнение</span>
+        </button>
+        <button type="button" onClick={onBid} className={creationBarBtnClass}>
+          <Zap className="h-4 w-4 text-gray-700" />
+          <span>Ставка</span>
+          <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
+        </button>
+        <button type="button" onClick={onZones} className={creationBarBtnClass}>
+          <Columns2 className="h-4 w-4 text-gray-700" />
+          <span>Зоны показа</span>
+        </button>
+      </div>
+      <div className="ml-1 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+          aria-label="Удалить"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+          aria-label="Снять выделение"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const DownloadNotification = ({ count }: { count: number }) => (
     <div className="fixed bottom-6 right-6 bg-gray-800 text-white rounded-lg shadow-lg p-4 flex items-center gap-3 z-[90] animate-in slide-in-from-bottom-4 fade-in">
         <Loader className="w-5 h-5 animate-spin" />
@@ -1947,6 +2029,10 @@ export default function App() {
     'creation' | 'list' | 'editing' | 'single-campaign' | 'new-seller-first-campaign'
   >('list');
 
+  const openSingleCampaign = useCallback(() => {
+    setAppState('single-campaign');
+  }, []);
+
   const openNewSellerCampaignCreation = useCallback(() => {
     setAppState('new-seller-first-campaign');
     if (location.pathname !== NEW_SELLER_CREATE_CAMPAIGN_PATH) {
@@ -1958,7 +2044,7 @@ export default function App() {
     if (!isNewSellerProfile(profileId)) {
       setAppState((prev) => (prev === 'new-seller-first-campaign' ? 'list' : prev));
       if (location.pathname === NEW_SELLER_CREATE_CAMPAIGN_PATH) {
-        navigate('/campaigns-with-widgets-2', { replace: true });
+        navigate('/product-promotion-concept', { replace: true });
       }
       return;
     }
@@ -2006,8 +2092,6 @@ export default function App() {
   const [isBulkActionModalOpen, setIsBulkActionModalOpen] = useState(false);
   const [currentBulkAction, setCurrentBulkAction] = useState<BulkActionType>(null);
   const [bulkEditPrefillData, setBulkEditPrefillData] = useState<{ budget: number; bonusAmount: number; useBonuses: boolean; } | null>(null);
-  const [isTableLoading, setIsTableLoading] = useState(false);
-  const [loadingStatusText, setLoadingStatusText] = useState("Подготавливаем кампании...");
   
   const [isConfirmDeleteGroupOpen, setIsConfirmDeleteGroupOpen] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<TemplateGroup | null>(null);
@@ -2022,6 +2106,16 @@ export default function App() {
   const [isLaunchSummaryModalOpen, setIsLaunchSummaryModalOpen] = useState(false);
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [campaignForAutoRefill, setCampaignForAutoRefill] = useState<CampaignRecord | null>(null);
+  const [isCreationBulkDailyLimitOpen, setIsCreationBulkDailyLimitOpen] = useState(false);
+  const [creationBulkDailyLimitEnabled, setCreationBulkDailyLimitEnabled] = useState(false);
+  const [creationBulkDailyLimitValue, setCreationBulkDailyLimitValue] = useState('');
+  const [creationBulkSavedDailyLimit, setCreationBulkSavedDailyLimit] = useState('');
+  const [creationBulkCarryover, setCreationBulkCarryover] = useState(false);
+  const [creationBulkDailyLimitSettings, setCreationBulkDailyLimitSettings] =
+    useState<AdvancedDailyLimitSettings>(() => createDefaultAdvancedDailyLimitSettings());
+  const [creationBulkAutoRefillOnRules, setCreationBulkAutoRefillOnRules] = useState(true);
+  const [isCreationZonesModalOpen, setIsCreationZonesModalOpen] = useState(false);
+  const [creationZonesDraft, setCreationZonesDraft] = useState({ search: true, recommendations: true });
   const [campaignForBonusEdit, setCampaignForBonusEdit] = useState<CampaignRecord | null>(null);
   const [isUploadEditsModalOpen, setIsUploadEditsModalOpen] = useState(false);
   const [isReviewEditsModalOpen, setIsReviewEditsModalOpen] = useState(false);
@@ -2064,13 +2158,17 @@ export default function App() {
     dailyLimit: number | null;
     scheduledDailyLimit: number | null;
     dailyLimitExhausted?: boolean;
+    autoRefill?: boolean;
+    dynamicDailyLimit?: boolean;
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
     campaignStatus?: 'active' | 'paused';
     openBidRecommendations?: boolean;
     bidRecommendationProduct?: { name: string; image: string };
+    budgetConceptDemo?: boolean;
+    budgetRangeConceptDemo?: boolean;
   } | null>(null);
-  const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void) | null>(null);
+  const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; autoRefill?: boolean; dynamicDailyLimit?: boolean; status?: 'active' | 'paused'; statusText?: string }) => void) | null>(null);
   const bulkDailyLimitOpenerRef = useRef<(() => void) | null>(null);
 
   type CampaignListDataPatch = {
@@ -2079,15 +2177,44 @@ export default function App() {
     dailyLimit?: number | null;
     scheduledDailyLimit?: number | null;
     maxCpcBidRub?: number;
+    autoRefill?: boolean;
+    /** Правила автоувеличения дневного лимита включены */
+    dynamicDailyLimit?: boolean;
     status?: 'active' | 'paused';
     statusText?: string;
   };
-  const [campaignListPatches, setCampaignListPatches] = useState<Record<number, CampaignListDataPatch>>({});
+  const CAMPAIGN_LIST_PATCHES_STORAGE_KEY = 'massCreation.campaignListPatches.v1';
+  const readStoredCampaignListPatches = (): Record<number, CampaignListDataPatch> => {
+    try {
+      const raw = window.localStorage.getItem(CAMPAIGN_LIST_PATCHES_STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw) as Record<string, CampaignListDataPatch>;
+      if (!parsed || typeof parsed !== 'object') return {};
+      return Object.fromEntries(
+        Object.entries(parsed)
+          .map(([id, patch]) => [Number(id), patch] as const)
+          .filter(([id]) => Number.isFinite(id)),
+      );
+    } catch {
+      return {};
+    }
+  };
+  const [campaignListPatches, setCampaignListPatches] = useState<Record<number, CampaignListDataPatch>>(
+    () => readStoredCampaignListPatches(),
+  );
   const persistCampaignListPatch = useCallback((campaignId: number, data: CampaignListDataPatch) => {
-    setCampaignListPatches((prev) => ({
-      ...prev,
-      [campaignId]: { ...prev[campaignId], ...data },
-    }));
+    setCampaignListPatches((prev) => {
+      const next = {
+        ...prev,
+        [campaignId]: { ...prev[campaignId], ...data },
+      };
+      try {
+        window.localStorage.setItem(CAMPAIGN_LIST_PATCHES_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota / private mode */
+      }
+      return next;
+    });
   }, []);
 
   const [inlineErrors, setInlineErrors] = useState<Record<string, string>>({});
@@ -2095,7 +2222,10 @@ export default function App() {
   const [isBonusInsufficiencyModalOpen, setIsBonusInsufficiencyModalOpen] = useState(false);
   const [bonusAppContext, setBonusAppContext] = useState<{ value: any, fullCoverageCount: number, remainingBonuses: number } | null>(null);
 
-  const handleNavigateToList = () => setAppState('list');
+  const handleNavigateToList = () => {
+    setWbDiscountPromoteProducts(null);
+    setAppState('list');
+  };
   const handleNavigateToCreation = () => setAppState('creation');
   const handleNavigateToEditing = () => setAppState('editing');
 
@@ -2112,6 +2242,10 @@ export default function App() {
       .slice(0, 5)
       .map((p, index) => {
       const nmId = Number(p.id);
+      const searchPresets = [undefined, 30, 50, undefined, 50] as const;
+      const recsPresets = [200, 200, undefined, 200, 50] as const;
+      const dailyPresets = [1000, 1000, 1000, 1000, null] as const;
+      const apPresets = [true, true, false, true, false] as const;
       return {
         id: `growing-demand-v5-${p.id}-${index}`,
         nmId,
@@ -2120,17 +2254,13 @@ export default function App() {
         imageUrl: p.image,
         category: 'Товары',
         budget: 3000,
-        autoReplenishment: false,
+        dailyLimit: dailyPresets[index] ?? 1000,
+        autoReplenishment: apPresets[index] ?? false,
         fundingSource: 'Единый счёт' as const,
         status: CampaignStatus.VALID,
-        usePromoBonuses: true,
-        source: PROSPECT_PICK_REASONS[index % PROSPECT_PICK_REASONS.length],
-        prospectCtr: p.ctr,
-        prospectCtrChange: Math.max(0, p.ctrChange),
-        cpcCompatible: true,
-        bonusAmount: 0,
-        searchBid: 30,
-        recommendationsBid: 30,
+        usePromoBonuses: false,
+        searchBid: searchPresets[index],
+        recommendationsBid: recsPresets[index],
       };
     });
   }, []);
@@ -2170,14 +2300,14 @@ export default function App() {
   useEffect(() => {
     if (!pendingReferralCreationNav || profileId !== '2') return;
     consumeReferralCreationNav();
-    setAppState('single-campaign');
-  }, [pendingReferralCreationNav, profileId, consumeReferralCreationNav]);
+    openSingleCampaign();
+  }, [pendingReferralCreationNav, profileId, consumeReferralCreationNav, openSingleCampaign]);
 
   useEffect(() => {
     if (!pendingSingleCampaignNav) return;
     consumeSingleCampaignNav();
-    setAppState('single-campaign');
-  }, [pendingSingleCampaignNav, consumeSingleCampaignNav]);
+    openSingleCampaign();
+  }, [pendingSingleCampaignNav, consumeSingleCampaignNav, openSingleCampaign]);
 
   useEffect(() => {
     if (appState !== 'single-campaign' && !pendingReferralCreationNav && !pendingSingleCampaignNav) {
@@ -2293,64 +2423,56 @@ export default function App() {
   const handleTemplateDownload = (finalConfig: CampaignConfig) => { setGlobalConfig(finalConfig); setToastMessage("Шаблон успешно сформирован и скачан"); setShowToast(true); };
 
   const handleAddItemSubmit = (config: Pick<CampaignConfig, 'paymentModel' | 'bidType'>, items: CampaignRecord[]) => {
-      setIsTableLoading(true);
-      setLoadingStatusText("Проверяем минимальные ставки...");
-      const timer1 = setTimeout(() => setLoadingStatusText("Загружаем товары в группы..."), 1200);
-      const timer2 = setTimeout(() => {
-          const sourceFile = items[0]?.source || "Ручное добавление";
-          const label = getTemplateGroupLabel(config);
+      const sourceFile = items[0]?.source || "Ручное добавление";
+      const label = getTemplateGroupLabel(config);
 
-          setTemplateGroups(prev => {
-            const existingIndex = prev.findIndex(g =>
-              g.config.paymentModel === config.paymentModel && g.config.bidType === config.bidType
-            );
+      setTemplateGroups(prev => {
+        const existingIndex = prev.findIndex(g =>
+          g.config.paymentModel === config.paymentModel && g.config.bidType === config.bidType
+        );
 
-            // Если уже есть группа с таким CPM/CPC + типом ставки — добавляем в неё (без дублей по nmId)
-            if (existingIndex !== -1) {
-              const existing = prev[existingIndex];
-              const existingNmIds = new Set(existing.campaigns.map(c => c.nmId));
-              const itemsToAdd = items.filter(c => !existingNmIds.has(c.nmId));
+        // Если уже есть группа с таким CPM/CPC + типом ставки — добавляем в неё (без дублей по nmId)
+        if (existingIndex !== -1) {
+          const existing = prev[existingIndex];
+          const existingNmIds = new Set(existing.campaigns.map(c => c.nmId));
+          const itemsToAdd = items.filter(c => !existingNmIds.has(c.nmId));
 
-              const nextGroup: TemplateGroup = {
-                ...existing,
-                campaigns: [...existing.campaigns, ...itemsToAdd],
-                sourceFiles: new Set([...Array.from(existing.sourceFiles), sourceFile]),
-              };
+          const nextGroup: TemplateGroup = {
+            ...existing,
+            campaigns: [...existing.campaigns, ...itemsToAdd],
+            sourceFiles: new Set([...Array.from(existing.sourceFiles), sourceFile]),
+          };
 
-              const next = [...prev];
-              next[existingIndex] = nextGroup;
+          const next = [...prev];
+          next[existingIndex] = nextGroup;
 
-              const skipped = items.length - itemsToAdd.length;
-              if (itemsToAdd.length === 0) {
-                setToastMessage(`Все выбранные товары уже есть в группе «${label}»`);
-              } else if (skipped > 0) {
-                setToastMessage(`Добавлено ${itemsToAdd.length} ${getPlural(itemsToAdd.length, 'товар', 'товара', 'товаров')} в группу «${label}», пропущено ${skipped} дубл.`);
-              } else {
-                setToastMessage(`Добавлено ${itemsToAdd.length} ${getPlural(itemsToAdd.length, 'товар', 'товара', 'товаров')} в группу «${label}»`);
-              }
-              return next;
-            }
+          const skipped = items.length - itemsToAdd.length;
+          if (itemsToAdd.length === 0) {
+            setToastMessage(`Все выбранные товары уже есть в группе «${label}»`);
+          } else if (skipped > 0) {
+            setToastMessage(`Добавлено ${itemsToAdd.length} ${getPlural(itemsToAdd.length, 'товар', 'товара', 'товаров')} в группу «${label}», пропущено ${skipped} дубл.`);
+          } else {
+            setToastMessage(`Добавлено ${itemsToAdd.length} ${getPlural(itemsToAdd.length, 'товар', 'товара', 'товаров')} в группу «${label}»`);
+          }
+          return next;
+        }
 
-            // Иначе создаём новую группу по принципу "объединения в группы"
-            const groupId = `group-${config.paymentModel}-${config.bidType}`;
-            const newGroup: TemplateGroup = {
-              id: groupId,
-              config,
-              campaigns: items,
-              duplicateNmIds: new Set(),
-              correctedNmIds: new Set(),
-              currentPage: 1,
-              sourceFiles: new Set([sourceFile]),
-            };
+        // Иначе создаём новую группу по принципу "объединения в группы"
+        const groupId = `group-${config.paymentModel}-${config.bidType}`;
+        const newGroup: TemplateGroup = {
+          id: groupId,
+          config,
+          campaigns: items,
+          duplicateNmIds: new Set(),
+          correctedNmIds: new Set(),
+          currentPage: 1,
+          sourceFiles: new Set([sourceFile]),
+        };
 
-            setToastMessage(`Создана группа «${label}» с ${items.length} ${getPlural(items.length, 'товаром', 'товарами', 'товарами')}`);
-            return [...prev, newGroup];
-          });
-          setShowToast(true);
-          setIsTableLoading(false);
-          clearTimeout(timer1);
-      }, 2500);
-      return () => { clearTimeout(timer1); clearTimeout(timer2); }
+        setToastMessage(`Создана группа «${label}» с ${items.length} ${getPlural(items.length, 'товаром', 'товарами', 'товарами')}`);
+        return [...prev, newGroup];
+      });
+      setShowToast(true);
   };
 
   const handleNavigateToCreationWithSingleCampaignProducts = useCallback(
@@ -2368,17 +2490,18 @@ export default function App() {
         imageUrl: p.imageUrl,
         category: p.category,
         budget: 3000,
-        autoReplenishment: false,
+        dailyLimit: 1000,
+        autoReplenishment: true,
         fundingSource: 'Единый счёт',
         status: CampaignStatus.VALID,
-        usePromoBonuses: true,
+        usePromoBonuses: false,
         source: 'Ручной подбор (одна кампания)',
         prospectCtr: typeof (p as any).conversionRate === 'number' ? (p as any).conversionRate * 100 : 2.5,
         prospectCtrChange: Math.max(0, (p.nmId % 21) - 10) * 2,
         cpcCompatible: true,
         bonusAmount: 0,
         searchBid: 30,
-        recommendationsBid: 30,
+        recommendationsBid: 200,
       }));
 
       handleAddItemSubmit(
@@ -2405,7 +2528,40 @@ export default function App() {
     [templateGroups],
   );
 
-  const handleAddCuratedBundle = (items: CuratedPickProduct[]) => {
+  const [wbDiscountPromoteProducts, setWbDiscountPromoteProducts] = useState<
+    BulkPaymentModelProduct[] | null
+  >(null);
+
+  const mapCuratedPickToWbDiscountModalProducts = (
+    items: CuratedPickProduct[],
+  ): BulkPaymentModelProduct[] =>
+    items.map((p) => ({
+      id: `wb-discount-${p.nmId}`,
+      name: p.productName,
+      nmId: p.nmId,
+      imageUrl: p.imageUrl,
+      category: p.category,
+      cpcCompatible: true,
+      zeroStock: false,
+    }));
+
+  const openWbDiscountPromoteModal = useCallback(
+    (items: CuratedPickProduct[]) => {
+      if (items.length === 0) return;
+      setWbDiscountPromoteProducts(mapCuratedPickToWbDiscountModalProducts(items));
+    },
+    [],
+  );
+
+  const handleAddCuratedBundle = (
+    items: CuratedPickProduct[],
+    pickId: 'promising' | 'wb_discount',
+  ) => {
+    if (pickId === 'wb_discount') {
+      openWbDiscountPromoteModal(items);
+      return;
+    }
+
     const currentDate = new Date().toLocaleDateString('ru-RU');
     const campaigns: CampaignRecord[] = items.map((p, index) => ({
       id: `curated-pick-${p.nmId}-${index}-${Date.now()}`,
@@ -2418,7 +2574,7 @@ export default function App() {
       autoReplenishment: false,
       fundingSource: 'Единый счёт',
       status: CampaignStatus.VALID,
-      usePromoBonuses: true,
+      usePromoBonuses: false,
       // Each row should have its own human-readable reason.
       source: PROSPECT_PICK_REASONS[index % PROSPECT_PICK_REASONS.length],
       prospectCtr: typeof p.conversionRate === 'number' ? p.conversionRate * 100 : 2.5,
@@ -2433,7 +2589,46 @@ export default function App() {
       campaigns,
     );
   };
-  
+
+  const handleConfirmWbDiscountPromote = (payload: {
+    products: BulkPaymentModelProduct[];
+    paymentModel: 'CPC' | 'CPM';
+    zones: { search: boolean; recommendations: boolean };
+  }) => {
+    const currentDate = new Date().toLocaleDateString('ru-RU');
+    const isCpc = payload.paymentModel === 'CPC';
+    const defaultBid = isCpc ? 30 : 300;
+    const campaigns: CampaignRecord[] = payload.products.map((p, index) => ({
+      id: `wb-discount-pick-${p.nmId}-${index}-${Date.now()}`,
+      nmId: p.nmId,
+      productName: p.name,
+      campaignName: `${p.name} ${payload.paymentModel} ${currentDate}`,
+      imageUrl: p.imageUrl,
+      category: p.category,
+      budget: 3000,
+      autoReplenishment: false,
+      fundingSource: 'Единый счёт',
+      status: CampaignStatus.VALID,
+      usePromoBonuses: false,
+      source: 'Для скидки WB',
+      prospectCtr: 2.5,
+      prospectCtrChange: 0,
+      cpcCompatible: true,
+      bonusAmount: 0,
+      searchBid: payload.zones.search ? defaultBid : undefined,
+      recommendationsBid: payload.zones.recommendations ? defaultBid : undefined,
+    }));
+    setWbDiscountPromoteProducts(null);
+    setAppState('creation');
+    handleAddItemSubmit(
+      {
+        paymentModel: isCpc ? PaymentModel.CPC : PaymentModel.CPM,
+        bidType: BidType.UNIFIED,
+      },
+      campaigns,
+    );
+  };
+
   const handlePageChange = (groupId: string, page: number) => { setTemplateGroups(prev => prev.map(g => g.id === groupId ? { ...g, currentPage: page } : g)); };
     
   const handleUpdateCampaign = (groupId: string, campaignId: string, updates: Partial<CampaignRecord>) => {
@@ -2831,6 +3026,77 @@ export default function App() {
   const openAutoRefillModal = (campaign: CampaignRecord) => { setCampaignForAutoRefill(campaign); setIsAutoRefillModalOpen(true); };
   const handleSaveAutoRefill = () => { setIsAutoRefillModalOpen(false); setCampaignForAutoRefill(null); setToastMessage("Настройки автопополнения сохранены"); setShowToast(true); };
 
+  const selectedCreationCampaigns = useMemo(() => {
+    const ids = new Set(selectedCampaignIds);
+    return templateGroups.flatMap((g) => g.campaigns.filter((c) => ids.has(c.id)));
+  }, [selectedCampaignIds, templateGroups]);
+
+  const creationBulkCampaignBudget = useMemo(() => {
+    if (selectedCreationCampaigns.length === 0) return 0;
+    return Math.min(...selectedCreationCampaigns.map((c) => c.budget || 0));
+  }, [selectedCreationCampaigns]);
+
+  const creationBulkMaxBid = useMemo(() => {
+    if (selectedCreationCampaigns.length === 0) return DAILY_LIMIT_ABSOLUTE_MIN;
+    return Math.max(
+      DAILY_LIMIT_ABSOLUTE_MIN,
+      ...selectedCreationCampaigns.map((c) =>
+        Math.max(c.bid ?? 0, c.searchBid ?? 0, c.recommendationsBid ?? 0),
+      ),
+    );
+  }, [selectedCreationCampaigns]);
+
+  const applyPatchToSelectedCreationCampaigns = useCallback(
+    (patch: Partial<CampaignRecord> | ((c: CampaignRecord) => Partial<CampaignRecord>)) => {
+      const ids = new Set(selectedCampaignIds);
+      const resolve = typeof patch === 'function' ? patch : () => patch;
+      setTemplateGroups((prev) =>
+        prev.map((group) => ({
+          ...group,
+          campaigns: group.campaigns.map((c) => (ids.has(c.id) ? { ...c, ...resolve(c) } : c)),
+        })),
+      );
+      if (editingGroupId) {
+        setEditedCampaigns((prev) =>
+          prev.map((c) => (ids.has(c.id) ? { ...c, ...resolve(c) } : c)),
+        );
+      }
+    },
+    [selectedCampaignIds, editingGroupId],
+  );
+
+  const openCreationBulkDailyLimit = () => {
+    const withLimit = selectedCreationCampaigns.find((c) => c.dailyLimit != null && c.dailyLimit > 0);
+    const limitStr =
+      withLimit?.dailyLimit != null && withLimit.dailyLimit > 0
+        ? String(withLimit.dailyLimit)
+        : '';
+    setCreationBulkDailyLimitEnabled(Boolean(limitStr));
+    setCreationBulkDailyLimitValue(limitStr);
+    setCreationBulkSavedDailyLimit(limitStr);
+    setCreationBulkDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
+    setCreationBulkCarryover(false);
+    setCreationBulkAutoRefillOnRules(true);
+    setIsCreationBulkDailyLimitOpen(true);
+  };
+
+  const openCreationZonesModal = () => {
+    const allSearchOn = selectedCreationCampaigns.every((c) => c.searchBid != null || c.bid != null);
+    const allRecsOn = selectedCreationCampaigns.every(
+      (c) => c.recommendationsBid != null || c.bid != null,
+    );
+    const anyZones = selectedCreationCampaigns.some(
+      (c) => c.searchBid != null || c.recommendationsBid != null,
+    );
+    setCreationZonesDraft({
+      search: anyZones ? selectedCreationCampaigns.some((c) => c.searchBid != null) || allSearchOn : true,
+      recommendations: anyZones
+        ? selectedCreationCampaigns.some((c) => c.recommendationsBid != null)
+        : true,
+    });
+    setIsCreationZonesModalOpen(true);
+  };
+
   const launchPreview = useMemo(() => {
     let amountToDebit = 0;
     let affordableCount = 0;
@@ -2954,6 +3220,7 @@ export default function App() {
                     onNavigateToCreationWithGrowingDemand={() =>
                       handleNavigationAttempt(handleNavigateToCreationWithGrowingDemand)
                     }
+                    onConfirmWbDiscountPromote={handleConfirmWbDiscountPromote}
                     onOpenUploadEditsModal={() => setIsUploadEditsModalOpen(true)}
                     selectedCampaigns={selectedListedCampaignIds}
                     onSelectionChange={setSelectedListedCampaignIds}
@@ -2971,25 +3238,44 @@ export default function App() {
                       dailyLimit,
                       scheduledDailyLimit,
                       dailyLimitExhausted,
+                      autoRefill,
+                      dynamicDailyLimit,
                       fromReadyToRepeat,
                       repeatLaunchPreset,
                       campaignStatus,
                       openBidRecommendations,
                       bidRecommendationProduct,
+                      budgetConceptDemo,
+                      budgetRangeConceptDemo,
                     }) => {
+                      const patch = campaignListPatches[campaignId];
                       setSelectedCpcCampaign({
                         id: campaignId,
-                        name,
+                        name: patch?.name ?? name,
                         paymentModel: paymentModel ?? 'CPC',
-                        remainingBudget,
-                        dailyLimit,
-                        scheduledDailyLimit,
+                        remainingBudget:
+                          patch?.remainingBudget !== undefined ? patch.remainingBudget : remainingBudget,
+                        dailyLimit: patch?.dailyLimit !== undefined ? patch.dailyLimit : dailyLimit,
+                        scheduledDailyLimit:
+                          patch?.scheduledDailyLimit !== undefined
+                            ? patch.scheduledDailyLimit
+                            : scheduledDailyLimit,
                         dailyLimitExhausted,
+                        autoRefill: patch?.autoRefill !== undefined ? patch.autoRefill : autoRefill,
+                        dynamicDailyLimit:
+                          patch?.dynamicDailyLimit !== undefined
+                            ? patch.dynamicDailyLimit
+                            : dynamicDailyLimit,
                         fromReadyToRepeat,
                         repeatLaunchPreset,
-                        campaignStatus,
+                        campaignStatus:
+                          patch?.status === 'active' || patch?.status === 'paused'
+                            ? patch.status
+                            : campaignStatus,
                         openBidRecommendations,
                         bidRecommendationProduct,
+                        budgetConceptDemo,
+                        budgetRangeConceptDemo,
                       });
                       setAppState('cpc-detail' as any);
                     }}
@@ -3006,7 +3292,7 @@ export default function App() {
                     }}
                     campaignListPatches={campaignListPatches}
                     onPersistCampaignListPatch={persistCampaignListPatch}
-                    onOpenSingleCampaign={() => setAppState('single-campaign')}
+                    onOpenSingleCampaign={openSingleCampaign}
                   />
                 </main>
                 <UploadEditsModal
@@ -3140,7 +3426,7 @@ export default function App() {
         <AppHeader
           onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
           onLaunchPromotion={() =>
-            handleNavigationAttempt(() => setAppState('single-campaign'))
+            handleNavigationAttempt(() => openSingleCampaign())
           }
           onOpenCampaignCreation={
             isNewSellerProfile(profileId) ? openNewSellerCampaignCreation : undefined
@@ -3160,6 +3446,7 @@ export default function App() {
               {isNewSellerProfile(profileId) ? (
                 <>
                   <Route path="/finance" element={<FinancePage />} />
+                  <Route path="/finance/top-up" element={<FinanceTopUpPage />} />
                   <Route path="/bonuses" element={<BonusesPage />} />
                   {/* Создание кампании рендерится выше Routes; * только с чужих URL */}
                   <Route
@@ -3189,14 +3476,15 @@ export default function App() {
                       </CampaignsWithWidgets2Page>
                     }
                   />
-                  <Route
-                    path="/product-promotion-concept"
+                  <Route path="/product-promotion-concept"
                     element={
                       <ProductPromotionConceptPage>
                         <CampaignsPage>{campaignsListContent}</CampaignsPage>
                       </ProductPromotionConceptPage>
                     }
                   />
+                  <Route path="/media" element={<MediaPage />} />
+                  <Route path="/media/create" element={<MediaCampaignCreatePage />} />
                   <Route path="/overview" element={<OverviewPage />} />
                   <Route path="/stats" element={<StatsPage />} />
                   <Route path="/stats/acquisition" element={<StatsPage />} />
@@ -3204,8 +3492,10 @@ export default function App() {
                   <Route path="/stats/value" element={<StatsPage />} />
                   <Route path="/audience-metrics" element={<AudienceMetricsPage />} />
                   <Route path="/finance" element={<FinancePage />} />
+                  <Route path="/finance/top-up" element={<FinanceTopUpPage />} />
                   <Route path="/bonuses" element={<BonusesPage />} />
-                  <Route path="/" element={<Navigate to="/campaigns-with-widgets-2" replace />} />
+                  <Route path="/help" element={<HelpPage />} />
+                  <Route path="/" element={<Navigate to="/product-promotion-concept" replace />} />
                 </>
               )}
             </Routes>
@@ -3225,11 +3515,15 @@ export default function App() {
         dailyLimit={selectedCpcCampaign.dailyLimit}
         scheduledDailyLimit={selectedCpcCampaign.scheduledDailyLimit}
         dailyLimitExhausted={selectedCpcCampaign.dailyLimitExhausted}
+        autoRefill={selectedCpcCampaign.autoRefill}
+        dynamicDailyLimit={selectedCpcCampaign.dynamicDailyLimit}
         fromReadyToRepeat={selectedCpcCampaign.fromReadyToRepeat}
         repeatLaunchPreset={selectedCpcCampaign.repeatLaunchPreset}
         campaignStatus={selectedCpcCampaign.campaignStatus}
         initialOpenBidRecommendations={selectedCpcCampaign.openBidRecommendations}
         bidRecommendationProduct={selectedCpcCampaign.bidRecommendationProduct}
+        budgetConceptDemo={selectedCpcCampaign.budgetConceptDemo}
+        budgetRangeConceptDemo={selectedCpcCampaign.budgetRangeConceptDemo}
         onBack={() => {
           // Update campaign data in SuccessPage before going back
           if (selectedCpcCampaign) {
@@ -3239,21 +3533,29 @@ export default function App() {
           setSelectedCpcCampaign(null);
         }}
         onUpdateData={(data) => {
-          if (selectedCpcCampaign) {
-            persistCampaignListPatch(selectedCpcCampaign.id, data);
-            const updated = {
-              ...selectedCpcCampaign,
+          if (!selectedCpcCampaign) return;
+          const campaignId = selectedCpcCampaign.id;
+          persistCampaignListPatch(campaignId, data);
+          setSelectedCpcCampaign((prev) => {
+            if (!prev || prev.id !== campaignId) return prev;
+            return {
+              ...prev,
               ...(data.name !== undefined && { name: data.name }),
               ...(data.remainingBudget !== undefined && { remainingBudget: data.remainingBudget }),
               ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
-              ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
+              ...(data.scheduledDailyLimit !== undefined && {
+                scheduledDailyLimit: data.scheduledDailyLimit,
+              }),
               ...(data.maxCpcBidRub !== undefined && { maxCpcBidRub: data.maxCpcBidRub }),
+              ...(data.autoRefill !== undefined && { autoRefill: data.autoRefill }),
+              ...(data.dynamicDailyLimit !== undefined && {
+                dynamicDailyLimit: data.dynamicDailyLimit,
+              }),
               ...(data.status !== undefined && { campaignStatus: data.status }),
             };
-            setSelectedCpcCampaign(updated);
-            if (updateCampaignDataRef.current) {
-              updateCampaignDataRef.current(selectedCpcCampaign.id, data);
-            }
+          });
+          if (updateCampaignDataRef.current) {
+            updateCampaignDataRef.current(campaignId, data);
           }
         }}
       />
@@ -3263,7 +3565,7 @@ export default function App() {
   return ( <div className="min-h-screen bg-[#F6F6F9] font-sans text-gray-900 pb-40 relative">
     <AppHeader
       onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
-      onLaunchPromotion={() => handleNavigationAttempt(() => setAppState('single-campaign'))}
+      onLaunchPromotion={() => handleNavigationAttempt(() => openSingleCampaign())}
     />
     <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
     {cpmBidRoundedAlertNode}
@@ -3367,31 +3669,115 @@ export default function App() {
             </div>
           </div>
         )}
-        <section className="bg-white rounded-2xl p-6 shadow-sm mb-8">
-            <div className="flex flex-wrap items-center gap-4">
-                <div className="relative flex items-center gap-2">
-                    <button onClick={() => setIsAddItemModalOpen(true)} className="px-5 py-2.5 text-sm font-bold text-white bg-gray-700 hover:bg-gray-800 rounded-lg shadow-sm transition-all flex items-center gap-2 w-auto">
-                        <Plus className="w-4 h-4" />
-                        <span>Добавить свой список</span>
-                    </button>
-                    {/* FirstListCpcTooltip removed */}
-                </div>
-                 {templateGroups.length > 0 && showAddMoreHint && (
-                    <div className="flex items-center gap-2 text-sm font-medium animate-in fade-in">
-                        <svg width="32" height="28" viewBox="0 0 32 28" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-gray-400 transform -translate-y-1">
-                            <path d="M31 27C31 27 21.5 25.5 17 18C12.5 10.5 1.00001 7.49999 1.00001 7.49999" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 4"/>
-                            <path d="M5.5 12L1 7.5L6.5 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                        <span className="text-gray-500">Можете добавить еще один список товаров</span>
-                        <button onClick={() => setShowAddMoreHint(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-full">
-                            <X className="w-4 h-4" />
-                        </button>
+        <section className="mb-6">
+            <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsAddItemModalOpen(true)}
+                  className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[10px] bg-[#4A4B57] px-4 text-sm font-medium text-white transition-colors hover:bg-[#3F404A]"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Добавить товары</span>
+                </button>
+
+                <div className="relative flex min-h-11 min-w-[220px] flex-1 items-center gap-2 rounded-[10px] border border-gray-200 bg-white px-3 shadow-sm focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500">
+                  <Search className="h-4 w-4 shrink-0 text-gray-400" />
+                  {searchTags.map((tag) => (
+                    <div
+                      key={tag}
+                      className="flex items-center gap-1 rounded-md bg-gray-100 py-0.5 pl-2 pr-1 text-sm text-gray-700"
+                    >
+                      <span>{tag}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeSearchTag(tag)}
+                        className="rounded-full text-gray-400 hover:bg-gray-300 hover:text-gray-700"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
                     </div>
-                )}
+                  ))}
+                  <input
+                    type="text"
+                    value={currentSearchInput}
+                    onChange={(e) => setCurrentSearchInput(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    placeholder="Поиск"
+                    className="min-w-[120px] flex-1 bg-transparent py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                  />
+                  {(searchTags.length > 0 || currentSearchInput) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearchTags([]);
+                        setCurrentSearchInput('');
+                      }}
+                      className="ml-auto text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <MultiSelect
+                  options={uniqueSources}
+                  selected={selectedSources}
+                  onChange={setSelectedSources}
+                  placeholder="Источник"
+                  className="w-full sm:w-[180px] shrink-0"
+                  autoApply
+                  muted
+                />
+                <MultiSelect
+                  options={uniqueCategories}
+                  selected={selectedCategories}
+                  onChange={setSelectedCategories}
+                  placeholder="Категория"
+                  className="w-full sm:w-[180px] shrink-0"
+                  autoApply
+                  muted
+                />
             </div>
+            {hasActiveFilterTags && (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="mr-1 text-sm font-medium text-gray-500">Активные фильтры:</span>
+                {selectedSources.map((source) => (
+                  <div
+                    key={`source-${source}`}
+                    className="flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-2 text-sm text-gray-700"
+                  >
+                    <span>{source}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSources((prev) => prev.filter((s) => s !== source))}
+                      className="rounded-full p-0.5 text-gray-400 hover:bg-gray-300 hover:text-gray-700"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {selectedCategories.map((category) => (
+                  <div
+                    key={`category-${category}`}
+                    className="flex items-center gap-1.5 rounded-full bg-gray-100 py-1 pl-3 pr-2 text-sm text-gray-700"
+                  >
+                    <span>{category}</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedCategories((prev) => prev.filter((c) => c !== category))
+                      }
+                      className="rounded-full p-0.5 text-gray-400 hover:bg-gray-300 hover:text-gray-700"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
         </section>
 
-        {!isTableLoading && templateGroups.length === 0 && (
+        {templateGroups.length === 0 && (
           <CuratedProductPicksSection
             className="mb-8"
             products={massCreationCuratedCatalog}
@@ -3400,61 +3786,18 @@ export default function App() {
           />
         )}
 
-        {templateGroups.length > 0 && (
-             <div className="mt-6 mb-8">
-                <div className="flex items-center flex-wrap gap-4">
-                    <div className="relative flex-grow p-2.5 text-sm bg-white border border-gray-300 rounded-xl focus-within:ring-2 focus-within:ring-purple-500 focus-within:border-transparent outline-none transition-all shadow-sm flex items-center flex-wrap gap-2 min-w-[300px] sm:min-w-[400px]">
-                        <Search className="w-4 h-4 text-gray-400 shrink-0 ml-1" />
-                        {searchTags.map(tag => (
-                            <div key={tag} className="flex items-center gap-1 bg-gray-100 rounded-md pl-2 pr-1 py-0.5 text-gray-700 animate-in fade-in zoom-in-95">
-                                <span>{tag}</span>
-                                <button onClick={() => removeSearchTag(tag)} className="text-gray-400 hover:text-gray-700 hover:bg-gray-300 rounded-full">
-                                    <X className="w-3 h-3" />
-                                </button>
-                            </div>
-                        ))}
-                        <input 
-                            type="text" 
-                            value={currentSearchInput}
-                            onChange={(e) => setCurrentSearchInput(e.target.value)}
-                            onKeyDown={handleSearchKeyDown}
-                            placeholder="Поиск по названию или ID" 
-                            className="flex-grow bg-transparent outline-none min-w-[150px]"
-                        />
-                        {(searchTags.length > 0 || currentSearchInput) && (
-                            <button onClick={() => {setSearchTags([]); setCurrentSearchInput('')}} className="ml-auto text-gray-400 hover:text-gray-600">
-                                <X className="w-4 h-4" />
-                            </button>
-                        )}
-                    </div>
-                    <MultiSelect options={uniqueSources} selected={selectedSources} onChange={setSelectedSources} placeholder="Источник" className="w-full sm:w-auto sm:min-w-[260px]" autoApply={true} />
-                    <MultiSelect options={uniqueCategories} selected={selectedCategories} onChange={setSelectedCategories} placeholder="Категория" className="w-full sm:w-auto sm:min-w-[260px]" autoApply={true} />
-                </div>
-                {hasActiveFilterTags && (
-                  <div className="mt-4 flex items-center flex-wrap gap-2">
-                    <span className="text-sm font-medium text-gray-500 mr-2">Активные фильтры:</span>
-                    {selectedSources.map(source => (
-                      <div key={`source-${source}`} className="flex items-center gap-1.5 bg-gray-100 rounded-full pl-3 pr-2 py-1 text-sm text-gray-700 animate-in fade-in">
-                        <span>{source}</span>
-                        <button onClick={() => setSelectedSources(prev => prev.filter(s => s !== source))} className="text-gray-400 hover:text-gray-700 hover:bg-gray-300 rounded-full p-0.5"> <X className="w-3 h-3" /> </button>
-                      </div>
-                    ))}
-                    {selectedCategories.map(category => (
-                      <div key={`category-${category}`} className="flex items-center gap-1.5 bg-gray-100 rounded-full pl-3 pr-2 py-1 text-sm text-gray-700 animate-in fade-in">
-                        <span>{category}</span>
-                        <button onClick={() => setSelectedCategories(prev => prev.filter(c => c !== category))} className="text-gray-400 hover:text-gray-700 hover:bg-gray-300 rounded-full p-0.5"> <X className="w-3 h-3" /> </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-            </div>
-        )}
-        
-        {isTableLoading ? (
-            <div className="space-y-8 mt-6">
-                <ExcelProcessingLoader statusText={loadingStatusText} />
-            </div>
-        ) : templateGroups.length > 0 ? (
+        {wbDiscountPromoteProducts && wbDiscountPromoteProducts.length > 0 ? (
+          <BulkPaymentModelModal
+            isOpen
+            title="Продвигайте эти товары и получайте до +10% к скидке WB"
+            withCategorySelect
+            products={wbDiscountPromoteProducts}
+            onClose={() => setWbDiscountPromoteProducts(null)}
+            onConfirm={handleConfirmWbDiscountPromote}
+          />
+        ) : null}
+
+        {templateGroups.length > 0 ? (
             <div className="space-y-8"> {templateGroups.map((group) => { 
             const campaignsForReview = editingGroupId === group.id ? editedCampaigns : group.campaigns.filter(c => c.status !== CampaignStatus.ERROR);
             const filteredGroupCampaigns = campaignsForReview.filter(c => filteredCampaigns.some(fc => fc.id === c.id));
@@ -3491,457 +3834,216 @@ export default function App() {
             const showProspectColumn = campaignsForReview.some((c) => c.prospectCtr != null);
             if (filteredGroupCampaigns.length === 0 && areFiltersActive) return null;
 
-            return ( <section key={group.id} className="bg-white rounded-2xl shadow-sm px-6 pb-6 pt-0 space-y-4 animate-fade-in"> 
-<div className="sticky top-[104px] z-30 bg-white pt-3 pb-2 border-b border-gray-100 mb-0 flex justify-between items-center -mx-6 px-6 rounded-t-2xl shadow-sm min-h-[52px]">
-              <div className="flex items-center gap-4">
-                <div>
-                  <h2 className="text-lg font-bold text-gray-900">
-                    {group.config.paymentModel === PaymentModel.CPC
-                      ? 'CPC'
-                      : `CPM ${group.config.bidType === BidType.MANUAL ? 'Ручная ставка' : 'Единая ставка'}`}
-                  </h2>
-                  <p
-                    className="text-xs text-gray-600 mt-0.5 truncate"
-                    title={[
-                      zonesLabel,
-                    ].filter(Boolean).join(' • ')}
-                  >
-                    {zonesLabel ? <span className="text-gray-700">{zonesLabel}</span> : null}
-                  </p>
-                </div>
-                <span className="text-gray-400 text-sm font-medium">{validCount} {getPlural(validCount, 'кампания', 'кампании', 'кампаний')}</span> 
-              </div> 
-              <div className="flex items-center gap-2">
-                <div className="inline-flex items-center rounded-lg bg-gray-100 p-1 text-xs font-medium text-gray-600">
-                  <button
-                    type="button"
-                    onClick={() => setEditingGroupId(null)}
-                    className={`px-3 py-1 rounded-md transition-colors ${
-                      editingGroupId === group.id ? 'text-gray-500' : 'bg-white text-gray-900 shadow-sm'
-                    }`}
-                  >
-                    Компактный вид
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleStartEditing(group)}
-                    className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1 ${
-                      editingGroupId === group.id ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500'
-                    }`}
-                  >
-                    <Edit2 className="w-3.5 h-3.5 text-gray-500" />
-                    <span>Работа с таблицей</span>
-                  </button>
-                </div>
-              </div>
-            </div> 
-            <div className="bg-white rounded-lg overflow-x-auto">
-              <table className="w-full min-w-[1024px] text-xs text-left table-fixed"> 
-              <thead className="text-gray-600 bg-white"> 
-                <tr> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[4%] bg-white">
-                    <Checkbox
-                      checked={allOnPageSelected}
-                      indeterminate={isIndeterminate}
-                      onChange={(e) => handleSelectAllOnPage(paginatedIds, e.target.checked)}
-                      className="h-4 w-4 text-purple-600"
-                    />
-                  </th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Товар</span><span className="tooltip-text">Информация о товаре и его артикул (ID)</span></div></th>
-                  {showProspectColumn ? (
-                    <th className="table-header-cell px-2 py-1.5 font-normal w-[11%] bg-white">
-                      <div className="tooltip justify-start">
-                        <span>Подборка</span>
-                        <span className="tooltip-text">Причина попадания товара в подборку</span>
-                      </div>
-                    </th>
-                  ) : null}
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[18%] bg-white"><div className="tooltip justify-start"><span>Название кампании</span><span className="tooltip-text">Редактируемое название рекламной кампании</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[9%] bg-white"><div className="tooltip justify-start"><span>Бюджет</span><span className="tooltip-text">Общая сумма, выделенная на кампанию</span></div></th>  
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[10%] bg-white"><div className="tooltip justify-start"><span>Преследование</span><span className="tooltip-text">Автоматическое управление ставками</span></div></th> 
-                  {showZoneColumns ? (
-                    <>
-                      <th className="table-header-cell px-2 py-1.5 font-normal w-[15%] bg-white">
-                        <div className="tooltip justify-start">
-                          <span>Поиск</span>
-                          <span className="tooltip-text">Ставка для показов в результатах поиска (зону можно выключить)</span>
-                        </div>
-                      </th>
-                      <th className="table-header-cell px-2 py-1.5 font-normal w-[15%] bg-white">
-                        <div className="tooltip justify-start">
-                          <span>Рекоменд.</span>
-                          <span className="tooltip-text">Ставка для показов в рекомендациях (зону можно выключить)</span>
-                        </div>
-                      </th>
-                    </>
-                  ) : (
-                    <th className="table-header-cell px-2 py-1.5 font-normal w-[20%] bg-white">
-                      <div className="tooltip justify-start">
-                        <span>Ставка</span>
-                        <span className="tooltip-text">Единая ставка для всех зон показов</span>
-                      </div>
-                    </th>
-                  )} 
-                  <th className="table-header-cell px-2 py-1.5 font-normal w-[7%] bg-white"><div className="tooltip"><span>Автопополнение</span><span className="tooltip-text">Автоматическое пополнение бюджета</span></div></th> 
-                  <th className="table-header-cell px-2 py-1.5 font-normal text-left w-[4%] bg-white"></th> 
-                </tr> 
-              </thead> 
-              <tbody className="divide-y divide-gray-100"> {paginatedCampaigns.map((row) => ( <tr key={row.id} className={`transition-colors ${selectedCampaignIds.includes(row.id) ? 'bg-purple-50' : 'hover:bg-gray-50'}`}> <td className="px-2 py-1.5 align-top"><Checkbox checked={selectedCampaignIds.includes(row.id)} onChange={(e) => handleSelectCampaign(row.id)} className="h-4 w-4 text-purple-600"/></td> <td className="px-2 py-1.5 align-top"> <div className="flex items-start gap-2"> 
-      <div className="relative group">
-        <img src={row.imageUrl} alt={row.productName} className="w-8 h-8 rounded-md object-cover bg-gray-100 shrink-0 cursor-zoom-in" />
-        <div className="hidden group-hover:block absolute left-full top-0 ml-2 z-[100] w-28 aspect-[3/4] bg-white rounded-lg shadow-xl border border-gray-200 overflow-hidden pointer-events-none">
-            <img src={row.imageUrl} alt={row.productName} className="w-full h-full object-cover" />
-        </div>
-      </div>
-      <div className="min-w-0"> <a href="#" title={row.productName} className="font-medium text-purple-600 hover:underline leading-tight block truncate">{row.productName}</a> <div className="text-gray-500 mt-0.5">ID {row.nmId}</div> </div> </div> </td>
-      {showProspectColumn ? (
-        <td className="px-2 py-1.5 align-top">
-          {row.source ? (
-            <div className="max-w-full">
-              <span className="block max-w-full whitespace-normal break-words text-xs font-medium leading-snug text-gray-700">
-                {row.source}
-              </span>
-            </div>
-          ) : null}
-        </td>
-      ) : null}
-      <td
-        className="px-2 py-1.5 align-top"
-        onDoubleClick={() => {
-          if (editingGroupId !== group.id) {
-            handleStartEditing(group);
-          }
-        }}
-      >
-        {editingGroupId === group.id ? (
-            <textarea value={row.campaignName} onChange={(e) => handleUpdateCampaign(group.id, row.id, { campaignName: e.target.value })} rows={2} className={`${editableInputClass} resize-y min-h-[34px] border-gray-300`} />
-        ) : (
-            <div className="w-full">
-                <textarea value={row.campaignName} readOnly rows={2} className='w-full bg-transparent p-0 resize-none outline-none cursor-not-allowed' />
-            </div>
-        )}
-      </td>
-      <td
-        className="px-2 py-1.5 text-gray-800 align-top"
-        onDoubleClick={() => {
-          if (editingGroupId !== group.id) {
-            handleStartEditing(group);
-          }
-        }}
-      >
-        {editingGroupId === group.id ? (
-            <div className="relative">
-                 <div className="relative">
-                    <input 
-                        type="text" 
-                        value={row.budget === null || row.budget === undefined ? '' : formatForDisplay(row.budget)}
-                        onChange={(e) => {
-                            const val = e.target.value;
-                            if (val !== '') {
-                                const parsed = parseDisplayValue(val);
-                                if (!isNaN(parsed)) {
-                                    handleUpdateCampaign(group.id, row.id, { budget: parsed });
-                                }
-                            }
-                        }}
-                        onBlur={() => {
-                            if (row.budget < 1000) {
-                                handleUpdateCampaign(group.id, row.id, { budget: 1000 });
-                            }
-                            if (selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)) {
-                                setShowApplyToAllTooltipFor(row.id);
-                            }
-                        }}
-                        className={`${editableInputClass} pr-6 ${inlineErrors[`${row.id}-budget`] ? 'border-red-500' : 'border-gray-300'}`}
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
-                </div>
-                {inlineErrors[`${row.id}-budget`] && <p className="text-red-500 text-[10px] mt-0.5 absolute">{inlineErrors[`${row.id}-budget`]}</p>}
-                {selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id) && showApplyToAllTooltipFor === row.id && (
-                  <div className="absolute left-0 top-full mt-1 z-40 w-64 bg-gray-900 text-white text-xs rounded-lg shadow-xl p-3">
-                    <p className="mb-2">Применить это значение для всех выбранных кампаний?</p>
-                    <div className="flex justify-end gap-2">
-                      <button
-                        type="button"
-                        className="px-2 py-1 rounded-md bg-gray-700 hover:bg-gray-600 text-xs"
-                        onClick={() => {
-                          const value = row.budget;
-                          if (value != null) {
-                            // В режиме редактирования работаем через editedCampaigns
-                            setEditedCampaigns(prev =>
-                              prev.map(c =>
-                                selectedCampaignIds.includes(c.id)
-                                  ? { ...c, budget: value }
-                                  : c
-                              )
-                            );
-                          }
-                          setShowApplyToAllTooltipFor(null);
-                        }}
-                      >
-                        Применить
-                      </button>
-                      <button
-                        type="button"
-                        className="px-2 py-1 rounded-md bg-transparent border border-gray-500 hover:bg-gray-800 text-xs"
-                        onClick={() => setShowApplyToAllTooltipFor(null)}
-                      >
-                        Отмена
-                      </button>
-                    </div>
-                  </div>
-                )}
-            </div>
-        ) : (
-            <div className="flex flex-col cursor-not-allowed">
-                <span className="font-medium">{`${formatForDisplay(row.budget)} ₽`}</span>
-            </div>
-        )}
-      </td>
-      <td
-        className="px-2 py-1.5 align-top"
-        onDoubleClick={() => {
-          if (editingGroupId !== group.id) {
-            handleStartEditing(group);
-          }
-        }}
-      >
-        {editingGroupId === group.id ? (
-            <a href="#" onClick={(e) => { e.preventDefault(); openBulkActionModal('autobidder'); }} className="text-blue-600 hover:underline">настроить</a>
-        ) : (
-            <span className="text-gray-400 cursor-not-allowed">настроить</span>
-        )}
-      </td>
-      {showZoneColumns ? <> 
-        <td
-          className="px-2 py-1.5 text-gray-800 align-top"
-          onDoubleClick={() => {
-            if (editingGroupId !== group.id) {
-              handleStartEditing(group);
-            }
-          }}
-        >
-          {(() => {
-            const enabled = row.searchBid != null;
-            return (
-              <div className="w-full pr-2">
-                <div className="flex items-center gap-2">
-                  {editingGroupId === group.id && (
-                    <ToggleSwitch
-                      checked={enabled}
-                      onChange={(checked) => {
-                        if (!checked) {
-                          handleUpdateCampaign(group.id, row.id, { searchBid: undefined });
-                        } else {
-                          handleUpdateCampaign(group.id, row.id, { searchBid: row.searchBid ?? defaultZoneBid });
-                        }
-                      }}
-                    />
-                  )}
+            const islandTitle = isCpc
+              ? 'CPC'
+              : `CPM ${group.config.bidType === BidType.MANUAL ? 'Ручная ставка' : 'Единая ставка'}`;
 
-                  {enabled ? (
-                    editingGroupId === group.id ? (
-                      <BidInput
-                        value={row.searchBid ?? defaultZoneBid}
-                        min={defaultZoneBid}
-                        presets={defaultZoneBid === 30 ? [30, 50, 100] : undefined}
-                        bidStepRub={isCpc ? undefined : CPM_BID_STEP_RUB}
-                        onBidRounded={showCpmBidRoundedAlert}
-                        onChange={(val) => handleUpdateCampaign(group.id, row.id, { searchBid: val })}
-                        showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
-                        onApplyToAll={(val) => {
-                          // применяем ставку поиска ко всем выбранным в режиме редактирования
-                          setEditedCampaigns(prev =>
-                            prev.map(c =>
-                              selectedCampaignIds.includes(c.id)
-                                ? { ...c, searchBid: val }
-                                : c
-                            )
-                          );
-                        }}
-                      />
-                    ) : (
-                      <span className="text-gray-800">{`${row.searchBid} ₽`}</span>
-                    )
-                  ) : editingGroupId === group.id ? (
-                    <div className="w-full border border-gray-200 rounded-lg bg-gray-50 opacity-70 cursor-not-allowed">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value=""
-                          placeholder=""
-                          disabled
-                          className="w-full text-sm text-left font-medium bg-transparent outline-none px-2 py-1.5 text-gray-400"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm font-medium pointer-events-none">
-                          ₽
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400">—</span>
-                  )}
-                </div>
+            return (
+              <div key={group.id} className="space-y-3">
+                <MassCreationIsland
+                  title={islandTitle}
+                  zonesPill="Покажем в поиске и рекомендациях"
+                  showDailyLimit={isCpc}
+                  bidMode={showZoneColumns ? 'zones' : 'unified'}
+                  defaultZoneBid={isCpc ? 30 : 300}
+                  defaultRecsBid={isCpc ? 200 : 300}
+                  campaigns={paginatedCampaigns}
+                  selectedIds={selectedCampaignIds}
+                  onToggleSelect={handleSelectCampaign}
+                  onToggleSelectAll={handleSelectAllOnPage}
+                  onUpdate={(id, patch) => handleUpdateCampaign(group.id, id, patch)}
+                  onOpenAutoRefill={openAutoRefillModal}
+                  unifiedAccountTotal={totals.total - totals.bonus}
+                  promoBonusesTotal={totals.bonus}
+                />
+                <Pagination
+                  total={validCount}
+                  pageSize={PAGE_SIZE}
+                  current={group.currentPage}
+                  onChange={(page) => handlePageChange(group.id, page)}
+                />
               </div>
             );
-          })()}
-        </td>
-
-        <td
-          className="px-2 py-1.5 text-gray-800 align-top"
-          onDoubleClick={() => {
-            if (editingGroupId !== group.id) {
-              handleStartEditing(group);
-            }
-          }}
-        >
-          {(() => {
-            const enabled = row.recommendationsBid != null;
-            return (
-              <div className="w-full pr-2">
-                <div className="flex items-center gap-2">
-                  {editingGroupId === group.id && (
-                    <ToggleSwitch
-                      checked={enabled}
-                      onChange={(checked) => {
-                        if (!checked) {
-                          handleUpdateCampaign(group.id, row.id, { recommendationsBid: undefined });
-                        } else {
-                          handleUpdateCampaign(group.id, row.id, { recommendationsBid: row.recommendationsBid ?? defaultZoneBid });
-                        }
-                      }}
-                    />
-                  )}
-
-                  {enabled ? (
-                    editingGroupId === group.id ? (
-                      <BidInput
-                        value={row.recommendationsBid ?? defaultZoneBid}
-                        min={defaultZoneBid}
-                        presets={defaultZoneBid === 30 ? [30, 50, 100] : undefined}
-                        bidStepRub={isCpc ? undefined : CPM_BID_STEP_RUB}
-                        onBidRounded={showCpmBidRoundedAlert}
-                        onChange={(val) => handleUpdateCampaign(group.id, row.id, { recommendationsBid: val })}
-                        showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
-                        onApplyToAll={(val) => {
-                          // применяем ставку рекомендаций ко всем выбранным
-                          setEditedCampaigns(prev =>
-                            prev.map(c =>
-                              selectedCampaignIds.includes(c.id)
-                                ? { ...c, recommendationsBid: val }
-                                : c
-                            )
-                          );
-                        }}
-                      />
-                    ) : (
-                      <span className="text-gray-800">{`${row.recommendationsBid} ₽`}</span>
-                    )
-                  ) : editingGroupId === group.id ? (
-                    <div className="w-full border border-gray-200 rounded-lg bg-gray-50 opacity-70 cursor-not-allowed">
-                      <div className="relative">
-                        <input
-                          type="text"
-                          value=""
-                          placeholder=""
-                          disabled
-                          className="w-full text-sm text-left font-medium bg-transparent outline-none px-2 py-1.5 text-gray-400"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 text-sm font-medium pointer-events-none">
-                          ₽
-                        </span>
-                      </div>
-                    </div>
-                  ) : (
-                    <span className="text-gray-400">—</span>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-        </td>
-        </> : 
-        <td
-          className="px-2 py-1.5 text-gray-800 align-top"
-          onDoubleClick={() => {
-            if (editingGroupId !== group.id) {
-              handleStartEditing(group);
-            }
-          }}
-        >
-            <div className="w-full pr-2">
-                {editingGroupId === group.id ? (
-                    <BidInput
-                      value={row.bid || 0}
-                      bidStepRub={
-                        group.config.paymentModel === PaymentModel.CPM ? CPM_BID_STEP_RUB : undefined
-                      }
-                      onBidRounded={showCpmBidRoundedAlert}
-                      onChange={(val) => handleUpdateCampaign(group.id, row.id, { bid: val })}
-                      showApplyToAllTooltip={selectedCampaignIds.length > 1 && selectedCampaignIds.includes(row.id)}
-                      onApplyToAll={(val) => {
-                        // применяем единую ставку ко всем выбранным
-                        setEditedCampaigns(prev =>
-                          prev.map(c =>
-                            selectedCampaignIds.includes(c.id)
-                              ? { ...c, bid: val }
-                              : c
-                          )
-                        );
-                      }}
-                    />
-                ) : (
-                     <span className="cursor-not-allowed">{`${row.bid || 0} ₽`}</span>
-                )}
-            </div>
-        </td> 
-      } 
-      <td className="px-2 py-1.5 align-top">
-        <div className="flex items-center gap-2">
-            <ToggleSwitch checked={row.autoReplenishment} onChange={(checked) => handleUpdateCampaign(group.id, row.id, { autoReplenishment: checked })} disabled={editingGroupId !== group.id}/>
-            {row.autoReplenishment && editingGroupId === group.id && (
-                <button onClick={() => openAutoRefillModal(row)} className="text-gray-400 hover:text-purple-600"> <Settings className="w-4 h-4" /> </button>
-            )}
-        </div>
-      </td> 
-      <td className="px-2 py-1.5 text-left align-top"></td> 
-      </tr> ))} </tbody> {validCount > 0 && ( <tfoot className="border-t-2 border-gray-200 bg-gray-50/50"> <tr> <td colSpan={3} className="px-2 py-2 font-bold text-gray-800 text-sm text-left">Итого по группе:</td> <td colSpan={showZoneColumns ? 6 : 5} className="px-2 py-2 text-xs"> <div className="text-gray-600 whitespace-nowrap">Единый счёт: <span className="font-semibold text-gray-800">{formatForDisplay(totals.total - totals.bonus)} ₽</span></div> {totals.bonus > 0 && <div className="text-gray-600 whitespace-nowrap">Бонусы: <span className="font-semibold text-purple-600">{formatForDisplay(totals.bonus)} B</span></div>} </td> </tr> </tfoot> )} </table> </div> <Pagination total={validCount} pageSize={PAGE_SIZE} current={group.currentPage} onChange={(page) => handlePageChange(group.id, page)} /> </section> ) })}</div>
+            })}</div>
         ) : null}
     </main> 
 
     {selectedCampaignIds.length > 0 && (
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white rounded-xl shadow-2xl z-[80] p-3 flex flex-col items-center gap-1 animate-in slide-in-from-bottom-4 fade-in border border-gray-200">
-          <span className="text-xs text-gray-500 font-medium mb-1">Выбрано {selectedCampaignIds.length}</span>
-          <div className="flex items-center gap-1">
-           <button onClick={() => openBulkActionModal('budget')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
-             <DollarSign className="w-4 h-4 text-gray-500" />
-             <span>Задать бюджет</span>
-           </button>
-           <button onClick={() => openBulkActionModal('bid')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
-             <Zap className="w-4 h-4 text-gray-500" />
-             <span>Задать ставки</span>
-           </button>
-           <button onClick={() => openBulkActionModal('autorefill')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
-             <RefreshCw className="w-4 h-4 text-gray-500" />
-             <span>Настроить АП</span>
-           </button>
-           <button onClick={() => openBulkActionModal('autobidder')} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700">
-             <Wand className="w-4 h-4 text-gray-500" />
-             <span>Преследование ставки</span>
-           </button>
-           <div className="h-6 w-px bg-gray-200 mx-1"></div>
-            <div className="tooltip">
-             <button onClick={() => openBulkActionModal('delete')} className="p-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-1.5">
-               <Trash2 className="w-4 h-4" />
-             </button>
-             <span className="tooltip-text">Удалить</span>
-            </div>
-           <button onClick={() => setSelectedCampaignIds([])} className="ml-2 p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full">
-             <X className="w-5 h-5" />
-           </button>
-          </div>
-      </div>
+      <CreationSelectionBar
+        count={selectedCampaignIds.length}
+        onBudget={() => openBulkActionModal('budget')}
+        onDailyLimit={openCreationBulkDailyLimit}
+        onAutoRefill={() => openBulkActionModal('autorefill')}
+        onBid={() => openBulkActionModal('bid')}
+        onZones={openCreationZonesModal}
+        onDelete={() => openBulkActionModal('delete')}
+        onClear={() => setSelectedCampaignIds([])}
+      />
     )}
+
+    {isCreationBulkDailyLimitOpen && selectedCreationCampaigns.length > 0 ? (
+      <AdvancedDailyLimitModal
+        dailyLimitOnly
+        conditionRuleBuilder
+        allowLimitAboveBudget
+        isOpen
+        onClose={() => setIsCreationBulkDailyLimitOpen(false)}
+        isDailyLimitEnabled={creationBulkDailyLimitEnabled}
+        onEnableDailyLimit={() => {
+          const next = String(Math.max(DAILY_LIMIT_ABSOLUTE_MIN, creationBulkMaxBid));
+          setCreationBulkDailyLimitValue(next);
+          setCreationBulkSavedDailyLimit(next);
+          setCreationBulkDailyLimitEnabled(true);
+        }}
+        onDisableDailyLimit={() => {
+          setCreationBulkDailyLimitEnabled(false);
+          setCreationBulkDailyLimitValue('');
+          setCreationBulkSavedDailyLimit('');
+        }}
+        dailyLimitValue={creationBulkDailyLimitValue}
+        onDailyLimitValueChange={setCreationBulkDailyLimitValue}
+        onDailyLimitCommit={(parsed) => {
+          if (Number.isNaN(parsed)) return;
+          setCreationBulkDailyLimitValue(String(parsed));
+          setCreationBulkSavedDailyLimit(String(parsed));
+          setCreationBulkDailyLimitEnabled(true);
+          applyPatchToSelectedCreationCampaigns({ dailyLimit: parsed });
+        }}
+        savedDailyLimit={creationBulkSavedDailyLimit}
+        isCarryoverEnabled={creationBulkCarryover}
+        onCarryoverChange={setCreationBulkCarryover}
+        campaignBudget={creationBulkCampaignBudget}
+        initialSettings={creationBulkDailyLimitSettings}
+        referenceCpcBidRub={creationBulkMaxBid}
+        autoRefillOnRulesTrigger={creationBulkAutoRefillOnRules}
+        onAutoRefillOnRulesTriggerChange={(enabled) => {
+          setCreationBulkAutoRefillOnRules(enabled);
+          if (enabled) {
+            applyPatchToSelectedCreationCampaigns({ autoReplenishment: true });
+          }
+        }}
+        onApply={(settings, options) => {
+          setCreationBulkDailyLimitSettings(settings);
+          if (options?.reset) {
+            applyPatchToSelectedCreationCampaigns({ dailyLimit: null });
+            setIsCreationBulkDailyLimitOpen(false);
+            setToastMessage('Дневной лимит сброшен');
+            setShowToast(true);
+            return;
+          }
+          const limitFromSettings =
+            settings.strategyId === 'maxSpend' &&
+            settings.maxSpendLimitRub != null &&
+            settings.maxSpendLimitRub > 0
+              ? settings.maxSpendLimitRub
+              : Number.parseFloat(creationBulkSavedDailyLimit) ||
+                Number.parseFloat(creationBulkDailyLimitValue) ||
+                null;
+          applyPatchToSelectedCreationCampaigns({
+            dailyLimit:
+              limitFromSettings != null && limitFromSettings > 0 ? limitFromSettings : null,
+          });
+          setIsCreationBulkDailyLimitOpen(false);
+          setToastMessage(
+            `Дневной лимит обновлён для ${selectedCampaignIds.length} ${getPlural(selectedCampaignIds.length, 'кампании', 'кампаний', 'кампаний')}`,
+          );
+          setShowToast(true);
+        }}
+      />
+    ) : null}
+
+    {isCreationZonesModalOpen ? (
+      <div
+        className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4"
+        onClick={() => setIsCreationZonesModalOpen(false)}
+      >
+        <div
+          className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-lg font-bold text-gray-900">Зоны показа</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Для {selectedCampaignIds.length}{' '}
+                {getPlural(selectedCampaignIds.length, 'кампании', 'кампаний', 'кампаний')}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsCreationZonesModalOpen(false)}
+              className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            <label className="flex cursor-pointer items-center justify-between rounded-xl bg-gray-50 px-3 py-3">
+              <span className="text-sm font-medium text-gray-900">Поиск</span>
+              <Checkbox
+                checked={creationZonesDraft.search}
+                onChange={(e) => {
+                  const search = e.target.checked;
+                  setCreationZonesDraft((prev) => ({
+                    search,
+                    recommendations: !search && !prev.recommendations ? true : prev.recommendations,
+                  }));
+                }}
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-between rounded-xl bg-gray-50 px-3 py-3">
+              <span className="text-sm font-medium text-gray-900">Рекомендации</span>
+              <Checkbox
+                checked={creationZonesDraft.recommendations}
+                onChange={(e) => {
+                  const recommendations = e.target.checked;
+                  setCreationZonesDraft((prev) => ({
+                    recommendations,
+                    search: !recommendations && !prev.search ? true : prev.search,
+                  }));
+                }}
+              />
+            </label>
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsCreationZonesModalOpen(false)}
+              className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+            >
+              Отмена
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const { search, recommendations } = creationZonesDraft;
+                if (!search && !recommendations) return;
+                applyPatchToSelectedCreationCampaigns((c) => {
+                  const defaultBid = c.bid ?? c.searchBid ?? c.recommendationsBid ?? 100;
+                  if (c.searchBid != null || c.recommendationsBid != null) {
+                    return {
+                      searchBid: search ? c.searchBid ?? defaultBid : undefined,
+                      recommendationsBid: recommendations
+                        ? c.recommendationsBid ?? defaultBid
+                        : undefined,
+                    };
+                  }
+                  return {};
+                });
+                setIsCreationZonesModalOpen(false);
+                setToastMessage(
+                  `Зоны показа обновлены для ${selectedCampaignIds.length} ${getPlural(selectedCampaignIds.length, 'кампании', 'кампаний', 'кампаний')}`,
+                );
+                setShowToast(true);
+              }}
+              className="rounded-xl bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-purple-700"
+            >
+              Сохранить
+            </button>
+          </div>
+        </div>
+      </div>
+    ) : null}
 
     {totalAllValidCount > 0 && selectedCampaignIds.length === 0 && ( 
     <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-sm border-t border-gray-200"> 

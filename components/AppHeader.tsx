@@ -1,15 +1,137 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   CAMPAIGNS_WITH_WIDGETS_V1_PATH,
   PRODUCT_PROMOTION_CONCEPT_PATH,
 } from '../constants/campaignListRoutes';
-import { Check, ChevronDown, MoreVertical } from './Icons';
+import { Check, ChevronDown, MoreVertical, Plus, X } from './Icons';
 import { isNewSellerProfile, PROFILES, useProfile, type ProfileId } from './ProfileContext';
 
 export const NEW_SELLER_CREATE_CAMPAIGN_PATH = '/create-campaign';
 
-type HeaderNavMenuId = 'campaigns' | 'stats' | 'tasks' | 'more' | 'profile';
+const SUPPORT_SUGGESTION_TITLES = [
+  'Как работает счёт и баланс продвижения',
+  'Как работает ранжирование. Почему ваша карточка внизу',
+  'Пополнение счёта и возврат средств',
+  'История изменения кампании',
+] as const;
+
+function SupportHelpModal({
+  open,
+  onClose,
+  onOpenDialog,
+  onSelectSuggestion,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onOpenDialog: () => void;
+  onSelectSuggestion: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 sm:p-6"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="relative w-full max-w-[440px] rounded-2xl bg-white p-6 shadow-2xl sm:p-7"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="support-help-modal-title"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          aria-label="Закрыть"
+        >
+          <X className="h-5 w-5" aria-hidden />
+        </button>
+
+        <h2
+          id="support-help-modal-title"
+          className="pr-10 text-lg font-bold leading-snug text-gray-900 sm:text-xl"
+        >
+          Может ответ на вопрос будет тут
+        </h2>
+
+        <ul className="mt-5 space-y-2">
+          {SUPPORT_SUGGESTION_TITLES.map((title) => (
+            <li key={title}>
+              <button
+                type="button"
+                onClick={onSelectSuggestion}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left transition-colors hover:bg-gray-50"
+              >
+                <span className="text-sm font-medium leading-snug text-gray-900">{title}</span>
+                <span
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#F7F1FF] text-[#9A41FE]"
+                  aria-hidden
+                >
+                  <svg viewBox="0 0 24 24" className="ml-px h-3.5 w-3.5" fill="currentColor">
+                    <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+                  </svg>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
+          >
+            Отмена
+          </button>
+          <button
+            type="button"
+            onClick={onOpenDialog}
+            className="rounded-xl bg-[#9A41FE] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
+          >
+            Диалог с поддержкой
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+type HeaderNavMenuId = 'product' | 'campaigns' | 'stats' | 'tasks' | 'more' | 'help' | 'profile';
+
+type ProductSpaceId = 'promotion' | 'media';
+
+const MEDIA_PATH = '/media';
+
+const PRODUCT_SPACES: { id: ProductSpaceId; label: string; shortLabel: string; to: string }[] = [
+  { id: 'promotion', label: 'Продвижение', shortLabel: 'продвижение', to: PRODUCT_PROMOTION_CONCEPT_PATH },
+  { id: 'media', label: 'Медиа', shortLabel: 'медиа', to: MEDIA_PATH },
+];
+
+function resolveProductSpace(pathname: string): ProductSpaceId {
+  if (pathname === MEDIA_PATH || pathname.startsWith(`${MEDIA_PATH}/`)) return 'media';
+  return 'promotion';
+}
 
 function headerMenuPanelClass(
   open: boolean,
@@ -30,10 +152,16 @@ function formatBonusAmount(n: number): string {
   return new Intl.NumberFormat('ru-RU').format(n);
 }
 
-const PROMO_BONUS_TOTAL_BY_PROFILE: Record<ProfileId, number> = {
+export const PROMO_BONUS_TOTAL_BY_PROFILE: Record<ProfileId, number> = {
   '1': 250_000,
   '2': 250_000,
   '3': 5_000,
+};
+
+const ELS_BALANCE_BY_PROFILE: Record<ProfileId, number> = {
+  '1': 105_350,
+  '2': 105_350,
+  '3': 12_400,
 };
 
 const TASKS_DROPDOWN_NEW_COUNT: Record<ProfileId, number> = {
@@ -45,10 +173,10 @@ const TASKS_DROPDOWN_NEW_COUNT: Record<ProfileId, number> = {
 const TASKS_DROPDOWN_EARN_MORE = 12_400;
 
 const CAMPAIGNS_NAV_ITEMS = [
+  { to: PRODUCT_PROMOTION_CONCEPT_PATH, label: 'Концепт товарного продвижения' },
   { to: CAMPAIGNS_WITH_WIDGETS_V1_PATH, label: 'Кампании с виджетами 1' },
   { to: '/campaigns-with-widgets', label: 'Кампании с виджетами 2' },
   { to: '/campaigns', label: 'Кампании с виджетами 3' },
-  { to: PRODUCT_PROMOTION_CONCEPT_PATH, label: 'Концепт товарного продвижения' },
 ] as const;
 
 function isCampaignsNavPath(pathname: string): boolean {
@@ -113,9 +241,14 @@ export function AppHeader({
   const location = useLocation();
   const navigate = useNavigate();
   const promoBonusTotal = PROMO_BONUS_TOTAL_BY_PROFILE[profileId];
+  const elsBalanceRub = ELS_BALANCE_BY_PROFILE[profileId];
   const newTasksCount = TASKS_DROPDOWN_NEW_COUNT[profileId];
   const campaignsNavActive = isCampaignsNavPath(location.pathname);
   const statsNavActive = isStatsNavPath(location.pathname);
+  const helpNavActive = location.pathname === '/help' || location.pathname.startsWith('/help/');
+  const productSpaceId = resolveProductSpace(location.pathname);
+  const activeProductSpace =
+    PRODUCT_SPACES.find((space) => space.id === productSpaceId) ?? PRODUCT_SPACES[0];
   const isNewSeller = isNewSellerProfile(profileId);
   const creationNavActive =
     campaignCreationActive ||
@@ -124,6 +257,7 @@ export function AppHeader({
       !location.pathname.startsWith('/bonuses'));
 
   const [openNavMenu, setOpenNavMenu] = useState<HeaderNavMenuId | null>(null);
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
   const closeMenuTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const openNavMenuNow = (id: HeaderNavMenuId) => {
@@ -164,7 +298,72 @@ export function AppHeader({
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
       <div className="flex items-center justify-between px-6 h-14 bg-white">
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
+          <div
+            className="relative shrink-0"
+            onMouseEnter={() => openNavMenuNow('product')}
+            onMouseLeave={() => scheduleCloseNavMenu('product')}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setOpenNavMenu((current) => (current === 'product' ? null : 'product'))
+              }
+              className={`inline-flex h-9 items-center gap-1.5 rounded-[10px] px-2.5 transition-colors ${
+                openNavMenu === 'product' ? 'bg-gray-100' : 'hover:bg-gray-50'
+              }`}
+              aria-expanded={openNavMenu === 'product'}
+              aria-haspopup="menu"
+              aria-label={`Раздел WB: ${activeProductSpace.label}`}
+            >
+              <span className="text-[15px] font-bold leading-none tracking-tight text-gray-900">
+                {activeProductSpace.shortLabel}
+              </span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 text-gray-500 transition-transform ${
+                  openNavMenu === 'product' ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+
+            <div className={headerMenuPanelClass(openNavMenu === 'product', { pad: 'pt-1.5' })}>
+              <ul
+                className="min-w-[200px] overflow-hidden rounded-2xl border border-gray-200 bg-white p-1.5 shadow-lg"
+                role="menu"
+                aria-label="Разделы WB"
+              >
+                {PRODUCT_SPACES.map((space) => {
+                  const active = space.id === productSpaceId;
+                  return (
+                    <li key={space.id} role="none">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOpenNavMenu(null);
+                          if (location.pathname !== space.to) {
+                            navigate(space.to);
+                            onNavigate();
+                          }
+                        }}
+                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition-colors ${
+                          active
+                            ? 'bg-gray-100 font-semibold text-gray-900'
+                            : 'font-medium text-gray-800 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span>{space.label}</span>
+                        {active ? (
+                          <Check className="h-4 w-4 shrink-0 text-[#9a41fe]" aria-hidden />
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          </div>
+
           <nav className="flex items-center gap-1 text-sm font-medium">
             {isNewSeller ? (
               <>
@@ -405,64 +604,144 @@ export function AppHeader({
                 </div>
               </>
             )}
+
+            <div
+              className="relative"
+              onMouseEnter={() => openNavMenuNow('help')}
+              onMouseLeave={() => scheduleCloseNavMenu('help')}
+            >
+              <button
+                type="button"
+                className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                  helpNavActive || openNavMenu === 'help'
+                    ? 'bg-gray-100 text-black'
+                    : 'text-black hover:bg-gray-50'
+                }`}
+                aria-haspopup="menu"
+                aria-expanded={openNavMenu === 'help'}
+              >
+                Помощь
+              </button>
+
+              <div className={headerMenuPanelClass(openNavMenu === 'help', { pad: 'pt-1' })}>
+                <ul
+                  className="min-w-[240px] overflow-hidden rounded-2xl border border-gray-100 bg-white py-3 shadow-xl"
+                  role="menu"
+                  aria-label="Помощь"
+                >
+                  <li role="none">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setOpenNavMenu(null);
+                        setIsSupportModalOpen(true);
+                      }}
+                      className="block w-full px-5 py-2.5 text-left text-sm font-bold text-gray-900 transition-colors hover:bg-gray-50"
+                    >
+                      Поддержка
+                    </button>
+                  </li>
+                  <li role="none">
+                    <NavLink
+                      to="/help"
+                      role="menuitem"
+                      onClick={onNavigate}
+                      className="block px-5 py-2.5 text-sm font-bold text-gray-900 transition-colors hover:bg-gray-50"
+                    >
+                      Справочный центр
+                    </NavLink>
+                  </li>
+                  <li role="none">
+                    <NavLink
+                      to="/help#help-video-heading"
+                      role="menuitem"
+                      onClick={onNavigate}
+                      className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm font-bold text-gray-900 transition-colors hover:bg-gray-50"
+                    >
+                      <span>Видеоинструкции</span>
+                      <span className="inline-flex shrink-0 items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold leading-none tracking-wide text-emerald-800">
+                        Новое
+                      </span>
+                    </NavLink>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            <a href="#" className="rounded-lg px-3 py-2 transition-opacity hover:opacity-80">
+              Новости
+            </a>
+
+            <div
+              className="relative"
+              onMouseEnter={() => openNavMenuNow('more')}
+              onMouseLeave={() => scheduleCloseNavMenu('more')}
+            >
+              <button
+                type="button"
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
+                  location.pathname === '/audience-metrics' || openNavMenu === 'more'
+                    ? 'bg-gray-100 text-black'
+                    : 'text-gray-600 hover:bg-gray-50 hover:text-black'
+                }`}
+                aria-haspopup="menu"
+                aria-expanded={openNavMenu === 'more'}
+                aria-label="Ещё"
+              >
+                <MoreVertical className="h-5 w-5 rotate-90" aria-hidden />
+              </button>
+
+              <div className={headerMenuPanelClass(openNavMenu === 'more')}>
+                <ul
+                  className="min-w-[180px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                  role="menu"
+                  aria-label="Дополнительные разделы"
+                >
+                  <li role="none">
+                    <NavLink
+                      to="/audience-metrics"
+                      role="menuitem"
+                      onClick={onNavigate}
+                      className={`flex items-center justify-between gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
+                        location.pathname === '/audience-metrics'
+                          ? 'bg-violet-50/80 font-medium text-gray-900'
+                          : 'text-gray-800'
+                      }`}
+                    >
+                      <span>Аудитория</span>
+                      {location.pathname === '/audience-metrics' && (
+                        <Check className="h-4 w-4 shrink-0 text-[#9a41fe]" aria-hidden />
+                      )}
+                    </NavLink>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </nav>
         </div>
 
-        <div className="flex items-center gap-6 text-sm font-medium text-black">
-          <div
-            className="relative"
-            onMouseEnter={() => openNavMenuNow('more')}
-            onMouseLeave={() => scheduleCloseNavMenu('more')}
-          >
-            <button
-              type="button"
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${
-                location.pathname === '/audience-metrics' || openNavMenu === 'more'
-                  ? 'bg-gray-100 text-black'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-black'
-              }`}
-              aria-haspopup="menu"
-              aria-expanded={openNavMenu === 'more'}
-              aria-label="Ещё"
-            >
-              <MoreVertical className="h-5 w-5 rotate-90" aria-hidden />
-            </button>
-
-            <div className={headerMenuPanelClass(openNavMenu === 'more', { align: 'right' })}>
-              <ul
-                className="min-w-[180px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-                role="menu"
-                aria-label="Дополнительные разделы"
-              >
-                <li role="none">
-                  <NavLink
-                    to="/audience-metrics"
-                    role="menuitem"
-                    onClick={onNavigate}
-                    className={`flex items-center justify-between gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-gray-50 ${
-                      location.pathname === '/audience-metrics'
-                        ? 'bg-violet-50/80 font-medium text-gray-900'
-                        : 'text-gray-800'
-                    }`}
-                  >
-                    <span>Аудитория</span>
-                    {location.pathname === '/audience-metrics' && (
-                      <Check className="h-4 w-4 shrink-0 text-[#9a41fe]" aria-hidden />
-                    )}
-                  </NavLink>
-                </li>
-              </ul>
+        <div className="flex items-center gap-3 text-sm font-medium text-black">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 leading-none">
+              <p className="m-0 text-sm font-semibold tabular-nums tracking-tight text-gray-900">
+                {formatBonusAmount(elsBalanceRub)} ₽
+              </p>
+              <p className="m-0 text-xs font-medium tabular-nums text-gray-500">
+                {formatBonusAmount(promoBonusTotal)} B
+              </p>
             </div>
+            <NavLink
+              to="/finance/top-up"
+              onClick={onNavigate}
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
+              aria-label="Пополнить счёт"
+            >
+              <Plus className="h-4 w-4" aria-hidden />
+            </NavLink>
           </div>
 
-          <a href="#" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-            Помощь
-            <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">3</span>
-          </a>
-          <a href="#" className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
-            Новости
-            <span className="flex items-center justify-center min-w-[18px] h-[18px] bg-red-500 text-white text-xs font-medium rounded-full">2</span>
-          </a>
+          <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
 
           <div
             className="relative"
@@ -516,6 +795,17 @@ export function AppHeader({
           </div>
         </div>
       </div>
+
+      <SupportHelpModal
+        open={isSupportModalOpen}
+        onClose={() => setIsSupportModalOpen(false)}
+        onOpenDialog={() => setIsSupportModalOpen(false)}
+        onSelectSuggestion={() => {
+          setIsSupportModalOpen(false);
+          navigate('/help#help-video-heading');
+          onNavigate();
+        }}
+      />
     </header>
   );
 }

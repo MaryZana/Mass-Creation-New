@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { Checkbox } from 'antd';
-import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical, Check, Edit2, Info } from './Icons';
+import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical, Edit2, Info, ChevronDown } from './Icons';
 import { SingleCampaignAddProductsModal } from './SingleCampaignAddProductsModal';
 import { AppHeader } from './AppHeader';
 import { ReferralInviteCreationBanner } from './ReferralInviteCreationBanner';
-import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
 import {
   DAILY_LIMIT_ABSOLUTE_MIN,
@@ -18,8 +16,45 @@ import {
   PRODUCT_TABLE_THUMB_FALLBACK,
   resolveProductTableThumbSrc,
 } from './SuccessPageTestData';
+import { RankingFactorsSidePanel } from './RankingFactorsSidePanel';
+import {
+  AdvancedDailyLimitModal,
+  AutoRefillModal,
+  createDefaultAdvancedDailyLimitSettings,
+  type AdvancedDailyLimitSettings,
+  type AutoRefillMode,
+} from './CpcCampaignPage';
 
-const UNIFIED_BALANCE = 105350;
+export const BONUS_PACKAGES = [
+  {
+    id: 'p1',
+    amount: 115365,
+    maxPercent: 10,
+    expiry: '3 января',
+    label: 'Пакет 1',
+  },
+  { id: 'p2', amount: 12233, maxPercent: 99, expiry: '12 февраля', label: 'Пакет 2' },
+  { id: 'p3', amount: 20, maxPercent: 100, expiry: '28 февраля', label: 'Пакет 3' },
+] as const;
+
+type BonusPlacement = 'footer' | 'budget' | 'wallet' | 'select' | 'cards';
+
+const BONUS_PLACEMENT_TABS: { id: BonusPlacement; label: string }[] = [
+  { id: 'cards', label: 'Квадраты' },
+  { id: 'budget', label: 'Бонусы в бюджете' },
+  { id: 'footer', label: 'Бонусы внизу' },
+  { id: 'wallet', label: 'Как в медийке' },
+];
+
+/** Сколько можно списать из пакета: не больше остатка пакета и не больше maxPercent% от бюджета кампании */
+function maxSpendableBonusFromPackage(
+  pkg: { amount: number; maxPercent: number },
+  budgetRub: number,
+): number {
+  if (!Number.isFinite(budgetRub) || budgetRub <= 0) return 0;
+  const byPercent = Math.floor((budgetRub * pkg.maxPercent) / 100);
+  return Math.max(0, Math.min(pkg.amount, byPercent, budgetRub));
+}
 
 type CampaignProductRow = {
   nmId: number;
@@ -336,173 +371,485 @@ interface SingleCampaignPageProps {
 
 // Шапка приложения вынесена в общий компонент `AppHeader`.
 
-const Toast = ({ show, message, onClose }: { show: boolean, message: string, onClose: () => void }) => {
+const Toast = ({
+  show,
+  message,
+  onClose,
+  isError = false,
+}: {
+  show: boolean;
+  message: string;
+  onClose: () => void;
+  isError?: boolean;
+}) => {
   useEffect(() => {
     if (show) {
-      const timer = setTimeout(onClose, 3000);
+      const timer = setTimeout(onClose, isError ? 4000 : 3000);
       return () => clearTimeout(timer);
     }
-  }, [show, onClose]);
-  
+  }, [show, message, isError, onClose]);
+
   if (!show) return null;
-  
+
   return (
-    <div className="fixed top-20 left-1/2 transform -translate-x-1/2 bg-gray-900 text-white px-6 py-3 rounded-lg shadow-xl z-[100] flex items-center gap-3 animate-in fade-in slide-in-from-top-4 duration-300">
+    <div
+      className={`fixed top-20 left-1/2 z-[100] flex max-w-[90vw] -translate-x-1/2 items-center gap-3 rounded-lg px-6 py-3 text-white shadow-xl animate-in fade-in slide-in-from-top-4 duration-300 ${
+        isError ? 'bg-red-600' : 'bg-gray-900'
+      }`}
+    >
       <span className="font-medium">{message}</span>
     </div>
   );
 };
 
-const ToggleSwitch = ({ checked, onChange, disabled = false }: { checked: boolean; onChange: (checked: boolean) => void; disabled?: boolean }) => (
-  <button 
-    role="switch" 
-    aria-checked={checked} 
-    onClick={() => !disabled && onChange(!checked)} 
-    disabled={disabled} 
-    className={`relative inline-flex h-4 w-7 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${ 
-      disabled ? 'cursor-not-allowed bg-gray-200' : 'cursor-pointer' 
-    } ${ 
-      checked ? (disabled ? 'bg-purple-300' : 'bg-purple-600') : 'bg-gray-300' 
-    }`}
-  >
-    <span 
-      aria-hidden="true" 
-      className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${ 
-        checked ? 'translate-x-3' : 'translate-x-0' 
-      }`} 
-    />
-  </button>
-);
-
-const CPC_PAYMENT_BENEFITS = [
-  'Аукцион второй цены',
-  'дневные лимиты',
-  'отсутствие шага ставки',
-] as const;
-
-function SecondPriceAuctionBenefitLabel() {
-  const [isVisible, setIsVisible] = useState(false);
-
+function BonusAmountField({
+  amountDisplay,
+  onAmountChange,
+  onAmountBlur,
+}: {
+  amountDisplay: string;
+  onAmountChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onAmountBlur: () => void;
+}) {
   return (
-    <span
-      className="relative inline-block"
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-    >
-      <span className="cursor-help underline decoration-dotted decoration-[#AEAEB8] underline-offset-2 hover:text-[#6B6B76]">
-        Аукцион второй цены
+    <div className="relative mt-2 w-[5.75rem]">
+      <input
+        type="text"
+        inputMode="numeric"
+        value={amountDisplay}
+        onChange={onAmountChange}
+        onBlur={onAmountBlur}
+        onClick={(e) => e.stopPropagation()}
+        className="h-7 w-full rounded-lg border border-gray-200 bg-white py-0 pl-2 pr-6 text-left text-sm font-bold tabular-nums text-gray-900 outline-none transition-colors hover:border-gray-300 focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+        aria-label="Сумма бонусов"
+      />
+      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+        B
       </span>
-      {isVisible ? (
-        <>
-          <span
-            className="absolute left-0 top-full z-50 h-2 w-[min(18rem,calc(100vw-3rem))]"
-            aria-hidden
-          />
-          <div
-            className="absolute left-0 top-full z-[60] mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-lg bg-gray-900 p-3 text-left text-xs leading-snug text-white shadow-lg"
-            role="tooltip"
-          >
-            <p className="mb-2">
-              Выигрывает самая высокая ставка, а цену клика определяем по следующей за ней.
-            </p>
-            <button
-              type="button"
-              className="p-0 text-left text-xs font-medium text-[#A5B4FC] hover:underline"
-            >
-              Подробнее
-            </button>
-          </div>
-        </>
-      ) : null}
-    </span>
-  );
-}
-
-function SingleCampaignPaymentModelIcon({ model }: { model: 'CPC' | 'CPM' }) {
-  const isCpc = model === 'CPC';
-  return (
-    <div
-      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#F0F0F3]"
-      aria-hidden
-    >
-      <svg
-        width="24"
-        height="24"
-        viewBox="0 0 24 24"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        className={isCpc ? 'text-[#9A41FE]' : 'text-[#8B8B97]'}
-        aria-hidden
-      >
-        <path
-          d="M5.05 4.05 19.95 10.55a.55.55 0 0 1-.07 1.04l-6.74 1.74a2.2 2.2 0 0 0-1.58 1.58l-1.74 6.74a.55.55 0 0 1-1.04.07L5.05 4.05Z"
-          stroke="currentColor"
-          strokeWidth="1.65"
-          strokeLinejoin="round"
-        />
-      </svg>
     </div>
   );
 }
 
-const PAYMENT_MODEL_OPTIONS = [
-  { id: 'CPC' as const, label: 'Оплата за клики CPC' },
-  { id: 'CPM' as const, label: 'Оплата за показы CPM' },
-];
+function BonusPackagesMenu({
+  selectedPkgId,
+  amountDisplay,
+  onSelectPackage,
+  onAmountChange,
+  onAmountBlur,
+  formatAmount,
+}: {
+  selectedPkgId: string;
+  amountDisplay: string;
+  onSelectPackage: (pkgId: string) => void;
+  onAmountChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onAmountBlur: () => void;
+  formatAmount: (num: string | number) => string;
+}) {
+  return (
+    <>
+      <p className="text-xs text-gray-500">1 B = 1 ₽</p>
+      <div className="mt-3 flex flex-col gap-2">
+        {BONUS_PACKAGES.map((pkg) => {
+          const selected = pkg.id === selectedPkgId;
+          const content = (
+            <>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[11px] leading-none text-gray-500">
+                  На пакете до {pkg.expiry}
+                </span>
+                <span className="mt-1 block text-sm font-bold tabular-nums text-gray-900">
+                  {formatAmount(pkg.amount)} B
+                </span>
+                {selected ? (
+                  <>
+                    <span className="mt-2 block text-[11px] leading-none text-gray-500">
+                      Списать до {pkg.maxPercent}% от пополнения 1 кампании
+                    </span>
+                    <BonusAmountField
+                      amountDisplay={amountDisplay}
+                      onAmountChange={onAmountChange}
+                      onAmountBlur={onAmountBlur}
+                    />
+                  </>
+                ) : null}
+              </span>
+              <span
+                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                  selected ? 'border-[#9A41FE]' : 'border-gray-300'
+                }`}
+                aria-hidden
+              >
+                {selected ? <span className="h-2 w-2 rounded-full bg-[#9A41FE]" /> : null}
+              </span>
+            </>
+          );
 
-function SingleCampaignPaymentModelDropdown({
+          const itemClass = `flex w-full items-start justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+            selected
+              ? 'border-[#9A41FE] bg-[#F6F0FF]'
+              : 'border-gray-200 bg-white hover:border-gray-300'
+          }`;
+
+          if (selected) {
+            return (
+              <div key={pkg.id} className={itemClass} aria-current="true">
+                {content}
+              </div>
+            );
+          }
+
+          return (
+            <button
+              key={pkg.id}
+              type="button"
+              onClick={() => onSelectPackage(pkg.id)}
+              className={itemClass}
+              aria-pressed={false}
+            >
+              {content}
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+function BonusPackagePicker({
+  selectedPkgId,
+  amountDisplay,
+  maxAmountDisplay,
+  bonusError,
+  onSelectPackage,
+  onAmountChange,
+  onAmountBlur,
+  formatAmount,
+}: {
+  selectedPkgId: string;
+  amountDisplay: string;
+  maxAmountDisplay: string;
+  bonusError: string;
+  onSelectPackage: (pkgId: string) => void;
+  onAmountChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onAmountBlur: () => void;
+  formatAmount: (num: string | number) => string;
+}) {
+  return (
+    <div className="duration-300 animate-in fade-in slide-in-from-top-2">
+      <div className="custom-scrollbar flex snap-x gap-4 overflow-x-auto pb-0">
+        {BONUS_PACKAGES.map((pkg) => {
+          const selected = pkg.id === selectedPkgId;
+          return (
+            <div
+              key={pkg.id}
+              onClick={() => onSelectPackage(pkg.id)}
+              className={`relative min-w-[200px] cursor-pointer snap-start rounded-xl border-2 px-4 pt-4 pb-4 transition-all ${
+                selected
+                  ? 'border-transparent bg-gray-100'
+                  : 'border-gray-100 bg-white hover:border-gray-200'
+              }`}
+            >
+              <div className="mb-1 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="mb-1 text-[11px] font-medium leading-none text-gray-500">
+                    На пакете до {pkg.expiry}
+                  </p>
+                  <span className="block text-xl font-bold text-gray-900">
+                    {formatAmount(pkg.amount)}
+                  </span>
+                </div>
+                <div
+                  className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                    selected ? 'border-[#9A41FE]' : 'border-gray-300'
+                  }`}
+                >
+                  {selected ? <div className="h-2.5 w-2.5 rounded-full bg-[#9A41FE]" /> : null}
+                </div>
+              </div>
+              <p className="mb-0 text-xs font-medium leading-tight text-gray-500">
+                Оплата до {pkg.maxPercent}% от суммы
+              </p>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 flex flex-col gap-6 md:flex-row md:items-center">
+        <div className="relative w-full md:w-48">
+          <input
+            type="text"
+            inputMode="numeric"
+            value={amountDisplay}
+            onChange={onAmountChange}
+            onBlur={onAmountBlur}
+            className={`w-full rounded-xl border px-4 py-3 text-lg font-bold outline-none focus:ring-2 focus:ring-purple-500 ${
+              bonusError ? 'border-red-500' : 'border-gray-300'
+            }`}
+            aria-label="Сумма бонусов"
+          />
+          <p className="mt-1.5 text-xs text-gray-500">до {maxAmountDisplay} B (1B = 1P)</p>
+        </div>
+        {bonusError ? (
+          <div className="text-sm leading-snug text-red-500">
+            <p>{bonusError}</p>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Вариант 2: выбранный пакет всегда виден как селект, список — в дропдауне */
+function BonusPackageRichSelect({
+  selectedPkgId,
+  amountDisplay,
+  maxAmountDisplay,
+  bonusError,
+  onSelectPackage,
+  onAmountChange,
+  onAmountBlur,
+  formatAmount,
+  menuOpen,
+  onMenuOpenChange,
+}: {
+  selectedPkgId: string;
+  amountDisplay: string;
+  maxAmountDisplay: string;
+  bonusError: string;
+  onSelectPackage: (pkgId: string) => void;
+  onAmountChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onAmountBlur: () => void;
+  formatAmount: (num: string | number) => string;
+  menuOpen: boolean;
+  onMenuOpenChange: (open: boolean) => void;
+}) {
+  const selectedPkg =
+    BONUS_PACKAGES.find((pkg) => pkg.id === selectedPkgId) ?? BONUS_PACKAGES[0];
+
+  return (
+    <div className="duration-300 animate-in fade-in slide-in-from-top-2" data-bonus-menu-root>
+      <div className="relative max-w-md">
+        <div className="rounded-2xl bg-[#F2F2F7] px-4 py-3.5">
+          <button
+            type="button"
+            onClick={() => onMenuOpenChange(!menuOpen)}
+            className="flex w-full items-start gap-3 text-left"
+            aria-expanded={menuOpen}
+            aria-haspopup="listbox"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-xl font-bold leading-none tabular-nums text-gray-900">
+                {formatAmount(selectedPkg.amount)} B
+              </span>
+              <span className="mt-1.5 block text-xs leading-snug text-gray-500">
+                до {selectedPkg.expiry} · оплата до {selectedPkg.maxPercent}%
+              </span>
+            </span>
+            <ChevronDown
+              className={`mt-0.5 h-5 w-5 shrink-0 text-gray-500 transition-transform ${
+                menuOpen ? 'rotate-180' : ''
+              }`}
+              aria-hidden
+            />
+          </button>
+
+          <div className="mt-3 border-t border-black/[0.06] pt-3">
+            <p className="mb-1.5 text-[11px] leading-none text-gray-500">
+              Списать до {selectedPkg.maxPercent}% от пополнения 1 кампании
+            </p>
+            <BonusAmountField
+              amountDisplay={amountDisplay}
+              onAmountChange={onAmountChange}
+              onAmountBlur={onAmountBlur}
+            />
+            <p className="mt-1.5 text-[11px] text-gray-500">
+              до {maxAmountDisplay} B (1B = 1₽)
+            </p>
+            {bonusError ? (
+              <p className="mt-1.5 text-sm leading-snug text-red-500">{bonusError}</p>
+            ) : null}
+          </div>
+        </div>
+
+        {menuOpen ? (
+          <div
+            className="absolute left-0 right-0 top-full z-20 mt-2 rounded-2xl border border-gray-100 bg-white p-2 shadow-lg"
+            role="listbox"
+            aria-label="Пакеты промобонусов"
+          >
+            {BONUS_PACKAGES.map((pkg) => {
+              const selected = pkg.id === selectedPkgId;
+              return (
+                <button
+                  key={pkg.id}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  onClick={() => {
+                    onSelectPackage(pkg.id);
+                    onMenuOpenChange(false);
+                  }}
+                  className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                    selected ? 'bg-[#F2F2F7]' : 'hover:bg-gray-50'
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                      selected ? 'border-[#9A41FE]' : 'border-gray-300'
+                    }`}
+                    aria-hidden
+                  >
+                    {selected ? <span className="h-2 w-2 rounded-full bg-[#9A41FE]" /> : null}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold tabular-nums text-gray-900">
+                      {formatAmount(pkg.amount)} B
+                    </span>
+                    <span className="mt-1 block text-[11px] leading-snug text-gray-500">
+                      до {pkg.expiry} · оплата до {pkg.maxPercent}%
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+const ToggleSwitch = ({
+  checked,
+  onChange,
+  disabled = false,
+  size = 'sm',
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+  size?: 'sm' | 'md';
+}) => {
+  const isMd = size === 'md';
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      onClick={() => !disabled && onChange(!checked)}
+      disabled={disabled}
+      className={`relative inline-flex flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+        isMd ? 'h-5 w-9' : 'h-4 w-7'
+      } ${disabled ? 'cursor-not-allowed bg-gray-200' : 'cursor-pointer'} ${
+        checked ? (disabled ? 'bg-purple-300' : 'bg-purple-600') : isMd ? 'bg-[#E5E5EA]' : 'bg-gray-300'
+      }`}
+    >
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none inline-block transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+          isMd ? 'h-4 w-4' : 'h-3 w-3'
+        } ${checked ? (isMd ? 'translate-x-4' : 'translate-x-3') : 'translate-x-0'}`}
+      />
+    </button>
+  );
+};
+
+const PAYMENT_MODEL_OPTIONS = [
+  {
+    id: 'CPC' as const,
+    label: 'Оплата за клики (CPC)',
+    subtitle: 'Вы платите за 1 клик',
+  },
+  {
+    id: 'CPM' as const,
+    label: 'Оплата за показы (CPM)',
+    subtitle: 'Вы платите за 1000 показов',
+  },
+] as const;
+
+function SecondPriceAuctionBadge() {
+  const [isVisible, setIsVisible] = useState(false);
+
+  return (
+    <span
+      className="absolute -top-2.5 left-3 z-10 inline-flex items-center gap-1 rounded-md bg-[#F3E8FF] px-2 py-0.5 text-[11px] font-medium text-[#7C3AED]"
+      onMouseEnter={() => setIsVisible(true)}
+      onMouseLeave={() => setIsVisible(false)}
+    >
+      Аукцион второй цены
+      <span className="relative inline-flex">
+        <HelpCircle className="h-3 w-3 cursor-help text-[#9A41FE]" aria-hidden />
+        {isVisible ? (
+          <>
+            <span
+              className="absolute left-0 top-full z-50 h-2 w-[min(18rem,calc(100vw-3rem))]"
+              aria-hidden
+            />
+            <div
+              className="absolute left-0 top-full z-[60] mt-2 w-[min(18rem,calc(100vw-3rem))] rounded-lg bg-gray-900 p-3 text-left text-xs font-normal leading-snug text-white shadow-lg"
+              role="tooltip"
+            >
+              <p className="mb-2">
+                Выигрывает самая высокая ставка, а цену клика определяем по следующей за ней.
+              </p>
+              <button
+                type="button"
+                className="p-0 text-left text-xs font-medium text-[#A5B4FC] hover:underline"
+              >
+                Подробнее
+              </button>
+            </div>
+          </>
+        ) : null}
+      </span>
+    </span>
+  );
+}
+
+function SingleCampaignPaymentModelSelector({
   value,
   onChange,
 }: {
   value: 'CPC' | 'CPM';
   onChange: (model: 'CPC' | 'CPM') => void;
 }) {
-  const [isChangeMenuOpen, setIsChangeMenuOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const isCpc = value === 'CPC';
-  const title = PAYMENT_MODEL_OPTIONS.find((o) => o.id === value)?.label ?? 'Оплата за клики CPC';
-  const switchToLabel = isCpc
-    ? 'Переключиться на оплату за показы CPM'
-    : 'Переключиться на оплату за клики CPC';
-
-  useEffect(() => {
-    if (!isChangeMenuOpen) return;
-    const handleClickOutside = (event: MouseEvent) => {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setIsChangeMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isChangeMenuOpen]);
-
   return (
-    <div ref={ref} className="relative inline-block max-w-full">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="text-base font-bold leading-snug text-gray-900">{title}</span>
-        <button
-          type="button"
-          onClick={() => setIsChangeMenuOpen((open) => !open)}
-          className="rounded-md px-2 py-0.5 text-[13px] font-normal text-[#6366f1] transition-colors hover:bg-indigo-50 hover:text-purple-700"
-          aria-expanded={isChangeMenuOpen}
-        >
-          Изменить
-        </button>
-      </div>
-      {isChangeMenuOpen ? (
-        <div className="absolute left-0 top-full z-50 mt-2 min-w-[min(20rem,calc(100vw-3rem))] rounded-xl border border-gray-200 bg-white p-2 shadow-lg">
-          <button
-            type="button"
-            className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
-            onClick={() => {
-              onChange(isCpc ? 'CPM' : 'CPC');
-              setIsChangeMenuOpen(false);
-            }}
-          >
-            {switchToLabel}
-          </button>
-        </div>
-      ) : null}
+    <div className="flex flex-wrap gap-3" role="radiogroup" aria-label="Модель оплаты">
+      {PAYMENT_MODEL_OPTIONS.map((option) => {
+        const selected = value === option.id;
+        return (
+          <div key={option.id} className="relative w-fit pt-1">
+            {option.id === 'CPC' ? <SecondPriceAuctionBadge /> : null}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              onClick={() => onChange(option.id)}
+              className={`flex w-fit items-start gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors ${
+                selected
+                  ? 'bg-[#F2F2F7] ring-0'
+                  : 'border border-[#E5E5EA] bg-white hover:bg-gray-50'
+              }`}
+            >
+              <span
+                className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 ${
+                  selected ? 'border-[#9A41FE]' : 'border-[#C7C7CC]'
+                }`}
+                aria-hidden
+              >
+                {selected ? <span className="h-2.5 w-2.5 rounded-full bg-[#9A41FE]" /> : null}
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[15px] font-semibold leading-snug text-gray-900">
+                  {option.label}
+                </span>
+                <span className="mt-0.5 block text-sm leading-snug text-[#8E8E93]">
+                  {option.subtitle}
+                </span>
+              </span>
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -516,9 +863,11 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     showReferralInviteCreationBanner,
     singleCampaignSeed,
     clearSingleCampaignSeed,
+    consumePendingPromoBonusPackageId,
     notifyReferralCampaignCreatedFromCreation,
   } = useProfile();
   const repeatSeedAppliedRef = useRef(false);
+  const promoBonusSeedAppliedRef = useRef(false);
   const [campaignName, setCampaignName] = useState('Кампания от 26.12.2024');
   const [paymentModel, setPaymentModel] = useState<'CPM' | 'CPC'>('CPC');
   const [budget, setBudget] = useState('3000');
@@ -529,18 +878,46 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     }
   }, [profileId, showReferralInviteCreationBanner]);
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
+  const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
+  const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
+  const [autoRefillMode, setAutoRefillMode] = useState<AutoRefillMode>('manual');
   const [bidType, setBidType] = useState<'unified' | 'manual'>('unified');
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
   const [unifiedBid, setUnifiedBid] = useState('500');
   const [manualBid, setManualBid] = useState('500');
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
-  const [dailyLimitValue, setDailyLimitValue] = useState('');
-  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(false);
-  const [isBudgetMinTooltipVisible, setIsBudgetMinTooltipVisible] = useState(false);
-  const [isAutoRefillTooltipVisible, setIsAutoRefillTooltipVisible] = useState(false);
-  const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
+  const [dailyLimitValue, setDailyLimitValue] = useState(String(DAILY_LIMIT_ABSOLUTE_MIN));
+  const [dailyLimitDraft, setDailyLimitDraft] = useState(String(DAILY_LIMIT_ABSOLUTE_MIN));
+  const [isCarryoverEnabled, setIsCarryoverEnabled] = useState(true);
+  const [isAdvancedDailyLimitModalOpen, setIsAdvancedDailyLimitModalOpen] = useState(false);
+  const [advancedDailyLimitSettings, setAdvancedDailyLimitSettings] =
+    useState<AdvancedDailyLimitSettings>(() => ({
+      ...createDefaultAdvancedDailyLimitSettings(),
+      autoIncreaseEnabled: true,
+      drrMetricEnabled: true,
+      increaseRules: [
+        {
+          id: 'creation-drr',
+          enabled: true,
+          metric: 'drr',
+          limitIncreasePercent: 25,
+          conditions: [
+            {
+              id: 'creation-drr-cond',
+              compare: 'below',
+              threshold: 15,
+              budgetChangeRub: 500,
+            },
+          ],
+          drrBelowPercent: 15,
+          crAbovePercent: 2.8,
+        },
+      ],
+    }));
+  const [autoRefillOnRulesTrigger, setAutoRefillOnRulesTrigger] = useState(true);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const [toastIsError, setToastIsError] = useState(false);
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const [isMultiCategoryWarningOpen, setIsMultiCategoryWarningOpen] = useState(false);
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
@@ -548,8 +925,14 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [productBidDraftByNmId, setProductBidDraftByNmId] = useState<Record<number, string>>({});
   const [isAddProductsModalOpen, setIsAddProductsModalOpen] = useState(false);
   const [actionsMenuNmId, setActionsMenuNmId] = useState<number | null>(null);
+  const [rankingFactorsProduct, setRankingFactorsProduct] = useState<CampaignProductRow | null>(null);
   const actionsMenuRef = useRef<HTMLDivElement>(null);
   const [referralCode, setReferralCode] = useState('');
+  const [usePromoBonuses, setUsePromoBonuses] = useState(false);
+  const [selectedBonusPkgId, setSelectedBonusPkgId] = useState<string>(BONUS_PACKAGES[0].id);
+  const [bonusAmount, setBonusAmount] = useState('300');
+  const [bonusPlacement, setBonusPlacement] = useState<BonusPlacement>('cards');
+  const [isBonusMenuOpen, setIsBonusMenuOpen] = useState(false);
 
   useEffect(() => {
     if (actionsMenuNmId === null) return;
@@ -560,6 +943,21 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     document.addEventListener('mousedown', onDocMouseDown);
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [actionsMenuNmId]);
+
+  useEffect(() => {
+    if (!isBonusMenuOpen) return;
+    const onDocMouseDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-bonus-menu-root]')) return;
+      setIsBonusMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+    return () => document.removeEventListener('mousedown', onDocMouseDown);
+  }, [isBonusMenuOpen]);
+
+  useEffect(() => {
+    setIsBonusMenuOpen(false);
+  }, [bonusPlacement]);
 
   useEffect(() => {
     if (!singleCampaignSeed || repeatSeedAppliedRef.current) return;
@@ -590,6 +988,18 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const parseDisplayValue = (str: string): number => {
     return Number(String(str).replace(/\s/g, '').replace(/,/g, '.'));
   };
+
+  useEffect(() => {
+    if (promoBonusSeedAppliedRef.current) return;
+    const pkgId = consumePendingPromoBonusPackageId();
+    if (!pkgId) return;
+    promoBonusSeedAppliedRef.current = true;
+    const pkg = BONUS_PACKAGES.find((item) => item.id === pkgId) ?? BONUS_PACKAGES[0];
+    setBonusPlacement('budget');
+    setSelectedBonusPkgId(pkg.id);
+    setUsePromoBonuses(true);
+    setBonusAmount(String(maxSpendableBonusFromPackage(pkg, parseDisplayValue(budget))));
+  }, [consumePendingPromoBonusPackageId, budget]);
 
   const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const parsed = parseDisplayValue(e.target.value);
@@ -666,6 +1076,149 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     savedDailyLimitRub > 0 &&
     maxProductBidRub > 0 &&
     isDailyLimitBelowRecommendedForMaxBid(savedDailyLimitRub, maxProductBidRub);
+
+  const budgetRub = parseDisplayValue(budget);
+  const selectedBonusPkg =
+    BONUS_PACKAGES.find((pkg) => pkg.id === selectedBonusPkgId) ?? BONUS_PACKAGES[0];
+  const maxPromoBonusB = maxSpendableBonusFromPackage(selectedBonusPkg, budgetRub);
+  const parsedBonusAmount = parseDisplayValue(bonusAmount);
+  const appliedPromoBonusB = usePromoBonuses
+    ? Math.max(0, Math.min(isNaN(parsedBonusAmount) ? 0 : parsedBonusAmount, maxPromoBonusB))
+    : 0;
+  const totalFromElsRub = Math.max(0, budgetRub - appliedPromoBonusB);
+  const promoBonusAfterLaunchB = Math.max(0, Math.floor(budgetRub * 0.1));
+
+  // Лимит пакета = min(остаток пакета, % от бюджета). Пересчитываем сумму списания
+  // при включении бонусов, смене пакета или изменении бюджета кампании.
+  useEffect(() => {
+    if (!usePromoBonuses) return;
+    const pkg =
+      BONUS_PACKAGES.find((item) => item.id === selectedBonusPkgId) ?? BONUS_PACKAGES[0];
+    setBonusAmount(String(maxSpendableBonusFromPackage(pkg, budgetRub)));
+  }, [usePromoBonuses, selectedBonusPkgId, budgetRub]);
+
+  const handleBonusAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/[^\d]/g, '');
+    if (digits === '') {
+      setBonusAmount('');
+      return;
+    }
+    const parsed = Number(digits);
+    if (isNaN(parsed)) return;
+    setBonusAmount(String(parsed));
+    if (parsed > maxPromoBonusB) {
+      setToastIsError(true);
+      setToastMessage(
+        `С этого пакета можно списать не больше ${formatForDisplay(maxPromoBonusB)} промобонусов`,
+      );
+      setShowToast(true);
+    }
+  };
+
+  const handleBonusAmountBlur = () => {
+    const parsed = parseDisplayValue(bonusAmount);
+    if (isNaN(parsed) || parsed < 0) {
+      setBonusAmount(String(maxPromoBonusB));
+      return;
+    }
+    if (parsed > maxPromoBonusB) {
+      setToastIsError(true);
+      setToastMessage(
+        `С этого пакета можно списать не больше ${formatForDisplay(maxPromoBonusB)} промобонусов`,
+      );
+      setShowToast(true);
+    }
+    setBonusAmount(String(Math.min(parsed, maxPromoBonusB)));
+  };
+
+  const selectBonusPackage = (pkgId: string) => {
+    const pkg = BONUS_PACKAGES.find((item) => item.id === pkgId) ?? BONUS_PACKAGES[0];
+    setSelectedBonusPkgId(pkg.id);
+    setBonusAmount(String(maxSpendableBonusFromPackage(pkg, budgetRub)));
+    if (!usePromoBonuses) setUsePromoBonuses(true);
+  };
+
+  const bonusPickerProps = {
+    selectedPkgId: selectedBonusPkgId,
+    amountDisplay: bonusAmount === '' ? '' : formatForDisplay(bonusAmount),
+    maxAmountDisplay: formatForDisplay(maxPromoBonusB),
+    bonusError:
+      bonusAmount !== '' && !isNaN(parsedBonusAmount) && parsedBonusAmount > maxPromoBonusB
+        ? `С этого пакета можно списать не больше ${formatForDisplay(maxPromoBonusB)} промобонусов`
+        : '',
+    onSelectPackage: selectBonusPackage,
+    onAmountChange: handleBonusAmountChange,
+    onAmountBlur: handleBonusAmountBlur,
+    formatAmount: formatForDisplay,
+  };
+
+  const bonusDropdownMenu = (
+    <BonusPackagesMenu
+      selectedPkgId={selectedBonusPkgId}
+      amountDisplay={bonusAmount === '' ? '' : formatForDisplay(bonusAmount)}
+      onSelectPackage={selectBonusPackage}
+      onAmountChange={handleBonusAmountChange}
+      onAmountBlur={handleBonusAmountBlur}
+      formatAmount={formatForDisplay}
+    />
+  );
+
+  const renderBonusToggleAmount = () => (
+    <div className="mt-1.5 flex items-center gap-2">
+      <ToggleSwitch
+        checked={usePromoBonuses}
+        onChange={(checked) => {
+          setUsePromoBonuses(checked);
+          if (!checked) setIsBonusMenuOpen(false);
+        }}
+      />
+      {usePromoBonuses ? (
+        <button
+          type="button"
+          onClick={() => setIsBonusMenuOpen((open) => !open)}
+          className="inline-flex items-center gap-1 text-base font-bold leading-none tabular-nums text-gray-900"
+          aria-expanded={isBonusMenuOpen}
+          aria-label="Выбор бонусов"
+        >
+          {formatForDisplay(appliedPromoBonusB)} B
+          <ChevronDown
+            className={`h-4 w-4 text-gray-500 transition-transform ${
+              isBonusMenuOpen ? 'rotate-180' : ''
+            }`}
+            aria-hidden
+          />
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const promoBonusSpendLabel = usePromoBonuses ? (
+    <>
+      Списать бонусы с пакета где{' '}
+      <span className="font-medium text-gray-900">
+        {formatForDisplay(selectedBonusPkg.amount)} B
+      </span>
+    </>
+  ) : (
+    'Списать бонусы'
+  );
+
+  const enableDailyLimit = useCallback(() => {
+    setIsDailyLimitEnabled(true);
+    setIsCarryoverEnabled(true);
+    if (!dailyLimitValue) {
+      setDailyLimitValue(String(DAILY_LIMIT_ABSOLUTE_MIN));
+      setDailyLimitDraft(String(DAILY_LIMIT_ABSOLUTE_MIN));
+    }
+  }, [dailyLimitValue]);
+
+  const disableDailyLimit = useCallback(() => {
+    setIsDailyLimitEnabled(false);
+    setIsCarryoverEnabled(false);
+    setDailyLimitValue('');
+    setDailyLimitDraft('');
+    setAdvancedDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
+  }, []);
 
   const commitProductBidCpc = useCallback((nmId: number, parsed: number) => {
     setProductBidsByNmId((prev) => ({ ...prev, [nmId]: String(parsed) }));
@@ -779,24 +1332,50 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     <div className="min-h-screen bg-[#F7F7FA] font-sans text-gray-900" style={{ background: '#F7F7FA' }}>
       <AppHeader onNavigate={onBack} />
       
-      <main className={`flex flex-col items-center px-6 py-8 gap-6 ${products.length > 0 ? 'pb-24' : ''}`}>
+      <main className="flex flex-col items-center gap-6 px-6 py-8 pb-24">
         {profileId === '2' && showReferralInviteCreationBanner && (
           <div className="w-full max-w-[1200px]">
             <ReferralInviteCreationBanner />
           </div>
         )}
+
+        <div className="mx-auto w-full max-w-[1200px]">
+          <div
+            className="inline-flex w-fit max-w-full gap-1 rounded-xl bg-[#F2F2F7] p-1"
+            role="tablist"
+            aria-label="Расположение бонусов"
+          >
+            {BONUS_PLACEMENT_TABS.map((tab) => {
+              const selected = bonusPlacement === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  onClick={() => setBonusPlacement(tab.id)}
+                  className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
+                    selected
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Управление кампанией — макет карточки */}
         <div className="mx-auto w-full max-w-[1200px] overflow-visible rounded-2xl border border-[#EBEBEF] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-          <div className="flex items-center justify-between gap-4 px-5 pb-4 pt-5">
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <input
-                type="text"
-                value={campaignName}
-                onChange={(e) => setCampaignName(e.target.value)}
-                className="min-w-0 flex-1 border-none bg-transparent p-0 text-left text-[22px] font-bold leading-7 tracking-[-0.02em] text-gray-900 outline-none focus:outline-none"
-              />
-              <Edit2 className="h-[18px] w-[18px] shrink-0 text-[#AEAEB8]" aria-hidden />
-            </div>
+          <div className="flex items-center justify-between gap-4 px-5 pb-2 pt-5">
+            <input
+              type="text"
+              value={campaignName}
+              onChange={(e) => setCampaignName(e.target.value)}
+              className="min-w-0 flex-1 border-none bg-transparent p-0 text-left text-[22px] font-bold leading-7 tracking-[-0.02em] text-gray-900 outline-none focus:outline-none"
+            />
             <button
               type="button"
               className="flex shrink-0 items-center gap-1.5 text-sm font-normal text-[#6C5CE7] hover:text-[#5B4BFF]"
@@ -806,244 +1385,411 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             </button>
           </div>
 
-          <div className="border-t border-[#EBEBEF]" />
-
-          <div className="flex items-start gap-4 px-5 py-4">
-            <SingleCampaignPaymentModelIcon model={paymentModel} />
-            <div className="min-w-0 flex-1 pt-0.5">
-              <SingleCampaignPaymentModelDropdown
-                value={paymentModel}
-                onChange={setPaymentModel}
-              />
-
-              {paymentModel === 'CPC' ? (
-                <p className="mb-0 flex items-center gap-1.5 text-sm text-[#8E8E93]">
-                  <Check className="h-4 w-4 shrink-0 text-[#34C759]" aria-hidden />
-                  <span>
-                    <SecondPriceAuctionBenefitLabel />
-                    {CPC_PAYMENT_BENEFITS.slice(1).map((text) => (
-                      <span key={text}>, {text}</span>
-                    ))}
-                  </span>
-                </p>
-              ) : (
-                <p className="mb-0 mt-0 text-sm text-[#8E8E93]">Минимальный шаг ставки 100 ₽</p>
-              )}
-            </div>
+          <div className="px-5 pb-5 pt-3">
+            <SingleCampaignPaymentModelSelector
+              value={paymentModel}
+              onChange={setPaymentModel}
+            />
           </div>
         </div>
 
-        {/* Бюджет и дневной лимит (CPC — две карточки как в макете) */}
+        {/* Бюджет — единый блок как в редактировании, слева ввод вместо «Остаток» */}
         <div className="mx-auto w-full max-w-[1200px]">
-          {paymentModel === 'CPC' &&
-            isDailyLimitEnabled &&
-            parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget) && (
-              <div className="mb-4 rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
-                <p className="text-sm font-medium text-gray-900">
-                  Чтобы задать дневной лимит {formatForDisplay(dailyLimitValue)} ₽, пополните бюджет
-                  еще на{' '}
-                  {formatForDisplay(parseDisplayValue(dailyLimitValue) - parseDisplayValue(budget))} ₽
-                </p>
-              </div>
-            )}
-
-          {paymentModel === 'CPC' ? (
-            <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2">
-              <div className="flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <p className="mb-3 text-sm font-semibold text-gray-900">Бюджет кампании</p>
-                <div className="flex flex-1 flex-col gap-3">
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <div className="relative w-full min-w-[120px] max-w-[200px] flex-1">
-                      <input
-                        type="text"
-                        value={formatForDisplay(budget)}
-                        onChange={handleBudgetChange}
-                        onBlur={handleBudgetBlur}
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                      />
-                    </div>
-                    <div className="flex min-w-[220px] flex-1 items-center gap-2">
-                      <ToggleSwitch
-                        checked={isAutoRefillEnabled}
-                        onChange={setIsAutoRefillEnabled}
-                      />
-                      <span className="text-sm font-medium text-[#6366f1]">Автопополнение бюджета</span>
-                      <div
-                        className="relative inline-block"
-                        onMouseEnter={() => setIsAutoRefillTooltipVisible(true)}
-                        onMouseLeave={() => setIsAutoRefillTooltipVisible(false)}
-                      >
-                        <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
-                        {isAutoRefillTooltipVisible && (
-                          <div className="absolute left-1/2 top-full z-50 mt-2 w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
-                            Пополняем бюджет автоматически по заданным условиям, не чаще одного раза в
-                            день.
-                          </div>
-                        )}
+          <div className="flex w-full flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/[0.03]">
+            {bonusPlacement === 'cards' ? (
+              <>
+                <p className="mb-2 text-xl font-bold leading-none text-gray-900">Бюджет кампании</p>
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
+                  <div
+                    className="relative mb-3 flex w-full flex-col sm:mr-8 sm:w-[320px] sm:shrink-0"
+                    data-bonus-menu-root
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <div className="relative w-full">
+                        <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-sm text-gray-500">
+                          Пополнить на
+                        </span>
+                        <input
+                          type="text"
+                          value={formatForDisplay(budget)}
+                          onChange={handleBudgetChange}
+                          onBlur={handleBudgetBlur}
+                          className="h-9 w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-[104px] pr-7 text-right text-base font-semibold tabular-nums text-gray-900 outline-none transition-colors hover:border-gray-300 focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+                          aria-label="Бюджет кампании"
+                        />
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                          ₽
+                        </span>
                       </div>
                     </div>
+                    <div className="mt-3 flex min-w-0 flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[14px] leading-none text-gray-500">Тратить бонусы</span>
+                        <ToggleSwitch
+                          checked={usePromoBonuses}
+                          onChange={(checked) => {
+                            setUsePromoBonuses(checked);
+                            if (!checked) setIsBonusMenuOpen(false);
+                          }}
+                        />
+                        {usePromoBonuses ? (
+                          <button
+                            type="button"
+                            onClick={() => setIsBonusMenuOpen((open) => !open)}
+                            className="ml-auto inline-flex items-center gap-1 text-[14px] font-bold leading-none tabular-nums text-gray-900"
+                            aria-expanded={isBonusMenuOpen}
+                            aria-label="Выбор бонусов"
+                          >
+                            <ChevronDown
+                              className={`h-4 w-4 text-gray-500 transition-transform ${
+                                isBonusMenuOpen ? 'rotate-180' : ''
+                              }`}
+                              aria-hidden
+                            />
+                            {formatForDisplay(appliedPromoBonusB)} B
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <span className="text-[14px] text-gray-500">Спишем с единого счёта</span>
+                      <p className="mb-0 text-[14px] font-bold leading-none tabular-nums text-gray-900">
+                        {formatForDisplay(totalFromElsRub)} ₽
+                      </p>
+                    </div>
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <span className="text-[14px] text-gray-500">Начислим бонусов</span>
+                      <p className="mb-0 text-[14px] font-bold leading-none tabular-nums text-[#722ED1]">
+                        +{formatForDisplay(promoBonusAfterLaunchB)} B
+                      </p>
+                    </div>
+                    {usePromoBonuses && isBonusMenuOpen ? (
+                      <div className="absolute left-0 top-full z-10 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-100 bg-white p-3 shadow-lg">
+                        {bonusDropdownMenu}
+                      </div>
+                    ) : null}
                   </div>
-                  <p className="flex items-center gap-1.5 text-xs text-gray-500">
-                    Минимальный бюджет — 1 000 ₽
-                    <span
-                      className="relative inline-block"
-                      onMouseEnter={() => setIsBudgetMinTooltipVisible(true)}
-                      onMouseLeave={() => setIsBudgetMinTooltipVisible(false)}
-                    >
-                      <HelpCircle className="h-3.5 w-3.5 cursor-help text-gray-400" />
-                      {isBudgetMinTooltipVisible && (
-                        <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
-                          Кампания не запустится, если бюджет ниже 1 000 ₽.
-                        </div>
-                      )}
-                    </span>
-                  </p>
-                </div>
-              </div>
 
-              <div className="flex flex-col rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <div className="mb-3 flex items-center gap-2">
-                  <ToggleSwitch
-                    checked={isDailyLimitEnabled}
-                    onChange={(checked) => {
-                      setIsDailyLimitEnabled(checked);
-                      if (checked) {
-                        setIsCarryoverEnabled(true);
-                        if (!dailyLimitValue) setDailyLimitValue(String(DAILY_LIMIT_ABSOLUTE_MIN));
-                      } else {
-                        setIsCarryoverEnabled(false);
-                      }
-                    }}
-                  />
-                  <span className="text-sm font-semibold text-gray-900">Дневной лимит</span>
-                  <DailyLimitInfoTooltip />
+                  <div
+                    className="flex w-full flex-col gap-3 sm:w-auto sm:shrink-0 sm:flex-row"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWasAutoRefillToggledOn(!isAutoRefillEnabled);
+                        setIsAutoRefillModalOpen(true);
+                      }}
+                      className="flex min-h-[116px] w-full flex-col gap-1.5 rounded-xl border border-gray-200 px-3 py-2.5 text-left transition-colors hover:bg-[#F5F5F7] sm:w-[220px] sm:shrink-0"
+                    >
+                      <span className="text-sm text-gray-500">Автопополнение</span>
+                      {isAutoRefillEnabled ? (
+                        <p className="mt-auto text-sm leading-snug text-gray-900">
+                          {autoRefillMode === 'dailyLimit' ? (
+                            <>Пополняем бюджет автоматически, если он меньше нужного дневного лимита</>
+                          ) : (
+                            <>
+                              Если бюджет меньше {formatForDisplay(1000)} ₽, пополнять на{' '}
+                              {formatForDisplay(3000)} ₽ не чаще 1 раза в день
+                            </>
+                          )}
+                        </p>
+                      ) : (
+                        <span className="mt-auto w-fit rounded-lg bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-900">
+                          Настроить
+                        </span>
+                      )}
+                    </button>
+
+                    {paymentModel === 'CPC' ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDailyLimitDraft(dailyLimitValue || String(DAILY_LIMIT_ABSOLUTE_MIN));
+                          setIsAdvancedDailyLimitModalOpen(true);
+                        }}
+                        className="flex min-h-[116px] w-full flex-col gap-1.5 rounded-xl border border-gray-200 px-3 py-2.5 text-left transition-colors hover:bg-[#F5F5F7] sm:w-[220px] sm:shrink-0"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm text-gray-500">Дневной лимит</span>
+                          {isDailyLimitEnabled ? (
+                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700">
+                              <Edit2 className="h-3.5 w-3.5" aria-hidden />
+                            </span>
+                          ) : null}
+                        </div>
+                        {isDailyLimitEnabled ? (
+                          <div className="mt-auto">
+                            <div className="flex items-start gap-1.5">
+                              <p className="text-base font-semibold leading-none tabular-nums text-gray-900">
+                                {formatForDisplay(dailyLimitValue || DAILY_LIMIT_ABSOLUTE_MIN)} ₽
+                              </p>
+                              {showDailyLimitBidMismatchHint ? (
+                                <DailyLimitBidMismatchHint
+                                  recommendedDailyLimitRub={recommendedDailyLimitForBids}
+                                  className="mt-0.5"
+                                />
+                              ) : null}
+                            </div>
+                            {advancedDailyLimitSettings.autoIncreaseEnabled ? (
+                              <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
+                                Меняется от ДРР
+                              </p>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="mt-auto w-fit rounded-lg bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-900">
+                            Установить
+                          </span>
+                        )}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="relative mb-3 flex w-full max-w-[260px] items-start gap-1.5">
-                  <div className="relative min-w-0 flex-1">
+              </>
+            ) : (
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
+              <div className="flex w-full flex-col justify-between gap-3 sm:min-h-[116px] sm:w-[240px] sm:shrink-0">
+                <p className="text-xl font-bold leading-none text-gray-900">Бюджет</p>
+                <div className="relative w-full">
                   <input
                     type="text"
-                    value={dailyLimitValue ? formatForDisplay(dailyLimitValue) : ''}
-                    disabled={!isDailyLimitEnabled}
-                    onChange={(e) => {
-                      const parsed = parseDisplayValue(e.target.value);
-                      if (!isNaN(parsed)) {
-                        setDailyLimitValue(String(parsed));
-                      } else if (e.target.value === '') {
-                        setDailyLimitValue('');
-                      }
-                    }}
-                    onBlur={() => {
-                      if (!isDailyLimitEnabled) return;
-                      const parsed = parseDisplayValue(dailyLimitValue);
-                      if (dailyLimitValue === '' || isNaN(parsed) || parsed < 1000) {
-                        setDailyLimitValue('1000');
-                      }
-                    }}
-                    className={`w-full rounded-lg border py-2.5 pl-3 pr-8 text-sm font-medium shadow-sm outline-none transition-colors ${
-                      !isDailyLimitEnabled
-                        ? 'cursor-not-allowed border-gray-200 bg-gray-50 text-gray-400'
-                        : 'border-gray-200 bg-white text-gray-900 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
-                    }`}
-                    placeholder="Задайте от 1000"
+                    value={formatForDisplay(budget)}
+                    onChange={handleBudgetChange}
+                    onBlur={handleBudgetBlur}
+                    className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-3 pr-8 text-[15px] font-medium tabular-nums text-gray-900 outline-none transition-colors hover:border-gray-300 focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+                    aria-label="Бюджет кампании"
                   />
-                  <span
-                    className={`pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm ${
-                      !isDailyLimitEnabled ? 'text-gray-300' : 'text-gray-400'
-                    }`}
-                  >
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
                     ₽
                   </span>
+                </div>
+              </div>
+
+              <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-stretch">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWasAutoRefillToggledOn(!isAutoRefillEnabled);
+                    setIsAutoRefillModalOpen(true);
+                  }}
+                  className="flex min-h-[116px] w-full flex-col gap-1.5 rounded-xl border border-gray-200 px-3 py-2.5 text-left transition-colors hover:bg-[#F5F5F7] sm:w-[220px] sm:shrink-0"
+                >
+                  <span className="text-sm text-gray-500">Автопополнение</span>
+                  {isAutoRefillEnabled ? (
+                    <p className="mt-auto text-sm leading-snug text-gray-900">
+                      {autoRefillMode === 'dailyLimit' ? (
+                        <>Пополняем бюджет автоматически, если он меньше нужного дневного лимита</>
+                      ) : (
+                        <>
+                          Если бюджет меньше {formatForDisplay(1000)} ₽, пополнять на{' '}
+                          {formatForDisplay(3000)} ₽ не чаще 1 раза в день
+                        </>
+                      )}
+                    </p>
+                  ) : (
+                    <span className="mt-auto w-fit rounded-lg bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-900">
+                      Настроить
+                    </span>
+                  )}
+                </button>
+
+                {paymentModel === 'CPC' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDailyLimitDraft(dailyLimitValue || String(DAILY_LIMIT_ABSOLUTE_MIN));
+                      setIsAdvancedDailyLimitModalOpen(true);
+                    }}
+                    className="flex min-h-[116px] w-full flex-col gap-1.5 rounded-xl border border-gray-200 px-3 py-2.5 text-left transition-colors hover:bg-[#F5F5F7] sm:w-[220px] sm:shrink-0"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm text-gray-500">Дневной лимит</span>
+                      {isDailyLimitEnabled ? (
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-gray-100 text-gray-700">
+                          <Edit2 className="h-3.5 w-3.5" aria-hidden />
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {isDailyLimitEnabled ? (
+                      <div className="mt-auto">
+                        <div className="flex items-start gap-1.5">
+                          <p className="text-base font-semibold leading-none tabular-nums text-gray-900">
+                            {formatForDisplay(dailyLimitValue || DAILY_LIMIT_ABSOLUTE_MIN)} ₽
+                          </p>
+                          {showDailyLimitBidMismatchHint ? (
+                            <DailyLimitBidMismatchHint
+                              recommendedDailyLimitRub={recommendedDailyLimitForBids}
+                              className="mt-0.5"
+                            />
+                          ) : null}
+                        </div>
+                        {advancedDailyLimitSettings.autoIncreaseEnabled ? (
+                          <p className="mt-1 inline-flex items-center gap-1.5 text-xs text-gray-500">
+                            <svg
+                              viewBox="0 0 16 16"
+                              className="h-3 w-3 shrink-0 text-[#34C759]"
+                              fill="none"
+                              aria-hidden
+                            >
+                              <path
+                                d="M1.5 10.5 5 7l3 3 6.5-6.5"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                              <path
+                                d="M11 3.5h3.5V7"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            Меняется от ДРР
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="mt-auto w-fit rounded-lg bg-gray-100 px-2.5 py-1 text-sm font-medium text-gray-900">
+                        Установить
+                      </span>
+                    )}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            )}
+
+            {bonusPlacement !== 'footer' && bonusPlacement !== 'cards' ? (
+            <div className="flex w-full flex-col gap-4 border-t border-gray-100 pt-3">
+              {bonusPlacement === 'budget' ? (
+                <div
+                  className="relative flex min-h-[52px] flex-wrap items-start gap-4 sm:gap-5"
+                  data-bonus-menu-root
+                >
+                  <div className="min-w-0 shrink-0">
+                    <p className="text-xs leading-none text-gray-400">Итого с ЕЛС</p>
+                    <p className="mt-1.5 mb-0 text-base font-bold leading-none tabular-nums text-gray-900">
+                      {formatForDisplay(totalFromElsRub)} ₽
+                    </p>
                   </div>
-                  {showDailyLimitBidMismatchHint ? (
-                    <DailyLimitBidMismatchHint
-                      recommendedDailyLimitRub={recommendedDailyLimitForBids}
-                      className="mt-2.5"
-                    />
+                  <div className="min-w-0 shrink-0">
+                    <p className="text-xs leading-none text-gray-400">{promoBonusSpendLabel}</p>
+                    {renderBonusToggleAmount()}
+                  </div>
+                  <div className="hidden h-9 w-px shrink-0 bg-gray-200 sm:block" aria-hidden />
+                  <div className="min-w-0 shrink-0">
+                    <div className="flex items-center gap-1">
+                      <p className="mb-0 text-xs leading-none text-gray-400">Начислим после запуска</p>
+                      <span className="group relative inline-flex">
+                        <button
+                          type="button"
+                          className="text-gray-400 transition-colors hover:text-gray-600"
+                          aria-label="Когда начислим бонусы"
+                        >
+                          <HelpCircle className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                        <span
+                          role="tooltip"
+                          className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-lg bg-gray-900 px-3 py-2 text-xs font-normal leading-snug text-white group-hover:block group-focus-within:block"
+                        >
+                          Начислим бонусы, когда кампания завершится и потратит весь бюджет.
+                        </span>
+                      </span>
+                    </div>
+                    <p className="mt-[9px] mb-0 text-base font-bold leading-none tabular-nums text-[#722ED1]">
+                      +{formatForDisplay(promoBonusAfterLaunchB)} B
+                    </p>
+                  </div>
+                  {usePromoBonuses && isBonusMenuOpen ? (
+                    <div className="absolute left-0 top-full z-10 mt-2 w-[22rem] max-w-full rounded-xl border border-gray-100 bg-white p-3 shadow-lg">
+                      {bonusDropdownMenu}
+                    </div>
                   ) : null}
                 </div>
-                <label className="m-0 flex cursor-pointer items-center gap-2">
-                  <Checkbox
-                    disabled={!isDailyLimitEnabled}
-                    checked={isCarryoverEnabled}
-                    onChange={(e) => {
-                      if (!isDailyLimitEnabled) return;
-                      setIsCarryoverEnabled(e.target.checked);
-                    }}
-                  />
-                  <span
-                    className={`text-xs ${isDailyLimitEnabled ? 'text-gray-700' : 'text-gray-400'}`}
-                  >
-                    Переносить неистраченные деньги
-                  </span>
-                  <div
-                    className="relative inline-block"
-                    onMouseEnter={() => setIsCarryoverTooltipVisible(true)}
-                    onMouseLeave={() => setIsCarryoverTooltipVisible(false)}
-                  >
-                    <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
-                    {isCarryoverTooltipVisible && (
-                      <div className="absolute left-1/2 top-full z-50 mt-2 w-72 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
-                        <p className="mb-1">Система старается тратить бюджет равномерно.</p>
-                        <p>
-                          Если сегодня потратится меньше дневного лимита, остаток будет добавлен к
-                          лимиту следующего дня.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </label>
-              </div>
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-              <p className="mb-3 text-sm font-semibold text-gray-900">Бюджет кампании</p>
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div className="relative w-full min-w-[120px] max-w-[200px]">
-                    <input
-                      type="text"
-                      value={formatForDisplay(budget)}
-                      onChange={handleBudgetChange}
-                      onBlur={handleBudgetBlur}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm font-medium text-gray-900 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-                    />
-                  </div>
-                  <div className="flex min-w-[220px] flex-1 items-center gap-2">
-                    <ToggleSwitch checked={isAutoRefillEnabled} onChange={setIsAutoRefillEnabled} />
-                    <span className="text-sm font-medium text-[#6366f1]">Автопополнение бюджета</span>
-                    <div
-                      className="relative inline-block"
-                      onMouseEnter={() => setIsAutoRefillTooltipVisible(true)}
-                      onMouseLeave={() => setIsAutoRefillTooltipVisible(false)}
-                    >
-                      <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
-                      {isAutoRefillTooltipVisible && (
-                        <div className="absolute left-1/2 top-full z-50 mt-2 w-64 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
-                          Пополняем бюджет автоматически по заданным условиям, не чаще одного раза в
-                          день.
-                        </div>
-                      )}
+              ) : null}
+
+              {bonusPlacement === 'wallet' ? (
+                <>
+                  <div className="relative flex min-h-[52px] flex-col items-start gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-9 shrink-0 items-center justify-center text-gray-400">
+                        <Wallet className="h-5 w-5" aria-hidden />
+                      </span>
+                      <p className="mb-0 text-[15px] font-medium leading-none text-gray-900">
+                        Спишем со счёта:{' '}
+                        <span className="tabular-nums">{formatForDisplay(totalFromElsRub)} ₽</span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-9 shrink-0 items-center justify-center">
+                        <ToggleSwitch
+                          checked={usePromoBonuses}
+                          onChange={setUsePromoBonuses}
+                          size="md"
+                        />
+                      </span>
+                      <p className="mb-0 text-[15px] font-medium leading-none text-gray-900">
+                        Спишем бонусов:{' '}
+                        <span className="tabular-nums">
+                          {formatForDisplay(appliedPromoBonusB)} B
+                        </span>
+                      </p>
                     </div>
                   </div>
-                </div>
-                <p className="flex items-center gap-1.5 text-xs text-gray-500">
-                  Минимальный бюджет — 1 000 ₽
-                  <span
-                    className="relative inline-block"
-                    onMouseEnter={() => setIsBudgetMinTooltipVisible(true)}
-                    onMouseLeave={() => setIsBudgetMinTooltipVisible(false)}
-                  >
-                    <HelpCircle className="h-3.5 w-3.5 cursor-help text-gray-400" />
-                    {isBudgetMinTooltipVisible && (
-                      <div className="absolute left-1/2 top-full z-50 mt-2 w-56 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg">
-                        Кампания не запустится, если бюджет ниже 1 000 ₽.
-                      </div>
-                    )}
-                  </span>
-                </p>
-              </div>
+
+                  {usePromoBonuses ? <BonusPackagePicker {...bonusPickerProps} /> : null}
+                </>
+              ) : null}
+
+              {bonusPlacement === 'select' ? (
+                <>
+                  <div className="relative flex min-h-[52px] flex-col items-start gap-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-9 shrink-0 items-center justify-center text-gray-400">
+                        <Wallet className="h-5 w-5" aria-hidden />
+                      </span>
+                      <p className="mb-0 text-[15px] font-medium leading-none text-gray-900">
+                        Спишем со счёта:{' '}
+                        <span className="tabular-nums">{formatForDisplay(totalFromElsRub)} ₽</span>
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-8 w-9 shrink-0 items-center justify-center">
+                        <ToggleSwitch
+                          checked={usePromoBonuses}
+                          onChange={(checked) => {
+                            setUsePromoBonuses(checked);
+                            if (!checked) setIsBonusMenuOpen(false);
+                          }}
+                          size="md"
+                        />
+                      </span>
+                      <p className="mb-0 text-[15px] font-medium leading-none text-gray-900">
+                        Спишем бонусов:{' '}
+                        <span className="tabular-nums">
+                          {formatForDisplay(appliedPromoBonusB)} B
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {usePromoBonuses ? (
+                    <BonusPackageRichSelect
+                      {...bonusPickerProps}
+                      menuOpen={isBonusMenuOpen}
+                      onMenuOpenChange={setIsBonusMenuOpen}
+                    />
+                  ) : null}
+                </>
+              ) : null}
             </div>
-          )}
+            ) : null}
+          </div>
         </div>
 
         {/* Зоны показов */}
@@ -1136,7 +1882,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
         )}
 
         {/* Товары */}
-        <div className="bg-white rounded-2xl px-5 py-0 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
+        <div className="bg-white rounded-2xl px-5 pt-0 pb-0 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
           {products.length === 0 ? (
             <div className="py-4">
               <button
@@ -1151,7 +1897,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           ) : (
             <>
               <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-lg font-bold text-gray-900">
+                <h2 className="mt-[15px] text-lg font-bold text-gray-900">
                   Товары{' '}
                   <span className="font-normal text-gray-500">
                     {products.length} шт.
@@ -1219,9 +1965,16 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
                             <p className="mt-0.5 truncate text-xs text-gray-500">
                               {brand} · {article}
                             </p>
-                            <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
                               <span>· {product.nmId}</span>
                               <CopyNmIdButton nmId={product.nmId} />
+                              <button
+                                type="button"
+                                onClick={() => setRankingFactorsProduct(product)}
+                                className="font-medium text-gray-500 transition-colors hover:text-gray-700"
+                              >
+                                Факторы ранжирования <span className="text-[#F07167]">-2</span>
+                              </button>
                             </div>
                           </td>
                           <td className="py-3 pr-4 text-right">
@@ -1288,8 +2041,36 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
       </main>
 
       {/* Toast */}
-      <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
+      <Toast
+        show={showToast}
+        message={toastMessage}
+        isError={toastIsError}
+        onClose={() => {
+          setShowToast(false);
+          setToastIsError(false);
+        }}
+      />
       {cpmBidRoundedAlertNode}
+
+      <RankingFactorsSidePanel
+        open={rankingFactorsProduct != null}
+        onClose={() => setRankingFactorsProduct(null)}
+        productName={rankingFactorsProduct?.productName}
+        productImageUrl={
+          rankingFactorsProduct
+            ? resolveProductTableThumbSrc(
+                String(rankingFactorsProduct.nmId),
+                rankingFactorsProduct.imageUrl,
+                rankingFactorsProduct.category,
+              ) || PRODUCT_TABLE_THUMB_FALLBACK
+            : undefined
+        }
+        productMeta={
+          rankingFactorsProduct
+            ? `${rankingFactorsProduct.category} • ${rankingFactorsProduct.brand ?? '—'} • ${rankingFactorsProduct.nmId}`
+            : undefined
+        }
+      />
 
       {/* Modal for adding products */}
       <SingleCampaignAddProductsModal
@@ -1376,46 +2157,145 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
         </div>
       )}
 
-      {/* Fixed footer with launch button */}
-      {products.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg z-50 p-4">
-          <div className="max-w-[1200px] mx-auto flex flex-wrap items-center justify-end gap-3">
+      {/* Fixed footer island */}
+      {bonusPlacement === 'footer' || products.length > 0 ? (
+      <div className="pointer-events-none fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto relative flex flex-wrap items-center gap-4 rounded-[20px] bg-white p-[10px] pl-4 shadow-[0_8px_28px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.06] sm:flex-nowrap sm:gap-5">
             {profileId === '2' && (
               <label className="flex items-center gap-2">
-                <span className="text-xs font-medium text-gray-600 whitespace-nowrap">Реферальный код</span>
+                <span className="whitespace-nowrap text-xs font-medium text-gray-500">Реф. код</span>
                 <input
                   type="text"
                   value={referralCode}
                   onChange={(e) => setReferralCode(e.target.value)}
-                  className="w-[7.5rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-violet-300 focus:outline-none focus:ring-1 focus:ring-violet-100 sm:w-32"
+                  className="w-[5.5rem] rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-violet-300 focus:outline-none focus:ring-1 focus:ring-violet-100"
                   aria-label="Реферальный код"
                 />
               </label>
             )}
+
+            {bonusPlacement === 'footer' ? (
+              <>
+                <div className="min-w-0 shrink-0">
+                  <p className="text-xs leading-none text-gray-400">Итого с ЕЛС</p>
+                  <p className="mt-1.5 mb-0 text-base font-bold leading-none tabular-nums text-gray-900">
+                    {formatForDisplay(totalFromElsRub)} ₽
+                  </p>
+                </div>
+                <div className="hidden h-9 w-px shrink-0 bg-gray-200 sm:block" aria-hidden />
+                <div className="relative min-w-0 shrink-0" data-bonus-menu-root>
+                  <p className="text-xs leading-none text-gray-400">{promoBonusSpendLabel}</p>
+                  {renderBonusToggleAmount()}
+                  {usePromoBonuses && isBonusMenuOpen ? (
+                    <div className="absolute bottom-full left-1/2 z-10 mb-2 w-[22rem] -translate-x-1/2 rounded-xl border border-gray-100 bg-white p-3 shadow-lg">
+                      {bonusDropdownMenu}
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
+
             <button
-              disabled={paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget)}
-              className={`px-6 py-3 text-base font-bold rounded-lg transition-colors ${
-                paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget)
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-purple-600 text-white hover:bg-purple-700'
+              type="button"
+              disabled={products.length === 0}
+              className={`shrink-0 rounded-xl px-5 py-2.5 text-sm font-bold transition-colors sm:px-6 sm:py-3 sm:text-base ${
+                products.length === 0
+                  ? 'cursor-not-allowed bg-gray-200 text-gray-400'
+                  : 'bg-[#9A41FE] text-white hover:bg-[#8835E8]'
               }`}
               onClick={() => {
-                // Проверяем условия: нет ошибок в бюджете
-                const hasBudgetError = paymentModel === 'CPC' && isDailyLimitEnabled && parseDisplayValue(dailyLimitValue) > parseDisplayValue(budget);
-                
-                if (!hasBudgetError) {
-                  if (profileId === '2' && referralCode.trim()) {
-                    notifyReferralCampaignCreatedFromCreation();
-                  }
-                  onNavigateToMassCreation(products);
+                if (products.length === 0) return;
+                if (profileId === '2' && referralCode.trim()) {
+                  notifyReferralCampaignCreatedFromCreation();
                 }
+                onNavigateToMassCreation(products);
               }}
             >
-              Запустить кампанию
+              Запустить
             </button>
           </div>
         </div>
-      )}
+      ) : null}
+
+      {isAutoRefillModalOpen ? (
+        <AutoRefillModal
+          isOpen={isAutoRefillModalOpen}
+          initialMode={autoRefillMode}
+          onClose={() => {
+            setIsAutoRefillModalOpen(false);
+            if (wasAutoRefillToggledOn) {
+              setIsAutoRefillEnabled(false);
+              setWasAutoRefillToggledOn(false);
+            }
+          }}
+          onSave={(mode) => {
+            setAutoRefillMode(mode);
+            setIsAutoRefillEnabled(true);
+            setIsAutoRefillModalOpen(false);
+            setWasAutoRefillToggledOn(false);
+            setToastMessage('Автопополнение настроено');
+            setShowToast(true);
+          }}
+        />
+      ) : null}
+
+      <AdvancedDailyLimitModal
+        dailyLimitOnly
+        conditionRuleBuilder
+        allowLimitAboveBudget={true}
+        isOpen={isAdvancedDailyLimitModalOpen}
+        onClose={() => {
+          setDailyLimitDraft(dailyLimitValue || String(DAILY_LIMIT_ABSOLUTE_MIN));
+          setIsAdvancedDailyLimitModalOpen(false);
+        }}
+        isDailyLimitEnabled={isDailyLimitEnabled}
+        onEnableDailyLimit={enableDailyLimit}
+        onDisableDailyLimit={disableDailyLimit}
+        dailyLimitValue={dailyLimitDraft}
+        onDailyLimitValueChange={setDailyLimitDraft}
+        onDailyLimitCommit={(parsed, options) => {
+          if (isNaN(parsed) || parsed < DAILY_LIMIT_ABSOLUTE_MIN) {
+            setDailyLimitDraft(String(DAILY_LIMIT_ABSOLUTE_MIN));
+            setToastMessage(
+              `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
+            );
+            setShowToast(true);
+            return;
+          }
+          setDailyLimitValue(String(parsed));
+          setDailyLimitDraft(String(parsed));
+          setIsDailyLimitEnabled(true);
+          if (!options?.silent) {
+            setToastMessage(
+              `Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`,
+            );
+            setShowToast(true);
+          }
+        }}
+        savedDailyLimit={dailyLimitValue}
+        isCarryoverEnabled={isCarryoverEnabled}
+        onCarryoverChange={setIsCarryoverEnabled}
+        campaignBudget={budgetRub}
+        initialSettings={advancedDailyLimitSettings}
+        referenceCpcBidRub={maxProductBidRub > 0 ? maxProductBidRub : parseDisplayValue(unifiedBid)}
+        autoRefillOnRulesTrigger={autoRefillOnRulesTrigger}
+        onAutoRefillOnRulesTriggerChange={setAutoRefillOnRulesTrigger}
+        onApply={(settings, options) => {
+          setAdvancedDailyLimitSettings(settings);
+          if (options?.reset) return;
+          setIsAdvancedDailyLimitModalOpen(false);
+          setToastMessage(
+            settings.autoIncreaseEnabled
+              ? 'Настроен динамичный лимит'
+              : 'Настройки дневного лимита сохранены',
+          );
+          setShowToast(true);
+        }}
+        onAfterResetSettings={() => {
+          setToastMessage('Расширенные настройки сброшены');
+          setShowToast(true);
+        }}
+      />
     </div>
   );
 };

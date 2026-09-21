@@ -13,6 +13,12 @@ export type CampaignStatus = 'active' | 'paused' | 'draft' | 'error';
 /** Предсобранная однотоварная CPC-кампания — первая строка в списке (profile 1) */
 export const PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID = 999998;
 
+/** Дубликат второй строки списка (profile 1) — отдельный id для UI-концепта блока бюджета */
+export const BUDGET_CONCEPT_DEMO_CAMPAIGN_ID = 999997;
+
+/** 4-я кампания в списке (profile 1) — концепт единого блока «Бюджет» (диапазон) */
+export const BUDGET_RANGE_CONCEPT_DEMO_CAMPAIGN_ID = 999996;
+
 export interface CampaignSpec {
   type: CampaignType;
   status: CampaignStatus;

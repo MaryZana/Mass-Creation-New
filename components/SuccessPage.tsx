@@ -16,17 +16,28 @@ import { useCpmBidRoundedAlert } from './CpmBidRoundedAlert';
 import { OverviewMiniWidgetsForCampaignsList } from '../pages/OverviewPage';
 import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
+import {
+  DynamicDailyLimitMark,
+  demoDynamicDailyLimitStats,
+  DynamicDailyLimitStatsTooltipContent,
+} from './DynamicDailyLimitMark';
 import { ConceptPromotionInsightStrip } from './ConceptPromotionInsightStrip';
+import { RankingFactorsSidePanel } from './RankingFactorsSidePanel';
 import {
   NotPromotedBonusCampaignBanner,
   NotPromotedBonusCampaignModal,
   CampaignsListBonusBanner,
   notPromotedV3BonusOffer,
 } from './NotPromotedBonusCampaignOffer';
+import {
+  BulkPaymentModelModal,
+  type BulkPaymentModelProduct,
+} from './BulkPaymentModelModal';
 import ReactDOM from 'react-dom';
 import { Checkbox } from 'antd';
 import { 
     Plus, 
+    Minus,
     Menu,
     Search, 
     Calendar, 
@@ -72,6 +83,8 @@ import {
   resolveProductTableThumbSrc,
   productTableThumbUrl,
   PREBUILT_LIST_SINGLE_PRODUCT_CPC_CAMPAIGN_ID,
+  BUDGET_CONCEPT_DEMO_CAMPAIGN_ID,
+  BUDGET_RANGE_CONCEPT_DEMO_CAMPAIGN_ID,
 } from './SuccessPageTestData';
 import {
   useProfile,
@@ -100,6 +113,11 @@ import {
   type CampaignListAutomationKind,
   type CampaignListAutomationModalTarget,
 } from './CampaignListAutomationModals';
+import {
+  AdvancedDailyLimitModal,
+  createDefaultAdvancedDailyLimitSettings,
+  type AdvancedDailyLimitSettings,
+} from './CpcCampaignPage';
 
 // --- Constants ---
 const TOTAL_PROMO_BONUS = 226660517;
@@ -206,6 +224,12 @@ interface SuccessPageProps {
   ) => void;
   /** Массовое создание с товарами «хорошая конверсия» (вариант 4) */
   onNavigateToCreationWithGrowingDemand?: () => void;
+  /** Подтверждение модалки «Товары для скидки WB» на списке кампаний */
+  onConfirmWbDiscountPromote?: (payload: {
+    products: BulkPaymentModelProduct[];
+    paymentModel: 'CPC' | 'CPM';
+    zones: { search: boolean; recommendations: boolean };
+  }) => void;
   onOpenUploadEditsModal: () => void;
   selectedCampaigns: string[];
   onSelectionChange: (ids: string[]) => void;
@@ -223,14 +247,20 @@ interface SuccessPageProps {
     dailyLimit: number | null;
     scheduledDailyLimit: number | null;
     dailyLimitExhausted?: boolean;
+    autoRefill?: boolean;
+    dynamicDailyLimit?: boolean;
     fromReadyToRepeat?: boolean;
     repeatLaunchPreset?: RepeatLaunchPreset;
     campaignStatus?: 'active' | 'paused';
     openBidRecommendations?: boolean;
     bidRecommendationProduct?: { name: string; image: string };
+    /** Дубликат 2-й строки: будущий отдельный UI-концепт блока бюджета */
+    budgetConceptDemo?: boolean;
+    /** 4-я кампания: концепт единого блока «Бюджет» (диапазон) */
+    budgetRangeConceptDemo?: boolean;
   }) => void;
-  onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void;
-  onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; status?: 'active' | 'paused'; statusText?: string }) => void) => void;
+  onUpdateCampaignData?: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; autoRefill?: boolean; dynamicDailyLimit?: boolean; status?: 'active' | 'paused'; statusText?: string }) => void;
+  onRegisterUpdateFn?: (fn: (campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; autoRefill?: boolean; dynamicDailyLimit?: boolean; status?: 'active' | 'paused'; statusText?: string }) => void) => void;
   /** Открыть массовую настройку дневного лимита для текущего выделения (панель в App) */
   onRegisterBulkDailyLimitOpener?: (open: () => void) => void;
   onOpenSingleCampaign?: () => void;
@@ -269,6 +299,8 @@ interface DisplayCampaign {
   maxCpcBidRub?: number;
   /** true = лимит на сегодня израсходован, показы остановлены */
   dailyLimitExhausted?: boolean;
+  /** Правила автоувеличения дневного лимита включены */
+  dynamicDailyLimit?: boolean;
   spend: number | null;
   impressions: number | null;
   ctr: number | null;
@@ -276,6 +308,10 @@ interface DisplayCampaign {
   spendShare: number | null;
   /** Вторая строка в списке: кампания за бонусы, открывается как из «Готовы к повтору» */
   isBonusCampaign?: boolean;
+  /** Дубликат 2-й строки для отдельного UI-концепта блока бюджета */
+  budgetConceptDemo?: boolean;
+  /** 4-я строка списка: концепт единого блока «Бюджет» (диапазон) */
+  budgetRangeConceptDemo?: boolean;
 }
 
 type CampaignListDataPatch = {
@@ -284,6 +320,8 @@ type CampaignListDataPatch = {
   dailyLimit?: number | null;
   scheduledDailyLimit?: number | null;
   maxCpcBidRub?: number;
+  autoRefill?: boolean;
+  dynamicDailyLimit?: boolean;
   status?: 'active' | 'paused';
   statusText?: string;
 };
@@ -303,6 +341,11 @@ function applyCampaignListPatches(
       ...(patch.dailyLimit !== undefined && { dailyLimit: patch.dailyLimit }),
       ...(patch.scheduledDailyLimit !== undefined && { scheduledDailyLimit: patch.scheduledDailyLimit }),
       ...(patch.maxCpcBidRub !== undefined && { maxCpcBidRub: patch.maxCpcBidRub }),
+      ...(patch.autoRefill !== undefined && {
+        autoRefill: patch.autoRefill,
+        autoRefillStatus: patch.autoRefill ? ('ok' as const) : ('error' as const),
+      }),
+      ...(patch.dynamicDailyLimit !== undefined && { dynamicDailyLimit: patch.dynamicDailyLimit }),
       ...(patch.status !== undefined && { status: patch.status }),
       ...(patch.statusText !== undefined && { statusText: patch.statusText }),
     };
@@ -499,7 +542,19 @@ function buildProductStockBreakdownValues(
 ): ProductStockBreakdown {
   const sizeLabels = productStockSizeLabelsForSeed(seed, category);
   const sized = sizeLabels.length > 1 || sizeLabels[0] !== 'Всего';
-  const richSizedDemo = sized && baseStock > 0 && seed % 3 === 1 && sizeLabels.length >= 5;
+
+  if (baseStock <= 0) {
+    const emptySizes = sized
+      ? sizeLabels.map((label) => ({ label, qty: 0 }))
+      : [{ label: 'Всего', qty: 0 }];
+    return {
+      displayTotal: 0,
+      wb: { total: 0, sizes: emptySizes },
+      seller: { total: 0, sizes: emptySizes },
+    };
+  }
+
+  const richSizedDemo = sized && seed % 3 === 1 && sizeLabels.length >= 5;
 
   let wbSizes: ProductStockSizeRow[];
   if (!sized) {
@@ -851,17 +906,16 @@ function ProductStockRemainderCell({
   const items = useMemo(() => [stockHoverItemFromProductRow(product)], [product]);
   const breakdown = useMemo(() => buildProductStockBreakdown(product), [product]);
   const { anchorRef, openHover, scheduleClose, portal } = useStockRemainderHoverPortal(items);
-  const amountClassName = productStockAmountClassName(breakdown.displayTotal, compact);
 
   return (
     <>
       <span
         ref={anchorRef}
-        className={`cursor-default underline decoration-dotted decoration-gray-300 underline-offset-4 ${amountClassName}`}
+        className="cursor-default"
         onMouseEnter={openHover}
         onMouseLeave={scheduleClose}
       >
-        {formatProductStockAmount(breakdown.displayTotal)}
+        <ProductStockAmountLabel total={breakdown.displayTotal} />
       </span>
       {portal}
     </>
@@ -884,44 +938,68 @@ function CampaignStockRemainderCell({
     [items],
   );
   const { anchorRef, openHover, scheduleClose, portal } = useStockRemainderHoverPortal(items);
-  const amountClassName = productStockAmountClassName(displayTotal, false);
 
   return (
     <>
       <span
         ref={anchorRef}
-        className={`cursor-default underline decoration-dotted decoration-gray-300 underline-offset-4 ${amountClassName}`}
+        className="cursor-default"
         onMouseEnter={openHover}
         onMouseLeave={scheduleClose}
       >
-        {formatProductStockAmount(displayTotal)}
+        <ProductStockAmountLabel total={displayTotal} />
       </span>
       {portal}
     </>
   );
 }
 
-function formatProductStockAmount(total: number): string {
-  return `${total.toLocaleString('ru-RU')} шт`;
+function formatProductStockNumber(total: number): string {
+  return total.toLocaleString('ru-RU');
 }
 
-function productStockAmountClassName(total: number, compact = false): string {
-  const toneClass = total === 0 ? 'text-gray-400' : 'text-gray-900';
-  return `font-semibold tabular-nums ${compact ? 'text-xs' : 'text-sm'} ${toneClass}`;
+function productStockAmountClassName(total: number): string {
+  const toneClass = total === 0 ? 'text-red-600' : 'text-gray-900';
+  return `text-sm font-semibold tabular-nums ${toneClass}`;
+}
+
+function ProductStockAmountLabel({ total }: { total: number }) {
+  return (
+    <span className={productStockAmountClassName(total)}>
+      {formatProductStockNumber(total)}
+      <span className="font-semibold text-gray-400"> шт</span>
+    </span>
+  );
+}
+
+const ZERO_STOCK_PROMOTE_WARNING =
+  'Кампания не будет работать, пока товар не появится в наличии.';
+
+const ZERO_STOCK_BULK_CREATE_WARNING =
+  'Кампании по товарам без остатков не будут работать, пока товары не появятся в наличии.';
+
+function isDemoZeroStockProductRow(
+  product: ProductRow,
+  sortedProductsForTable: ProductRow[],
+  conceptNotPromotedProductsList: boolean,
+): boolean {
+  if (conceptNotPromotedProductsList) {
+    const n = sortedProductsForTable.length;
+    const zeroFrom = Math.max(0, n - 4);
+    const idx = sortedProductsForTable.findIndex((row) => row.id === product.id);
+    if (idx >= zeroFrom) return true;
+  }
+  if (product.stockLeft <= 0) return true;
+  return buildProductStockBreakdown(product).displayTotal === 0;
 }
 
 function ProductStockStaticTotal({
   total,
-  compact = false,
 }: {
   total: number;
   compact?: boolean;
 }) {
-  return (
-    <span className={productStockAmountClassName(total, compact)}>
-      {formatProductStockAmount(total)}
-    </span>
-  );
+  return <ProductStockAmountLabel total={total} />;
 }
 
 function productStockTableTdClass(compactTable: boolean): string {
@@ -978,14 +1056,12 @@ const CONCEPT_PRODUCTS_PICK_TABS: {
     ProductsPickTab,
     | 'all_products'
     | 'promoted'
-    | 'not_promoted'
     | 'not_promoted_v3'
   >;
   label: string;
 }[] = [
   { id: 'promoted', label: 'Товары' },
-  { id: 'not_promoted', label: 'Без продвижения' },
-  { id: 'not_promoted_v3', label: 'V3' },
+  { id: 'not_promoted_v3', label: 'Без продвижения' },
   { id: 'all_products', label: 'Мультикарточки' },
 ];
 
@@ -998,12 +1074,13 @@ const PRODUCTS_PICK_TABS: { id: ProductsPickTab; label: string }[] = [
   { id: 'promo', label: 'В акциях' },
 ];
 
-type ProductsSecondaryPickTab = 'all' | 'high_conversion' | 'ab';
+type ProductsSecondaryPickTab = 'all' | 'high_conversion' | 'ab' | 'wb_discount';
 
 const PRODUCTS_PICK_SECONDARY_TABS: { id: ProductsSecondaryPickTab; label: string }[] = [
   { id: 'all', label: 'Все' },
   { id: 'high_conversion', label: 'Перспективные' },
   { id: 'ab', label: 'Новые' },
+  { id: 'wb_discount', label: 'Для скидки WB' },
 ];
 
 const PRODUCTS_PICK_SECONDARY_TAB_VISUAL: Record<
@@ -1021,9 +1098,12 @@ const PRODUCTS_PICK_SECONDARY_TAB_VISUAL: Record<
   ab: {
     Icon: Sparkles,
   },
+  wb_discount: {
+    Icon: Gift,
+  },
 };
 
-type ProductsPickCtaTab = 'growth' | 'high_conversion' | 'ab';
+type ProductsPickCtaTab = 'growth' | 'high_conversion' | 'ab' | 'wb_discount';
 
 const PRODUCTS_PICK_PROMOTION_CTA_CONFIG: Record<
   ProductsPickCtaTab,
@@ -1048,12 +1128,17 @@ const PRODUCTS_PICK_PROMOTION_CTA_CONFIG: Record<
     iconWrapClass: 'bg-sky-100 text-sky-600',
     Icon: Sparkles,
   },
+  wb_discount: {
+    message: 'Продвигайте товары из этих категорий и получайте до +10% к скидке WB',
+    iconWrapClass: 'bg-[#F3E8FF] text-[#7C3AED]',
+    Icon: Gift,
+  },
 };
 
 function productsPickPromotionCtaTab(
   tab: ProductsPickTab | ProductsSecondaryPickTab,
 ): ProductsPickCtaTab | null {
-  if (tab === 'growth' || tab === 'high_conversion' || tab === 'ab') {
+  if (tab === 'growth' || tab === 'high_conversion' || tab === 'ab' || tab === 'wb_discount') {
     return tab;
   }
   return null;
@@ -1967,6 +2052,7 @@ function productMatchesProductsPickTab(
 
 function productMatchesSecondaryPickTab(product: ProductRow, tab: ProductsSecondaryPickTab): boolean {
   if (tab === 'all') return true;
+  if (tab === 'wb_discount') return product.category === 'Косметика';
   return productMatchesInsightPickTab(product, tab);
 }
 
@@ -2797,9 +2883,7 @@ function conceptNotPromotedTableMinWidthPx(
     CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX + CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX;
   if (showTagsColumn) total += CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX;
   if (showBonusCampaignColumn) total += CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_COL_WIDTH_PX;
-  total +=
-    CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX +
-    CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX;
+  total += CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX;
   total +=
     CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.length *
     CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX;
@@ -4308,6 +4392,8 @@ function ProductCollapsedRowCell({
   allTabListRowIndex,
   multicardGroupMemberNested = false,
   multicardSearchHighlight = false,
+  showRankingFactorsLink = false,
+  onOpenRankingFactors,
 }: {
   product: ProductRow;
   expanded: boolean;
@@ -4323,12 +4409,30 @@ function ProductCollapsedRowCell({
   multicardGroupMemberNested?: boolean;
   /** Подсветка товара, совпавшего с поиском на вкладке «Мультикарточки». */
   multicardSearchHighlight?: boolean;
+  showRankingFactorsLink?: boolean;
+  onOpenRankingFactors?: (product: ProductRow) => void;
 }) {
   const campaignCount = product.campaigns.length;
   const showConflict =
     !showPromoteUnderPhoto && productHasCampaignConflict(product);
+  const zeroStock = product.stockLeft <= 0;
+  const [zeroStockConfirmOpen, setZeroStockConfirmOpen] = useState(false);
+  const [promoteHovered, setPromoteHovered] = useState(false);
   const promoteBtnClass =
-    'inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-[10px] bg-[rgba(74,74,89,0.08)] px-3 text-sm font-medium text-gray-700 hover:bg-[rgba(74,74,89,0.12)]';
+    'inline-flex h-8 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] bg-[rgba(74,74,89,0.08)] px-3 text-sm font-medium text-gray-700 hover:bg-[rgba(74,74,89,0.12)]';
+
+  const requestPromote = () => {
+    if (zeroStock) {
+      setZeroStockConfirmOpen(true);
+      return;
+    }
+    onPromote?.(product);
+  };
+
+  const confirmPromoteDespiteZeroStock = () => {
+    setZeroStockConfirmOpen(false);
+    onPromote?.(product);
+  };
 
   const searchHighlightTitleClass = multicardSearchHighlight
     ? 'rounded-md bg-violet-100 px-1.5 py-0.5 ring-1 ring-violet-300/90'
@@ -4357,6 +4461,18 @@ function ProductCollapsedRowCell({
       )}
       <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-2 text-xs leading-none text-gray-500">
         <span className="shrink-0 whitespace-nowrap">Арт. {product.articleWb}</span>
+        {showRankingFactorsLink ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenRankingFactors?.(product);
+            }}
+            className="shrink-0 whitespace-nowrap text-xs font-medium text-gray-500 transition-colors hover:text-gray-700"
+          >
+            Факторы ранжирования <span className="text-[#F07167]">-2</span>
+          </button>
+        ) : null}
         {showExpandControl && campaignCount > 0 ? (
           <span className="shrink-0 whitespace-nowrap">{formatProductCampaignCount(campaignCount)}</span>
         ) : null}
@@ -4410,17 +4526,38 @@ function ProductCollapsedRowCell({
         <div className="relative flex min-w-0 flex-1 items-center gap-3 pr-28">
           {productThumb}
           {productMeta}
-          <div className="absolute right-0 top-1/2 z-[1] hidden -translate-y-1/2 items-center gap-1.5 group-hover/product-row:flex">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onPromote?.(product);
-              }}
-              className={promoteBtnClass}
+          <div className="absolute right-0 top-1/2 z-[1] hidden -translate-y-1/2 items-center group-hover/product-row:flex">
+            <div
+              className="relative inline-flex"
+              onMouseEnter={() => setPromoteHovered(true)}
+              onMouseLeave={() => setPromoteHovered(false)}
             >
-              Продвигать
-            </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  requestPromote();
+                }}
+                className={promoteBtnClass}
+                aria-describedby={
+                  zeroStock && promoteHovered ? 'zero-stock-promote-tooltip' : undefined
+                }
+              >
+                {zeroStock ? (
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
+                ) : null}
+                Продвигать
+              </button>
+              {zeroStock && promoteHovered ? (
+                <div
+                  id="zero-stock-promote-tooltip"
+                  role="tooltip"
+                  className="absolute bottom-full left-1/2 z-[80] mb-2 w-[15.5rem] -translate-x-1/2 rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg"
+                >
+                  {ZERO_STOCK_PROMOTE_WARNING}
+                </div>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : (
@@ -4432,7 +4569,68 @@ function ProductCollapsedRowCell({
     </div>
   );
 
-  return rowMain;
+  return (
+    <>
+      {rowMain}
+      {zeroStockConfirmOpen
+        ? ReactDOM.createPortal(
+            <div
+              className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4"
+              onClick={(e) => {
+                e.stopPropagation();
+                setZeroStockConfirmOpen(false);
+              }}
+            >
+              <div
+                className="relative w-full max-w-[420px] rounded-3xl bg-white p-6 shadow-2xl"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="zero-stock-promote-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  aria-label="Закрыть"
+                  className="absolute right-5 top-5 text-gray-400 transition-colors hover:text-gray-700"
+                  onClick={() => setZeroStockConfirmOpen(false)}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+                <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-500">
+                  <AlertTriangle className="h-5 w-5" aria-hidden />
+                </div>
+                <h2
+                  id="zero-stock-promote-title"
+                  className="pr-8 text-[22px] font-bold leading-snug text-gray-950"
+                >
+                  Остатки на складе — 0
+                </h2>
+                <p className="mb-0 mt-2 text-sm leading-5 text-gray-500">
+                  {ZERO_STOCK_PROMOTE_WARNING} Всё равно продвигать «{product.name}»?
+                </p>
+                <div className="mt-5 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="rounded-xl bg-[#9A41FE] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
+                    onClick={confirmPromoteDespiteZeroStock}
+                  >
+                    Продвигать всё равно
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-950 transition-colors hover:bg-gray-200"
+                    onClick={() => setZeroStockConfirmOpen(false)}
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
 }
 
 const MAX_TAGS_PER_PRODUCT = 15;
@@ -4622,6 +4820,9 @@ const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN: DisplayCampaign = {
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID = '1400002';
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS = ['pr2', 'pr3', 'pr4', 'pr5', 'pr6'] as const;
 
+/** Строковый id дубликата 2-й кампании (profile 1) для концепта бюджета */
+const BUDGET_CONCEPT_DEMO_CAMPAIGN_LIST_ID = 'budget-concept-demo-cpc';
+
 function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
   if (isNewSellerProfile(profileId)) return [];
   const { campaigns } = getProfileListData(profileId);
@@ -4629,12 +4830,18 @@ function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
     profileId === '2'
       ? [...campaigns]
       : [PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN, ...campaigns];
-  return list.map((c, index) => {
+  const mapped = list.map((c, index) => {
     // Бонусный сценарий «перезапустить кампанию» — на первой обычной строке после предсобранной
     const isBonusRepeatDemoRow = profileId !== '2' ? index === 1 : index === 1;
     let base =
       isBonusRepeatDemoRow && c.id !== PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID
-        ? { ...c, isBonusCampaign: true }
+        ? {
+            ...c,
+            isBonusCampaign: true,
+            // Макет 2-й кампании: 1 000 ₽ + правила «до 30% от ДРР»
+            dailyLimit: 1000,
+            dynamicDailyLimit: true,
+          }
         : { ...c, isBonusCampaign: false };
     if (c.id === CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID) {
       const primaryId = CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[0];
@@ -4649,6 +4856,43 @@ function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
     if (profileId !== '2') return base;
     return { ...base, status: 'paused', statusText: 'приостановлена' };
   });
+
+  // Profile 1: копия 2-й строки (бонусной) — отдельный id для будущего UI блока бюджета
+  if (profileId === '2') return mapped;
+  const bonusIdx = mapped.findIndex((c) => c.isBonusCampaign);
+  if (bonusIdx < 0) return mapped;
+  const source = mapped[bonusIdx];
+  const duplicate: DisplayCampaign = {
+    ...source,
+    id: BUDGET_CONCEPT_DEMO_CAMPAIGN_LIST_ID,
+    campaignId: BUDGET_CONCEPT_DEMO_CAMPAIGN_ID,
+    name: `${source.name} — концепт бюджета`,
+    isBonusCampaign: false,
+    budgetConceptDemo: true,
+    // Стартовый вид как на макете: «Настроить» для АП и дневного лимита
+    remainingBudget: 2520000,
+    autoRefill: false,
+    autoRefillStatus: 'error',
+    dynamicDailyLimit: false,
+    dailyLimit: null,
+  };
+  const afterConcept = mapped.slice(bonusIdx + 1).map((c, i) =>
+    i === 0
+      ? {
+          ...c,
+          id: 'budget-range-concept-demo-cpc',
+          campaignId: BUDGET_RANGE_CONCEPT_DEMO_CAMPAIGN_ID,
+          name: `${c.name} — единый бюджет`,
+          isBonusCampaign: false,
+          budgetConceptDemo: false,
+          budgetRangeConceptDemo: true,
+          dailyLimit: 1000,
+          dynamicDailyLimit: true,
+        }
+      : c,
+  );
+  // Без 1-й (предсобранная) и 2-й (бонусная) строк — список начинается с концепта бюджета
+  return [...mapped.slice(0, bonusIdx + 1), duplicate, ...afterConcept].slice(2);
 }
 
 function findProductSourceForProfile(productId: string | undefined, profileId: ProfileId): ProductSource | undefined {
@@ -5401,13 +5645,33 @@ const DailyLimitCell: React.FC<{
   /** true только для кампаний CPC — только для них можно настраивать лимит */
   isCpc?: boolean;
   maxCpcBidRub?: number;
+  /** Правила автоувеличения лимита включены — расход может быть выше текущего лимита */
+  dynamicDailyLimit?: boolean;
+  /** 4-я кампания: единый бюджет — подпись «X ₽ в день» */
+  budgetRangeConceptDemo?: boolean;
+  campaignId?: number;
   onClick?: () => void;
-}> = ({ dailyLimit, dailyLimitExhausted, isCpc = true, maxCpcBidRub = 0, onClick }) => {
+}> = ({
+  dailyLimit,
+  dailyLimitExhausted,
+  isCpc = true,
+  maxCpcBidRub = 0,
+  dynamicDailyLimit = false,
+  budgetRangeConceptDemo = false,
+  campaignId,
+  onClick,
+}) => {
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const [isBidHintTooltipVisible, setIsBidHintTooltipVisible] = useState(false);
+  const [isDynamicMarkTooltipVisible, setIsDynamicMarkTooltipVisible] = useState(false);
   const bidHintOpenRef = React.useRef(false);
   const hideTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const exhausted = !!dailyLimitExhausted;
+  const showDynamicMark = isCpc && dailyLimit != null && dynamicDailyLimit;
+  const dynamicStats =
+    showDynamicMark && dailyLimit != null
+      ? demoDynamicDailyLimitStats(dailyLimit, campaignId)
+      : null;
 
   const clearHideTimeout = () => {
     if (hideTimeoutRef.current) {
@@ -5421,9 +5685,10 @@ const DailyLimitCell: React.FC<{
   };
   useEffect(() => () => { clearHideTimeout(); }, []);
 
-  const tooltipText = isCpc && dailyLimit != null && exhausted
-    ? `Лимит в ${formatForDisplay(dailyLimit)} ₽ на сегодня израсходован. Показы остановлены до завтра. Если хотите возобновить показы сейчас увеличьте лимит`
-    : '';
+  const exhaustedTooltipText =
+    isCpc && dailyLimit != null && exhausted
+      ? `Лимит в ${formatForDisplay(dailyLimit)} ₽ на сегодня израсходован. Показы остановлены до завтра. Если хотите возобновить показы сейчас увеличьте лимит`
+      : '';
 
   const bidLimitMismatch =
     isCpc &&
@@ -5444,14 +5709,31 @@ const DailyLimitCell: React.FC<{
       <div className="inline-flex max-w-full items-start gap-1">
         <div className="w-max max-w-full space-y-0.5">
           <span className="whitespace-nowrap text-sm font-medium tabular-nums">
-            {formatForDisplay(dailyLimit)} ₽
+            {budgetRangeConceptDemo
+              ? `${formatForDisplay(dailyLimit)} ₽ в день`
+              : `${formatForDisplay(dailyLimit)} ₽`}
           </span>
+          {budgetRangeConceptDemo ? null : (
           <div className="h-1.5 w-[4.5rem] max-w-full rounded-full bg-gray-200 overflow-hidden">
             <div
               className={`h-full rounded-full ${exhausted ? 'bg-red-500' : 'bg-purple-600'}`}
               style={{ width: exhausted ? '100%' : '60%' }}
             />
           </div>
+          )}
+          {showDynamicMark && !budgetRangeConceptDemo ? (
+            <div
+              className="mt-1"
+              onMouseEnter={() => setIsDynamicMarkTooltipVisible(true)}
+              onMouseLeave={() => setIsDynamicMarkTooltipVisible(false)}
+            >
+              <DynamicDailyLimitMark
+                dailyLimitRub={dailyLimit}
+                campaignId={campaignId}
+                compact
+              />
+            </div>
+          ) : null}
         </div>
         {bidLimitMismatch ? (
           <DailyLimitBidMismatchHint
@@ -5472,13 +5754,19 @@ const DailyLimitCell: React.FC<{
       <span className="text-sm font-medium text-blue-600">Настроить</span>
     );
 
+  const showMainTooltip =
+    isTooltipVisible &&
+    !isBidHintTooltipVisible &&
+    !isDynamicMarkTooltipVisible &&
+    (exhaustedTooltipText || dynamicStats);
+
   if (onClick != null) {
     return (
       <div
         className="relative inline-block"
         onMouseEnter={() => {
           clearHideTimeout();
-          if (!bidHintOpenRef.current) setIsTooltipVisible(true);
+          if (!bidHintOpenRef.current && !isDynamicMarkTooltipVisible) setIsTooltipVisible(true);
         }}
         onMouseLeave={scheduleHide}
       >
@@ -5491,18 +5779,25 @@ const DailyLimitCell: React.FC<{
         >
           {content}
         </div>
-        {isTooltipVisible && tooltipText && !isBidHintTooltipVisible && (
+        {showMainTooltip ? (
           <>
             <div className="absolute left-0 top-full w-64 h-2" onMouseEnter={clearHideTimeout} onMouseLeave={scheduleHide} />
             <div
-              className="absolute left-0 top-full mt-2 w-max max-w-[300px] p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left"
+              className="absolute left-0 top-full mt-2 w-max max-w-[300px] p-3 bg-gray-900 text-white text-xs rounded-lg shadow-lg z-50 text-left leading-snug"
               onMouseEnter={clearHideTimeout}
               onMouseLeave={() => { clearHideTimeout(); setIsTooltipVisible(false); }}
             >
-              {tooltipText}
+              {exhaustedTooltipText ? (
+                <p className="mb-0">{exhaustedTooltipText}</p>
+              ) : dynamicStats ? (
+                <DynamicDailyLimitStatsTooltipContent
+                  yesterdayPeak={dynamicStats.yesterdayPeak}
+                  currentFromAutomation={dynamicStats.currentFromAutomation}
+                />
+              ) : null}
             </div>
           </>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -6376,7 +6671,15 @@ function Widgets2Strip({
   );
 }
 
-const StatusBadge = ({ status, text }: { status: DisplayCampaign['status'], text: string }) => {
+const StatusBadge = ({
+  status,
+  text,
+  variant,
+}: {
+  status: DisplayCampaign['status'];
+  text: string;
+  variant?: 'testLayout';
+}) => {
   // Цветные плашки статуса: закругления как у ярлыков (rounded-md)
   const baseClasses = 'px-2.5 py-0.5 text-xs font-medium rounded-md';
   const styles: Record<DisplayCampaign['status'], string> = {
@@ -6386,7 +6689,8 @@ const StatusBadge = ({ status, text }: { status: DisplayCampaign['status'], text
     error: 'bg-red-100 text-red-700',
   };
 
-  return <span className={`${baseClasses} ${styles[status]}`}>{text}</span>;
+  const variantClass = variant === 'testLayout' ? 'bg-orange-100 text-orange-600' : styles[status];
+  return <span className={`${baseClasses} ${variantClass}`}>{text}</span>;
 };
 
 const ResultBlock = ({ successCount, errorCount, onClear }: { successCount: number, errorCount: number, failedCampaigns: CampaignRecord[], onClear: () => void }) => {
@@ -6748,39 +7052,12 @@ function buildBonusNotificationQueue(
   });
 }
 
-function GreenGrowthChartIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 16 16"
-      fill="none"
-      className={className}
-      aria-hidden
-    >
-      <rect x="1" y="9" width="3" height="6" rx="0.5" fill="currentColor" opacity="0.35" />
-      <rect x="6" y="6" width="3" height="9" rx="0.5" fill="currentColor" opacity="0.65" />
-      <rect x="11" y="2" width="3" height="13" rx="0.5" fill="currentColor" />
-      <path
-        d="M2 12.5 L6 8.5 L9.5 10 L14 4"
-        stroke="currentColor"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        opacity="0.9"
-      />
-    </svg>
-  );
-}
-
 const CreateCampaignDropdown = ({
   onNavigateToCreation,
   onOpenSingleCampaign,
-  onNavigateToCuratedPick,
 }: {
   onNavigateToCreation: () => void;
   onOpenSingleCampaign?: () => void;
-  onNavigateToCuratedPick?: () => void;
 }) => {
     const [isOpen, setIsOpen] = useState(false);
 
@@ -6792,7 +7069,7 @@ const CreateCampaignDropdown = ({
         >
             <button
                 type="button"
-                onClick={() => onOpenSingleCampaign?.()}
+                onClick={() => onNavigateToCreation()}
                 className="flex items-center justify-center gap-1.5 shrink-0 h-11 px-4 rounded-[10px] bg-[#9a41fe] hover:bg-[#8840e5] text-white text-sm font-medium leading-5 transition-colors"
             >
                 <span className="whitespace-nowrap">Создать кампанию</span>
@@ -6820,18 +7097,6 @@ const CreateCampaignDropdown = ({
                             className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
                         >
                             Много кампаний
-                        </button>
-                        <div className="my-1 border-t border-gray-200" role="separator" />
-                        <button
-                            type="button"
-                            onClick={() => {
-                                onNavigateToCuratedPick?.();
-                                setIsOpen(false);
-                            }}
-                            className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-                        >
-                            <GreenGrowthChartIcon className="shrink-0 text-emerald-600" />
-                            Подборка недели
                         </button>
                     </div>
                 </div>
@@ -7668,6 +7933,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onNavigateToCreation,
     onNavigateToCreationWithProducts,
     onNavigateToCreationWithGrowingDemand,
+    onConfirmWbDiscountPromote,
     onOpenUploadEditsModal,
     selectedCampaigns,
     onSelectionChange,
@@ -7688,6 +7954,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const {
     profileId,
     beginRepeatLaunchFlow,
+    beginPromoBonusSpendFlow,
     showReferralCampaignCreatedNotice,
     dismissReferralCampaignCreatedNotice,
   } = useProfile();
@@ -7804,6 +8071,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           ...(data.dailyLimit !== undefined && { dailyLimit: data.dailyLimit }),
           ...(data.scheduledDailyLimit !== undefined && { scheduledDailyLimit: data.scheduledDailyLimit }),
           ...(data.maxCpcBidRub !== undefined && { maxCpcBidRub: data.maxCpcBidRub }),
+          ...(data.autoRefill !== undefined && {
+            autoRefill: data.autoRefill,
+            autoRefillStatus: data.autoRefill ? ('ok' as const) : ('error' as const),
+          }),
+          ...(data.dynamicDailyLimit !== undefined && {
+            dynamicDailyLimit: data.dynamicDailyLimit,
+          }),
           ...(data.status !== undefined && { status: data.status }),
           ...(data.statusText !== undefined && { statusText: data.statusText }),
         };
@@ -7830,19 +8104,60 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [isMassBudgetRefillModalOpen, setIsMassBudgetRefillModalOpen] = useState(false);
   const [massBudgetRefillTargetIds, setMassBudgetRefillTargetIds] = useState<string[]>([]);
   const [isDailyLimitModalOpen, setIsDailyLimitModalOpen] = useState(false);
+  const [isBudgetStrategyModalOpen, setIsBudgetStrategyModalOpen] = useState(false);
+  const [budgetStrategyDailyLimitValue, setBudgetStrategyDailyLimitValue] = useState('');
+  const [budgetStrategySavedDailyLimit, setBudgetStrategySavedDailyLimit] = useState('');
+  const [budgetStrategyCarryover, setBudgetStrategyCarryover] = useState(false);
+  const [budgetStrategySettings, setBudgetStrategySettings] = useState<AdvancedDailyLimitSettings>(() =>
+    createDefaultAdvancedDailyLimitSettings(),
+  );
+  const [budgetStrategyAutoRefillOnRules, setBudgetStrategyAutoRefillOnRules] = useState(true);
   const [listAutomationModal, setListAutomationModal] = useState<{
     target: CampaignListAutomationModalTarget;
     kind: CampaignListAutomationKind;
   } | null>(null);
   const [limitShortfallNotification, setLimitShortfallNotification] = useState<{ requestedLimit: number; shortfall: number } | null>(null);
 
+  const isBudgetRangeConceptCampaign = useCallback((c: DisplayCampaign) => {
+    return (
+      c.budgetRangeConceptDemo === true ||
+      c.campaignId === BUDGET_RANGE_CONCEPT_DEMO_CAMPAIGN_ID
+    );
+  }, []);
+
+  const openBudgetStrategyModalForCampaign = useCallback(
+    (c: DisplayCampaign) => {
+      const fresh = allCampaigns.find((x) => x.id === c.id) ?? c;
+      const limit =
+        fresh.dailyLimit != null && fresh.dailyLimit > 0 ? String(fresh.dailyLimit) : '1000';
+      setSelectedCampaignForRefill(fresh);
+      setBudgetStrategyDailyLimitValue(limit);
+      setBudgetStrategySavedDailyLimit(limit);
+      setBudgetStrategyCarryover(false);
+      setBudgetStrategySettings({
+        ...createDefaultAdvancedDailyLimitSettings(),
+        strategyId: 'spendOptimization',
+        strategyGroupLabel: 'Гибкий',
+        autoIncreaseEnabled: true,
+        drrMetricEnabled: true,
+      });
+      setBudgetStrategyAutoRefillOnRules(true);
+      setIsBudgetStrategyModalOpen(true);
+    },
+    [allCampaigns],
+  );
+
   const openDailyLimitModalForCampaign = useCallback(
     (c: DisplayCampaign) => {
       const fresh = allCampaigns.find((x) => x.id === c.id) ?? c;
+      if (isBudgetRangeConceptCampaign(fresh)) {
+        openBudgetStrategyModalForCampaign(fresh);
+        return;
+      }
       setSelectedCampaignForRefill(fresh);
       setIsDailyLimitModalOpen(true);
     },
-    [allCampaigns],
+    [allCampaigns, isBudgetRangeConceptCampaign, openBudgetStrategyModalForCampaign],
   );
 
   const dailyLimitModalCampaign = useMemo(() => {
@@ -7898,6 +8213,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [notPromotedBonusModalProducts, setNotPromotedBonusModalProducts] = useState<
     ProductRow[] | null
   >(null);
+  const [rankingFactorsProduct, setRankingFactorsProduct] = useState<ProductRow | null>(null);
+  const [bonusPromotionChoiceProduct, setBonusPromotionChoiceProduct] =
+    useState<ProductRow | null>(null);
+  const [rememberBonusPromotionChoice, setRememberBonusPromotionChoice] = useState(false);
+  const [bonusPromotionPreference, setBonusPromotionPreference] = useState<
+    'bonus' | 'regular' | null
+  >(() => {
+    if (typeof window === 'undefined') return null;
+    const saved = window.localStorage.getItem('bonus-promotion-choice');
+    return saved === 'bonus' || saved === 'regular' ? saved : null;
+  });
   const [dismissedCampaignsBonusBanner, setDismissedCampaignsBonusBanner] = useState(false);
 
   const [isProductsColumnSettingsOpen, setIsProductsColumnSettingsOpen] = useState(false);
@@ -8001,7 +8327,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           return false;
         }
         if (isConceptNotPromotedRecommendedBidColumnId(columnId)) {
-          return columnId !== PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID;
+          return columnId === PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID;
         }
         if (columnId === PRODUCTS_STOCK_COLUMN_ID) {
           return true;
@@ -8341,6 +8667,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         dailyLimit: listMatch.dailyLimit ?? null,
         scheduledDailyLimit: listMatch.scheduledDailyLimit ?? null,
         dailyLimitExhausted: listMatch.dailyLimitExhausted,
+        autoRefill: listMatch.autoRefill,
+        dynamicDailyLimit: listMatch.dynamicDailyLimit,
         campaignStatus:
           listMatch.status === 'active' || listMatch.status === 'paused'
             ? listMatch.status
@@ -8422,7 +8750,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         prev.map((c) => {
           if (!eligibleIds.has(c.id)) return c;
           if (limit === null) {
-            return { ...c, dailyLimit: null, scheduledDailyLimit: null };
+            return { ...c, dailyLimit: null, scheduledDailyLimit: null, dynamicDailyLimit: false };
           }
           return { ...c, dailyLimit: limit, scheduledDailyLimit: null };
         }),
@@ -8434,6 +8762,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         handleUpdateCampaignData(camp.campaignId, {
           dailyLimit: limit,
           scheduledDailyLimit: null,
+          ...(limit === null ? { dynamicDailyLimit: false } : {}),
         });
       });
 
@@ -8908,8 +9237,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         ),
       ).length;
     }
+    // Демо: «Товары» включает пул для скидки WB
+    if (isProductPromotionConceptPage) {
+      counts.promoted = 106;
+    }
     return counts;
-  }, [filteredProductsBySearch, productCampaignStatusOverride]);
+  }, [filteredProductsBySearch, productCampaignStatusOverride, isProductPromotionConceptPage]);
 
   const productsSecondaryPickTabCounts = useMemo(() => {
     const scopedProducts = filteredProductsBySearch.filter((product) =>
@@ -8925,6 +9258,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       counts[tab.id] = scopedProducts.filter((product) =>
         productMatchesSecondaryPickTab(product, tab.id),
       ).length;
+    }
+    // Демо: подборка «Для скидки WB»
+    if (isProductPromotionConceptPage) {
+      counts.wb_discount = 100;
     }
     return counts;
   }, [filteredProductsBySearch, productsPickTab, productCampaignStatusOverride, isProductPromotionConceptPage]);
@@ -9176,6 +9513,64 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [beginRepeatLaunchFlow],
   );
 
+  const handlePromoteFromProductRow = useCallback(
+    (product: ProductRow) => {
+      const listRowIndex = sortedProductsForTable.findIndex((row) => row.id === product.id);
+      const bonusCampaignAvailable =
+        conceptBonusCampaignColumn && listRowIndex >= 0 && listRowIndex < 3;
+
+      if (!bonusCampaignAvailable || bonusPromotionPreference === 'regular') {
+        handlePromoteNotPromotedProduct(product);
+        return;
+      }
+      if (bonusPromotionPreference === 'bonus') {
+        setNotPromotedBonusModalProducts([product]);
+        return;
+      }
+
+      setRememberBonusPromotionChoice(false);
+      setBonusPromotionChoiceProduct(product);
+    },
+    [
+      bonusPromotionPreference,
+      conceptBonusCampaignColumn,
+      handlePromoteNotPromotedProduct,
+      sortedProductsForTable,
+    ],
+  );
+
+  const [bulkPaymentModelProducts, setBulkPaymentModelProducts] = useState<
+    BulkPaymentModelProduct[] | null
+  >(null);
+  const [wbDiscountModalProducts, setWbDiscountModalProducts] = useState<
+    BulkPaymentModelProduct[] | null
+  >(null);
+
+  const openWbDiscountModalFromWidget = useCallback(() => {
+    const WB_DISCOUNT_CATEGORIES = ['Косметика', 'Платья', 'Сумки'] as const;
+    const picked: typeof PRODUCTS_SOURCE = [];
+    for (const category of WB_DISCOUNT_CATEGORIES) {
+      picked.push(
+        ...PRODUCTS_SOURCE.filter((p) => p.category === category).slice(0, 5),
+      );
+    }
+    if (picked.length === 0) return;
+    setWbDiscountModalProducts(
+      picked.map((product) => {
+        const seed = productRowToSingleCampaignSeed(product);
+        return {
+          id: `wb-discount-${product.id}`,
+          name: product.name,
+          nmId: seed.nmId,
+          imageUrl: product.image,
+          category: product.category || 'Косметика',
+          cpcCompatible: true,
+          zeroStock: false,
+        };
+      }),
+    );
+  }, []);
+
   const handleBulkCreateCampaignFromProducts = useCallback(() => {
     const selected = sortedProductsForTable.filter((p) => selectedProductIds.includes(p.id));
     if (selected.length === 0) return;
@@ -9186,17 +9581,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           )
         : [];
     if (toPromote.length > 0) {
-      const seeds = toPromote.map(productRowToSingleCampaignSeed);
-      const first = seeds[0]!;
-      beginRepeatLaunchFlow({
-        product: first,
-        products: seeds.length > 1 ? seeds : undefined,
-        campaignName:
-          seeds.length === 1
-            ? `${first.productName} CPC ${new Date().toLocaleDateString('ru-RU')}`
-            : undefined,
-      });
-      setSelectedProductIds([]);
+      setBulkPaymentModelProducts(
+        toPromote.map((product) => {
+          const seed = productRowToSingleCampaignSeed(product);
+          return {
+            id: product.id,
+            name: product.name,
+            nmId: seed.nmId,
+            imageUrl: product.image,
+            category: product.category || 'Товары',
+            cpcCompatible: true,
+            zeroStock: isDemoZeroStockProductRow(
+              product,
+              sortedProductsForTable,
+              conceptNotPromotedProductsList,
+            ),
+          };
+        }),
+      );
       return;
     }
     const items = selected.map(productRowToCreationItem);
@@ -9208,10 +9610,44 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     selectedProductIds,
     conceptCompactProductsTable,
     productCampaignStatusOverride,
-    beginRepeatLaunchFlow,
+    conceptNotPromotedProductsList,
     onNavigateToCreationWithProducts,
     onNavigateToCreation,
   ]);
+
+  const handleConfirmBulkPaymentModel = useCallback(
+    (payload: {
+      products: BulkPaymentModelProduct[];
+      paymentModel: 'CPC' | 'CPM';
+      zones: { search: boolean; recommendations: boolean };
+    }) => {
+      void payload.paymentModel;
+      void payload.zones;
+      const seeds = payload.products.map((p) => ({
+        nmId: p.nmId,
+        productName: p.name,
+        imageUrl: p.imageUrl,
+        category: p.category,
+        cpcCompatible: p.cpcCompatible ?? true,
+      }));
+      if (seeds.length === 0) {
+        setBulkPaymentModelProducts(null);
+        return;
+      }
+      const first = seeds[0]!;
+      beginRepeatLaunchFlow({
+        product: first,
+        products: seeds.length > 1 ? seeds : undefined,
+        campaignName:
+          seeds.length === 1
+            ? `${first.productName} CPC ${new Date().toLocaleDateString('ru-RU')}`
+            : undefined,
+      });
+      setBulkPaymentModelProducts(null);
+      setSelectedProductIds([]);
+    },
+    [beginRepeatLaunchFlow],
+  );
 
   const selectedProductsForBulk = useMemo(
     () => productsForTable.filter((p) => selectedProductIds.includes(p.id)),
@@ -9223,6 +9659,39 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     const bonusIds = new Set(sortedProductsForTable.slice(0, 3).map((p) => p.id));
     return selectedProductsForBulk.filter((p) => bonusIds.has(p.id));
   }, [productsPickTab, selectedProductIds.length, sortedProductsForTable, selectedProductsForBulk]);
+
+  const selectedIncludeZeroStockProducts = useMemo(() => {
+    if (selectedProductsForBulk.length === 0) return false;
+    return selectedProductsForBulk.some((product) =>
+      isDemoZeroStockProductRow(
+        product,
+        sortedProductsForTable,
+        conceptNotPromotedProductsList,
+      ),
+    );
+  }, [selectedProductsForBulk, conceptNotPromotedProductsList, sortedProductsForTable]);
+
+  const excludeZeroStockProductsFromSelection = useCallback(() => {
+    setSelectedProductIds((prev) =>
+      prev.filter((id) => {
+        const product =
+          selectedProductsForBulk.find((p) => p.id === id) ??
+          sortedProductsForTable.find((p) => p.id === id);
+        if (!product) return false;
+        return !isDemoZeroStockProductRow(
+          product,
+          sortedProductsForTable,
+          conceptNotPromotedProductsList,
+        );
+      }),
+    );
+  }, [selectedProductsForBulk, sortedProductsForTable, conceptNotPromotedProductsList]);
+
+  const [bulkCreateMenuOpen, setBulkCreateMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!selectedIncludeZeroStockProducts) setBulkCreateMenuOpen(false);
+  }, [selectedIncludeZeroStockProducts]);
 
   const selectedProductsForBidBulk = useMemo(() => {
     if (!isProductPromotionConceptPage) {
@@ -9301,10 +9770,18 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         dailyLimit: c.dailyLimit ?? null,
         scheduledDailyLimit: c.scheduledDailyLimit ?? null,
         dailyLimitExhausted: c.dailyLimitExhausted,
+        autoRefill: c.autoRefill,
+        dynamicDailyLimit: c.dynamicDailyLimit,
         campaignStatus:
           c.status === 'active' || c.status === 'paused'
             ? c.status
             : ('active' as const),
+        budgetConceptDemo:
+          c.budgetConceptDemo === true ||
+          c.campaignId === BUDGET_CONCEPT_DEMO_CAMPAIGN_ID,
+        budgetRangeConceptDemo:
+          c.budgetRangeConceptDemo === true ||
+          c.campaignId === BUDGET_RANGE_CONCEPT_DEMO_CAMPAIGN_ID,
       };
       if (c.isBonusCampaign) {
         onOpenCpcCampaign({
@@ -9359,6 +9836,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         dailyLimit: camp.dailyLimit ?? null,
         scheduledDailyLimit: null,
         dailyLimitExhausted: camp.dailyLimitExhausted,
+        autoRefill: camp.autoRefill,
         campaignStatus:
           camp.status === 'active' || camp.status === 'paused' ? camp.status : 'active',
       });
@@ -9389,8 +9867,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 
   const openBonusNotificationCampaign = useCallback(
     (item: BonusCampaignNotification) => {
-      const cpcPool = buildAllCampaignsForProfile(profileId).filter((c) => c.type === 'CPC');
-      const bonusCampaign = cpcPool.find((c) => c.isBonusCampaign) ?? cpcPool[0];
+      const bonusCampaign =
+        allCampaigns.find((c) => c.isBonusCampaign && c.type === 'CPC') ??
+        allCampaigns.find((c) => c.type === 'CPC') ??
+        buildAllCampaignsForProfile(profileId).find((c) => c.isBonusCampaign) ??
+        buildAllCampaignsForProfile(profileId).find((c) => c.type === 'CPC');
       if (!bonusCampaign) return;
 
       onOpenCpcCampaign({
@@ -9400,11 +9881,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         dailyLimit: bonusCampaign.dailyLimit ?? null,
         scheduledDailyLimit: bonusCampaign.scheduledDailyLimit ?? null,
         dailyLimitExhausted: bonusCampaign.dailyLimitExhausted,
+        autoRefill: bonusCampaign.autoRefill,
+        dynamicDailyLimit: bonusCampaign.dynamicDailyLimit,
         fromReadyToRepeat: true,
         repeatLaunchPreset: item.launchPreset,
       });
     },
-    [onOpenCpcCampaign, profileId],
+    [allCampaigns, onOpenCpcCampaign, profileId],
   );
 
   const resolveVariant2BonusCampaignFromNotification = useCallback(
@@ -9491,7 +9974,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       <CreateCampaignDropdown
         onNavigateToCreation={onNavigateToCreation}
         onOpenSingleCampaign={onOpenSingleCampaign}
-        onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
       />
       <ExcelActionsDropdown
         onOpenUpload={onOpenUploadEditsModal}
@@ -9680,7 +10162,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               <CreateCampaignDropdown
                 onNavigateToCreation={onNavigateToCreation}
                 onOpenSingleCampaign={onOpenSingleCampaign}
-                onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
               />
 
               <div className="relative min-w-[200px] flex-1">
@@ -9828,7 +10309,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   const item = widgets2DemoCards.find((c) => c.ctaAction === 'bid-recommendation')?.item;
                   if (item) openWidgets2BidRecommendation(item);
                 }}
-                onBonusClick={openWidgets2ChooseProducts}
+                onBonusClick={(packageId) => {
+                  beginPromoBonusSpendFlow(packageId);
+                  onOpenSingleCampaign?.();
+                }}
+                onWbDiscountCardClick={openWbDiscountModalFromWidget}
               />
             </div>
           )}
@@ -9882,7 +10367,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 <CreateCampaignDropdown
                   onNavigateToCreation={onNavigateToCreation}
                   onOpenSingleCampaign={onOpenSingleCampaign}
-                  onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
                 />
               </div>
 
@@ -10173,7 +10657,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               <CreateCampaignDropdown
                 onNavigateToCreation={onNavigateToCreation}
                 onOpenSingleCampaign={onOpenSingleCampaign}
-                onNavigateToCuratedPick={onNavigateToCreationWithGrowingDemand}
               />
 
               <div className="relative min-w-[200px] flex-1">
@@ -10560,11 +11043,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </div>
                             )}
                             </th>
-                          <th className="min-w-[9rem] bg-gray-50 p-4 text-left font-medium">
-                            <div className="flex items-center gap-1 whitespace-nowrap">
-                              Автоматизация <HelpCircle className="w-4 h-4 shrink-0" />
-                            </div>
-                          </th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Дневной лимит <HelpCircle className="w-4 h-4" /></div></th>
                           <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4" /></div></th>
@@ -10578,7 +11056,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <tbody className="divide-y divide-gray-100">
                       {!dismissedCampaignsBonusBanner && profileProductTree[0] ? (
                         <tr className="hover:bg-transparent">
-                          <td colSpan={32} className="p-0">
+                          <td colSpan={31} className="p-0">
                             <div className="sticky left-0 z-[1] box-border w-[100cqw] max-w-[100cqw] px-4 py-3">
                               <CampaignsListBonusBanner
                                 image={profileProductTree[0].image}
@@ -10592,7 +11070,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           </td>
                         </tr>
                       ) : null}
-                      {paginatedCampaigns.map(c => {
+                      {paginatedCampaigns.map((c, idx) => {
                           const isCampaignRowSelected = selectedCampaigns.includes(c.id);
                           const campaignBidModeSubtitle = listCampaignBidModeSubtitle(c.typeDetails);
                           const campaignPinnedCellClass = isCampaignRowSelected
@@ -10652,7 +11130,17 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       <div className="min-w-0">
                                           <p className="mb-1 font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
-                                              <StatusBadge status={c.status} text={c.statusText} />
+                                              <StatusBadge
+                                                status={c.status}
+                                                text={
+                                                  idx === 0
+                                                    ? 'Тест нового дейаута'
+                                                    : idx === 1
+                                                      ? 'Тест нового бюджета'
+                                                      : c.statusText
+                                                }
+                                                variant={idx === 0 || idx === 1 ? 'testLayout' : undefined}
+                                              />
                                               <span>ID {c.campaignId}</span>
                                               {c.tags.map(tag => (
                                                   <div key={tag.text} className={`flex items-center gap-1 ${tag.type === 'warning' ? 'text-amber-700' : tag.type === 'error' ? 'text-red-700' : ''}`}>
@@ -10674,15 +11162,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       </div>
                                   </div>
                               </td>
-                              <td
-                                className="p-4 align-middle"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <CampaignListAutomationCell
-                                  campaignType={c.type}
-                                  onSelect={(action) => runListCampaignAutomation(c, action)}
-                                />
-                              </td>
                               <td className="p-4" onClick={(e) => e.stopPropagation()}>
                                   <div className="relative inline-flex items-center group" onClick={(e) => e.stopPropagation()}>
                                       <button
@@ -10690,12 +11169,22 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                           onClick={(e) => {
                                               e.preventDefault();
                                               e.stopPropagation();
+                                              if (isBudgetRangeConceptCampaign(c)) {
+                                                openBudgetStrategyModalForCampaign(c);
+                                                return;
+                                              }
                                               setSelectedCampaignForRefill(c);
                                               setIsBudgetRefillModalOpen(true);
                                           }}
                                           className="font-semibold text-blue-600 hover:text-purple-600 transition-colors cursor-pointer"
                                       >
-                                          {formatCurrency(c.remainingBudget)}
+                                          {isBudgetRangeConceptCampaign(c)
+                                            ? `${formatForDisplay(
+                                                c.dailyLimit != null && c.dailyLimit > 0
+                                                  ? c.dailyLimit
+                                                  : 1000,
+                                              )} ₽ в день`
+                                            : formatCurrency(c.remainingBudget)}
                                       </button>
                                       <button
                                           type="button"
@@ -10723,6 +11212,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       dailyLimitExhausted={c.dailyLimitExhausted}
                                       isCpc={c.type === 'CPC'}
                                       maxCpcBidRub={c.type === 'CPC' ? listCampaignMaxCpcBidRub(c) : 0}
+                                      dynamicDailyLimit={c.dynamicDailyLimit}
+                                      budgetRangeConceptDemo={isBudgetRangeConceptCampaign(c)}
+                                      campaignId={c.campaignId}
                                       onClick={c.type === 'CPC' ? () => openDailyLimitModalForCampaign(c) : undefined}
                                   />
                               </td>
@@ -11116,12 +11608,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     {conceptBonusCampaignColumn ? (
                       <col style={{ width: CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_COL_WIDTH_PX }} />
                     ) : null}
+                    {conceptBonusCampaignColumn ? (
+                      <col style={{ width: CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX }} />
+                    ) : null}
                     <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX }} />
-                    <col style={{ width: CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX }} />
                     {CONCEPT_NOT_PROMOTED_PRODUCT_STAT_LABELS.map((label) => (
                       <col key={label} style={{ width: CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX }} />
                     ))}
-                    <col style={{ width: CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX }} />
+                    {!conceptBonusCampaignColumn ? (
+                      <col style={{ width: CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX }} />
+                    ) : null}
                   </colgroup>
                 ) : null}
                 <thead
@@ -11282,6 +11778,22 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         <span className="block">CPC кампания</span>
                       </th>
                     ) : null}
+                    {conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                      <th
+                        className={
+                          conceptCompactProductsTable
+                            ? CONCEPT_NOT_PROMOTED_STOCK_TH_CLASS
+                            : PRODUCTS_STOCK_TH_CLASS
+                        }
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          Остатки
+                          {!conceptCompactProductsTable ? (
+                            <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                          ) : null}
+                        </span>
+                      </th>
+                    ) : null}
                     {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
                       <th className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TH_CLASS}>
                         <ConceptAverageBidColumnHeader
@@ -11375,7 +11887,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                         </th>
                       ) : null,
                     )}
-                    {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                    {!conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
                       <th
                         className={
                           conceptCompactProductsTable
@@ -11446,6 +11958,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       conceptAllProductsPickTab &&
                       conceptMulticardSearchMatchedProductIds.has(product.id);
                     const conceptStockCompactTable = conceptCompactProductsTable;
+                    const stockProductForRow =
+                      conceptNotPromotedProductsList &&
+                      listRowIndex >= Math.max(0, conceptAllTabTableRows.length - 4)
+                        ? { ...product, stockLeft: 0 }
+                        : product;
                     const multicardGroupBodyIndentPx = conceptAllProductsPickTab
                       ? CONCEPT_MULTICARD_GROUP_MEMBER_INDENT_PX
                       : 0;
@@ -11646,13 +12163,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             )}
                           >
                             <ProductCollapsedRowCell
-                              product={product}
+                              product={stockProductForRow}
                               expanded={expandedProductIds.has(product.id)}
                               onToggleExpand={() => toggleProductExpanded(product.id)}
                               showExpandControl={rowShowsPromotedProductUi}
                               reserveExpandGutter={rowReserveExpandGutter}
                               showPromoteUnderPhoto={rowShowPromoteUnderPhoto}
-                              onPromote={handlePromoteNotPromotedProduct}
+                              onPromote={handlePromoteFromProductRow}
                               onProductTitleClick={
                                 primaryCpcCampaign
                                   ? () => openProductNestedCampaign(primaryCpcCampaign)
@@ -11665,6 +12182,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 multicardGroupExpanded
                               }
                               multicardSearchHighlight={rowMulticardSearchHighlight}
+                              showRankingFactorsLink={conceptNotPromotedProductsList}
+                              onOpenRankingFactors={setRankingFactorsProduct}
                             />
                           </td>
                         ) : null}
@@ -11825,6 +12344,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             ) : null}
                           </td>
                         ) : null}
+                        {conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                          <td className={productStockTableTdClass(conceptStockCompactTable)}>
+                            <ProductStockRemainderCell
+                              product={stockProductForRow}
+                              compact={conceptStockCompactTable}
+                            />
+                          </td>
+                        ) : null}
                         {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
                           <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS}>
                             <ProductRecommendedCpcSearchBidCell product={product} />
@@ -11905,10 +12432,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             </td>
                           );
                         })}
-                        {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                        {!conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
                           <td className={productStockTableTdClass(conceptStockCompactTable)}>
                             <ProductStockRemainderCell
-                              product={product}
+                              product={stockProductForRow}
                               compact={conceptStockCompactTable}
                             />
                           </td>
@@ -12072,6 +12599,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           {conceptBonusCampaignColumn ? (
                             <td className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS} />
                           ) : null}
+                          {conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                            <td className={PRODUCTS_STOCK_TD_CLASS} />
+                          ) : null}
                           {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
                             <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
                           ) : null}
@@ -12089,7 +12619,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               <td key={label} className={`${PRODUCTS_STAT_TD_CLASS} !align-middle`} />
                             ) : null,
                           )}
-                          {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                          {!conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
                             <td className={PRODUCTS_STOCK_TD_CLASS} />
                           ) : null}
                         </tr>
@@ -12269,6 +12799,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               dailyLimitExhausted={camp.dailyLimitExhausted}
                               isCpc={camp.type === 'CPC'}
                               maxCpcBidRub={camp.type === 'CPC' ? listCampaignMaxCpcBidRub(camp) : 0}
+                              dynamicDailyLimit={
+                                allCampaigns.find((x) => x.campaignId === camp.campaignId)
+                                  ?.dynamicDailyLimit
+                              }
+                              budgetRangeConceptDemo={isBudgetRangeConceptCampaign(camp)}
+                              campaignId={camp.campaignId}
                               onClick={camp.type === 'CPC' ? () => openDailyLimitModalForCampaign(camp) : undefined}
                             />
                           </td>
@@ -12276,6 +12812,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             {productsColVisible('tags') ? <td className="p-4 w-[220px]" /> : null}
                             {conceptBonusCampaignColumn ? (
                               <td className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS} />
+                            ) : null}
+                            {conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                              <td className={PRODUCTS_STOCK_TD_CLASS} />
                             ) : null}
                             {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
                               <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
@@ -12318,7 +12857,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 </td>
                               );
                             })}
-                            {productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
+                            {!conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
                               <td className={PRODUCTS_STOCK_TD_CLASS} />
                             ) : null}
                         </tr>
@@ -12363,23 +12902,56 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 )}
               </span>
               <div className="h-6 w-px bg-gray-200" />
-              <button
-                type="button"
-                onClick={handleBulkCreateCampaignFromProducts}
-                className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-purple-700"
+              <div
+                className="relative inline-flex"
+                onMouseEnter={() => {
+                  if (selectedIncludeZeroStockProducts) setBulkCreateMenuOpen(true);
+                }}
+                onMouseLeave={() => setBulkCreateMenuOpen(false)}
               >
-                {!conceptCompactProductsTable ? (
-                  <Plus className="h-4 w-4" aria-hidden />
+                <button
+                  type="button"
+                  onClick={handleBulkCreateCampaignFromProducts}
+                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-200"
+                  aria-describedby={
+                    selectedIncludeZeroStockProducts && bulkCreateMenuOpen
+                      ? 'zero-stock-bulk-create-dropdown'
+                      : undefined
+                  }
+                >
+                  <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                  Создать кампании
+                  {selectedIncludeZeroStockProducts ? (
+                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+                  ) : null}
+                </button>
+                {selectedIncludeZeroStockProducts && bulkCreateMenuOpen ? (
+                  <div className="absolute bottom-full left-1/2 z-[90] w-[18.5rem] -translate-x-1/2 pb-2">
+                    <div
+                      id="zero-stock-bulk-create-dropdown"
+                      role="dialog"
+                      className="rounded-xl border border-gray-200 bg-white p-3 text-left shadow-lg"
+                    >
+                      <p className="mb-0 text-xs leading-snug text-gray-700">
+                        {ZERO_STOCK_BULK_CREATE_WARNING}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={excludeZeroStockProductsFromSelection}
+                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-800 transition-colors hover:bg-gray-200"
+                      >
+                        <Minus className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                        Исключить товары без остатков
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
-                {conceptCompactProductsTable
-                  ? 'Продвигать'
-                  : 'Создать кампанию'}
-              </button>
+              </div>
               {selectedV3BonusProducts.length > 0 ? (
                 <button
                   type="button"
                   onClick={() => setNotPromotedBonusModalProducts(selectedV3BonusProducts)}
-                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#F3E8FF] px-4 py-2 text-sm font-semibold text-[#9A41FE] transition-colors hover:bg-[#E9D5FF]"
+                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#9A41FE] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
                 >
                   <Gift className="h-4 w-4 shrink-0" aria-hidden />
                   За бонусы {selectedV3BonusProducts.length}{' '}
@@ -12500,8 +13072,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         kind={listAutomationModal?.kind ?? null}
         onClose={() => setListAutomationModal(null)}
         onAutoRefillSaved={(campaignId) => {
+          onPersistCampaignListPatch?.(campaignId, { autoRefill: true });
           setAllCampaigns((prev) =>
-            prev.map((c) => (c.campaignId === campaignId ? { ...c, autoRefill: true } : c)),
+            prev.map((c) =>
+              c.campaignId === campaignId
+                ? { ...c, autoRefill: true, autoRefillStatus: 'ok' as const }
+                : c,
+            ),
           );
           setProductBulkNotice('Автопополнение настроено');
         }}
@@ -12529,7 +13106,11 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             if (dailyLimitModalCampaign) {
               const patch =
                 limit === null
-                  ? { dailyLimit: null as null, scheduledDailyLimit: null as null }
+                  ? {
+                      dailyLimit: null as null,
+                      scheduledDailyLimit: null as null,
+                      dynamicDailyLimit: false,
+                    }
                   : isScheduled
                     ? { scheduledDailyLimit: limit }
                     : { dailyLimit: limit, scheduledDailyLimit: null as null };
@@ -12537,7 +13118,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               setAllCampaigns(prev => prev.map(c => {
                 if (c.id === dailyLimitModalCampaign.id) {
                   if (limit === null) {
-                    return { ...c, dailyLimit: null, scheduledDailyLimit: null };
+                    return { ...c, dailyLimit: null, scheduledDailyLimit: null, dynamicDailyLimit: false };
                   }
                   if (isScheduled) {
                     // Запланированный лимит на новый день
@@ -12552,6 +13133,177 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
         />
       )}
+
+      {isBudgetStrategyModalOpen && dailyLimitModalCampaign && isBudgetRangeConceptCampaign(dailyLimitModalCampaign) ? (
+        <AdvancedDailyLimitModal
+          advancedSettingsOnly
+          conditionRuleBuilder
+          budgetStrategyTabs
+          isOpen={isBudgetStrategyModalOpen}
+          onClose={() => {
+            setIsBudgetStrategyModalOpen(false);
+            setSelectedCampaignForRefill(null);
+          }}
+          isDailyLimitEnabled={
+            dailyLimitModalCampaign.dailyLimit != null && dailyLimitModalCampaign.dailyLimit > 0
+          }
+          onEnableDailyLimit={() => {
+            const next = String(DAILY_LIMIT_ABSOLUTE_MIN);
+            setBudgetStrategyDailyLimitValue(next);
+            setBudgetStrategySavedDailyLimit(next);
+          }}
+          onDisableDailyLimit={() => {
+            setBudgetStrategyDailyLimitValue('');
+            setBudgetStrategySavedDailyLimit('');
+          }}
+          dailyLimitValue={budgetStrategyDailyLimitValue}
+          onDailyLimitValueChange={setBudgetStrategyDailyLimitValue}
+          onDailyLimitCommit={(parsed) => {
+            if (Number.isNaN(parsed)) return;
+            setBudgetStrategyDailyLimitValue(String(parsed));
+            setBudgetStrategySavedDailyLimit(String(parsed));
+            const patch = { dailyLimit: parsed, scheduledDailyLimit: null as null };
+            onPersistCampaignListPatch?.(dailyLimitModalCampaign.campaignId, patch);
+            setAllCampaigns((prev) =>
+              prev.map((c) =>
+                c.id === dailyLimitModalCampaign.id
+                  ? { ...c, dailyLimit: parsed, scheduledDailyLimit: null }
+                  : c,
+              ),
+            );
+          }}
+          savedDailyLimit={budgetStrategySavedDailyLimit}
+          isCarryoverEnabled={budgetStrategyCarryover}
+          onCarryoverChange={setBudgetStrategyCarryover}
+          campaignBudget={dailyLimitModalCampaign.remainingBudget || 0}
+          initialSettings={budgetStrategySettings}
+          referenceCpcBidRub={listCampaignMaxCpcBidRub(dailyLimitModalCampaign)}
+          autoRefillOnRulesTrigger={budgetStrategyAutoRefillOnRules}
+          onAutoRefillOnRulesTriggerChange={setBudgetStrategyAutoRefillOnRules}
+          onApply={(settings, options) => {
+            setBudgetStrategySettings(settings);
+            if (options?.reset) {
+              onPersistCampaignListPatch?.(dailyLimitModalCampaign.campaignId, {
+                dynamicDailyLimit: false,
+              });
+              setAllCampaigns((prev) =>
+                prev.map((c) =>
+                  c.id === dailyLimitModalCampaign.id ? { ...c, dynamicDailyLimit: false } : c,
+                ),
+              );
+              return;
+            }
+            const limitFromSettings =
+              settings.strategyId === 'maxSpend' &&
+              settings.maxSpendLimitRub != null &&
+              settings.maxSpendLimitRub > 0
+                ? settings.maxSpendLimitRub
+                : parseDisplayValue(budgetStrategySavedDailyLimit || budgetStrategyDailyLimitValue);
+            const nextLimit =
+              Number.isFinite(limitFromSettings) && limitFromSettings > 0
+                ? limitFromSettings
+                : dailyLimitModalCampaign.dailyLimit ?? 1000;
+            const dynamicOn =
+              settings.strategyId === 'maxSpend' || settings.autoIncreaseEnabled;
+            onPersistCampaignListPatch?.(dailyLimitModalCampaign.campaignId, {
+              dailyLimit: nextLimit,
+              scheduledDailyLimit: null,
+              dynamicDailyLimit: dynamicOn,
+            });
+            setAllCampaigns((prev) =>
+              prev.map((c) =>
+                c.id === dailyLimitModalCampaign.id
+                  ? {
+                      ...c,
+                      dailyLimit: nextLimit,
+                      scheduledDailyLimit: null,
+                      dynamicDailyLimit: dynamicOn,
+                    }
+                  : c,
+              ),
+            );
+            setIsBudgetStrategyModalOpen(false);
+            setSelectedCampaignForRefill(null);
+            setProductBulkNotice(
+              settings.strategyGroupLabel
+                ? `Стратегия «${settings.strategyGroupLabel}» сохранена`
+                : 'Настройки бюджета сохранены',
+            );
+          }}
+        />
+      ) : null}
+
+      {bonusPromotionChoiceProduct ? (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4">
+          <div
+            className="relative w-full max-w-[420px] rounded-3xl bg-white p-6 shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bonus-promotion-choice-title"
+          >
+            <button
+              type="button"
+              aria-label="Закрыть"
+              className="absolute right-5 top-5 text-gray-400 transition-colors hover:text-gray-700"
+              onClick={() => setBonusPromotionChoiceProduct(null)}
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <h2
+              id="bonus-promotion-choice-title"
+              className="pr-8 text-[22px] font-bold leading-snug text-gray-950"
+            >
+              Товар можно продвигать за бонусы
+            </h2>
+            <p className="mb-0 mt-2 text-sm leading-5 text-gray-500">
+              Есть собранная кампания за бонусы, хотите попробовать?
+            </p>
+
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center gap-2 rounded-xl bg-[#9A41FE] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
+                onClick={() => {
+                  const product = bonusPromotionChoiceProduct;
+                  if (rememberBonusPromotionChoice) {
+                    window.localStorage.setItem('bonus-promotion-choice', 'bonus');
+                    setBonusPromotionPreference('bonus');
+                  }
+                  setBonusPromotionChoiceProduct(null);
+                  setNotPromotedBonusModalProducts([product]);
+                }}
+              >
+                <Gift className="h-4 w-4 shrink-0" aria-hidden />
+                За бонусы
+              </button>
+              <button
+                type="button"
+                className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-medium text-gray-950 transition-colors hover:bg-gray-200"
+                onClick={() => {
+                  const product = bonusPromotionChoiceProduct;
+                  if (rememberBonusPromotionChoice) {
+                    window.localStorage.setItem('bonus-promotion-choice', 'regular');
+                    setBonusPromotionPreference('regular');
+                  }
+                  setBonusPromotionChoiceProduct(null);
+                  handlePromoteNotPromotedProduct(product);
+                }}
+              >
+                Обычное создание
+              </button>
+            </div>
+
+            <label className="mt-4 flex cursor-pointer items-center gap-2 text-sm text-gray-500">
+              <Checkbox
+                checked={rememberBonusPromotionChoice}
+                onChange={(event) => setRememberBonusPromotionChoice(event.target.checked)}
+              />
+              Больше не показывать
+            </label>
+          </div>
+        </div>
+      ) : null}
 
       {notPromotedBonusModalProducts && notPromotedBonusModalProducts.length > 0 ? (
         <NotPromotedBonusCampaignModal
@@ -12576,6 +13328,45 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
         />
       ) : null}
+
+      {bulkPaymentModelProducts && bulkPaymentModelProducts.length > 0 ? (
+        <BulkPaymentModelModal
+          isOpen
+          products={bulkPaymentModelProducts}
+          onClose={() => setBulkPaymentModelProducts(null)}
+          onConfirm={handleConfirmBulkPaymentModel}
+        />
+      ) : null}
+
+      {wbDiscountModalProducts && wbDiscountModalProducts.length > 0 ? (
+        <BulkPaymentModelModal
+          isOpen
+          title="Продвигайте эти товары и получайте до +10% к скидке WB"
+          withCategorySelect
+          products={wbDiscountModalProducts}
+          onClose={() => setWbDiscountModalProducts(null)}
+          onConfirm={(payload) => {
+            setWbDiscountModalProducts(null);
+            if (onConfirmWbDiscountPromote) {
+              onConfirmWbDiscountPromote(payload);
+              return;
+            }
+            handleConfirmBulkPaymentModel(payload);
+          }}
+        />
+      ) : null}
+
+      <RankingFactorsSidePanel
+        open={rankingFactorsProduct != null}
+        onClose={() => setRankingFactorsProduct(null)}
+        productName={rankingFactorsProduct?.name}
+        productImageUrl={rankingFactorsProduct?.image}
+        productMeta={
+          rankingFactorsProduct
+            ? `${rankingFactorsProduct.category} • ${rankingFactorsProduct.articleSeller || '—'} • ${rankingFactorsProduct.articleWb}`
+            : undefined
+        }
+      />
 
       {isCampaignsPage && (
         <div

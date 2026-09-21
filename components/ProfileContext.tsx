@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 export type ProfileId = '1' | '2' | '3';
 
@@ -42,8 +42,11 @@ type ProfileContextValue = {
   dismissReferralInviteCreationBanner: () => void;
   pendingSingleCampaignNav: boolean;
   singleCampaignSeed: RepeatLaunchPreset | null;
+  pendingPromoBonusPackageId: string | null;
   beginRepeatLaunchFlow: (preset: RepeatLaunchPreset) => void;
+  beginPromoBonusSpendFlow: (packageId: string) => void;
   consumeSingleCampaignNav: () => void;
+  consumePendingPromoBonusPackageId: () => string | null;
   clearSingleCampaignSeed: () => void;
   showReferralCampaignCreatedNotice: boolean;
   referralCodeAppliedFromCreation: boolean;
@@ -59,6 +62,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [pendingReferralCreationNav, setPendingReferralCreationNav] = useState(false);
   const [pendingSingleCampaignNav, setPendingSingleCampaignNav] = useState(false);
   const [singleCampaignSeed, setSingleCampaignSeed] = useState<RepeatLaunchPreset | null>(null);
+  const [pendingPromoBonusPackageId, setPendingPromoBonusPackageId] = useState<string | null>(null);
+  const pendingPromoBonusPackageIdRef = useRef<string | null>(null);
   const [showReferralCampaignCreatedNotice, setShowReferralCampaignCreatedNotice] = useState(false);
   const [referralCodeAppliedFromCreation, setReferralCodeAppliedFromCreation] = useState(false);
 
@@ -80,8 +85,20 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     setPendingSingleCampaignNav(true);
   }, []);
 
+  const beginPromoBonusSpendFlow = useCallback((packageId: string) => {
+    pendingPromoBonusPackageIdRef.current = packageId;
+    setPendingPromoBonusPackageId(packageId);
+  }, []);
+
   const consumeSingleCampaignNav = useCallback(() => {
     setPendingSingleCampaignNav(false);
+  }, []);
+
+  const consumePendingPromoBonusPackageId = useCallback(() => {
+    const taken = pendingPromoBonusPackageIdRef.current;
+    pendingPromoBonusPackageIdRef.current = null;
+    if (taken !== null) setPendingPromoBonusPackageId(null);
+    return taken;
   }, []);
 
   const clearSingleCampaignSeed = useCallback(() => {
@@ -119,8 +136,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
       dismissReferralInviteCreationBanner,
       pendingSingleCampaignNav,
       singleCampaignSeed,
+      pendingPromoBonusPackageId,
       beginRepeatLaunchFlow,
+      beginPromoBonusSpendFlow,
       consumeSingleCampaignNav,
+      consumePendingPromoBonusPackageId,
       clearSingleCampaignSeed,
       showReferralCampaignCreatedNotice,
       referralCodeAppliedFromCreation,
@@ -133,13 +153,16 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     pendingReferralCreationNav,
     pendingSingleCampaignNav,
     singleCampaignSeed,
+    pendingPromoBonusPackageId,
     showReferralCampaignCreatedNotice,
     referralCodeAppliedFromCreation,
     beginReferralCreationFlow,
     consumeReferralCreationNav,
     dismissReferralInviteCreationBanner,
     beginRepeatLaunchFlow,
+    beginPromoBonusSpendFlow,
     consumeSingleCampaignNav,
+    consumePendingPromoBonusPackageId,
     clearSingleCampaignSeed,
     notifyReferralCampaignCreatedFromCreation,
     dismissReferralCampaignCreatedNotice,

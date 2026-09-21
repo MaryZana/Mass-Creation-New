@@ -48,7 +48,11 @@ export interface CampaignRecord {
   searchBid?: number; // For CPM manual search
   recommendationsBid?: number; // For CPM manual recommendations
   budget: number;
+  /** Дневной лимит ₽; null/undefined — «Настроить лимит» */
+  dailyLimit?: number | null;
   bonusAmount?: number; // Amount funded by bonuses
+  /** Выбранный пакет промо-бонусов */
+  bonusPackageId?: string;
   autoReplenishment: boolean;
   fundingSource: 'Единый счёт'; // Changed to Unified Account
   status: CampaignStatus;
