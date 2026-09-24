@@ -43,6 +43,8 @@ export interface CampaignRecord {
   campaignName: string; // New field for the campaign name
   imageUrl: string;
   category: string;
+  /** Остаток на складе (шт.) */
+  stockLeft?: number;
   keyword?: string;
   bid?: number; // For unified bid
   searchBid?: number; // For CPM manual search
@@ -54,6 +56,10 @@ export interface CampaignRecord {
   /** Выбранный пакет промо-бонусов */
   bonusPackageId?: string;
   autoReplenishment: boolean;
+  /** Порог автопополнения: если бюджет меньше, ₽ */
+  autoRefillThreshold?: number;
+  /** Сумма автопополнения, ₽ */
+  autoRefillAmount?: number;
   fundingSource: 'Единый счёт'; // Changed to Unified Account
   status: CampaignStatus;
   errorMessage?: string;

@@ -22,6 +22,7 @@ import { MassCreationIsland } from './components/CpcMassCreationIsland';
 import { useCpmBidRoundedAlert } from './components/CpmBidRoundedAlert';
 import { CPM_BID_STEP_RUB, normalizeCpmBidRub } from './utils/cpmBidRounding';
 import { DAILY_LIMIT_ABSOLUTE_MIN } from './utils/cpcDailyLimitBid';
+import { effectivePromoBonusAmount, packageBalanceAfterCampaigns } from './utils/promoBonus';
 import { MassEditPage } from './components/MassEditPage';
 import { SingleCampaignPage, MOCK_PRODUCTS as SINGLE_CAMPAIGN_CURATED_CATALOG } from './components/SingleCampaignPage';
 import {
@@ -81,7 +82,7 @@ interface BonusPackage {
 // --- Constants ---
 const CATEGORIES = ['Брюки', 'Платья', 'Футболки', 'Аксессуары', 'Обувь', 'Электроника', 'Дом', 'Кольца', 'Фоторамки', 'Спортивная одежда', 'Косметика', 'Игрушки'];
 const UNIFIED_BALANCE = 105350;
-const TOTAL_PROMO_BONUS = 226660517;
+const TOTAL_PROMO_BONUS = 30000;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
 const SELLER_PASSWORD = 'Uy4b3n2';
@@ -118,9 +119,17 @@ function isNewSellerSecondaryShellPath(pathname: string): boolean {
 }
 
 const BONUS_PACKAGES: BonusPackage[] = [
-  { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
-  { id: 'p2', amount: 17133120, maxPercent: 99, expiry: '27.03.26', displayBurn: '168.3k' },
+  { id: 'p1', amount: 15000, maxPercent: 50, expiry: '20.03.26', displayBurn: '15 000' },
+  { id: 'p2', amount: 15000, maxPercent: 99, expiry: '27.03.26', displayBurn: '15 000' },
 ];
+
+/** Сколько можно списать: не больше остатка пакета, бюджета и maxPercent% от суммы. */
+function maxBonusForBudget(pkg: BonusPackage, budget: number, available = pkg.amount): number {
+  if (!Number.isFinite(budget) || budget <= 0) return 0;
+  const byPercent = Math.floor((budget * pkg.maxPercent) / 100);
+  const pool = Math.max(0, Math.min(pkg.amount, available));
+  return Math.max(0, Math.min(pool, byPercent, Math.floor(budget)));
+}
 
 // --- Helpers ---
 export const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
@@ -629,34 +638,47 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
     }
 
     return ( 
-        <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={handleCloseRequest}> 
-            <div className="relative bg-white rounded-2xl shadow-xl w-full max-w-2xl m-auto flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}> 
-                <div className="flex items-start justify-between p-6 border-b border-gray-100"> 
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900">Добавление товаров</h2> 
-                        <p className="text-sm text-gray-500 mt-1">товары автоматически объединяются в группы по типу кампании (например, CPM: ручная / единая ставка). Один товар = 1 кампания</p>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={handleCloseRequest}> 
+            <div
+              className="relative m-auto flex w-full max-w-xl flex-col rounded-2xl bg-white shadow-xl max-h-[85vh]"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="add-item-modal-title"
+            > 
+                <div className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6"> 
+                    <div className="min-w-0 flex-1">
+                        <h2 id="add-item-modal-title" className="text-xl font-bold text-gray-900">Добавление товаров</h2> 
+                        <p className="mt-2 mb-0 text-sm font-normal leading-snug text-gray-500">
+                          товары автоматически объединяются в группы по типу кампании (например, CPM: ручная / единая ставка). Один товар = 1 кампания
+                        </p>
                     </div>
-                    <button onClick={handleCloseRequest} className="text-gray-400 hover:text-gray-600 p-1 rounded-full"><X className="w-6 h-6" /></button> 
+                    <button
+                      type="button"
+                      onClick={handleCloseRequest}
+                      className="shrink-0 rounded-full p-1 text-gray-400 hover:text-gray-600"
+                      aria-label="Закрыть"
+                    >
+                      <X className="h-6 w-6" />
+                    </button> 
                 </div> 
-                <div className="p-6 space-y-4 flex-grow flex flex-col min-h-0 overflow-y-auto custom-scrollbar">
-                    <section className="shrink-0 overflow-visible relative z-20">
-                        <h3 className="text-lg font-bold">Добавление товара</h3>
-                        
-                        <div className="my-4">
-                            <div className="inline-flex items-center bg-gray-100 rounded-lg p-1 space-x-1">
-                                <button
-                                    onClick={() => setActiveTab('select')}
-                                    className={`px-5 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'select' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
-                                >
-                                    Выбрать из списка
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab('upload')}
-                                    className={`px-5 py-1.5 text-sm font-semibold rounded-md transition-colors ${activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
-                                >
-                                    Загрузить из файла
-                                </button>
-                            </div>
+                <div className="flex min-h-0 flex-grow flex-col space-y-5 overflow-y-auto px-6 pb-6 pt-4 custom-scrollbar">
+                    <section className="relative z-20 shrink-0 overflow-visible">
+                        <div className="inline-flex items-center space-x-1 rounded-lg bg-gray-100 p-1">
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('select')}
+                                className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${activeTab === 'select' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                Выбрать из списка
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setActiveTab('upload')}
+                                className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
+                            >
+                                Загрузить из файла
+                            </button>
                         </div>
 
                         {activeTab === 'upload' && (
@@ -667,7 +689,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                   setIsDragOver(false);
                               }}
                               onDrop={handleDropExcel}
-                              className={isDragOver ? 'rounded-xl border-2 border-dashed border-purple-400 bg-purple-50/40 p-2 -m-2 transition-colors' : ''}
+                              className={`mt-4 ${isDragOver ? 'rounded-xl border-2 border-dashed border-purple-400 bg-purple-50/40 p-2 -m-2 transition-colors' : ''}`}
                             >
                                 {/* скрытый инпут всегда доступен, чтобы кнопка \"Добавить файл\" работала при любом количестве файлов */}
                                 <input
@@ -762,8 +784,8 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                         )}
                         
                         {activeTab === 'select' && (
-                             <div className="relative">
-                                <div className="space-y-6">
+                             <div className="relative mt-4">
+                                <div className="space-y-4">
                                     <div>
                                         <MultiSelect options={CATEGORIES} selected={tempConfig.categories} onChange={(c) => { setTempConfig(p => ({...p, categories: c})); setSelectedProducts([]); }} placeholder="Выберите категории" disabled={uploadedFiles.length > 0}/>
                                     </div>
@@ -798,17 +820,63 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                     </section>
                     
                     {hasChanges && (
-                        <div className="flex-grow overflow-visible space-y-6 pt-4 border-t border-gray-200 mt-6 animate-in fade-in duration-500 min-h-0">
+                        <div className="min-h-0 space-y-5 border-t border-gray-100 pt-5 animate-in fade-in duration-500">
                             <section>
-                            <h3 className="text-lg font-bold mb-3">Тип продвижения</h3>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <label className={`relative p-5 rounded-xl border-2 cursor-pointer ${tempConfig.paymentModel === PaymentModel.CPM ? 'bg-gray-100 border-transparent ring-2 ring-purple-600' : 'bg-white border-gray-100'}`} onClick={() => setTempConfig(p => ({...p, paymentModel: PaymentModel.CPM}))}> <div className="flex items-start gap-4"> <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${tempConfig.paymentModel === PaymentModel.CPM ? 'border-purple-600 bg-purple-600' : 'border-gray-300'}`}>{tempConfig.paymentModel === PaymentModel.CPM && <div className="w-2 h-2 bg-white rounded-full"></div>}</div> <div> <span className="block font-semibold text-lg">Оплата за показы (CPM)</span> <span className="text-gray-500 text-sm">Вы платите за 1 000 показов</span> </div> </div> </label>
-                                <label className={`relative p-5 rounded-xl border-2 cursor-pointer ${tempConfig.paymentModel === PaymentModel.CPC ? 'bg-gray-100 border-transparent ring-2 ring-purple-600' : 'bg-white border-gray-100'}`} onClick={() => setTempConfig(p => ({...p, paymentModel: PaymentModel.CPC, bidType: BidType.UNIFIED}))}> <div className="flex items-start gap-4"> <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5 ${tempConfig.paymentModel === PaymentModel.CPC ? 'border-purple-600 bg-purple-600' : 'border-gray-300'}`}>{tempConfig.paymentModel === PaymentModel.CPC && <div className="w-2 h-2 bg-white rounded-full"></div>}</div> <div> <span className="block font-semibold text-lg">Оплата за клики (CPC)</span> <span className="text-gray-500 text-sm">Вы платите за 1 клик</span> </div> </div> </label>
+                            <h3 className="mb-3 text-base font-bold text-gray-900">Модель оплаты</h3>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setTempConfig(p => ({...p, paymentModel: PaymentModel.CPC, bidType: BidType.UNIFIED}))}
+                                  className={`flex items-start gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors ${
+                                    tempConfig.paymentModel === PaymentModel.CPC
+                                      ? 'bg-[#F3E8FF] ring-0'
+                                      : 'border border-gray-200 bg-white hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <span
+                                    className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 ${
+                                      tempConfig.paymentModel === PaymentModel.CPC ? 'border-[#9A41FE]' : 'border-gray-300'
+                                    }`}
+                                    aria-hidden
+                                  >
+                                    {tempConfig.paymentModel === PaymentModel.CPC ? (
+                                      <span className="h-2.5 w-2.5 rounded-full bg-[#9A41FE]" />
+                                    ) : null}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block text-[15px] font-semibold leading-snug text-gray-900">Оплата за клики (CPC)</span>
+                                    <span className="mt-0.5 block text-sm leading-snug text-gray-500">Вы платите за 1 клик</span>
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setTempConfig(p => ({...p, paymentModel: PaymentModel.CPM}))}
+                                  className={`flex items-start gap-3 rounded-2xl px-4 py-3.5 text-left transition-colors ${
+                                    tempConfig.paymentModel === PaymentModel.CPM
+                                      ? 'bg-[#F3E8FF] ring-0'
+                                      : 'border border-gray-200 bg-white hover:bg-gray-50'
+                                  }`}
+                                >
+                                  <span
+                                    className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 ${
+                                      tempConfig.paymentModel === PaymentModel.CPM ? 'border-[#9A41FE]' : 'border-gray-300'
+                                    }`}
+                                    aria-hidden
+                                  >
+                                    {tempConfig.paymentModel === PaymentModel.CPM ? (
+                                      <span className="h-2.5 w-2.5 rounded-full bg-[#9A41FE]" />
+                                    ) : null}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block text-[15px] font-semibold leading-snug text-gray-900">Оплата за показы (CPM)</span>
+                                    <span className="mt-0.5 block text-sm leading-snug text-gray-500">Вы платите за 1 000 показов</span>
+                                  </span>
+                                </button>
                             </div>
                             </section>
                             {tempConfig.paymentModel === PaymentModel.CPM && (
                             <section>
-                            <h3 className="text-lg font-bold mb-4">Зоны показов</h3>
+                            <h3 className="mb-3 text-base font-bold text-gray-900">Зоны показа</h3>
                             <div className="space-y-4">
                                 <label className="flex items-start gap-3 cursor-pointer" onClick={() => setTempConfig(p => ({...p, bidType: BidType.UNIFIED}))}>
                                     <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 mt-0.5 ${tempConfig.bidType === BidType.UNIFIED ? 'border-purple-600 bg-purple-600' : 'border-gray-300'}`}>
@@ -834,56 +902,56 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                 </label>
                             </div>
                             {tempConfig.bidType === BidType.MANUAL && (
-                              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
-                                  <div className="mr-4">
-                                    <p className="text-sm font-medium text-gray-900">Поиск</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">Показы в результатах поиска</p>
+                              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={manualZones.search}
+                                      onClick={() =>
+                                        setManualZones(prev => {
+                                          const next = { ...prev, search: !prev.search };
+                                          if (!next.search && !next.recommendations) {
+                                            return { ...prev, search: true };
+                                          }
+                                          return next;
+                                        })
+                                      }
+                                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${manualZones.search ? 'bg-purple-600' : 'bg-[#E5E5EA]'}`}
+                                    >
+                                      <span
+                                        aria-hidden
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${manualZones.search ? 'translate-x-4' : 'translate-x-0'}`}
+                                      />
+                                    </button>
+                                    <span className="text-sm font-medium text-gray-900">Поиск</span>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setManualZones(prev => {
-                                        const next = { ...prev, search: !prev.search };
-                                        if (!next.search && !next.recommendations) {
-                                          // не даём выключить обе зоны — оставляем поиск включённым
-                                          return { ...prev, search: true };
-                                        }
-                                        return next;
-                                      })
-                                    }
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.search ? 'bg-purple-500' : 'bg-gray-300'}`}
-                                  >
-                                    <span
-                                      aria-hidden="true"
-                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.search ? 'translate-x-5' : 'translate-x-1'}`}
-                                    />
-                                  </button>
                                 </div>
-                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
-                                  <div className="mr-4">
-                                    <p className="text-sm font-medium text-gray-900">Рекомендации</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">Показы в рекомендациях и ленте</p>
+                                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={manualZones.recommendations}
+                                      onClick={() =>
+                                        setManualZones(prev => {
+                                          const next = { ...prev, recommendations: !prev.recommendations };
+                                          if (!next.search && !next.recommendations) {
+                                            return { ...prev, recommendations: true };
+                                          }
+                                          return next;
+                                        })
+                                      }
+                                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${manualZones.recommendations ? 'bg-purple-600' : 'bg-[#E5E5EA]'}`}
+                                    >
+                                      <span
+                                        aria-hidden
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${manualZones.recommendations ? 'translate-x-4' : 'translate-x-0'}`}
+                                      />
+                                    </button>
+                                    <span className="text-sm font-medium text-gray-900">Рекомендации</span>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setManualZones(prev => {
-                                        const next = { ...prev, recommendations: !prev.recommendations };
-                                        if (!next.search && !next.recommendations) {
-                                          // не даём выключить обе зоны — оставляем рекомендации включёнными
-                                          return { ...prev, recommendations: true };
-                                        }
-                                        return next;
-                                      })
-                                    }
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.recommendations ? 'bg-purple-500' : 'bg-gray-300'}`}
-                                  >
-                                    <span
-                                      aria-hidden="true"
-                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.recommendations ? 'translate-x-5' : 'translate-x-1'}`}
-                                    />
-                                  </button>
                                 </div>
                               </div>
                             )}
@@ -891,55 +959,57 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                             )}
                             {tempConfig.paymentModel === PaymentModel.CPC && (
                             <section>
-                            <h3 className="text-lg font-bold mb-4">Зоны показов</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
-                                  <div className="mr-4">
-                                    <p className="text-sm font-medium text-gray-900">Поиск</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">Показы в результатах поиска</p>
+                            <h3 className="mb-3 text-base font-bold text-gray-900">Зоны показа</h3>
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={manualZones.search}
+                                      onClick={() =>
+                                        setManualZones(prev => {
+                                          const next = { ...prev, search: !prev.search };
+                                          if (!next.search && !next.recommendations) {
+                                            return { ...prev, search: true };
+                                          }
+                                          return next;
+                                        })
+                                      }
+                                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${manualZones.search ? 'bg-purple-600' : 'bg-[#E5E5EA]'}`}
+                                    >
+                                      <span
+                                        aria-hidden
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${manualZones.search ? 'translate-x-4' : 'translate-x-0'}`}
+                                      />
+                                    </button>
+                                    <span className="text-sm font-medium text-gray-900">Поиск</span>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setManualZones(prev => {
-                                        const next = { ...prev, search: !prev.search };
-                                        if (!next.search && !next.recommendations) {
-                                          return { ...prev, search: true };
-                                        }
-                                        return next;
-                                      })
-                                    }
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.search ? 'bg-purple-500' : 'bg-gray-300'}`}
-                                  >
-                                    <span
-                                      aria-hidden="true"
-                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.search ? 'translate-x-5' : 'translate-x-1'}`}
-                                    />
-                                  </button>
                                 </div>
-                                <div className="flex items-center justify-between p-3 rounded-lg border border-gray-200 bg-white">
-                                  <div className="mr-4">
-                                    <p className="text-sm font-medium text-gray-900">Рекомендации</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">Показы в рекомендациях и ленте</p>
+                                <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3">
+                                  <div className="flex min-w-0 items-center gap-2">
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={manualZones.recommendations}
+                                      onClick={() =>
+                                        setManualZones(prev => {
+                                          const next = { ...prev, recommendations: !prev.recommendations };
+                                          if (!next.search && !next.recommendations) {
+                                            return { ...prev, recommendations: true };
+                                          }
+                                          return next;
+                                        })
+                                      }
+                                      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${manualZones.recommendations ? 'bg-purple-600' : 'bg-[#E5E5EA]'}`}
+                                    >
+                                      <span
+                                        aria-hidden
+                                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${manualZones.recommendations ? 'translate-x-4' : 'translate-x-0'}`}
+                                      />
+                                    </button>
+                                    <span className="text-sm font-medium text-gray-900">Рекомендации</span>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      setManualZones(prev => {
-                                        const next = { ...prev, recommendations: !prev.recommendations };
-                                        if (!next.search && !next.recommendations) {
-                                          return { ...prev, recommendations: true };
-                                        }
-                                        return next;
-                                      })
-                                    }
-                                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${manualZones.recommendations ? 'bg-purple-500' : 'bg-gray-300'}`}
-                                  >
-                                    <span
-                                      aria-hidden="true"
-                                      className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${manualZones.recommendations ? 'translate-x-5' : 'translate-x-1'}`}
-                                    />
-                                  </button>
                                 </div>
                             </div>
                             </section>
@@ -947,17 +1017,24 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                         </div>
                     )}
                 </div> 
-                <div className="flex justify-end items-center gap-4 p-6 bg-gray-50/70 border-t border-gray-100 rounded-b-2xl relative z-10"> 
-                    <button onClick={handleCloseRequest} className="px-6 py-2.5 text-sm font-medium bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">Отмена</button>
-                    <button 
-                        onClick={handleSubmit} 
-                        disabled={validSelectedProducts.length === 0} 
-                        className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-300"
+                <div className="flex shrink-0 items-center gap-3 border-t border-gray-100 px-6 py-4"> 
+                    <button
+                      type="button"
+                      onClick={handleSubmit} 
+                      disabled={validSelectedProducts.length === 0} 
+                      className="rounded-lg bg-[#9A41FE] px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                     {validSelectedProducts.length > 0 
                         ? `Добавить ${validSelectedProducts.length} ${getPlural(validSelectedProducts.length, 'товар', 'товара', 'товаров')}` 
-                        : 'Добавить список'
+                        : 'Добавить'
                     }
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleCloseRequest}
+                      className="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-200"
+                    >
+                      Отмена
                     </button>
                 </div> 
             </div> 
@@ -968,13 +1045,21 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
 const AutoRefillModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (settings: { threshold: number; amount: number; usePromoBonuses: boolean }) => void;
   campaign: CampaignRecord | null;
 }> = ({ isOpen, onClose, onSave, campaign }) => {
   const [threshold, setThreshold] = useState('1000');
   const [amount, setAmount] = useState('3000');
   const [usePromoBonuses, setUsePromoBonuses] = useState(true);
   const [showPackages, setShowPackages] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setThreshold(String(campaign?.autoRefillThreshold ?? 1000));
+    setAmount(String(campaign?.autoRefillAmount ?? 3000));
+    setUsePromoBonuses(campaign?.usePromoBonuses ?? true);
+    setShowPackages(true);
+  }, [isOpen, campaign]);
 
   const ModalToggleSwitch = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
     <button role="switch" aria-checked={checked} onClick={() => onChange(!checked)} className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none cursor-pointer ${checked ? 'bg-purple-500' : 'bg-gray-300'}`}>
@@ -1035,14 +1120,11 @@ const AutoRefillModal: React.FC<{
              <div className="space-y-3">
                 <div className="flex items-center py-2">
                     <SingleAccountIcon className="w-6 h-6 text-gray-500 mr-4"/>
-                    <p className="font-medium text-gray-800">Единый счёт: {UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽</p>
+                    <p className="mb-0 font-medium text-gray-800">Единый счёт: {UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽</p>
                 </div>
                 <div className="flex items-center py-2">
-                    <div className="w-6 h-6 mr-4 rounded-full bg-purple-500"></div>
-                    <div className="flex-grow">
-                        <p className="font-medium text-gray-800">Промо-бонусы: {TOTAL_PROMO_BONUS.toLocaleString('ru-RU')} B <span className="text-gray-500 font-normal">(до 100% от суммы пополнения)</span></p>
-                    </div>
                     <ModalToggleSwitch checked={usePromoBonuses} onChange={setUsePromoBonuses} />
+                    <p className="ml-4 font-medium text-gray-800">Промо-бонусы: {TOTAL_PROMO_BONUS.toLocaleString('ru-RU')} B <span className="text-gray-500 font-normal">(до 100% от суммы пополнения)</span></p>
                 </div>
              </div>
              <p className="text-sm text-gray-500 mt-4 pl-10">Спишем промо-бонусы из ваших пакетов автоматически. Сначала из тех, что сгорают быстрее, затем из остальных. Сумма списания зависит от условий пакета</p>
@@ -1057,10 +1139,11 @@ const AutoRefillModal: React.FC<{
                         {BONUS_PACKAGES.map(pkg => (
                             <div key={pkg.id} className="bg-white p-4 rounded-xl border-2 border-gray-200 shadow-sm hover:border-purple-400 transition-all cursor-pointer">
                                 <span className="text-2xl font-bold text-gray-900">{pkg.amount.toLocaleString('ru-RU')}</span>
+                                <p className="text-xs font-medium text-gray-500 mt-1">Остаток пакета</p>
                                 <p className="text-sm text-gray-600 mt-1 mb-3">Оплата до {pkg.maxPercent}% от суммы</p>
                                 <div className="flex items-center gap-2 text-xs text-gray-500">
                                     <Clock className="w-3.5 h-3.5" />
-                                    <span>{pkg.displayBurn} сгорят {pkg.expiry}</span>
+                                    <span>сгорят {pkg.expiry}</span>
                                 </div>
                             </div>
                         ))}
@@ -1072,7 +1155,16 @@ const AutoRefillModal: React.FC<{
         </div>
 
         <div className="flex justify-start items-center gap-3 p-6 bg-gray-50/70 border-t border-gray-100 rounded-b-2xl">
-            <button onClick={onSave} className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg">
+            <button
+              onClick={() =>
+                onSave({
+                  threshold: parseDisplayValue(threshold) || 1000,
+                  amount: parseDisplayValue(amount) || 3000,
+                  usePromoBonuses,
+                })
+              }
+              className="px-6 py-2.5 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg"
+            >
                 Сохранить
             </button>
             <button onClick={onClose} className="px-6 py-2.5 text-sm font-medium bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200">
@@ -1116,53 +1208,144 @@ const BulkEditModal = ({
     selectedCampaignIds: string[];
 }) => {
     const [value, setValue] = useState<string>('3000');
-    const [isAutorefillEnabled, setIsAutorefillEnabled] = useState(true);
     const [useBonuses, setUseBonuses] = useState(false);
     const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
     const [bonusValue, setBonusValue] = useState<number | string>(3000);
+    const [budgetTab, setBudgetTab] = useState<'auto' | 'one-time'>('one-time');
+    const [autoThreshold, setAutoThreshold] = useState('1000');
+    const [autoAmount, setAutoAmount] = useState('3000');
+    const [autoUsePromoBonuses, setAutoUsePromoBonuses] = useState(true);
+    const [showAutoPackages, setShowAutoPackages] = useState(false);
 
     const [budgetError, setBudgetError] = useState('');
     const [bonusError, setBonusError] = useState('');
+    /** Черновик сброса: освобождает бонусы выбранных кампаний до «Применить», тогл не выключает. */
+    const [bonusesDraftReset, setBonusesDraftReset] = useState(false);
 
     const budgetForSingleMode = campaignData?.budget ?? 3000;
+    const isReplenishAction = action === 'budget' || action === 'autorefill';
+    const campaignCount = Math.max(1, selectedCampaignsCount || (campaignData ? 1 : 0));
 
     useEffect(() => {
-        if (isOpen) {
-            if (action === 'autorefill') {
-                const campaignsToInspect = editingGroupId ? editedCampaigns : allValidCampaigns;
-                const selected = campaignsToInspect.filter(c => selectedCampaignIds.includes(c.id));
-                if (selected.length > 0) {
-                    const allEnabled = selected.every(c => c.autoReplenishment);
-                    setIsAutorefillEnabled(allEnabled);
-                } else {
-                    setIsAutorefillEnabled(false);
-                }
-            } else if (action === 'funding') setValue('Единый счёт');
-            else if (action === 'bid' && categories.length > 1) {
-                setValue(categories.reduce((acc, cat) => ({ ...acc, [cat]: '' }), {}) as any);
-            } else if (isSingleCampaignMode && campaignData) {
-                setValue(String(campaignData.budget));
-                setUseBonuses(campaignData.usePromoBonuses);
-                setBonusValue(campaignData.bonusAmount || 0);
-            } else if (prefillData) {
-                setValue(String(prefillData.budget));
-                setUseBonuses(prefillData.useBonuses);
-                setBonusValue(prefillData.bonusAmount);
-            }
-            else {
-                setValue('3000');
-                setUseBonuses(false);
-                setBonusValue(3000);
-            }
-            setBudgetError('');
-            setBonusError('');
+        if (!isOpen) return;
+
+        if (action === 'autorefill') {
+            setBudgetTab('auto');
+        } else if (action === 'budget') {
+            setBudgetTab('one-time');
         }
-    }, [isOpen, action, categories, prefillData, isSingleCampaignMode, campaignData, editingGroupId, allValidCampaigns, selectedCampaignIds]);
+
+        if (action === 'funding') setValue('Единый счёт');
+        else if (action === 'bid' && categories.length > 1) {
+            setValue(categories.reduce((acc, cat) => ({ ...acc, [cat]: '' }), {}) as any);
+        } else if (isSingleCampaignMode && campaignData) {
+            setValue(String(campaignData.budget));
+            setUseBonuses(campaignData.usePromoBonuses);
+            setBonusValue(
+              Math.min(
+                campaignData.bonusAmount || campaignData.budget || 0,
+                maxBonusForBudget(
+                  BONUS_PACKAGES.find((pkg) => pkg.id === campaignData.bonusPackageId) ?? BONUS_PACKAGES[0],
+                  campaignData.budget,
+                ),
+              ),
+            );
+            setAutoAmount(String(campaignData.budget || 3000));
+            setAutoUsePromoBonuses(campaignData.usePromoBonuses);
+            if (campaignData.bonusPackageId) setSelectedPkgId(campaignData.bonusPackageId);
+        } else if (prefillData) {
+            setValue(String(prefillData.budget));
+            setUseBonuses(prefillData.useBonuses);
+            setBonusValue(
+              Math.min(
+                prefillData.bonusAmount || prefillData.budget,
+                maxBonusForBudget(BONUS_PACKAGES[0], prefillData.budget),
+              ),
+            );
+            setAutoAmount(String(prefillData.budget || 3000));
+            setAutoUsePromoBonuses(prefillData.useBonuses);
+        } else if (action === 'budget' || action === 'autorefill') {
+            setValue('3000');
+            setUseBonuses(false);
+            setBonusValue(3000);
+            setSelectedPkgId(BONUS_PACKAGES[0].id);
+            setAutoAmount('3000');
+            setAutoThreshold('1000');
+            setAutoUsePromoBonuses(true);
+            setShowAutoPackages(false);
+        }
+        if (action === 'autorefill' && campaignData) {
+            setAutoThreshold(String(campaignData.autoRefillThreshold ?? 1000));
+            setAutoAmount(String(campaignData.autoRefillAmount ?? 3000));
+            setAutoUsePromoBonuses(campaignData.usePromoBonuses);
+        }
+        setBudgetError('');
+        setBonusError('');
+        setBonusesDraftReset(false);
+        // Only re-init when the modal opens or the action changes — not on every
+        // parent list/prefill identity change (that was resetting the tab).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen, action]);
 
     const selectedPkg = useMemo(() => BONUS_PACKAGES.find(p => p.id === selectedPkgId) || BONUS_PACKAGES[0], [selectedPkgId]);
 
+    const allocationCampaigns = editingGroupId ? editedCampaigns : allValidCampaigns;
+    const bonusResetCampaignIds = useMemo(() => {
+        const ids = new Set(selectedCampaignIds);
+        if (campaignData?.id) ids.add(campaignData.id);
+        return [...ids];
+    }, [selectedCampaignIds, campaignData?.id]);
+    const hasAppliedBonuses = allocationCampaigns.some(
+        (campaign) =>
+            bonusResetCampaignIds.includes(campaign.id) &&
+            (campaign.usePromoBonuses || (campaign.bonusAmount ?? 0) > 0),
+    );
+    const canResetBonuses = hasAppliedBonuses && !bonusesDraftReset;
+    const excludedBonusCampaignIds = useMemo(() => {
+        const ids = new Set(selectedCampaignIds);
+        if (campaignData?.id) ids.add(campaignData.id);
+        return ids;
+    }, [selectedCampaignIds, campaignData?.id]);
+    const packageBalances = useMemo(() => {
+        const balances = new Map<string, number>();
+        for (const pkg of BONUS_PACKAGES) {
+            balances.set(
+                pkg.id,
+                packageBalanceAfterCampaigns(pkg.id, allocationCampaigns, excludedBonusCampaignIds),
+            );
+        }
+        return balances;
+    }, [allocationCampaigns, excludedBonusCampaignIds]);
+    /** Остаток по уже применённым кампаниям. Черновик суммы его не меняет. */
+    const committedPackageBalances = useMemo(() => {
+        const balances = new Map<string, number>();
+        for (const pkg of BONUS_PACKAGES) {
+            balances.set(pkg.id, packageBalanceAfterCampaigns(pkg.id, allocationCampaigns));
+        }
+        return balances;
+    }, [allocationCampaigns]);
+
     const currentBudget = isSingleCampaignMode ? budgetForSingleMode : parseDisplayValue(value);
     const numericBonusValue = parseDisplayValue(String(bonusValue));
+    const selectedPackageBalance = packageBalances.get(selectedPkg.id) ?? selectedPkg.amount;
+    /** После черновика сброса показываем остаток без бонусов выбранных кампаний. */
+    const visiblePackageAmount = (pkgId: string) =>
+        (bonusesDraftReset ? packageBalances : committedPackageBalances).get(pkgId) ?? 0;
+    const availableBonusPackages = BONUS_PACKAGES.filter((pkg) => visiblePackageAmount(pkg.id) > 0);
+    const hasPromoPackages = availableBonusPackages.length > 0;
+    const promoBonusLeft = availableBonusPackages.reduce((sum, pkg) => sum + visiblePackageAmount(pkg.id), 0);
+
+    useEffect(() => {
+        if (!hasPromoPackages) {
+            setUseBonuses(false);
+            setAutoUsePromoBonuses(false);
+            return;
+        }
+        if ((committedPackageBalances.get(selectedPkgId) ?? 0) <= 0) {
+            const nextId = BONUS_PACKAGES.find((pkg) => (committedPackageBalances.get(pkg.id) ?? 0) > 0)?.id;
+            if (nextId) setSelectedPkgId(nextId);
+        }
+    }, [hasPromoPackages, selectedPkgId, committedPackageBalances]);
 
     useEffect(() => {
         setBudgetError('');
@@ -1172,54 +1355,56 @@ const BulkEditModal = ({
             setBudgetError('Минимальный бюджет 1000 ₽');
         }
 
-        if (useBonuses) {
-            if (numericBonusValue > currentBudget) {
-                setBonusError('Сумма бонусов не может превышать общий бюджет');
-                return;
-            }
-
-            const maxBonusFromPackage = selectedPkg.amount;
-            if (numericBonusValue > maxBonusFromPackage) {
-                setBonusError(`В пакете доступно только ${formatForDisplay(maxBonusFromPackage)} B`);
-                return;
-            }
-
-            const maxPercent = selectedPkg.maxPercent / 100;
-            const maxBonusAllowedByPercent = currentBudget * maxPercent;
-
-            if (numericBonusValue > maxBonusAllowedByPercent) {
-                setBonusError(`Максимум ${Math.floor(maxBonusAllowedByPercent)} B (${selectedPkg.maxPercent}%) от суммы`);
-                return;
+        if (useBonuses && budgetTab === 'one-time') {
+            const cap = maxBonusForBudget(selectedPkg, currentBudget, selectedPackageBalance);
+            if (Number.isFinite(numericBonusValue) && numericBonusValue > cap) {
+                setBonusValue(cap);
             }
         }
-    }, [value, useBonuses, bonusValue, numericBonusValue, selectedPkg, isSingleCampaignMode, currentBudget]);
+    }, [value, useBonuses, bonusValue, numericBonusValue, selectedPkg, selectedPackageBalance, isSingleCampaignMode, currentBudget, budgetTab]);
 
 
     if (!isOpen || !action) return null;
 
     const getTitle = () => {
+        if (isReplenishAction) {
+            return `Пополнение бюджета для ${campaignCount} ${getPlural(campaignCount, 'кампании', 'кампаний', 'кампаний')}`;
+        }
         switch (action) {
-            case 'budget':
-                if (selectedCampaignsCount === 1) return `Задать бюджет для 1 кампании`;
-                if (selectedCampaignsCount > 1) return `Задать бюджет для ${selectedCampaignsCount} ${getPlural(selectedCampaignsCount, 'кампании', 'кампаний', 'кампаний')}`;
-                return 'Задать бюджет';
             case 'bid': return 'Задать ставки';
-            case 'autorefill': return 'Настроить автопополнение';
             case 'autobidder': return 'Преследование ставки';
             default: return '';
         }
     }
 
     const handleSave = () => {
+        if (isReplenishAction) {
+            if (budgetTab === 'one-time') {
+                onSave({
+                    __mode: 'budget',
+                    total: currentBudget,
+                    bonus: useBonuses ? numericBonusValue : 0,
+                    isBonusActive: useBonuses,
+                    selectedPkg: { ...selectedPkg, amount: selectedPackageBalance },
+                });
+            } else {
+                onSave({
+                    __mode: 'autorefill',
+                    enabled: true,
+                    threshold: parseDisplayValue(autoThreshold),
+                    amount: parseDisplayValue(autoAmount),
+                    useBonuses: autoUsePromoBonuses,
+                });
+            }
+            return;
+        }
         if (action === 'budget') {
             onSave({
                 total: currentBudget,
                 bonus: useBonuses ? numericBonusValue : 0,
                 isBonusActive: useBonuses,
-                selectedPkg: selectedPkg,
+                selectedPkg: { ...selectedPkg, amount: selectedPackageBalance },
             });
-        } else if (action === 'autorefill') {
-            onSave(isAutorefillEnabled);
         } else {
             onSave(value);
         }
@@ -1248,95 +1433,392 @@ const BulkEditModal = ({
         }
     };
 
+    const handleNumericField =
+      (setter: React.Dispatch<React.SetStateAction<string>>) =>
+      (e: React.ChangeEvent<HTMLInputElement>) => {
+        const parsed = parseDisplayValue(e.target.value);
+        if (!isNaN(parsed)) setter(String(parsed));
+        else if (e.target.value === '') setter('');
+      };
+
+    const totalAllCampaigns = currentBudget * campaignCount;
+    const saveLabel = 'Применить';
+    const scopeCampaigns = (editingGroupId ? editedCampaigns : allValidCampaigns).filter((c) =>
+      selectedCampaignIds.includes(c.id),
+    );
+    const autoRefillEnabled = campaignData
+      ? Boolean(campaignData.autoReplenishment)
+      : scopeCampaigns.some((c) => c.autoReplenishment);
+
+    const handleDisableAuto = () => {
+      onSave({
+        __mode: 'autorefill',
+        enabled: false,
+      });
+    };
+
+    const ModalToggleSwitch = ({
+      checked,
+      onChange,
+      disabled = false,
+    }: {
+      checked: boolean;
+      onChange: (checked: boolean) => void;
+      disabled?: boolean;
+    }) => (
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-disabled={disabled}
+        disabled={disabled}
+        onClick={() => {
+          if (disabled) return;
+          onChange(!checked);
+        }}
+        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none ${
+          disabled ? 'cursor-not-allowed opacity-40' : 'cursor-pointer'
+        } ${checked ? 'bg-purple-500' : 'bg-gray-300'}`}
+      >
+        <span
+          aria-hidden="true"
+          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform duration-200 ease-in-out ${
+            checked ? 'translate-x-6' : 'translate-x-1'
+          }`}
+        />
+      </button>
+    );
+
     return (
         <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-            <div className={`relative bg-white rounded-xl shadow-xl w-full ${action === 'budget' ? 'max-w-xl' : 'max-w-sm'} p-6 overflow-hidden`} onClick={e => e.stopPropagation()}>
-                <div className="flex justify-between items-center mb-4">
-                    <h3 className="font-bold text-lg text-gray-900">{getTitle()}</h3>
-                    <button onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
+            <div
+              className={`relative bg-white rounded-2xl shadow-xl w-full ${isReplenishAction ? 'max-w-4xl' : action === 'budget' ? 'max-w-xl' : 'max-w-sm'} p-6 overflow-hidden`}
+              onClick={e => e.stopPropagation()}
+            >
+                <div className="flex justify-between items-start mb-5">
+                    <h3 className="font-bold text-xl text-gray-900 pr-4">{getTitle()}</h3>
+                    <button type="button" onClick={onClose} className="shrink-0 rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                      <X className="w-5 h-5" />
+                    </button>
                 </div>
 
-                <div className="mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-                    {action === 'budget' && (
-                        <div className="space-y-6">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">{isSingleCampaignMode ? 'Бюджет кампании' : 'Новый бюджет для 1 кампании'}</label>
-                                <div className="relative">
-                                    <input
-                                        type="text"
-                                        autoFocus={!isSingleCampaignMode}
-                                        readOnly={isSingleCampaignMode}
-                                        className={`w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500 pr-8 ${budgetError ? 'border-red-500' : 'border-gray-300'} ${isSingleCampaignMode ? 'bg-gray-100' : ''}`}
-                                        placeholder="3000"
-                                        value={formatForDisplay(isSingleCampaignMode ? currentBudget : value)}
-                                        onChange={e => !isSingleCampaignMode && handleBudgetChange(e)}
-                                        onBlur={handleBudgetBlur}
-                                    />
-                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
-                                </div>
-                                {budgetError && <p className="text-red-500 text-xs mt-1.5">{budgetError}</p>}
-                                {!isSingleCampaignMode && !budgetError && <p className="text-xs text-gray-500 mt-2">Применится ко всем выбранным кампаниям.</p>}
+                <div className="mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
+                    {isReplenishAction && (
+                        <div className="space-y-4">
+                            <div className="flex rounded-xl bg-gray-100 p-1">
+                              <button
+                                type="button"
+                                onClick={() => setBudgetTab('auto')}
+                                className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                                  budgetTab === 'auto'
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                Автопополнение
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setBudgetTab('one-time')}
+                                className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+                                  budgetTab === 'one-time'
+                                    ? 'bg-white text-gray-900 shadow-sm'
+                                    : 'text-gray-600 hover:text-gray-900'
+                                }`}
+                              >
+                                Разовое пополнение
+                              </button>
                             </div>
 
-                            <div className="pt-4 border-t border-gray-100">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <Checkbox
-                                        id="bonus-toggle"
-                                        checked={useBonuses}
-                                        onChange={e => setUseBonuses(e.target.checked)}
-                                        className="w-5 h-5 text-purple-600 cursor-pointer"
-                                    />
-                                    <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
-                                        Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
-                                    </label>
-                                </div>
-
-                                {useBonuses && (
-                                    <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                        <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
-                                            {BONUS_PACKAGES.map(pkg => (
-                                                <div
-                                                    key={pkg.id}
-                                                    onClick={() => setSelectedPkgId(pkg.id)}
-                                                    className={`min-w-[200px] p-4 rounded-xl border-2 transition-all cursor-pointer snap-start relative ${selectedPkgId === pkg.id ? 'border-purple-600 bg-purple-50/30' : 'border-gray-100 hover:border-gray-200 bg-white'}`}
-                                                >
-                                                    <div className="flex justify-between items-start mb-1">
-                                                        <span className="text-xl font-bold text-gray-900">{formatForDisplay(pkg.amount)}</span>
-                                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedPkgId === pkg.id ? 'border-purple-600' : 'border-gray-300'}`}>
-                                                            {selectedPkgId === pkg.id && <div className="w-2.5 h-2.5 bg-purple-600 rounded-full"></div>}
-                                                        </div>
-                                                    </div>
-                                                    <p className="text-xs text-gray-500 mb-3 font-medium leading-tight">Оплата до {pkg.maxPercent}% от суммы</p>
-                                                    <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-auto pt-1">
-                                                        <span className="text-orange-500">🔥</span>
-                                                        <span>{pkg.displayBurn} сгорят {pkg.expiry}</span>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-
-                                        <div className="mt-6 flex flex-col md:flex-row md:items-center gap-6">
-                                            <div className="relative w-full md:w-48">
-                                                <input
-                                                    type="text"
-                                                    value={formatForDisplay(bonusValue)}
-                                                    onChange={e => setBonusValue(e.target.value)}
-                                                    onBlur={handleBonusBlur}
-                                                    className={`w-full border rounded-xl px-4 py-3 text-lg font-bold outline-none focus:ring-2 focus:ring-purple-500 ${bonusError ? 'border-red-500' : 'border-gray-300'}`}
-                                                />
-                                                <p className="text-xs text-gray-500 mt-1.5">до {formatForDisplay(numericBonusValue)} B (1B = 1P)</p>
-                                            </div>
-                                            <div className="text-sm text-gray-500 leading-snug">
-                                                {bonusError ? (
-                                                    <p className="text-red-500">{bonusError}</p>
-                                                ) : (
-                                                    <p>Списать можно максимум {selectedPkg.maxPercent}% от суммы пополнения</p>
-                                                )}
-                                            </div>
-                                        </div>
+                            {budgetTab === 'one-time' ? (
+                              <>
+                                <div className="space-y-5 rounded-2xl bg-gray-50 p-5">
+                                  <div>
+                                    <div className="mb-2 flex items-center justify-between gap-3">
+                                      <label className="text-sm font-medium text-gray-900">
+                                        Сумма пополнения (₽)
+                                      </label>
+                                      <button
+                                        type="button"
+                                        className="inline-flex items-center gap-1.5 text-sm font-medium text-[#3B82F6] hover:text-[#2563EB]"
+                                      >
+                                        <RefreshCw className="h-3.5 w-3.5" />
+                                        Обновить счета
+                                      </button>
                                     </div>
+                                    <input
+                                      type="text"
+                                      autoFocus={!isSingleCampaignMode}
+                                      readOnly={isSingleCampaignMode}
+                                      className={`w-full rounded-xl border bg-white px-3 py-2.5 outline-none focus:ring-2 focus:ring-purple-500 ${
+                                        budgetError ? 'border-red-500' : 'border-gray-200'
+                                      } ${isSingleCampaignMode ? 'bg-gray-100' : ''}`}
+                                      placeholder="3000"
+                                      value={formatForDisplay(isSingleCampaignMode ? currentBudget : value)}
+                                      onChange={e => !isSingleCampaignMode && handleBudgetChange(e)}
+                                      onBlur={handleBudgetBlur}
+                                    />
+                                    <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                                      {budgetError ? (
+                                        <span className="text-red-500">{budgetError}</span>
+                                      ) : (
+                                        <>
+                                          Минимальный бюджет — 1000 ₽
+                                          <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                                        </>
+                                      )}
+                                    </p>
+                                  </div>
+
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-1.5 text-sm font-medium text-gray-900">
+                                      <span>Источники списания</span>
+                                      <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                                    </div>
+                                    <div className="flex items-center gap-3 py-1">
+                                      <SingleAccountIcon className="h-5 w-5 shrink-0 text-gray-500" />
+                                      <p className="mb-0 text-sm font-medium text-gray-800">
+                                        Единый счет: {UNIFIED_BALANCE.toLocaleString('ru-RU')}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-3 py-1">
+                                      <ModalToggleSwitch
+                                        checked={useBonuses}
+                                        onChange={setUseBonuses}
+                                        disabled={!hasPromoPackages}
+                                      />
+                                      <p className="mb-0 text-sm font-medium text-gray-800">
+                                        Промобонусы: {promoBonusLeft.toLocaleString('ru-RU')}
+                                      </p>
+                                      <button
+                                        type="button"
+                                        disabled={!canResetBonuses}
+                                        onClick={() => {
+                                          if (!canResetBonuses) return;
+                                          setBonusesDraftReset(true);
+                                          setUseBonuses(true);
+                                          setBonusValue('');
+                                        }}
+                                        className="ml-auto shrink-0 text-sm font-medium text-[#3B82F6] hover:text-[#2563EB] disabled:cursor-not-allowed disabled:text-gray-300"
+                                      >
+                                        Сбросить бонусы
+                                      </button>
+                                    </div>
+
+                                    {useBonuses && hasPromoPackages && (
+                                      <div className="animate-in fade-in slide-in-from-top-2 duration-300 pt-2">
+                                        <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
+                                          {availableBonusPackages.map((pkg) => (
+                                            <div
+                                              key={pkg.id}
+                                              onClick={() => setSelectedPkgId(pkg.id)}
+                                              className={`min-w-[200px] cursor-pointer snap-start rounded-xl border-2 bg-white p-4 transition-all ${
+                                                selectedPkgId === pkg.id
+                                                  ? 'border-purple-600 bg-purple-50/30'
+                                                  : 'border-gray-100 hover:border-gray-200'
+                                              }`}
+                                            >
+                                              <div className="mb-1 flex items-start justify-between">
+                                                <span className="text-xl font-bold text-gray-900">
+                                                  {formatForDisplay(visiblePackageAmount(pkg.id))}
+                                                </span>
+                                                <div
+                                                  className={`flex h-5 w-5 items-center justify-center rounded-full border-2 ${
+                                                    selectedPkgId === pkg.id
+                                                      ? 'border-purple-600'
+                                                      : 'border-gray-300'
+                                                  }`}
+                                                >
+                                                  {selectedPkgId === pkg.id && (
+                                                    <div className="h-2.5 w-2.5 rounded-full bg-purple-600" />
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <p className="mb-1 text-xs font-medium text-gray-500">
+                                                Остаток пакета
+                                              </p>
+                                              <p className="mb-3 text-xs font-medium leading-tight text-gray-500">
+                                                Оплата до {pkg.maxPercent}% от суммы
+                                              </p>
+                                              <div className="mt-auto pt-1 text-xs text-gray-500">
+                                                сгорят {pkg.expiry}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+
+                                        <div className="mt-2 flex flex-col gap-6 md:flex-row md:items-center">
+                                          <div className="relative w-full md:w-48">
+                                            <input
+                                              type="text"
+                                              value={formatForDisplay(bonusValue)}
+                                              onChange={(e) => setBonusValue(e.target.value)}
+                                              onBlur={handleBonusBlur}
+                                              className={`w-full rounded-xl border px-4 py-3 text-lg font-bold outline-none focus:ring-2 focus:ring-purple-500 ${
+                                                bonusError ? 'border-red-500' : 'border-gray-300'
+                                              }`}
+                                            />
+                                            <p className="mt-1.5 text-xs text-gray-500">
+                                              до {formatForDisplay(maxBonusForBudget(selectedPkg, currentBudget, selectedPackageBalance))} B (1B = 1P)
+                                            </p>
+                                          </div>
+                                          <div className="text-sm leading-snug text-gray-500">
+                                            {bonusError ? (
+                                              <p className="text-red-500">{bonusError}</p>
+                                            ) : (
+                                              <p>
+                                                Списать можно максимум {selectedPkg.maxPercent}% от суммы
+                                                пополнения
+                                              </p>
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                <p className="text-sm text-gray-500">
+                                  Весь бюджет на {campaignCount}{' '}
+                                  {getPlural(campaignCount, 'кампанию', 'кампании', 'кампаний')} составит{' '}
+                                  {totalAllCampaigns.toLocaleString('ru-RU')} ₽ ({currentBudget.toLocaleString('ru-RU')} ₽
+                                  на одну кампанию)
+                                </p>
+                                {useBonuses && (
+                                  <p className="text-sm text-gray-500">
+                                    Бонусы на {campaignCount}{' '}
+                                    {getPlural(campaignCount, 'кампанию', 'кампании', 'кампаний')} составят{' '}
+                                    {(
+                                      (Number.isFinite(numericBonusValue) ? numericBonusValue : 0) * campaignCount
+                                    ).toLocaleString('ru-RU')}{' '}
+                                    B (
+                                    {(Number.isFinite(numericBonusValue) ? numericBonusValue : 0).toLocaleString('ru-RU')}{' '}
+                                    B на одну кампанию)
+                                  </p>
                                 )}
-                            </div>
+                              </>
+                            ) : (
+                              <div className="space-y-6">
+                                <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-6">
+                                  <h4 className="mb-4 text-lg font-bold text-gray-900">Условия пополнения</h4>
+                                  <div className="max-w-lg space-y-4">
+                                    <div className="grid grid-cols-2 items-center gap-4">
+                                      <label className="text-gray-600">Если бюджет меньше</label>
+                                      <div className="relative">
+                                        <input
+                                          type="text"
+                                          value={formatForDisplay(autoThreshold)}
+                                          onChange={handleNumericField(setAutoThreshold)}
+                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-6 outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                          ₽
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 items-center gap-4">
+                                      <label className="text-gray-600">Пополнять на</label>
+                                      <div className="relative">
+                                        <input
+                                          type="text"
+                                          value={formatForDisplay(autoAmount)}
+                                          onChange={handleNumericField(setAutoAmount)}
+                                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-6 outline-none focus:ring-2 focus:ring-purple-500"
+                                        />
+                                        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                                          ₽
+                                        </span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-sm">
+                                  <div className="mb-4 flex items-center justify-between">
+                                    <h4 className="flex items-center gap-2 text-lg font-bold text-gray-900">
+                                      Источники списания
+                                      <span className="tooltip">
+                                        <HelpCircle className="h-4 w-4 text-gray-400" />
+                                        <span className="tooltip-text">
+                                          Деньги будут списываться с Единого счёта
+                                        </span>
+                                      </span>
+                                    </h4>
+                                    <button
+                                      type="button"
+                                      className="flex items-center gap-2 text-sm font-medium text-blue-600 hover:underline"
+                                    >
+                                      <RefreshCw className="h-4 w-4" />
+                                      <span>Обновить счета</span>
+                                    </button>
+                                  </div>
+                                  <div className="space-y-3">
+                                    <div className="flex items-center py-2">
+                                      <SingleAccountIcon className="mr-4 h-6 w-6 text-gray-500" />
+                                      <p className="mb-0 font-medium text-gray-800">
+                                        Единый счёт: {UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center py-2">
+                                      <ModalToggleSwitch
+                                        checked={autoUsePromoBonuses}
+                                        onChange={setAutoUsePromoBonuses}
+                                        disabled={!hasPromoPackages}
+                                      />
+                                      <p className="mb-0 ml-4 font-medium text-gray-800">
+                                        Промо-бонусы: {promoBonusLeft.toLocaleString('ru-RU')} B{' '}
+                                        <span className="font-normal text-gray-500">
+                                          (до 100% от суммы пополнения)
+                                        </span>
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <p className="mt-4 pl-10 text-sm text-gray-500">
+                                    Спишем промо-бонусы из ваших пакетов автоматически. Сначала из тех, что
+                                    сгорают быстрее, затем из остальных. Сумма списания зависит от условий
+                                    пакета
+                                  </p>
+
+                                  <div className="mt-6 pl-10">
+                                    <button
+                                      type="button"
+                                      onClick={() => setShowAutoPackages(!showAutoPackages)}
+                                      className="flex items-center gap-2 rounded-lg bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+                                    >
+                                      <span>Мои пакеты</span>
+                                      <ChevronDown
+                                        className={`h-4 w-4 transition-transform ${
+                                          showAutoPackages ? 'rotate-180' : ''
+                                        }`}
+                                      />
+                                    </button>
+                                    {showAutoPackages && (
+                                      <div className="mt-4 grid animate-in fade-in grid-cols-1 gap-4 duration-300 md:grid-cols-2 lg:grid-cols-3">
+                                        {availableBonusPackages.map((pkg) => (
+                                          <div
+                                            key={pkg.id}
+                                            className="cursor-pointer rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm transition-all hover:border-purple-400"
+                                          >
+                                            <span className="text-2xl font-bold text-gray-900">
+                                              {visiblePackageAmount(pkg.id).toLocaleString('ru-RU')}
+                                            </span>
+                                            <p className="mt-1 text-xs font-medium text-gray-500">
+                                              Остаток пакета
+                                            </p>
+                                            <p className="mb-3 mt-1 text-sm text-gray-600">
+                                              Оплата до {pkg.maxPercent}% от суммы
+                                            </p>
+                                            <div className="flex items-center gap-2 text-xs text-gray-500">
+                                              <Clock className="h-3.5 w-3.5" />
+                                              <span>сгорят {pkg.expiry}</span>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                         </div>
                     )}
                     {action === 'bid' && (
@@ -1358,30 +1840,49 @@ const BulkEditModal = ({
                             </div>
                         )
                     )}
-                    {action === 'autorefill' && (
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Статус автопополнения</label>
-                            <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-                                <span className="text-gray-900 font-medium">Автопополнение</span>
-                                <div className="flex items-center gap-4">
-                                    {isAutorefillEnabled && <button onClick={() => { onClose(); onOpenAutoRefill(); }} className="text-sm font-medium text-purple-600 hover:underline"> Настроить </button>}
-                                    <ToggleSwitch checked={isAutorefillEnabled} onChange={setIsAutorefillEnabled} />
-                                </div>
-                            </div>
-                        </div>
-                    )}
                 </div>
 
-                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                    <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Отмена</button>
-                    <button
+                {isReplenishAction ? (
+                  <div className="flex items-center justify-between gap-3 pt-1">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
                         onClick={handleSave}
-                        disabled={!!budgetError || !!bonusError}
-                        className="px-4 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
-                    >
-                        Применить
-                    </button>
-                </div>
+                        disabled={budgetTab === 'one-time' && (!!budgetError || !!bonusError)}
+                        className="rounded-xl bg-[#9A41FE] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
+                      >
+                        {saveLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onClose}
+                        className="rounded-xl bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-800 hover:bg-gray-200"
+                      >
+                        Отмена
+                      </button>
+                    </div>
+                    {budgetTab === 'auto' && autoRefillEnabled ? (
+                      <button
+                        type="button"
+                        onClick={handleDisableAuto}
+                        className="rounded-xl border border-red-500 bg-white px-5 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
+                      >
+                        Отключить
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                      <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Отмена</button>
+                      <button
+                          onClick={handleSave}
+                          disabled={!!budgetError || !!bonusError}
+                          className="px-4 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      >
+                          Применить
+                      </button>
+                  </div>
+                )}
             </div>
         </div>
     )
@@ -2090,6 +2591,7 @@ export default function App() {
   const [selectedCampaignIds, setSelectedCampaignIds] = useState<string[]>([]);
   const [selectedListedCampaignIds, setSelectedListedCampaignIds] = useState<string[]>([]);
   const [isBulkActionModalOpen, setIsBulkActionModalOpen] = useState(false);
+  const [clearSelectionOnBulkClose, setClearSelectionOnBulkClose] = useState(false);
   const [currentBulkAction, setCurrentBulkAction] = useState<BulkActionType>(null);
   const [bulkEditPrefillData, setBulkEditPrefillData] = useState<{ budget: number; bonusAmount: number; useBonuses: boolean; } | null>(null);
   
@@ -2117,6 +2619,7 @@ export default function App() {
   const [isCreationZonesModalOpen, setIsCreationZonesModalOpen] = useState(false);
   const [creationZonesDraft, setCreationZonesDraft] = useState({ search: true, recommendations: true });
   const [campaignForBonusEdit, setCampaignForBonusEdit] = useState<CampaignRecord | null>(null);
+  const [singleReplenishAction, setSingleReplenishAction] = useState<'budget' | 'autorefill'>('budget');
   const [isUploadEditsModalOpen, setIsUploadEditsModalOpen] = useState(false);
   const [isReviewEditsModalOpen, setIsReviewEditsModalOpen] = useState(false);
   const [isConfirmExitOpen, setIsConfirmExitOpen] = useState(false);
@@ -2409,9 +2912,10 @@ export default function App() {
 
   const globalTotals = allValidCampaigns.reduce(
     (acc, campaign) => {
-        const realSpend = campaign.budget - (campaign.bonusAmount || 0);
+        const bonus = effectivePromoBonusAmount(campaign);
+        const realSpend = campaign.budget - bonus;
         acc.real += realSpend;
-        acc.bonus += (campaign.bonusAmount || 0);
+        acc.bonus += bonus;
         acc.total += campaign.budget;
         return acc;
     },
@@ -2824,6 +3328,7 @@ export default function App() {
   }, [selectedCampaignIds, currentBulkAction, templateGroups]);
 
     const openBulkActionModal = (action: BulkActionType) => {
+        setClearSelectionOnBulkClose(false);
         if (action === 'delete') {
             setIsConfirmBulkDeleteOpen(true);
             return;
@@ -2891,6 +3396,14 @@ export default function App() {
         setIsBulkActionModalOpen(true);
     };
 
+    const closeBulkActionModal = () => {
+    setIsBulkActionModalOpen(false);
+    if (clearSelectionOnBulkClose) {
+      setSelectedCampaignIds([]);
+      setClearSelectionOnBulkClose(false);
+    }
+  };
+
   const handleBulkDelete = () => {
       setTemplateGroups(prev => prev.map(group => ({ ...group, campaigns: group.campaigns.filter(c => !selectedCampaignIds.includes(c.id)) })).filter(g => g.campaigns.length > 0)); 
       if (editingGroupId) setEditedCampaigns(prev => prev.filter(c => !selectedCampaignIds.includes(c.id)));
@@ -2898,8 +3411,8 @@ export default function App() {
       setShowToast(true);
   };
 
-    const applyBulkChanges = (value: any, idsToUpdate: string[]) => {
-        const action = currentBulkAction;
+    const applyBulkChanges = (value: any, idsToUpdate: string[], actionOverride?: BulkActionType) => {
+        const action = actionOverride ?? currentBulkAction;
         const updateLogic = (campaign: CampaignRecord): CampaignRecord => {
             if (!idsToUpdate.includes(campaign.id)) return campaign;
             const newCamp = { ...campaign };
@@ -2907,8 +3420,25 @@ export default function App() {
                 newCamp.budget = Number(value.total);
                 newCamp.bonusAmount = value.isBonusActive ? value.bonus : 0;
                 newCamp.usePromoBonuses = value.isBonusActive;
+                if (value.selectedPkg?.id) newCamp.bonusPackageId = value.selectedPkg.id;
             }
-            if (action === 'autorefill') newCamp.autoReplenishment = Boolean(value);
+            if (action === 'autorefill') {
+                newCamp.autoReplenishment =
+                  typeof value === 'object' && value !== null && 'enabled' in value
+                    ? Boolean(value.enabled)
+                    : Boolean(value);
+                if (typeof value === 'object' && value !== null && 'useBonuses' in value) {
+                  newCamp.usePromoBonuses = Boolean(value.useBonuses);
+                }
+                if (typeof value === 'object' && value !== null) {
+                  if (typeof value.threshold === 'number' && value.threshold > 0) {
+                    newCamp.autoRefillThreshold = value.threshold;
+                  }
+                  if (typeof value.amount === 'number' && value.amount > 0) {
+                    newCamp.autoRefillAmount = value.amount;
+                  }
+                }
+            }
             if (action === 'bid') {
                 const isMultiCategory = typeof value === 'object' && value !== null && !Array.isArray(value);
                 const newBid = isMultiCategory ? value[campaign.category] : value;
@@ -2930,17 +3460,25 @@ export default function App() {
 
         setToastMessage(`Обновлено ${idsToUpdate.length} ${getPlural(idsToUpdate.length, 'кампания', 'кампании', 'кампаний')}`);
         setShowToast(true);
-        setIsBulkActionModalOpen(false);
+        closeBulkActionModal();
     };
 
     const handleBulkSave = (value: any) => {
-        const action = currentBulkAction;
+        const mode = value?.__mode as string | undefined;
+        const action =
+          mode === 'budget' ? 'budget' : mode === 'autorefill' ? 'autorefill' : currentBulkAction;
+
+        if (action === 'autorefill') {
+            applyBulkChanges(value, selectedCampaignIds, 'autorefill');
+            return;
+        }
+
         if (action === 'budget' && value.isBonusActive) {
             const bonusPerCampaign = Number(value.bonus);
             const selectedPkg = value.selectedPkg as BonusPackage;
 
             if (bonusPerCampaign <= 0) {
-                applyBulkChanges(value, selectedCampaignIds);
+                applyBulkChanges(value, selectedCampaignIds, 'budget');
                 return;
             }
 
@@ -2953,7 +3491,7 @@ export default function App() {
             const fullCoverageCount = Math.floor(selectedPkg.amount / bonusPerCampaign);
             
             if (fullCoverageCount >= selectedCampaignIds.length) {
-                applyBulkChanges(value, selectedCampaignIds);
+                applyBulkChanges(value, selectedCampaignIds, 'budget');
             } else {
                 const remainingBonuses = selectedPkg.amount % bonusPerCampaign;
                 setBonusAppContext({ value, fullCoverageCount, remainingBonuses });
@@ -2961,7 +3499,7 @@ export default function App() {
             }
             return;
         }
-        applyBulkChanges(value, selectedCampaignIds);
+        applyBulkChanges(value, selectedCampaignIds, action);
     };
     
     const handleConfirmPartialBonusApplication = () => {
@@ -3004,27 +3542,105 @@ export default function App() {
         setShowToast(true);
     
         setIsBonusInsufficiencyModalOpen(false);
-        setIsBulkActionModalOpen(false);
+        closeBulkActionModal();
         setBonusAppContext(null);
     };
 
     const handleSaveBonusForCampaign = (value: any) => {
-        if (!campaignForBonusEdit || !editingGroupId) return;
+        if (!campaignForBonusEdit) return;
 
-        const updatedCampaign = {
-            ...campaignForBonusEdit,
+        if (value?.__mode === 'autorefill') {
+          const patch: Partial<CampaignRecord> = {
+            autoReplenishment: Boolean(value.enabled),
+            ...(typeof value.useBonuses === 'boolean'
+              ? { usePromoBonuses: value.useBonuses }
+              : null),
+            ...(typeof value.threshold === 'number' && value.threshold > 0
+              ? { autoRefillThreshold: value.threshold }
+              : null),
+            ...(typeof value.amount === 'number' && value.amount > 0
+              ? { autoRefillAmount: value.amount }
+              : null),
+          };
+          const group = templateGroups.find((g) =>
+            g.campaigns.some((c) => c.id === campaignForBonusEdit.id),
+          );
+          if (group) {
+            handleUpdateCampaign(group.id, campaignForBonusEdit.id, patch);
+          }
+          if (editingGroupId) {
+            setEditedCampaigns((prev) =>
+              prev.map((c) => (c.id === campaignForBonusEdit.id ? { ...c, ...patch } : c)),
+            );
+          }
+          setCampaignForBonusEdit(null);
+          setToastMessage('Настройки автопополнения сохранены');
+          setShowToast(true);
+          return;
+        }
+
+        const patch: Partial<CampaignRecord> = {
             budget: Number(value.total),
             bonusAmount: value.isBonusActive ? value.bonus : 0,
-            usePromoBonuses: value.isBonusActive,
+            usePromoBonuses: Boolean(value.isBonusActive),
+            ...(value.selectedPkg?.id ? { bonusPackageId: value.selectedPkg.id } : null),
         };
-        
-        setEditedCampaigns(prev => prev.map(c => c.id === campaignForBonusEdit.id ? updatedCampaign : c));
-        
+
+        const group = templateGroups.find((g) =>
+          g.campaigns.some((c) => c.id === campaignForBonusEdit.id),
+        );
+        if (group) {
+          handleUpdateCampaign(group.id, campaignForBonusEdit.id, patch);
+        }
+        if (editingGroupId) {
+          setEditedCampaigns((prev) =>
+            prev.map((c) => (c.id === campaignForBonusEdit.id ? { ...c, ...patch } : c)),
+          );
+        }
+
         setCampaignForBonusEdit(null);
     };
 
-  const openAutoRefillModal = (campaign: CampaignRecord) => { setCampaignForAutoRefill(campaign); setIsAutoRefillModalOpen(true); };
-  const handleSaveAutoRefill = () => { setIsAutoRefillModalOpen(false); setCampaignForAutoRefill(null); setToastMessage("Настройки автопополнения сохранены"); setShowToast(true); };
+  const openSingleBudgetModal = (campaign: CampaignRecord) => {
+    setSingleReplenishAction('budget');
+    setCampaignForBonusEdit(campaign);
+  };
+
+  const openAutoRefillModal = (campaign: CampaignRecord) => {
+    setSingleReplenishAction('autorefill');
+    setCampaignForBonusEdit(campaign);
+  };
+  const handleSaveAutoRefill = (settings: {
+    threshold: number;
+    amount: number;
+    usePromoBonuses: boolean;
+  }) => {
+    if (campaignForAutoRefill) {
+      const patch: Partial<CampaignRecord> = {
+        autoReplenishment: true,
+        autoRefillThreshold: settings.threshold,
+        autoRefillAmount: settings.amount,
+        usePromoBonuses: settings.usePromoBonuses,
+      };
+      const group = templateGroups.find((g) =>
+        g.campaigns.some((c) => c.id === campaignForAutoRefill.id),
+      );
+      if (group) {
+        handleUpdateCampaign(group.id, campaignForAutoRefill.id, patch);
+      }
+      if (editingGroupId) {
+        setEditedCampaigns((prev) =>
+          prev.map((c) =>
+            c.id === campaignForAutoRefill.id ? { ...c, ...patch } : c,
+          ),
+        );
+      }
+    }
+    setIsAutoRefillModalOpen(false);
+    setCampaignForAutoRefill(null);
+    setToastMessage('Настройки автопополнения сохранены');
+    setShowToast(true);
+  };
 
   const selectedCreationCampaigns = useMemo(() => {
     const ids = new Set(selectedCampaignIds);
@@ -3101,10 +3717,10 @@ export default function App() {
     let amountToDebit = 0;
     let affordableCount = 0;
     let runningBalance = UNIFIED_BALANCE;
-    const sortedCampaigns = [...allValidCampaigns].sort((a, b) => (a.budget - (a.bonusAmount || 0)) - (b.budget - (b.bonusAmount || 0)));
+    const sortedCampaigns = [...allValidCampaigns].sort((a, b) => (a.budget - effectivePromoBonusAmount(a)) - (b.budget - effectivePromoBonusAmount(b)));
     
     for(const a of sortedCampaigns) {
-      const realCost = a.budget - (a.bonusAmount || 0);
+      const realCost = a.budget - effectivePromoBonusAmount(a);
       if(runningBalance >= realCost) {
         runningBalance -= realCost;
         amountToDebit += realCost;
@@ -3127,7 +3743,7 @@ export default function App() {
         const failed = [];
 
         for(const campaign of allValidCampaigns) {
-          const realCost = campaign.budget - (campaign.bonusAmount || 0);
+          const realCost = campaign.budget - effectivePromoBonusAmount(campaign);
           if (currentBalance >= realCost) {
             currentBalance -= realCost;
             successful.push(campaign);
@@ -3598,7 +4214,7 @@ export default function App() {
     />
   <BulkEditModal 
       isOpen={isBulkActionModalOpen} 
-      onClose={() => setIsBulkActionModalOpen(false)} 
+      onClose={closeBulkActionModal} 
       action={currentBulkAction} 
       onSave={handleBulkSave} 
       categories={uniqueCategoriesForSelection} 
@@ -3613,16 +4229,33 @@ export default function App() {
   <BulkEditModal 
       isOpen={!!campaignForBonusEdit} 
       onClose={() => setCampaignForBonusEdit(null)} 
-      action={'budget'} 
+      action={singleReplenishAction} 
       onSave={handleSaveBonusForCampaign} 
-      isSingleCampaignMode={true}
+      isSingleCampaignMode={false}
       campaignData={campaignForBonusEdit}
       selectedCampaignsCount={1} 
+      prefillData={
+        campaignForBonusEdit
+          ? {
+              budget: campaignForBonusEdit.budget,
+              bonusAmount:
+                campaignForBonusEdit.bonusAmount != null && campaignForBonusEdit.bonusAmount > 0
+                  ? campaignForBonusEdit.bonusAmount
+                  : Math.min(
+                      campaignForBonusEdit.budget,
+                      BONUS_PACKAGES[0]?.amount ?? campaignForBonusEdit.budget,
+                    ),
+              useBonuses: true,
+            }
+          : null
+      }
       onOpenAutoRefill={() => {}}
       editingGroupId={editingGroupId}
       editedCampaigns={editedCampaigns}
       allValidCampaigns={allValidCampaigns}
-      selectedCampaignIds={selectedCampaignIds}
+      selectedCampaignIds={
+        campaignForBonusEdit ? [campaignForBonusEdit.id] : selectedCampaignIds
+      }
   />
   
   {bonusAppContext && (
@@ -3680,65 +4313,69 @@ export default function App() {
                   <span>Добавить товары</span>
                 </button>
 
-                <div className="relative flex min-h-11 min-w-[220px] flex-1 items-center gap-2 rounded-[10px] border border-gray-200 bg-white px-3 shadow-sm focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500">
-                  <Search className="h-4 w-4 shrink-0 text-gray-400" />
-                  {searchTags.map((tag) => (
-                    <div
-                      key={tag}
-                      className="flex items-center gap-1 rounded-md bg-gray-100 py-0.5 pl-2 pr-1 text-sm text-gray-700"
-                    >
-                      <span>{tag}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeSearchTag(tag)}
-                        className="rounded-full text-gray-400 hover:bg-gray-300 hover:text-gray-700"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
+                {templateGroups.length > 0 ? (
+                  <>
+                    <div className="relative flex min-h-11 min-w-[220px] flex-1 items-center gap-2 rounded-[10px] border border-gray-200 bg-white px-3 shadow-sm focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500">
+                      <Search className="h-4 w-4 shrink-0 text-gray-400" />
+                      {searchTags.map((tag) => (
+                        <div
+                          key={tag}
+                          className="flex items-center gap-1 rounded-md bg-gray-100 py-0.5 pl-2 pr-1 text-sm text-gray-700"
+                        >
+                          <span>{tag}</span>
+                          <button
+                            type="button"
+                            onClick={() => removeSearchTag(tag)}
+                            className="rounded-full text-gray-400 hover:bg-gray-300 hover:text-gray-700"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                      <input
+                        type="text"
+                        value={currentSearchInput}
+                        onChange={(e) => setCurrentSearchInput(e.target.value)}
+                        onKeyDown={handleSearchKeyDown}
+                        placeholder="Поиск"
+                        className="min-w-[120px] flex-1 bg-transparent py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                      />
+                      {(searchTags.length > 0 || currentSearchInput) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSearchTags([]);
+                            setCurrentSearchInput('');
+                          }}
+                          className="ml-auto text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
-                  ))}
-                  <input
-                    type="text"
-                    value={currentSearchInput}
-                    onChange={(e) => setCurrentSearchInput(e.target.value)}
-                    onKeyDown={handleSearchKeyDown}
-                    placeholder="Поиск"
-                    className="min-w-[120px] flex-1 bg-transparent py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
-                  />
-                  {(searchTags.length > 0 || currentSearchInput) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearchTags([]);
-                        setCurrentSearchInput('');
-                      }}
-                      className="ml-auto text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
 
-                <MultiSelect
-                  options={uniqueSources}
-                  selected={selectedSources}
-                  onChange={setSelectedSources}
-                  placeholder="Источник"
-                  className="w-full sm:w-[180px] shrink-0"
-                  autoApply
-                  muted
-                />
-                <MultiSelect
-                  options={uniqueCategories}
-                  selected={selectedCategories}
-                  onChange={setSelectedCategories}
-                  placeholder="Категория"
-                  className="w-full sm:w-[180px] shrink-0"
-                  autoApply
-                  muted
-                />
+                    <MultiSelect
+                      options={uniqueSources}
+                      selected={selectedSources}
+                      onChange={setSelectedSources}
+                      placeholder="Источник"
+                      className="w-full sm:w-[180px] shrink-0"
+                      autoApply
+                      muted
+                    />
+                    <MultiSelect
+                      options={uniqueCategories}
+                      selected={selectedCategories}
+                      onChange={setSelectedCategories}
+                      placeholder="Категория"
+                      className="w-full sm:w-[180px] shrink-0"
+                      autoApply
+                      muted
+                    />
+                  </>
+                ) : null}
             </div>
-            {hasActiveFilterTags && (
+            {templateGroups.length > 0 && hasActiveFilterTags && (
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className="mr-1 text-sm font-medium text-gray-500">Активные фильтры:</span>
                 {selectedSources.map((source) => (
@@ -3802,7 +4439,7 @@ export default function App() {
             const campaignsForReview = editingGroupId === group.id ? editedCampaigns : group.campaigns.filter(c => c.status !== CampaignStatus.ERROR);
             const filteredGroupCampaigns = campaignsForReview.filter(c => filteredCampaigns.some(fc => fc.id === c.id));
             const validCount = filteredGroupCampaigns.length; 
-            const totals = filteredGroupCampaigns.reduce( (acc, campaign) => { acc.total += campaign.budget; acc.bonus += campaign.bonusAmount || 0; return acc; }, { total: 0, bonus: 0 } );
+            const totals = filteredGroupCampaigns.reduce( (acc, campaign) => { const bonus = effectivePromoBonusAmount(campaign); acc.total += campaign.budget; acc.bonus += bonus; return acc; }, { total: 0, bonus: 0 } );
             const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE);
             const paginatedIds = paginatedCampaigns.map(c => c.id);
             const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL;
@@ -3853,6 +4490,7 @@ export default function App() {
                   onToggleSelectAll={handleSelectAllOnPage}
                   onUpdate={(id, patch) => handleUpdateCampaign(group.id, id, patch)}
                   onOpenAutoRefill={openAutoRefillModal}
+                  onOpenBonusBudget={openSingleBudgetModal}
                   unifiedAccountTotal={totals.total - totals.bonus}
                   promoBonusesTotal={totals.bonus}
                 />
@@ -4046,62 +4684,68 @@ export default function App() {
     ) : null}
 
     {totalAllValidCount > 0 && selectedCampaignIds.length === 0 && ( 
-    <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white/90 backdrop-blur-sm border-t border-gray-200"> 
-    <div className="max-w-[1600px] mx-auto px-6 py-4 flex justify-between items-center"> 
-    <div>
-      <h3 className="font-bold text-gray-800">
-        Общий итог за {totalAllValidCount} {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}
-      </h3>
-
-      <div className="mt-1 text-sm text-gray-600">
-        <span className="text-gray-500">Сумма:</span>{' '}
-        <span className="relative inline-flex items-center group">
-          <span className="font-bold text-lg text-purple-600 cursor-default">
-            {globalTotals.total.toLocaleString('ru-RU', { style: 'currency', currency: 'RUB', minimumFractionDigits: 0 })}
-          </span>
-
-          <div className="hidden group-hover:block absolute left-0 bottom-full mb-2 z-[90] w-72 rounded-xl border border-gray-200 bg-white shadow-xl p-3">
-            <div className="text-xs text-gray-500 mb-2">Разбивка списания</div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-gray-600">Единый счёт</span>
-              <span className={`font-semibold ${globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'}`}>
-                {globalTotals.real.toLocaleString('ru-RU')} ₽
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-sm mt-1">
-              <span className="text-gray-600">Бонусы</span>
-              <span className="font-semibold text-gray-900">
-                {globalTotals.bonus.toLocaleString('ru-RU')} B
-              </span>
-            </div>
-
-            {globalDeficit > 0 && (
-              <div className="mt-2 text-xs text-red-600">
-                Не хватает {globalDeficit.toLocaleString('ru-RU')} ₽ на едином счёте.
-              </div>
-            )}
+    <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white"> 
+    <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-6 py-4"> 
+    <div className="min-w-0">
+      <div className="flex flex-wrap items-end gap-10">
+        <div>
+          <div className="text-xs font-medium text-gray-500">
+            За {totalAllValidCount}{' '}
+            {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}
           </div>
-        </span>
-
-        {globalDeficit > 0 && (
-          <span className="ml-2 text-xs text-red-500 font-medium">
-            (не хватает {globalDeficit.toLocaleString('ru-RU')} ₽{' '}
-            <a href="#" onClick={(e) => e.preventDefault()} className="text-blue-600 font-medium hover:underline ml-1">пополнить</a>)
-          </span>
-        )}
+          <div className="mt-0.5 text-sm font-semibold tabular-nums text-gray-900">
+            {globalTotals.total.toLocaleString('ru-RU')} ₽
+          </div>
+        </div>
+        <div>
+          <div className="text-xs font-medium text-gray-500">Промобонусы</div>
+          <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#2E7D32]">
+            {globalTotals.bonus.toLocaleString('ru-RU')} B
+          </div>
+        </div>
+        <div className="self-stretch border-l border-gray-200 pl-10">
+          <div className="text-sm font-medium text-gray-900">Итого с единого счёта</div>
+          <div
+            className={`mt-0.5 text-xl font-bold tabular-nums ${
+              globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'
+            }`}
+          >
+            {globalTotals.real.toLocaleString('ru-RU')} ₽
+          </div>
+        </div>
       </div>
+      {globalDeficit > 0 && (
+        <p className="mb-0 mt-2 text-xs font-medium text-red-500">
+          Не хватает {globalDeficit.toLocaleString('ru-RU')} ₽{' '}
+          <a
+            href="#"
+            onClick={(e) => e.preventDefault()}
+            className="font-medium text-blue-600 hover:underline"
+          >
+            пополнить
+          </a>
+        </p>
+      )}
     </div>
-    <div className="flex items-center gap-4">
-        {globalDeficit > 0 && launchPreview.readyToLaunchCount > 0 && (
-            <div className="flex items-start gap-2 max-w-md mr-4 text-xs text-gray-800 leading-tight">
-                <Bell className="w-4 h-4 text-orange-500 shrink-0 mt-0.5" />
-                <div className="text-left">
-                    Не хватает средств для {launchPreview.readyToLaunchCount} {getPlural(launchPreview.readyToLaunchCount, 'кампании', 'кампаний', 'кампаний')}.<br/>
-                    Они будут созданы в статусе «Готово к запуску».
-                </div>
-            </div>
-        )}
-        <button onClick={launchCampaigns} disabled={isLaunching} className="px-8 py-4 rounded-xl text-lg font-bold shadow-lg shadow-purple-200 transition-all transform hover:-translate-y-0.5 bg-gradient-to-r from-purple-600 to-purple-500 text-white hover:shadow-xl disabled:bg-gray-400 disabled:shadow-none disabled:cursor-not-allowed"> {`Запустить ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`} </button>
+    <div className="flex shrink-0 flex-col items-end gap-2">
+      {globalDeficit > 0 && launchPreview.readyToLaunchCount > 0 && (
+        <div className="flex max-w-sm items-start gap-2 text-right text-xs leading-tight text-gray-800">
+          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+          <div>
+            Не хватает средств для {launchPreview.readyToLaunchCount}{' '}
+            {getPlural(launchPreview.readyToLaunchCount, 'кампании', 'кампаний', 'кампаний')}.
+            Они будут созданы в статусе «Готово к запуску».
+          </div>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={launchCampaigns}
+        disabled={isLaunching}
+        className="shrink-0 rounded-xl bg-[#9A41FE] px-6 py-3 text-base font-medium text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
+      >
+        {`Создать ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`}
+      </button>
     </div>
-    </div> </footer> )} </div> );
+  </div> </footer> )} </div> );
 }

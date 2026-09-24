@@ -66,6 +66,7 @@ import {
     Sparkles,
     Wallet,
     TrendingUp,
+    FileIcon,
 } from './Icons';
 import { CampaignRecord } from '../types';
 import {
@@ -7072,6 +7073,7 @@ const CreateCampaignDropdown = ({
                 onClick={() => onNavigateToCreation()}
                 className="flex items-center justify-center gap-1.5 shrink-0 h-11 px-4 rounded-[10px] bg-[#9a41fe] hover:bg-[#8840e5] text-white text-sm font-medium leading-5 transition-colors"
             >
+                <Plus className="w-4 h-4 shrink-0" aria-hidden />
                 <span className="whitespace-nowrap">Создать кампанию</span>
                 <ChevronDown className={`w-5 h-5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden />
             </button>
@@ -7151,11 +7153,7 @@ const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory, showUploadHint = fa
                 onClick={() => setIsOpen(!isOpen)}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
-                className={
-                  trigger === 'download'
-                    ? 'flex items-center justify-center w-11 h-11 rounded-[10px] bg-[rgba(74,74,89,0.08)] text-gray-700 hover:bg-[rgba(74,74,89,0.12)] transition-colors'
-                    : 'flex items-center justify-center w-11 h-11 rounded-[10px] bg-white border border-[#f0f0f3] text-gray-700 hover:bg-gray-50 transition-colors'
-                }
+                className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] text-gray-700 transition-colors hover:bg-[rgba(74,74,89,0.12)]"
                 title={trigger === 'download' ? 'Скачать и загрузить Excel' : 'Загрузить Excel'}
                 aria-label={trigger === 'download' ? 'Скачать и загрузить Excel' : 'Меню загрузки Excel'}
             >
@@ -9975,12 +9973,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         onNavigateToCreation={onNavigateToCreation}
         onOpenSingleCampaign={onOpenSingleCampaign}
       />
-      <ExcelActionsDropdown
-        onOpenUpload={onOpenUploadEditsModal}
-        onOpenHistory={onOpenHistoryModal}
-        showUploadHint={showUploadHint}
-        onDismissUploadHint={onDismissUploadHint}
-      />
     </div>
   ) : null;
 
@@ -10785,78 +10777,109 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           >
           {isProductPromotionConceptPage ? (
             <div className="relative z-40 border-b border-gray-100">
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3 sm:px-6">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 pt-3 sm:px-6">
                 {conceptCreateCampaignControls}
                 {conceptMainSectionTabs}
-                <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
-                  <div className="inline-flex shrink-0 items-center gap-1.5">
-                    <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
-                      <button
-                        type="button"
-                        onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
-                        className={conceptToolbarTextControlClass}
-                        aria-expanded={isFilterDropdownOpen}
-                        aria-haspopup="dialog"
-                      >
-                        <span>Фильтры</span>
-                        <ChevronDown
-                          className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${
-                            isFilterDropdownOpen ? 'rotate-180' : ''
-                          }`}
-                          aria-hidden
-                        />
-                      </button>
-                      <FilterDropdown
-                        variant="campaigns"
-                      isOpen={isFilterDropdownOpen}
-                      onClose={handleCancelFilters}
-                      onApply={handleApplyFilters}
-                      productCategoryOptions={productFilterCategoryOptions}
-                      productsSection={tempProductsFilterSection}
-                      onProductsSectionChange={setTempProductsFilterSection}
-                      tempProductCategories={tempFilterProductCategories}
-                      onTempProductCategoriesChange={setTempFilterProductCategories}
-                      tempConflictOnly={tempFilterConflictOnly}
-                      onTempConflictOnlyChange={setTempFilterConflictOnly}
-                      tempCampaignTypes={tempFilterCampaignTypes}
-                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
-                      category={filterCategory}
-                      onCategoryChange={setFilterCategory}
-                      status={filterStatus}
-                      onStatusChange={setFilterStatus}
-                      autorefill={filterAutorefill}
-                      onAutorefillChange={setFilterAutorefill}
-                      payment={filterPayment}
-                      onPaymentChange={setFilterPayment}
-                      sort={filterSort}
-                      onSortChange={setFilterSort}
-                      filterByCategory={filterByCategory}
-                      onFilterByCategoryChange={setFilterByCategory}
-                      tempCategory={tempFilterCategory}
-                      onTempCategoryChange={setTempFilterCategory}
-                      tempStatus={tempFilterStatus}
-                      onTempStatusChange={setTempFilterStatus}
-                      tempAutorefill={tempFilterAutorefill}
-                      onTempAutorefillChange={setTempFilterAutorefill}
-                      tempPayment={tempFilterPayment}
-                      onTempPaymentChange={setTempFilterPayment}
-                      tempSort={tempFilterSort}
-                      onTempSortChange={setTempFilterSort}
-                      tempFilterByCategory={tempFilterByCategory}
-                      onTempFilterByCategoryChange={setTempFilterByCategory}
-                      tempTags={tempTags}
-                      onTempTagsChange={setTempTags}
-                      tempTagsSearch={tempTagsSearch}
-                      onTempTagsSearchChange={setTempTagsSearch}
-                      tempTagsCategory={tempTagsCategory}
-                      onTempTagsCategoryChange={setTempTagsCategory}
-                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
-                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
-                        availableTags={availableTags}
-                      />
-                    </div>
-                  </div>
+                <ExcelActionsDropdown
+                  onOpenUpload={onOpenUploadEditsModal}
+                  onOpenHistory={onOpenHistoryModal}
+                  showUploadHint={showUploadHint}
+                  onDismissUploadHint={onDismissUploadHint}
+                  trigger="menu"
+                />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
+                <div className="relative min-w-[200px] flex-1">
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="ID или название кампании"
+                    aria-label="Поиск по ID кампании или названию"
+                    className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white py-0 pl-3 pr-10 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
+                  />
+                  <Search
+                    className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386]"
+                    aria-hidden
+                  />
                 </div>
+                <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
+                  <button
+                    type="button"
+                    onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                    className={conceptToolbarTextControlClass}
+                    aria-expanded={isFilterDropdownOpen}
+                    aria-haspopup="dialog"
+                  >
+                    <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                    <span>Фильтр</span>
+                  </button>
+                  <FilterDropdown
+                    variant="campaigns"
+                    isOpen={isFilterDropdownOpen}
+                    onClose={handleCancelFilters}
+                    onApply={handleApplyFilters}
+                    productCategoryOptions={productFilterCategoryOptions}
+                    productsSection={tempProductsFilterSection}
+                    onProductsSectionChange={setTempProductsFilterSection}
+                    tempProductCategories={tempFilterProductCategories}
+                    onTempProductCategoriesChange={setTempFilterProductCategories}
+                    tempConflictOnly={tempFilterConflictOnly}
+                    onTempConflictOnlyChange={setTempFilterConflictOnly}
+                    tempCampaignTypes={tempFilterCampaignTypes}
+                    onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                    category={filterCategory}
+                    onCategoryChange={setFilterCategory}
+                    status={filterStatus}
+                    onStatusChange={setFilterStatus}
+                    autorefill={filterAutorefill}
+                    onAutorefillChange={setFilterAutorefill}
+                    payment={filterPayment}
+                    onPaymentChange={setFilterPayment}
+                    sort={filterSort}
+                    onSortChange={setFilterSort}
+                    filterByCategory={filterByCategory}
+                    onFilterByCategoryChange={setFilterByCategory}
+                    tempCategory={tempFilterCategory}
+                    onTempCategoryChange={setTempFilterCategory}
+                    tempStatus={tempFilterStatus}
+                    onTempStatusChange={setTempFilterStatus}
+                    tempAutorefill={tempFilterAutorefill}
+                    onTempAutorefillChange={setTempFilterAutorefill}
+                    tempPayment={tempFilterPayment}
+                    onTempPaymentChange={setTempFilterPayment}
+                    tempSort={tempFilterSort}
+                    onTempSortChange={setTempFilterSort}
+                    tempFilterByCategory={tempFilterByCategory}
+                    onTempFilterByCategoryChange={setTempFilterByCategory}
+                    tempTags={tempTags}
+                    onTempTagsChange={setTempTags}
+                    tempTagsSearch={tempTagsSearch}
+                    onTempTagsSearchChange={setTempTagsSearch}
+                    tempTagsCategory={tempTagsCategory}
+                    onTempTagsCategoryChange={setTempTagsCategory}
+                    tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                    onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                    availableTags={availableTags}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className={conceptToolbarIconControlClass}
+                  title="Настройки"
+                  aria-label="Настройки"
+                >
+                  <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                </button>
+                <button type="button" className={conceptToolbarTextControlClass}>
+                  <FileIcon className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                  <span>Создать отчёт</span>
+                </button>
+                <ExcelActionsDropdown
+                  onOpenUpload={onOpenUploadEditsModal}
+                  onOpenHistory={onOpenHistoryModal}
+                  trigger="download"
+                />
               </div>
             </div>
           ) : null}
@@ -11003,9 +11026,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           >
               {/* Тень между закреплёнными колонками и прокручиваемыми данными */}
               <table className="relative w-full text-sm min-w-[1680px]">
-                  <thead className="bg-gray-50 text-gray-500 font-medium">
+                  <thead
+                    className={`font-medium ${
+                      isProductPromotionConceptPage
+                        ? 'bg-white text-gray-500'
+                        : 'bg-gray-50 text-gray-500'
+                    }`}
+                  >
                       <tr>
-                          <th className="sticky left-0 z-20 p-4 w-12 bg-gray-50">
+                          <th
+                            className={`sticky left-0 z-20 p-4 w-12 ${
+                              isProductPromotionConceptPage ? 'bg-white' : 'bg-gray-50'
+                            }`}
+                          >
                             <Checkbox
                               checked={isAllOnPageSelected}
                               onChange={(e) => handleSelectAll(e.target.checked)}
@@ -11016,40 +11049,66 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               }
                             />
                           </th>
-                          <th className="sticky left-[52px] z-20 p-4 w-10 bg-gray-50"></th>
                           <th
-                            className={`sticky left-[100px] z-20 min-w-[520px] w-[520px] max-w-[520px] overflow-hidden bg-gray-50 p-4 text-left ${
-                              isProductPromotionConceptPage ? 'font-normal' : 'font-medium'
+                            className={`sticky left-[52px] z-20 p-4 w-10 ${
+                              isProductPromotionConceptPage ? 'bg-white' : 'bg-gray-50'
+                            }`}
+                          ></th>
+                          <th
+                            className={`sticky left-[100px] z-20 min-w-[520px] w-[520px] max-w-[520px] overflow-hidden p-4 text-left ${
+                              isProductPromotionConceptPage ? 'bg-white font-normal' : 'bg-gray-50 font-medium'
                             } ${hasCampaignsScrollShadow ? PRODUCTS_PINNED_EDGE_SHADOW_CLASS : ''}`}
                           >
                             {isProductPromotionConceptPage ? (
-                              <label className="flex min-w-0 items-center gap-2 text-left font-normal text-gray-500">
-                                <Search
-                                  className="h-4 w-4 shrink-0 text-[#767386]"
-                                  aria-hidden
-                                />
-                                <input
-                                  type="search"
-                                  value={searchQuery}
-                                  onChange={(e) => setSearchQuery(e.target.value)}
-                                  placeholder="Поиск"
-                                  aria-label="Поиск по ID кампании или названию"
-                                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-normal text-gray-900 placeholder:text-[#767386] focus:outline-none focus:ring-0"
-                                />
-                              </label>
+                              <span className="text-sm font-medium text-gray-500">Кампания</span>
                             ) : (
                               <div className="flex items-center gap-1 font-medium">
                                 Товар/Кампания <ArrowUp className="w-4 h-4" />
                               </div>
                             )}
                             </th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Остаток бюджета <HelpCircle className="w-4 h-4" /></div></th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Дневной лимит <HelpCircle className="w-4 h-4" /></div></th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Затраты <HelpCircle className="w-4 h-4" /></div></th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Показы <HelpCircle className="w-4 h-4" /></div></th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">CTR <HelpCircle className="w-4 h-4" /></div></th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Заказы <HelpCircle className="w-4 h-4" /></div></th>
-                          <th className="p-4 text-left font-medium"><div className="flex items-center gap-1">Доля затрат <HelpCircle className="w-4 h-4" /></div></th>
+                          <th className="p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Остаток бюджета
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
+                          <th className="p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Дневной лимит
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
+                          <th className="p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Затраты
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
+                          <th className="p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Показы
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
+                          <th className="p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              CTR
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
+                          <th className="p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Заказы
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
+                          <th className="p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Доля затрат
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
                           <th className={`p-4 text-left font-medium ${PRODUCTS_STOCK_TH_CLASS}`}>Остатки</th>
                       </tr>
                   </thead>

@@ -457,11 +457,14 @@ function WbDiscountCard({
   level = 'full',
   theme = 'light',
   onWbDiscountCardClick,
+  tooltipSide = 'right',
 }: {
   variant: WbDiscountVariant;
   level?: WbDiscountLevel;
   theme?: WbDiscountTheme;
   onWbDiscountCardClick?: () => void;
+  /** Сторона тултипа относительно карточки: на правом краю экрана — left */
+  tooltipSide?: 'left' | 'right';
 }) {
   const preset = useMemo(
     () =>
@@ -782,17 +785,25 @@ function WbDiscountCard({
       <div
         id="wb-discount-tooltip"
         role="tooltip"
-        className={`absolute left-0 top-full z-[90] w-[320px] pt-2 transition-opacity duration-150 ${
+        className={`absolute top-0 z-[90] w-[320px] transition-[opacity,transform] duration-200 ease-out ${
+          tooltipSide === 'left' ? 'right-full pr-2' : 'left-full pl-2'
+        } ${
           tooltipOpen
-            ? 'pointer-events-auto opacity-100'
-            : 'pointer-events-none opacity-0'
+            ? 'pointer-events-auto translate-x-0 opacity-100'
+            : tooltipSide === 'left'
+              ? 'pointer-events-none -translate-x-2 opacity-0'
+              : 'pointer-events-none translate-x-2 opacity-0'
         }`}
         onMouseEnter={openTooltip}
         onMouseLeave={scheduleCloseTooltip}
       >
         <div className="relative rounded-[24px] bg-black px-5 py-5 text-white shadow-xl">
           <span
-            className="absolute left-10 top-0 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 bg-black"
+            className={`absolute top-8 h-2.5 w-2.5 rotate-45 bg-black ${
+              tooltipSide === 'left'
+                ? 'right-0 translate-x-1/2'
+                : 'left-0 -translate-x-1/2'
+            }`}
             aria-hidden
           />
           <p className="text-[15px] font-bold leading-snug">
@@ -1084,6 +1095,8 @@ export function ConceptPromotionInsightStrip({
   onBonusClick,
   onWbDiscountCardClick,
   wbDiscountOnly = false,
+  withMetrics = false,
+  wbDiscountTooltipSide = 'right',
 }: {
   onBudgetClick?: () => void;
   onPromoteClick?: () => void;
@@ -1092,6 +1105,10 @@ export function ConceptPromotionInsightStrip({
   onWbDiscountCardClick?: () => void;
   /** Только баннер «Скидка WB» (без метрик и insight-карточек) */
   wbDiscountOnly?: boolean;
+  /** Вместе с wbDiscountOnly: баннер + блок метрик справа (без insight-карточек) */
+  withMetrics?: boolean;
+  /** Сторона тултипа у баннера скидки WB */
+  wbDiscountTooltipSide?: 'left' | 'right';
 }) {
   const navigate = useNavigate();
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
@@ -1133,12 +1150,35 @@ export function ConceptPromotionInsightStrip({
   };
 
   if (wbDiscountOnly) {
+    if (withMetrics) {
+      return (
+        <div className="flex w-full min-w-0 items-stretch gap-3">
+          <WbDiscountCard
+            variant="bars"
+            level="full"
+            theme="light"
+            onWbDiscountCardClick={onWbDiscountCardClick}
+            tooltipSide={wbDiscountTooltipSide}
+          />
+          <ConceptMetricsBlock
+            expand
+            range={range}
+            onRangeChange={setRange}
+            onStatsClick={() => {
+              navigate('/stats');
+            }}
+          />
+        </div>
+      );
+    }
+
     return (
       <WbDiscountCard
         variant="bars"
         level="full"
         theme="light"
         onWbDiscountCardClick={onWbDiscountCardClick}
+        tooltipSide={wbDiscountTooltipSide}
       />
     );
   }
@@ -1152,6 +1192,7 @@ export function ConceptPromotionInsightStrip({
           level={wbDiscountLevel}
           theme={wbDiscountTheme}
           onWbDiscountCardClick={onWbDiscountCardClick}
+          tooltipSide={wbDiscountTooltipSide}
         />
 
         <ConceptMetricsBlock
