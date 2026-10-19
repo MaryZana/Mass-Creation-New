@@ -1,0 +1,59 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/0. Быстрый старт/0.1. SSR" />
+
+# SSR NEXT EXAMPLE
+
+Для работы `styled-components` в SSR необходимо подключить `StyleSheetManager`.
+
+Оффициальный [пример](https://github.com/vercel/next.js/blob/canary/examples/with-styled-components/lib/styled-components-registry.tsx) от next.js:
+
+```tsx
+'use client';
+
+import React, { useState } from 'react';
+import { useServerInsertedHTML } from 'next/navigation';
+import { ServerStyleSheet, StyleSheetManager } from 'styled-components';
+
+export default function StyledComponentsRegistry({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [styledComponentsStyleSheet] = useState(() => new ServerStyleSheet());
+
+  useServerInsertedHTML(() => {
+    const styles = styledComponentsStyleSheet.getStyleElement();
+    styledComponentsStyleSheet.instance.clearTag();
+    return <>{styles}</>;
+  });
+
+  if (typeof window !== 'undefined') return <>{children}</>;
+
+  return (
+    <StyleSheetManager sheet={styledComponentsStyleSheet.instance}>
+      {children}
+    </StyleSheetManager>
+  );
+}
+```
+
+## Compounded components
+
+Если в next.js `RtFrame.Root` не работает используйте `RtFrameRoot` или вместо `RtFormFieldText.Number` – `RtFormFieldNumber` и так далее.
+
+## useRtBreakpoint()
+
+По очевидным причинам работает только на стороне браузера, так как `window` недоступен на стороне сервера.
+
+## RtFrame.Root
+
+Необходимо обязтельно установить классы абстракций генерируемые на body в статике, так как они добавляются через JS, а html клиенту должен приходить уже с этими классами. Чтобы установить скопируйте классы из браузера в статику:
+
+```html
+<body
+  class="rt-0-typ-scheme-primary rt-0-typ-typescale-base rt-0-и-другие-классы"
+>
+  ...
+</body>
+```

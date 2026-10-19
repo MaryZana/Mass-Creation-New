@@ -1,0 +1,27 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/6. RitmPortal" />
+
+# RitmPortal
+
+Так как контекст дизайн системы находится в React, а сама дизайн-система работает на CSS. Могут произойти ошибки в работе абстракций при использовании порталов. Поэтому рекомендуется использовать утилиту для создания порталов:
+
+```jsx
+import { createRitmPortal } from '@dpa/react-frame-context';
+
+createRitmPortal(<div />);
+```
+
+Или если вы уже используете утилиту для создания порталов, то есть второй вариант:
+
+```jsx
+import { RitmPortal } from '@dpa/react-frame-context';
+
+const Example = () => (
+  <FloatingPortal>
+    <RitmPortal.Provider value={{ fakeDOMContext: true }}>
+      ...
+    </RitmPortal.Provider>
+  </FloatingPortal>
+);
+```

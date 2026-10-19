@@ -1,0 +1,226 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/0. Быстрый старт/0. Быстрый старт" />
+
+# Быстрый старт
+
+## Установка
+
+Подключаем наш npm registery в файле `.nmprc`:
+
+```
+@dpa:registry=https://nexus-hosted.wb.ru/repository/npm/
+```
+
+Устанавливаем зависимости
+
+```bash
+npm i @dpa/ritm-intro @dpa/react-frame-intro @dpa/react-frame-context @dpa/react-grid @dpa/react-typography-icons styled-components
+```
+
+Импортировать до импорта других стилей, иначе работать не будет, так как внутри зашиты ссылки на CDN.
+
+```js
+import '@dpa/ritm-intro';
+import 'other-style.css';
+```
+
+или
+
+```css
+/* main.css */
+@import '@dpa/ritm-intro';
+```
+
+### Установка `RtFrame`:
+
+`<RtFrame />` компонент используется для определения поверхности и абстракций.
+
+Версии пакетов `@dpa/react-frame-intro` и `@dpa/ritm-intro` всегда должны совпадать.
+
+## Настройка
+
+Каждое приложение должно иметь рутовый `RtFrame.Root` с дефолтными абстракциями, которые потом устанавливаются на `body` как классы:
+
+```jsx
+import '@dpa/ritm-intro';
+import {
+  RtFrame,
+  defaultBreakpointConfig,
+  RtBreakpointConfig,
+} from '@dpa/react-frame-intro';
+
+<RtFrame.Root
+  modifier="base"
+  scheme="ritm"
+  achromatic="non-inverted"
+  primitive="normal"
+  theme="light"
+  use="secondary"
+  sizeScheme="ritm"
+  typographyScheme="primary"
+  typescale="base"
+  breakpointScheme="ritm"
+  operatorScheme="ritm"
+  breakpointConfig={defaultBreakpointConfig}
+>
+  <RouterProvider router={router} />
+</RtFrame.Root>;
+```
+
+или определить свой `breakpointConfig`:
+
+```jsx
+import '@dpa/ritm-intro';
+import {
+  RtFrame,
+  defaultBreakpointConfig,
+  RtBreakpointConfig,
+} from '@dpa/react-frame-intro';
+
+// Если в одном брейкопинт кластере несколько отрезков, то их можно также добавить в min, max или custom.
+export const config: RtBreakpointConfig = {
+  xs: {
+    min: null,
+    default: [0, 767],
+    max: null,
+    custom: null,
+  },
+  sm: {
+    min: null,
+    default: [768, 1279],
+    max: null,
+    custom: null,
+  },
+  md: {
+    min: null,
+    default: [1280, 1920],
+    max: null,
+    custom: null,
+  },
+  lg: {
+    min: null,
+    default: [1921, 5120],
+    max: null,
+    custom: null,
+  },
+};
+
+<RtFrame.Root
+  modifier="base"
+  scheme="ritm"
+  achromatic="non-inverted"
+  primitive="normal"
+  theme="light"
+  use="secondary"
+  sizeScheme="ritm"
+  typographyScheme="primary"
+  typescale="base"
+  breakpointScheme="ritm"
+  operatorScheme="ritm"
+  breakpointConfig={config}
+>
+  <RouterProvider router={router} />
+</RtFrame.Root>;
+```
+
+**PS: если в Next не работает, используйте** `_RtFrameRoot`
+
+Если у вас приложение на SSR, то нужно их также продублировать в разметке на `body`, просто скопировав уже из итоговой разметки в браузере, например:
+
+```html
+<body
+  class="rt-0-typ-scheme-primary rt-0-typ-typescale-base rt-0-и-другие-классы"
+>
+  ...
+</body>
+```
+
+**PS: нужно прям скопировать из браузера, чтобы классы соответствовали вашим абстракциям RtFrame**
+
+#### EM единицы
+
+По дизайн-системе интерфейс строится за счет em-единиц (размер которых меняется в зависимости от абстракции breakpoint). По дефолту em-единицы работают только внутри ritm компонентов. Для того, чтобы em-единицы начали работать нужно включить isFontSizeProvider. Данный пропс устанавливает на body font-size в зависимости от breakpointConfig.
+
+Будьте осторожны включая этот пропс на RtFrame.Root, font-size будет доступен везде, но это может конфликтовать c вашими компонентами, где font-size не установлен или установлен в процентах.
+
+```jsx
+<RtFrame.Root isFontSizeProvider>...</RtFrame.Root>
+```
+
+Включайте на Root только если уверены в том, что сможете оперативно исправлять сломанный интерфейс или у вас чистый проект. В противном случае можно включить у любого div:
+
+```jsx
+<RtFrame isFontSizeProvider>...</RtFrame>
+```
+
+**PS. компоненты Ritm UI kit поддерживают em-единицы автоматически и их не нужно оборачивать в** `isFontSizeProvider`
+
+## Создание scss переменных для media query
+
+Мы настоятельно рекомендуем создать scss миксины или переменные для верстки с помощью media query, с названиями и границами брейкпоинтов соответствующими конфигу `breakpointConfig` в `RtFrameRoot`. То есть для `defaultBreakpointConfig` рекомендуем создать:
+
+```scss
+// _media.scss
+
+// Если есть сегнметы внутри кластера (например xs):
+// $xs-min: 'max-width: 359px';
+// $xs-default: 'max-width: 480px';
+// $xs-max: 'max-width: 767px';
+
+$xs: 'max-width: 767px';
+$sm: 'max-width: 1279px';
+$md: 'max-width: 1920px';
+$lg: 'max-width: 5120px';
+```
+
+Не меняйте нейминг, так как понятия mobile, desktop в дизайн системе нет. Есть только xs, sm и тд.
+
+### Определение брейкпоинта через js (SPA only)
+
+Для определения используем `useRtBreakpoint`:
+
+```js
+const { xs, sm, xsMin, smDefault } = useRtBreakpoint();
+```
+
+## Проверяем как подключилась дизайн система.
+
+### Создание поверхности
+
+Поверхность создает фон для блока и определяет цвет текста.
+
+```jsx
+import { RtFrame } from '@dpa/react-frame-intro';
+import { RtText } from '@dpa/react-text';
+
+<RtFrame surface="wrapper">
+  <RtText typography="symbol-md-secondary">Be in the Ritm!</RtText>
+</RtFrame>;
+```
+
+У динамических поверхностей автоматически меняется цвет `background` при `hover`, `focus` и `active`.
+
+`foundation` - статическая поверхность.
+
+`wrapper` и `control` - динамические.
+
+Текст наследует цвет от поверхности.
+
+В том числе если поверхность меняет свое состояние (`hover`, `focus`, `disabled`).
+
+Если требуется вы можете установить спецификацию цвета (`main`, `variant`)
+
+## Переопределение абстракций:
+
+В любом месте приложения вы можете переопределить любую абстракцию.
+
+```jsx
+import { RtFrame } from '@dpa/react-frame-intro';
+
+<RtFrame modifier="mono" theme="dark" typographyScheme="secondary">
+  ...
+</RtFrame>;
+```
+
+Если абстракция не указана, то она наследуется от родительского `RtFrame`.

@@ -1,0 +1,23 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/1. Теория для разработчиков/1.5. Абстракции размерностей" />
+
+# SizeScheme
+
+Абстракция необходима для настройки компонентов RITM ui-kit в зависимости от продукта. При переключении продукта, компоненты меняют CSS-конфиги и меняется их внешний вид (радиусы, отступы, размеры компонентов и тд).
+
+Пример:
+
+```jsx
+<RtFrame.Root sizeScheme="wb">...</RtFrame.Root>
+```
+
+Или локально:
+
+```jsx
+<RtFrame sizeScheme="wb">
+  <RtButton label="Добавить продавца" />
+</RtFrame>
+```
+
+![Пример SizeScheme](</media/image%20(14).png>)

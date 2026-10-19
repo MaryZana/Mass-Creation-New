@@ -1,0 +1,39 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/5. RITM CLI" />
+
+# RITM CLI
+
+Утилита для работы с пакетами `@dpa/*` в проектах.
+
+## Установка
+
+```bash
+npm install -g @dpa/ritm-cli@latest --@dpa:registry=https://nexus-hosted.wb.ru/repository/npm/
+```
+
+### Команды
+
+#### update
+
+Обновить все RITM пакеты и проверить CHANGELOG.
+
+Опции:
+
+- `--to <version>`: обновить все зависимости `@dpa/*` до указанной версии (semver), например `0.8.2`.
+- `--install-all`: установить все пакеты `@dpa/*` из актуального списка.
+
+Примеры:
+
+```bash
+# Обновить все @dpa/* до последних опубликованных версий
+ritm-cli update
+
+# Обновить все @dpa/* до конкретной версии
+ritm-cli update --to 0.8.2
+
+# Установить все доступные пакеты @dpa/*
+ritm-cli update --install-all
+```
+
+CHANGELOG: [смотреть изменения](https://static-basket-03.wbbasket.ru/vol48/ritmcore/changelog.md)

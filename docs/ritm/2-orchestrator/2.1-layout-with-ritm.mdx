@@ -1,0 +1,191 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/2. Плагин автогенерации кода. Orchestrator/2.1. Верстка с использованием Ritm" />
+
+# Верстка с использованием Ritm
+
+## Шаг 1: определить абстракции для проекта.
+
+![Определение абстракций](</media/image%20(20).png>)
+
+![Абстракции проекта](</media/image%20(21).png>)
+
+## Шаг 2: Верстка текста и поверхностей
+
+```bash
+npm i @dpa/react-text
+```
+
+Текст всегда наследует цвет от поверхности на которой он лежит. Поверхность создается с помощью пропса `surface`. Цветовая палитра зависит только от цветовых абстракций в `RtFrame`. Цветовые абстракции всегда наследуются от родителя, если их не изменить явно.
+
+![Верстка текста и поверхностей](</media/image%20(22).png>)
+
+Есть две спецификации цвета на поверхности `main` и `variant`:
+
+![Спецификации main и variant](</media/image%20(23).png>)
+
+`main`:
+
+![Спецификация main](</media/image%20(24).png>)
+
+## Шаг 3: Кнопки и иконки
+
+```bash
+npm i @dpa/react-buttons @dpa/react-grid
+```
+
+Оркестратор также генерирует код для компонентов и иконок:
+
+![Генерация кнопок](</media/image%20(25).png>)
+
+![Генерация иконок](</media/image%20(26).png>)
+
+![Результат генерации](</media/image%20(27).png>)
+
+## Шаг 4: стили или media-query
+
+У вас полная свобода выбора флоу верстки. Поэтому например можете использовать css из Оркестратора:
+
+![CSS из Оркестратора](</media/image%20(28).png>)
+
+Мы рекомендуем создать scss переменные или миксины идентичные с сегментами `breakpointConfig`, которые были переданы в `RtFrameRoot`:
+
+```scss
+$xs-min: 'max-width: 359px';
+$xs-default: 'max-width: 480px';
+$xs-max: 'max-width: 767px';
+$xs: 'max-width: 1023px';
+
+$sm-min: 'max-width: 1200px';
+$sm-default: 'max-width: 1440px';
+$sm-max: 'max-width: 1920px';
+$sm: 'max-width: 4000px';
+```
+
+Не создавайте названий phone, tablet или desktop, потому что такие понятий в дизайн системе нет.
+
+#### Делаем кнопки в колонку на xs экране:
+
+![Кнопки в колонку на xs](</media/image%20(29).png>)
+
+![Результат на xs](</media/image%20(30).png>)
+
+Чтобы изменить пропсы на любом экране используем `useRtBreakpoint`:
+
+```jsx
+import classnames from 'classnames/bind';
+import styles from './index.module.scss';
+import { RtText } from '@dpa/react-text';
+import { RtFrame, useRtBreakpoint } from '@dpa/react-frame-intro';
+import { RtButton } from '@dpa/react-buttons';
+import {
+  PencilTypographyIcon,
+  PlusTypographyIcon,
+} from '@dpa/react-typography-icons';
+import { RtGrid } from '@dpa/react-grid';
+
+const cn = classnames.bind(styles);
+
+export function Card() {
+  const { xs, xsMin } = useRtBreakpoint();
+
+  return (
+    <div className={cn('card__user-info-actions')}>
+      <RtButton
+        modifier="base"
+        use="primary"
+        size="lg"
+        radius="primary"
+        textWidth="min-content"
+        textHeight="min-content"
+        textJustify="center"
+        label="Добавить продавца"
+        leadingIcon={PlusTypographyIcon}
+        blockHeight="full"
+        blockWidth={xs ? 'full' : 'min-content'}
+      />
+
+      <RtButton
+        modifier="base"
+        use="generic"
+        size="lg"
+        radius="primary"
+        textWidth="full"
+        textHeight="min-content"
+        textJustify="center"
+        label="Удалиться из аккаунта поставщика"
+        textWrap
+        blockWidth="full"
+      />
+    </div>
+  );
+}
+```
+
+PS: Это работает только в SPA.
+
+## Итог:
+
+![Итог](</media/image%20(31).png>)
+
+## Бонус RtGrid:
+
+```bash
+npm i @dpa/react-grid
+```
+
+![RtGrid](</media/image%20(32).png>)
+
+Объединяет радиус кнопок.
+
+```jsx
+import classnames from 'classnames/bind';
+import styles from './index.module.scss';
+import { RtText } from '@dpa/react-text';
+import { RtFrame, useRtBreakpoint } from '@dpa/react-frame-intro';
+import { RtButton } from '@dpa/react-buttons';
+import {
+  PencilTypographyIcon,
+  PlusTypographyIcon,
+} from '@dpa/react-typography-icons';
+import { RtGrid } from '@dpa/react-grid';
+
+const cn = classnames.bind(styles);
+
+export function Card() {
+  const { xs, xsMin } = useRtBreakpoint();
+
+  return (
+    <RtGrid>
+      <RtButton
+        modifier="base"
+        use="primary"
+        size="lg"
+        radius="primary"
+        textWidth="min-content"
+        textHeight="min-content"
+        textJustify="center"
+        label="Добавить продавца"
+        leadingIcon={PlusTypographyIcon}
+        blockHeight="full"
+        blockWidth={xs ? 'full' : 'min-content'}
+      />
+
+      <RtButton
+        modifier="base"
+        use="generic"
+        size="lg"
+        radius="primary"
+        textWidth="full"
+        textHeight="min-content"
+        textJustify="center"
+        label="Удалиться из аккаунта поставщика"
+        textWrap
+        blockWidth="full"
+      />
+    </RtGrid>
+  );
+}
+```
+
+[Интеграция своих компонентов в RtGrid](https://gitlab.wildberries.ru/portals/dpa/ritm/web-2.0/core/-/blob/main/packages/react/rt-grid/README.md)

@@ -1,0 +1,70 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/4. Версионирование" />
+
+# Версионирование
+
+Компоненты разделены по пакетам, чтобы
+
+- в крайнем случае отдельный компонент можно было сохранить в старой версии.
+- в микрофронтах можно было сохранить конкретную версию компонентов
+
+Все пакеты по возможности нужно держать в одной версии, чтобы пакеты не дублировались. Например FormField 0.16.0 имеет свою зависимость кнопки 0.16.0, а у вас установлена 0.17.0. Пакеты будут дублироваться, а если использовать все в одной версии — нет.
+
+**Допускается** временно держать 1-2 пакета в старой версии, если новый пакет прямо сейчас невозможно установить из-за breaking changes в API. Как раз для этого и нужны дубли пакетов и возможность выбрать старую версию.
+
+Например:
+
+✅ Правильно
+
+```json
+"@dpa/react-form-field-combobox": "0.13.7",
+"@dpa/react-form-field-date-picker": "0.13.7",
+"@dpa/react-form-field-select": "0.13.7",
+"@dpa/react-form-field-text": "0.13.7",
+"@dpa/react-form-field-textarea": "^0.13.7",
+"@dpa/react-frame-context": "0.13.7",
+"@dpa/react-frame-intro": "0.13.7",
+```
+
+❌ Неправильно
+
+```json
+"@dpa/react-form-field-combobox": "0.12.1",
+"@dpa/react-form-field-date-picker": "0.11.0",
+"@dpa/react-form-field-select": "0.13.7",
+"@dpa/react-form-field-text": "0.12.1",
+"@dpa/react-form-field-textarea": "^0.11.0",
+"@dpa/react-frame-context": "0.11.3",
+"@dpa/react-frame-intro": "0.5.7",
+```
+
+ИЛИ
+
+Например:
+
+✅ Правильно
+
+```json
+"@dpa/react-buttons": "0.12.4",
+"@dpa/react-form-field-date-picker": "0.13.7",
+"@dpa/react-form-field-select": "0.12.0",
+"@dpa/react-form-field-text": "0.13.7",
+"@dpa/react-form-field-textarea": "^0.13.7",
+"@dpa/react-frame-context": "0.13.7",
+"@dpa/react-frame-intro": "0.13.7",
+```
+
+❌ Неправильно
+
+```json
+"@dpa/react-buttons": "0.12.1",
+"@dpa/react-form-field-date-picker": "0.11.0",
+"@dpa/react-form-field-select": "0.13.7",
+"@dpa/react-form-field-text": "0.12.1",
+"@dpa/react-form-field-textarea": "^0.11.0",
+"@dpa/react-frame-context": "0.11.3",
+"@dpa/react-frame-intro": "0.5.7",
+```
+
+Чтобы было проще обновлять пакеты, используйте [RITM CLI](https://wiki.wb.ru/space/860/avtomatizaciy-dizajna/page/25/)

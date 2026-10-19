@@ -1,0 +1,27 @@
+import { Meta } from '@storybook/addon-docs/blocks';
+
+<Meta title="Docs/0. Быстрый старт/0.2. Webpack" />
+
+# Не работает в Webpack
+
+Дело в том, что нам необходимо держать импорт стилей `@dpa/ritm-intro` в начале css, либо в отдельном чанке, чтобы дизайн система подключилась. Но вебпак может непредсказуемо вынести стили в середину файла, поэтому нужно выделить импорт ДС в отдельный чанк.
+
+```ts
+function webpackChunkRitm(config: any): any {
+  config.optimization = {
+    ...config.optimization,
+    splitChunks: {
+      ...config.optimization?.splitChunks,
+      cacheGroups: {
+        ...config.optimization?.splitChunks?.cacheGroups,
+        ritmStyles: {
+          name: 'ritm',
+          test: /[\\/]node_modules[\\/]@dpa[\\/]ritm-intro[\\/].*\.css$/,
+          chunks: 'all',
+          enforce: true,
+        },
+      },
+    },
+  };
+}
+```
