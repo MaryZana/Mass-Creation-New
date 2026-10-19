@@ -15,9 +15,14 @@ import { BONUS_PACKAGES } from './SingleCampaignPage';
 const MAX_VISIBLE_CLOSABLE_CARDS = 2;
 
 const CARD_H = 'h-[124px]';
+const CARD_H_COMPACT = 'h-[96px]';
 const SIDE_CARD_W = 'w-[160.57px]';
 const WB_DISCOUNT_CARD_W = 'w-[220px]';
 const WB_DISCOUNT_BARS_CARD_W = 'w-[272px]';
+const WB_DISCOUNT_HORIZONTAL_H = 'h-[64px]';
+const WB_DISCOUNT_HORIZONTAL_W = 'w-max max-w-full';
+
+type WbDiscountCardLayout = 'card' | 'horizontal';
 
 type ConceptInsightCardKind =
   | 'budget'
@@ -306,22 +311,6 @@ type WbDiscountVariant = 'progress' | 'maxbonus' | 'bars';
 type WbDiscountTheme = 'light' | 'dark';
 type WbDiscountLevel = 'zero' | 'full';
 
-const WB_DISCOUNT_VARIANT_TABS: { id: WbDiscountVariant; label: string }[] = [
-  { id: 'progress', label: '8%' },
-  { id: 'bars', label: 'Столбики' },
-  { id: 'maxbonus', label: 'Бонус' },
-];
-
-const WB_DISCOUNT_LEVEL_TABS: { id: WbDiscountLevel; label: string }[] = [
-  { id: 'zero', label: '0%' },
-  { id: 'full', label: '8%' },
-];
-
-const WB_DISCOUNT_THEME_TABS: { id: WbDiscountTheme; label: string }[] = [
-  { id: 'light', label: 'Светлая' },
-  { id: 'dark', label: 'Тёмная' },
-];
-
 const WB_DISCOUNT_MAX_PERCENT = 10;
 
 const WB_DISCOUNT_ZERO_PRESET = {
@@ -456,12 +445,21 @@ function WbDiscountCard({
   variant,
   level = 'full',
   theme = 'light',
+  layout = 'card',
+  bordered = false,
+  compact = false,
   onWbDiscountCardClick,
   tooltipSide = 'right',
 }: {
   variant: WbDiscountVariant;
   level?: WbDiscountLevel;
   theme?: WbDiscountTheme;
+  /** card — вертикальная 124px; horizontal — низкая широкая полоса над тулбаром */
+  layout?: WbDiscountCardLayout;
+  /** Обводка, если баннер на белом фоне */
+  bordered?: boolean;
+  /** Чуть ниже стандартной карточки (для тулбара списка) */
+  compact?: boolean;
   onWbDiscountCardClick?: () => void;
   /** Сторона тултипа относительно карточки: на правом краю экрана — left */
   tooltipSide?: 'left' | 'right';
@@ -476,6 +474,8 @@ function WbDiscountCard({
   const isDark = theme === 'dark';
   const isMaxBonus = variant === 'maxbonus';
   const isBars = variant === 'bars';
+  const isHorizontal = layout === 'horizontal';
+  const cardHeightClass = compact ? CARD_H_COMPACT : CARD_H;
   const [percent, setPercent] = useState(0);
   const [barFill, setBarFill] = useState(0);
   const [barStripe, setBarStripe] = useState(0);
@@ -567,12 +567,22 @@ function WbDiscountCard({
   }, []);
 
   return (
-    <div className="group/wb relative shrink-0">
+    <div className={`group/wb relative ${isHorizontal ? 'ml-auto w-max max-w-full' : 'shrink-0'}`}>
       <div
-        className={`relative flex ${CARD_H} ${
-          isBars ? WB_DISCOUNT_BARS_CARD_W : WB_DISCOUNT_CARD_W
-        } max-h-[124px] flex-col justify-between overflow-hidden rounded-[24px] shadow-[0_1px_3px_rgba(16,24,40,0.06)] transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_8px_24px_rgba(16,24,40,0.12)] ${
-          isMaxBonus || isBars ? 'px-4 pt-4 pb-3' : 'px-3.5 pt-3.5 pb-0.5'
+        className={`relative overflow-hidden rounded-[24px] shadow-[0_1px_3px_rgba(16,24,40,0.06)] transition-[transform,box-shadow] duration-200 ease-out hover:-translate-y-0.5 hover:shadow-[0_8px_24px_rgba(16,24,40,0.12)] ${
+          bordered ? 'border border-[#E3E5EB]' : ''
+        } ${
+          isHorizontal
+            ? `flex ${WB_DISCOUNT_HORIZONTAL_H} ${WB_DISCOUNT_HORIZONTAL_W} max-h-[64px] flex-row items-center gap-3 px-4 py-2.5`
+            : `flex ${cardHeightClass} ${
+                isBars ? WB_DISCOUNT_BARS_CARD_W : WB_DISCOUNT_CARD_W
+              } ${compact ? 'max-h-[96px]' : 'max-h-[124px]'} flex-col justify-between ${
+                isMaxBonus || isBars
+                  ? compact
+                    ? 'px-3.5 pt-2.5 pb-3'
+                    : 'px-4 pt-4 pb-3'
+                  : 'px-3.5 pt-3.5 pb-0.5'
+              }`
         } ${
           onWbDiscountCardClick ? 'cursor-pointer' : ''
         } ${isDark ? 'bg-[#1A1B1F]' : 'bg-white'}`}
@@ -592,40 +602,112 @@ function WbDiscountCard({
           }
         }}
       >
-        {isBars ? (
-          <div className="relative z-[1] flex h-full min-h-0 flex-1 flex-col justify-between py-0.5">
-            <div>
+        {isBars && isHorizontal ? (
+          <>
+            <div className="relative z-[1] w-max shrink-0">
               <p
-                className={`mb-0 text-[13px] font-medium leading-[1.25] ${
-                  isDark ? 'text-white/45' : 'text-[#9CA3AF]'
-                }`}
-              >
-                Уровень бонуса
-              </p>
-              <p
-                className={`mb-0 mt-0.5 text-[17px] font-bold leading-[1.15] tracking-tight tabular-nums ${
+                className={`mb-0 text-[15px] font-bold leading-none tracking-tight tabular-nums ${
                   isDark ? 'text-white' : 'text-gray-900'
                 }`}
                 aria-live="polite"
               >
                 до +{percent}% к скидке WB
               </p>
-            </div>
-
-            <div className="flex items-end justify-between gap-3">
               <p
-                className={`mb-0 flex items-center gap-0.5 text-[13px] font-medium leading-none ${
+                className={`mb-0 mt-1.5 flex w-max items-center gap-0.5 text-[13px] font-medium leading-none ${
                   isDark ? 'text-white/45' : 'text-[#6B7280]'
                 }`}
               >
-                <span className="truncate">
+                <span>
                   <WbDiscountCaptionLabel isDark={isDark} />
                 </span>
                 <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden />
               </p>
+            </div>
+
+            <div
+              className="wb-discount-bars ml-2 flex h-[44px] w-[72px] shrink-0 items-end justify-between gap-[2px]"
+              aria-hidden
+            >
+              {Array.from({ length: WB_DISCOUNT_MAX_PERCENT }, (_, index) => {
+                const active = index < percent;
+                const zeroHint = percent === 0 && index === 0;
+                const heightPct = 28 + (index / (WB_DISCOUNT_MAX_PERCENT - 1)) * 72;
+                return (
+                  <span
+                    key={index}
+                    className={`wb-discount-bars-item relative block w-[5px] overflow-hidden rounded-full ${
+                      active
+                        ? 'wb-discount-bars-item--active'
+                        : isDark
+                          ? 'bg-white/20'
+                          : 'bg-[#E5E7EB]'
+                    }`}
+                    style={{
+                      height: `${heightPct}%`,
+                      animationDelay: `${index * 45}ms`,
+                    }}
+                  >
+                    {zeroHint ? (
+                      <span
+                        className="wb-discount-bars-item--active absolute inset-x-0 bottom-0 rounded-full"
+                        style={{ height: '28%' }}
+                      />
+                    ) : null}
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        ) : isBars ? (
+          <div
+            className={`relative z-[1] flex h-full min-h-0 flex-1 flex-col justify-between ${
+              compact ? 'py-0' : 'py-0.5'
+            }`}
+          >
+            <div>
+              <p
+                className={`mb-0 font-medium leading-[1.25] ${
+                  compact ? 'text-[12px]' : 'text-[13px]'
+                } ${isDark ? 'text-white/45' : 'text-[#9CA3AF]'}`}
+              >
+                Уровень бонуса
+              </p>
+              <p
+                className={`mb-0 mt-0.5 font-bold leading-[1.15] tracking-tight tabular-nums ${
+                  compact ? 'text-[15px]' : 'text-[17px]'
+                } ${isDark ? 'text-white' : 'text-gray-900'}`}
+                aria-live="polite"
+              >
+                до +{percent}% к скидке WB
+              </p>
+            </div>
+
+            <div
+              className={`flex items-end justify-between gap-3 ${
+                compact ? 'pb-0.5' : ''
+              }`}
+            >
+              <p
+                className={`mb-0 flex items-center gap-0.5 font-medium leading-none ${
+                  compact ? 'text-[12px]' : 'text-[13px]'
+                } ${isDark ? 'text-white/45' : 'text-[#6B7280]'}`}
+              >
+                <span className="truncate">
+                  <WbDiscountCaptionLabel isDark={isDark} />
+                </span>
+                <ChevronRight
+                  className={`shrink-0 ${compact ? 'h-3 w-3' : 'h-3.5 w-3.5'}`}
+                  aria-hidden
+                />
+              </p>
 
               <div
-                className="wb-discount-bars flex h-[48px] w-[92px] shrink-0 items-end justify-between gap-[3px]"
+                className={`wb-discount-bars flex shrink-0 items-end justify-between ${
+                  compact
+                    ? 'h-[34px] w-[72px] gap-[2px]'
+                    : 'h-[48px] w-[92px] gap-[3px]'
+                }`}
                 aria-hidden
               >
                 {Array.from({ length: WB_DISCOUNT_MAX_PERCENT }, (_, index) => {
@@ -635,7 +717,9 @@ function WbDiscountCard({
                   return (
                     <span
                       key={index}
-                      className={`wb-discount-bars-item relative block w-[7px] overflow-hidden rounded-full ${
+                      className={`wb-discount-bars-item relative block overflow-hidden rounded-full ${
+                        compact ? 'w-[5px]' : 'w-[7px]'
+                      } ${
                         active
                           ? 'wb-discount-bars-item--active'
                           : isDark
@@ -785,24 +869,36 @@ function WbDiscountCard({
       <div
         id="wb-discount-tooltip"
         role="tooltip"
-        className={`absolute top-0 z-[90] w-[320px] transition-[opacity,transform] duration-200 ease-out ${
-          tooltipSide === 'left' ? 'right-full pr-2' : 'left-full pl-2'
+        className={`absolute z-[90] w-[320px] max-w-[min(320px,calc(100vw-2rem))] transition-[opacity,transform] duration-200 ease-out ${
+          isHorizontal
+            ? tooltipSide === 'left'
+              ? 'right-0 top-full pt-2'
+              : 'left-0 top-full pt-2'
+            : tooltipSide === 'left'
+              ? 'right-full top-0 pr-2'
+              : 'left-full top-0 pl-2'
         } ${
           tooltipOpen
-            ? 'pointer-events-auto translate-x-0 opacity-100'
-            : tooltipSide === 'left'
-              ? 'pointer-events-none -translate-x-2 opacity-0'
-              : 'pointer-events-none translate-x-2 opacity-0'
+            ? 'pointer-events-auto translate-x-0 translate-y-0 opacity-100'
+            : isHorizontal
+              ? 'pointer-events-none -translate-y-1 opacity-0'
+              : tooltipSide === 'left'
+                ? 'pointer-events-none -translate-x-2 opacity-0'
+                : 'pointer-events-none translate-x-2 opacity-0'
         }`}
         onMouseEnter={openTooltip}
         onMouseLeave={scheduleCloseTooltip}
       >
         <div className="relative rounded-[24px] bg-black px-5 py-5 text-white shadow-xl">
           <span
-            className={`absolute top-8 h-2.5 w-2.5 rotate-45 bg-black ${
-              tooltipSide === 'left'
-                ? 'right-0 translate-x-1/2'
-                : 'left-0 -translate-x-1/2'
+            className={`absolute h-2.5 w-2.5 rotate-45 bg-black ${
+              isHorizontal
+                ? tooltipSide === 'left'
+                  ? 'right-8 top-0 -translate-y-1/2'
+                  : 'left-8 top-0 -translate-y-1/2'
+                : tooltipSide === 'left'
+                  ? 'right-0 top-8 translate-x-1/2'
+                  : 'left-0 top-8 -translate-x-1/2'
             }`}
             aria-hidden
           />
@@ -1097,6 +1193,9 @@ export function ConceptPromotionInsightStrip({
   wbDiscountOnly = false,
   withMetrics = false,
   wbDiscountTooltipSide = 'right',
+  wbDiscountLayout = 'card',
+  wbDiscountBordered = false,
+  wbDiscountCompact = false,
 }: {
   onBudgetClick?: () => void;
   onPromoteClick?: () => void;
@@ -1109,13 +1208,16 @@ export function ConceptPromotionInsightStrip({
   withMetrics?: boolean;
   /** Сторона тултипа у баннера скидки WB */
   wbDiscountTooltipSide?: 'left' | 'right';
+  /** card — высокий виджет; horizontal — полоса над тулбаром статистики */
+  wbDiscountLayout?: WbDiscountCardLayout;
+  /** Обводка для белого баннера на белом фоне */
+  wbDiscountBordered?: boolean;
+  /** Компактная высота вертикальной карточки */
+  wbDiscountCompact?: boolean;
 }) {
   const navigate = useNavigate();
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const [range, setRange] = useState<StatsRangeId>('month');
-  const [wbDiscountVariant, setWbDiscountVariant] = useState<WbDiscountVariant>('bars');
-  const [wbDiscountLevel, setWbDiscountLevel] = useState<WbDiscountLevel>('full');
-  const [wbDiscountTheme, setWbDiscountTheme] = useState<WbDiscountTheme>('light');
 
   const remainingCards = useMemo(
     () => CONCEPT_INSIGHT_CARD_QUEUE.filter((card) => !closedIds.has(card.id)),
@@ -1157,6 +1259,9 @@ export function ConceptPromotionInsightStrip({
             variant="bars"
             level="full"
             theme="light"
+            layout={wbDiscountLayout}
+            bordered={wbDiscountBordered}
+            compact={wbDiscountCompact}
             onWbDiscountCardClick={onWbDiscountCardClick}
             tooltipSide={wbDiscountTooltipSide}
           />
@@ -1177,6 +1282,9 @@ export function ConceptPromotionInsightStrip({
         variant="bars"
         level="full"
         theme="light"
+        layout={wbDiscountLayout}
+        bordered={wbDiscountBordered}
+        compact={wbDiscountCompact}
         onWbDiscountCardClick={onWbDiscountCardClick}
         tooltipSide={wbDiscountTooltipSide}
       />
@@ -1184,124 +1292,39 @@ export function ConceptPromotionInsightStrip({
   }
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-3">
-      <div className="flex w-full min-w-0 items-stretch gap-3">
-        <WbDiscountCard
-          key={`${wbDiscountVariant}-${wbDiscountLevel}-${wbDiscountTheme}`}
-          variant={wbDiscountVariant}
-          level={wbDiscountLevel}
-          theme={wbDiscountTheme}
-          onWbDiscountCardClick={onWbDiscountCardClick}
-          tooltipSide={wbDiscountTooltipSide}
-        />
+    <div className="flex w-full min-w-0 items-stretch gap-3">
+      <WbDiscountCard
+        variant="bars"
+        level="full"
+        theme="light"
+        onWbDiscountCardClick={onWbDiscountCardClick}
+        tooltipSide={wbDiscountTooltipSide}
+      />
 
-        <ConceptMetricsBlock
-          expand={allClosableClosed}
-          range={range}
-          onRangeChange={setRange}
-          onStatsClick={() => {
-            navigate('/stats');
-          }}
-        />
+      <ConceptMetricsBlock
+        expand={allClosableClosed}
+        range={range}
+        onRangeChange={setRange}
+        onStatsClick={() => {
+          navigate('/stats');
+        }}
+      />
 
-        <div className="flex shrink-0 items-stretch gap-3">
-          {visibleCards.map((card) => (
-            <ClosableInsightCard
-              key={card.id}
-              card={card}
-              onClose={() =>
-                setClosedIds((prev) => {
-                  const next = new Set(prev);
-                  next.add(card.id);
-                  return next;
-                })
-              }
-              onClick={() => handleCardClick(card)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div className="pointer-events-none fixed bottom-6 left-1/2 z-[80] max-w-[calc(100vw-2rem)] -translate-x-1/2">
-        <div className="pointer-events-auto inline-flex max-w-full items-center gap-2 overflow-x-auto rounded-xl border border-gray-200 bg-white/90 p-1 shadow-2xl backdrop-blur-md animate-in fade-in slide-in-from-bottom-4">
-          <div
-            className="inline-flex shrink-0 gap-1"
-            role="tablist"
-            aria-label="Вариант виджета скидки WB"
-          >
-            {WB_DISCOUNT_VARIANT_TABS.map((tab) => {
-              const selected = wbDiscountVariant === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setWbDiscountVariant(tab.id)}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    selected
-                      ? 'bg-gray-900 text-white shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
-          <div
-            className="inline-flex shrink-0 gap-1"
-            role="tablist"
-            aria-label="Уровень скидки WB"
-          >
-            {WB_DISCOUNT_LEVEL_TABS.map((tab) => {
-              const selected = wbDiscountLevel === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setWbDiscountLevel(tab.id)}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    selected
-                      ? 'bg-gray-900 text-white shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-          <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
-          <div
-            className="inline-flex gap-1"
-            role="tablist"
-            aria-label="Тема виджета скидки WB"
-          >
-            {WB_DISCOUNT_THEME_TABS.map((tab) => {
-              const selected = wbDiscountTheme === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setWbDiscountTheme(tab.id)}
-                  className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    selected
-                      ? 'bg-gray-900 text-white shadow-sm'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+      <div className="flex shrink-0 items-stretch gap-3">
+        {visibleCards.map((card) => (
+          <ClosableInsightCard
+            key={card.id}
+            card={card}
+            onClose={() =>
+              setClosedIds((prev) => {
+                const next = new Set(prev);
+                next.add(card.id);
+                return next;
+              })
+            }
+            onClick={() => handleCardClick(card)}
+          />
+        ))}
       </div>
     </div>
   );

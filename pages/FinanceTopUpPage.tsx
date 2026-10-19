@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useFeatureVideoGuide } from '../components/FeatureVideoGuide';
+import { financeHomePath } from '../utils/financeRoutes';
 
 const TOP_UP_VIDEO_SRC = '/videos/help-instruction-demo.mp4';
 const TOP_UP_VIDEO_TITLE = 'Пополнение счёта и возврат средств';
@@ -56,6 +57,7 @@ function CardBrandMarks() {
 
 const FinanceTopUpPage: React.FC = () => {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { openGuide, modal: videoModal } = useFeatureVideoGuide();
   const [method, setMethod] = useState<PaymentMethod>('card');
   const [amount, setAmount] = useState(String(MIN_AMOUNT));
@@ -74,7 +76,7 @@ const FinanceTopUpPage: React.FC = () => {
 
       <button
         type="button"
-        onClick={() => navigate('/finance')}
+        onClick={() => navigate(financeHomePath(pathname))}
         className="inline-flex items-center gap-1.5 rounded-xl bg-[#EEF0F4] px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-[#E4E7EC]"
       >
         <BackChevron className="h-4 w-4" />

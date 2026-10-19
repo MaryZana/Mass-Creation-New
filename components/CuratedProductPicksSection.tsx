@@ -141,7 +141,7 @@ export function computeCuratedProductPicks(
       description:
         'Продвигайте товары из категорий, которые добавлены в подборку и получайте до +10% дополнительной скидки к скидке WB',
       products: wbDiscount,
-      totalCount: 156,
+      totalCount: 10,
       Icon: Gift,
       iconClassName: 'text-[#7C3AED]',
     });

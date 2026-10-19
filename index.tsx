@@ -5,6 +5,8 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { ProfileProvider } from './components/ProfileContext';
+import { PromoBonusDemoProvider } from './components/PromoBonusDemoContext';
+import { PromoMissedBonusUxProvider } from './components/PromoMissedBonusUxContext';
 
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -65,7 +67,11 @@ window.__MASS_CREATION_ROOT__.render(
     <RootErrorBoundary>
       <BrowserRouter basename={routerBasename}>
         <ProfileProvider>
-          <App />
+          <PromoBonusDemoProvider>
+            <PromoMissedBonusUxProvider>
+              <App />
+            </PromoMissedBonusUxProvider>
+          </PromoBonusDemoProvider>
         </ProfileProvider>
       </BrowserRouter>
     </RootErrorBoundary>

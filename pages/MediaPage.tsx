@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   ChevronDown,
   Download,
-  Filter,
   Plus,
   Search,
   Settings,
@@ -32,8 +31,6 @@ type MediaCampaignRow = {
   carts: number | null;
   budgetWarning?: boolean;
 };
-
-type HeaderVariant = 1 | 2 | 3 | 4;
 
 type TabId = 'campaigns' | 'adGroups' | 'creatives';
 
@@ -301,17 +298,18 @@ const toolbarBtnClass =
 const toolbarIconBtnClass =
   'inline-flex h-11 w-11 items-center justify-center rounded-[10px] border-0 bg-[#E6E8EC] text-[#4A4A4A] transition-colors hover:bg-[#DCDEE3]';
 
-const conceptToolbarBtnClass =
-  'inline-flex h-11 items-center gap-2 rounded-[10px] bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 transition-colors hover:bg-[rgba(74,74,89,0.12)]';
+const softToolbarBtnClass =
+  'inline-flex h-11 items-center gap-2 rounded-[10px] border-0 bg-[rgba(74,74,89,0.08)] px-4 text-sm font-medium text-gray-900 transition-colors hover:bg-[rgba(74,74,89,0.12)]';
+
+const softToolbarIconBtnClass =
+  'inline-flex h-11 w-11 items-center justify-center rounded-[10px] border-0 bg-[rgba(74,74,89,0.08)] text-gray-700 transition-colors hover:bg-[rgba(74,74,89,0.12)]';
 
 const MediaPage: React.FC = () => {
   const navigate = useNavigate();
-  const [headerVariant, setHeaderVariant] = useState<HeaderVariant>(1);
   const [tab, setTab] = useState<TabId>('campaigns');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [createMenuOpen, setCreateMenuOpen] = useState(false);
 
   const openMediaCampaignCreate = () => {
     navigate('/media/create');
@@ -365,26 +363,30 @@ const MediaPage: React.FC = () => {
     </div>
   );
 
-  const mediaToolbarActions = (
-    <div className="mb-0.5 flex flex-wrap items-center gap-2">
-      <span className="text-sm text-[#8C8C8C]">Статистика за:</span>
-      <button type="button" className={toolbarBtnClass}>
-        Весь период
-        <ChevronDown className="h-4 w-4 text-[#6B6B6B]" />
-      </button>
-      <button type="button" className={toolbarBtnClass}>
-        <SlidersIcon className="h-4 w-4 text-[#4A4A4A]" />
-        Фильтр
-      </button>
-      <button type="button" className={toolbarBtnClass}>
-        <Download className="h-4 w-4 text-[#4A4A4A]" />
-        Скачать в Excel
-      </button>
-      <button type="button" className={toolbarIconBtnClass} aria-label="Настройки">
-        <Settings className="h-4 w-4" />
-      </button>
-    </div>
-  );
+  const mediaToolbarActions = (tone: 'default' | 'soft' = 'default') => {
+    const btn = tone === 'soft' ? softToolbarBtnClass : toolbarBtnClass;
+    const iconBtn = tone === 'soft' ? softToolbarIconBtnClass : toolbarIconBtnClass;
+    return (
+      <div className="mb-0.5 flex flex-wrap items-center gap-2">
+        <button type="button" className={btn}>
+          <span className="font-normal text-[#8C8C8C]">Статистика за:</span>
+          Весь период
+          <ChevronDown className="h-4 w-4 text-[#6B6B6B]" />
+        </button>
+        <button type="button" className={btn}>
+          <SlidersIcon className="h-4 w-4 text-[#4A4A4A]" />
+          Фильтр
+        </button>
+        <button type="button" className={btn}>
+          <Download className="h-4 w-4 text-[#4A4A4A]" />
+          Скачать в Excel
+        </button>
+        <button type="button" className={iconBtn} aria-label="Настройки">
+          <Settings className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  };
 
   const mediaCreateButton = (
     <button
@@ -397,34 +399,62 @@ const MediaPage: React.FC = () => {
     </button>
   );
 
-  const mediaIslandBody = (showTitle: boolean) => (
-    <>
-      <div className="flex flex-wrap items-center gap-3">
-        {showTitle ? (
-          <h1 className="mb-0 pr-5 text-[28px] font-bold leading-none tracking-tight text-[#1A1A1A]">
-            Кампании
-          </h1>
-        ) : null}
-        {mediaCreateButton}
-      </div>
-      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        {underlineTabs}
-        {mediaToolbarActions}
-      </div>
-    </>
-  );
+  const mediaIslandBody = (showTitle: boolean, wbAboveToolbar = false) => {
+    if (wbAboveToolbar) {
+      return (
+        <div className="flex w-full min-w-0 flex-col gap-3">
+          <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-x-6 gap-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="mb-0 pr-5 text-[28px] font-bold leading-none tracking-tight text-[#1A1A1A]">
+                Кампании
+              </h1>
+              {mediaCreateButton}
+            </div>
+            <div className="ml-auto w-max max-w-full shrink-0">
+              <ConceptPromotionInsightStrip
+                wbDiscountOnly
+                wbDiscountLayout="horizontal"
+                wbDiscountTooltipSide="left"
+                onWbDiscountCardClick={openMediaCampaignCreate}
+              />
+            </div>
+          </div>
+          <div className="flex w-full min-w-0 flex-wrap items-end justify-between gap-x-6 gap-y-3">
+            {underlineTabs}
+            {mediaToolbarActions()}
+          </div>
+        </div>
+      );
+    }
 
-  const wbWidget = (
-    <div className="shrink-0">
-      <ConceptPromotionInsightStrip
-        wbDiscountOnly
-        wbDiscountTooltipSide="left"
-        onWbDiscountCardClick={openMediaCampaignCreate}
-      />
-    </div>
-  );
+    return (
+      <>
+        <div className="flex flex-wrap items-center gap-3">
+          {showTitle ? (
+            <h1 className="mb-0 pr-5 text-[28px] font-bold leading-none tracking-tight text-[#1A1A1A]">
+              Кампании
+            </h1>
+          ) : null}
+          {mediaCreateButton}
+        </div>
+        <div className="flex w-full flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          {underlineTabs}
+          {mediaToolbarActions()}
+        </div>
+      </>
+    );
+  };
 
-  const classicIsland = ({ bare, showTitle }: { bare: boolean; showTitle: boolean }) => (
+
+  const classicIsland = ({
+    bare,
+    showTitle,
+    wbAboveToolbar = false,
+  }: {
+    bare: boolean;
+    showTitle: boolean;
+    wbAboveToolbar?: boolean;
+  }) => (
     <div
       className={
         bare
@@ -432,133 +462,15 @@ const MediaPage: React.FC = () => {
           : 'flex min-h-[124px] min-w-0 flex-1 flex-col justify-end gap-3 rounded-[24px] bg-white px-5 py-3 shadow-[0_1px_3px_rgba(16,24,40,0.06)]'
       }
     >
-      {mediaIslandBody(showTitle)}
+      {mediaIslandBody(showTitle, wbAboveToolbar)}
     </div>
   );
 
-  const promotionCreateButton = (
-    <div
-      className="relative shrink-0"
-      onMouseEnter={() => setCreateMenuOpen(true)}
-      onMouseLeave={() => setCreateMenuOpen(false)}
-    >
-      <button
-        type="button"
-        onClick={openMediaCampaignCreate}
-        className="flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-[10px] bg-[#9a41fe] px-4 text-sm font-medium leading-5 text-white transition-colors hover:bg-[#8840e5]"
-      >
-        <Plus className="h-4 w-4 shrink-0" aria-hidden />
-        <span className="whitespace-nowrap">Создать кампанию</span>
-      </button>
-      {createMenuOpen ? (
-        <div className="absolute left-0 top-full z-[200] w-56 pt-2">
-          <div className="rounded-lg border border-gray-200 bg-white py-1 shadow-lg animate-in fade-in zoom-in-95 duration-100">
-            <button
-              type="button"
-              onClick={() => {
-                openMediaCampaignCreate();
-                setCreateMenuOpen(false);
-              }}
-              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-            >
-              Одну
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                openMediaCampaignCreate();
-                setCreateMenuOpen(false);
-              }}
-              className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
-            >
-              Много кампаний
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-
-  const promotionPillTabs = (
-    <div
-      className="inline-flex shrink-0 rounded-[10px] bg-[rgba(74,74,89,0.08)] p-1"
-      role="tablist"
-      aria-label="Раздел списка"
-    >
-      {MEDIA_TABS.map((item) => {
-        const selected = tab === item.id;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            onClick={() => setTab(item.id)}
-            className={`inline-flex items-center whitespace-nowrap rounded-lg px-4 py-2 text-sm transition-all ${
-              selected
-                ? 'bg-white font-semibold text-gray-900 shadow-sm'
-                : 'font-medium text-[#767386] hover:text-gray-900'
-            }`}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  const promotionSearch = (
-    <div className="relative min-w-[200px] flex-1">
-      <input
-        type="text"
-        value={search}
-        onChange={(e) => {
-          setSearch(e.target.value);
-          setPage(1);
-        }}
-        placeholder="ID или название кампании"
-        className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white py-0 pl-3 pr-10 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
-      />
-      <Search
-        className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 shrink-0 -translate-y-1/2 text-[#767386]"
-        aria-hidden
-      />
-    </div>
-  );
-
-  const searchInTable = headerVariant !== 4;
-
-  const promotionListToolbar = (
-    <div className="relative z-40 border-b border-gray-100">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 pt-3 sm:px-6">
-        {promotionCreateButton}
-        {promotionPillTabs}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
-        {promotionSearch}
-        <button type="button" className={conceptToolbarBtnClass}>
-          <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
-          <span>Фильтр</span>
-        </button>
-        <button
-          type="button"
-          className="flex h-11 w-11 items-center justify-center rounded-[10px] bg-[rgba(74,74,89,0.08)] transition-colors hover:bg-[rgba(74,74,89,0.12)]"
-          aria-label="Настройки"
-        >
-          <Settings className="h-5 w-5 text-gray-700" aria-hidden />
-        </button>
-        <button type="button" className={conceptToolbarBtnClass}>
-          <Download className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
-          <span>Скачать в Excel</span>
-        </button>
-      </div>
-    </div>
-  );
 
   const listTable = (
     <div className="overflow-x-auto">
       <table className="w-full min-w-[1280px] border-collapse text-left">
-        <thead className={headerVariant === 4 ? 'bg-white' : undefined}>
+        <thead>
           <tr className="border-b border-[#ECECF0] text-[12px] font-medium text-[#8C8C8C]">
             <th className="w-12 px-4 py-3">
               <Checkbox
@@ -575,23 +487,19 @@ const MediaPage: React.FC = () => {
               />
             </th>
             <th className="min-w-[360px] px-2 py-3">
-              {searchInTable ? (
-                <div className="relative max-w-[280px]">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A8]" />
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => {
-                      setSearch(e.target.value);
-                      setPage(1);
-                    }}
-                    placeholder="Поиск по ID или названию"
-                    className="h-9 w-full rounded-lg border border-[#E3E5EB] bg-white pl-9 pr-3 text-sm text-[#1A1A1A] outline-none placeholder:text-[#A0A0A8] focus:border-[#C4B5FD] focus:ring-1 focus:ring-[#C4B5FD]"
-                  />
-                </div>
-              ) : (
-                <span className="text-[12px] font-medium text-[#8C8C8C]">Кампания</span>
-              )}
+              <div className="relative max-w-[280px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A0A0A8]" />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setPage(1);
+                  }}
+                  placeholder="Поиск по ID или названию"
+                  className="h-9 w-full rounded-lg border border-[#E3E5EB] bg-white pl-9 pr-3 text-sm text-[#1A1A1A] outline-none placeholder:text-[#A0A0A8] focus:border-[#C4B5FD] focus:ring-1 focus:ring-[#C4B5FD]"
+                />
+              </div>
             </th>
             {(
               [
@@ -769,58 +677,18 @@ const MediaPage: React.FC = () => {
   );
 
   return (
-    <main className="relative mx-auto w-full min-h-[calc(100vh-3.5rem)] max-w-[1920px] bg-[#F3F5F8] px-7 pt-4 pb-28">
-      {headerVariant === 4 ? (
-        <div className="flex w-full min-w-0 flex-col gap-3">
-          <ConceptPromotionInsightStrip
-            wbDiscountOnly
-            withMetrics
-            onWbDiscountCardClick={openMediaCampaignCreate}
-          />
-          <div className="w-full overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-            {promotionListToolbar}
-            {listTable}
-            {listPagination}
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="flex w-full min-w-0 items-stretch gap-4">
-            {classicIsland({
-              bare: headerVariant !== 1,
-              showTitle: headerVariant === 3,
-            })}
-            {wbWidget}
-          </div>
+    <main className="relative mx-auto w-full min-h-[calc(100vh-3.5rem)] max-w-[1920px] bg-[#F3F5F8] px-7 pt-4 pb-8">
+      <div className="flex w-full min-w-0 items-stretch gap-4">
+        {classicIsland({
+          bare: true,
+          showTitle: false,
+          wbAboveToolbar: true,
+        })}
+      </div>
 
-          <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-[0_1px_3px_rgba(16,24,40,0.06)] ring-1 ring-black/[0.04]">
-            {listTable}
-            {listPagination}
-          </div>
-        </>
-      )}
-
-      <div
-        className="fixed bottom-0 left-0 right-0 z-[45] border-t border-gray-200 bg-white/95 px-4 py-3 shadow-[0_-6px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm"
-        role="toolbar"
-        aria-label="Вариант шапки медиа"
-      >
-        <div className="mx-auto flex w-full max-w-[1920px] flex-wrap items-center justify-center gap-2 sm:gap-3">
-          {([1, 2, 3, 4] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setHeaderVariant(v)}
-              className={`min-w-[7.5rem] rounded-lg px-5 py-2.5 text-sm font-medium transition-colors ${
-                headerVariant === v
-                  ? 'bg-[#9a41fe] text-white shadow-sm'
-                  : 'border border-gray-200 bg-gray-50 text-gray-800 hover:bg-gray-100'
-              }`}
-            >
-              Вариант {v}
-            </button>
-          ))}
-        </div>
+      <div className="mt-4 overflow-hidden rounded-2xl bg-white shadow-[0_1px_3px_rgba(16,24,40,0.06)] ring-1 ring-black/[0.04]">
+        {listTable}
+        {listPagination}
       </div>
     </main>
   );

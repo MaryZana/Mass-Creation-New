@@ -8,6 +8,7 @@ import {
   type AdvancedDailyLimitSettings,
   type AutoRefillMode,
 } from './CpcCampaignPage';
+import { DEFAULT_BID_CHASING_POSITION } from '../utils/cpcBidChasingPositionTiers';
 
 export type CampaignListAutomationKind = 'searchPosition' | 'flexibleLimit' | 'autoRefill';
 
@@ -108,7 +109,7 @@ export function CampaignListAutomationModals({
       <BidChasingClustersModal
         isOpen
         onClose={onClose}
-        initialPosition="1-2"
+        initialPosition={DEFAULT_BID_CHASING_POSITION}
         initialMaxBid={target.maxCpcBidRub}
         isDailyLimitEnabled={isDailyLimitEnabled}
         savedDailyLimitRub={Number.parseFloat(savedDailyLimit) || target.dailyLimit || 0}

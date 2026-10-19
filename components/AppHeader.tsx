@@ -7,6 +7,9 @@ import {
 } from '../constants/campaignListRoutes';
 import { Check, ChevronDown, MoreVertical, Plus, X } from './Icons';
 import { isNewSellerProfile, PROFILES, useProfile, type ProfileId } from './ProfileContext';
+import { usePromoBonusDemo } from './PromoBonusDemoContext';
+import { FINANCE_BALANCE_DEMO_EVENT, readFinanceBufferRub } from '../utils/financeBalanceDemo';
+import { financeHomePath, financeTopUpPath } from '../utils/financeRoutes';
 
 export const NEW_SELLER_CREATE_CAMPAIGN_PATH = '/create-campaign';
 
@@ -158,7 +161,7 @@ export const PROMO_BONUS_TOTAL_BY_PROFILE: Record<ProfileId, number> = {
   '3': 5_000,
 };
 
-const ELS_BALANCE_BY_PROFILE: Record<ProfileId, number> = {
+export const PROMOTION_ACCOUNT_BALANCE_BY_PROFILE: Record<ProfileId, number> = {
   '1': 105_350,
   '2': 105_350,
   '3': 12_400,
@@ -238,15 +241,23 @@ export function AppHeader({
   campaignCreationActive?: boolean;
 }) {
   const { profileId, setProfileId, activeProfile } = useProfile();
+  const { promoBonusTotal } = usePromoBonusDemo();
   const location = useLocation();
   const navigate = useNavigate();
-  const promoBonusTotal = PROMO_BONUS_TOTAL_BY_PROFILE[profileId];
-  const elsBalanceRub = ELS_BALANCE_BY_PROFILE[profileId];
+  const [bufferRub, setBufferRub] = useState(readFinanceBufferRub);
+  useEffect(() => {
+    const syncBuffer = () => setBufferRub(readFinanceBufferRub());
+    window.addEventListener(FINANCE_BALANCE_DEMO_EVENT, syncBuffer);
+    return () => window.removeEventListener(FINANCE_BALANCE_DEMO_EVENT, syncBuffer);
+  }, []);
+  const elsBalanceRub = PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId] + bufferRub;
   const newTasksCount = TASKS_DROPDOWN_NEW_COUNT[profileId];
   const campaignsNavActive = isCampaignsNavPath(location.pathname);
   const statsNavActive = isStatsNavPath(location.pathname);
   const helpNavActive = location.pathname === '/help' || location.pathname.startsWith('/help/');
   const productSpaceId = resolveProductSpace(location.pathname);
+  const financeTo = financeHomePath(location.pathname);
+  const financeTopUpTo = financeTopUpPath(location.pathname);
   const activeProductSpace =
     PRODUCT_SPACES.find((space) => space.id === productSpaceId) ?? PRODUCT_SPACES[0];
   const isNewSeller = isNewSellerProfile(profileId);
@@ -458,9 +469,6 @@ export function AppHeader({
                     }`}
                   >
                     Статистика
-                    <span className="inline-flex items-center rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold leading-none tracking-wide text-emerald-800">
-                      Обновили
-                    </span>
                   </NavLink>
 
                   <div className={headerMenuPanelClass(openNavMenu === 'stats')}>
@@ -497,7 +505,7 @@ export function AppHeader({
                   </div>
                 </div>
                 <NavLink
-                  to="/finance"
+                  to={financeTo}
                   onClick={onNavigate}
                   className={({ isActive }) => navItemClass(isActive)}
                 >
@@ -732,7 +740,7 @@ export function AppHeader({
               </p>
             </div>
             <NavLink
-              to="/finance/top-up"
+              to={financeTopUpTo}
               onClick={onNavigate}
               className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
               aria-label="Пополнить счёт"

@@ -133,6 +133,31 @@ export const Wallet = ({ className }: { className?: string }) => (
   </svg>
 );
 
+export const CreditCard = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect width="20" height="14" x="2" y="5" rx="2" />
+    <line x1="2" y1="10" x2="22" y2="10" />
+  </svg>
+);
+
+export const Smartphone = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect width="14" height="20" x="5" y="2" rx="2" ry="2" />
+    <line x1="12" y1="18" x2="12.01" y2="18" />
+  </svg>
+);
+
+export const Landmark = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <line x1="3" y1="22" x2="21" y2="22" />
+    <line x1="6" y1="18" x2="6" y2="11" />
+    <line x1="10" y1="18" x2="10" y2="11" />
+    <line x1="14" y1="18" x2="14" y2="11" />
+    <line x1="18" y1="18" x2="18" y2="11" />
+    <polygon points="12 2 20 7 4 7" />
+  </svg>
+);
+
 export const Search = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <circle cx="11" cy="11" r="8" />
@@ -346,10 +371,17 @@ export const ClipboardCheck = ({ className }: { className?: string }) => (
 
 export const Rocket = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.3.05-3.05-.64-.75-2.2-1-3.05-.05z"/>
-    <path d="m12 15-3-3a2.25 2.25 0 0 1 0-3l3-3a2.25 2.25 0 0 1 3 0l3 3a2.25 2.25 0 0 1 0 3l-3 3a2.25 2.25 0 0 1-3 0z"/>
-    <path d="m9 12 6 6"/>
-    <path d="m19 5-3 3"/>
+    <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13.05-2.88-.64-.75-2.04-.77-2.92-.06-.86.7-.84 2.1-.13 2.94z"/>
+    <path d="m12 15-3-3a22 22 0 0 1 2-3.95 12.88 12.88 0 0 1 7.95-3.95c1 3.92.4 7.5-1.95 10.95a22 22 0 0 1-3.95 2z"/>
+    <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/>
+    <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>
+  </svg>
+);
+
+export const Tag = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.428 0l6.858-6.858a2.426 2.426 0 0 0 0-3.428z"/>
+    <circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>
   </svg>
 );
 

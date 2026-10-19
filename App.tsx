@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'reac
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar, Coins, Columns2
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar, Coins, Columns2, Rocket
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -22,7 +22,12 @@ import { MassCreationIsland } from './components/CpcMassCreationIsland';
 import { useCpmBidRoundedAlert } from './components/CpmBidRoundedAlert';
 import { CPM_BID_STEP_RUB, normalizeCpmBidRub } from './utils/cpmBidRounding';
 import { DAILY_LIMIT_ABSOLUTE_MIN } from './utils/cpcDailyLimitBid';
-import { effectivePromoBonusAmount, packageBalanceAfterCampaigns } from './utils/promoBonus';
+import {
+  clampCampaignsToPromoPackageBalances,
+  effectivePromoBonusAmount,
+  packageBalanceAfterCampaigns,
+  setRuntimePromoPackageAmounts,
+} from './utils/promoBonus';
 import { MassEditPage } from './components/MassEditPage';
 import { SingleCampaignPage, MOCK_PRODUCTS as SINGLE_CAMPAIGN_CURATED_CATALOG } from './components/SingleCampaignPage';
 import {
@@ -35,12 +40,36 @@ import {
 } from './components/BulkPaymentModelModal';
 import { AppHeader } from './components/AppHeader';
 import {
+  buildDemoBonusPackages,
+  usePromoBonusDemo,
+  useSetMassCreationDemoChrome,
+} from './components/PromoBonusDemoContext';
+import { usePromoMissedBonusUx } from './components/PromoMissedBonusUxContext';
+import {
+  MissedBonusAccountLink,
+  MissedBonusAlertRow,
+  MissedBonusBesideLaunch,
+  MissedBonusCompareCard,
+  MissedBonusFloatingCard,
+  MissedBonusFooterBanner,
+  MissedBonusFooterInfo,
+  MissedBonusInlineOffer,
+  MissedBonusIslandBanner,
+  MissedBonusProgressBar,
+  MissedBonusPromoColumn,
+  MissedBonusSnackbar,
+  MissedBonusToggleOffer,
+  shouldReplacePromoColumn,
+  shouldShowAccountLink,
+} from './components/PromoMissedBonusOffer';
+import {
   isNewSellerProfile,
   useProfile,
   type RepeatLaunchPreset,
 } from './components/ProfileContext';
 import { NewSellerFirstCampaignPage } from './components/newSeller/NewSellerFirstCampaignPage';
 import { NEW_SELLER_CREATE_CAMPAIGN_PATH } from './components/AppHeader';
+import { MEDIA_FINANCE_PATH } from './utils/financeRoutes';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignsWithWidgetsPage from './pages/CampaignsWithWidgetsPage';
 import CampaignsWithWidgets2Page from './pages/CampaignsWithWidgets2Page';
@@ -129,6 +158,96 @@ function maxBonusForBudget(pkg: BonusPackage, budget: number, available = pkg.am
   const byPercent = Math.floor((budget * pkg.maxPercent) / 100);
   const pool = Math.max(0, Math.min(pkg.amount, available));
   return Math.max(0, Math.min(pool, byPercent, Math.floor(budget)));
+}
+
+type SuggestedBonusAllocation = {
+  totalBonus: number;
+  perCampaign: Map<string, { bonusAmount: number; packageId: string }>;
+};
+
+function remainingDemoPackageBalance(
+  pkg: BonusPackage,
+  campaigns: readonly CampaignRecord[],
+): number {
+  let used = 0;
+  for (const campaign of campaigns) {
+    if (!campaign.usePromoBonuses) continue;
+    const assignedPackageId = campaign.bonusPackageId ?? 'p1';
+    if (assignedPackageId !== pkg.id) continue;
+    const want =
+      campaign.bonusAmount != null && campaign.bonusAmount > 0
+        ? Math.min(campaign.bonusAmount, maxBonusForBudget(pkg, campaign.budget))
+        : maxBonusForBudget(pkg, campaign.budget);
+    used += Math.min(want, Math.max(0, pkg.amount - used));
+  }
+  return Math.max(0, pkg.amount - used);
+}
+
+/** Автораспределение доступных промобонусов: сначала кампании с меньшим бюджетом. */
+function suggestPromoBonusAllocation(
+  campaigns: readonly CampaignRecord[],
+  packages: readonly BonusPackage[] = BONUS_PACKAGES,
+): SuggestedBonusAllocation {
+  const remaining = new Map<string, number>();
+  for (const pkg of packages) {
+    remaining.set(pkg.id, remainingDemoPackageBalance(pkg, campaigns));
+  }
+
+  const perCampaign = new Map<string, { bonusAmount: number; packageId: string }>();
+  let totalBonus = 0;
+  const sorted = [...campaigns].sort((a, b) => a.budget - b.budget);
+
+  for (const campaign of sorted) {
+    let best: { packageId: string; bonusAmount: number } | null = null;
+    for (const pkg of packages) {
+      const available = remaining.get(pkg.id) ?? 0;
+      if (available <= 0) continue;
+      const bonusAmount = maxBonusForBudget(pkg, campaign.budget, available);
+      if (bonusAmount <= 0) continue;
+      if (!best || bonusAmount > best.bonusAmount) {
+        best = { packageId: pkg.id, bonusAmount };
+      }
+    }
+    if (!best) continue;
+    perCampaign.set(campaign.id, best);
+    remaining.set(best.packageId, (remaining.get(best.packageId) ?? 0) - best.bonusAmount);
+    totalBonus += best.bonusAmount;
+  }
+
+  return { totalBonus, perCampaign };
+}
+
+function computeLaunchAffordability(
+  campaigns: readonly CampaignRecord[],
+  bonusByCampaignId?: ReadonlyMap<string, number>,
+) {
+  let amountToDebit = 0;
+  let bonusToDebit = 0;
+  let affordableCount = 0;
+  let runningBalance = UNIFIED_BALANCE;
+  const sorted = [...campaigns].sort((a, b) => {
+    const bonusA = bonusByCampaignId?.get(a.id) ?? effectivePromoBonusAmount(a);
+    const bonusB = bonusByCampaignId?.get(b.id) ?? effectivePromoBonusAmount(b);
+    return a.budget - bonusA - (b.budget - bonusB);
+  });
+
+  for (const campaign of sorted) {
+    const bonus = bonusByCampaignId?.get(campaign.id) ?? effectivePromoBonusAmount(campaign);
+    const realCost = campaign.budget - bonus;
+    if (runningBalance >= realCost) {
+      runningBalance -= realCost;
+      amountToDebit += realCost;
+      bonusToDebit += bonus;
+      affordableCount++;
+    }
+  }
+
+  return {
+    successfulCount: affordableCount,
+    readyToLaunchCount: campaigns.length - affordableCount,
+    amountToDebit,
+    bonusToDebit,
+  };
 }
 
 // --- Helpers ---
@@ -1354,13 +1473,7 @@ const BulkEditModal = ({
         if (currentBudget < 1000 && (isSingleCampaignMode || value !== '')) {
             setBudgetError('Минимальный бюджет 1000 ₽');
         }
-
-        if (useBonuses && budgetTab === 'one-time') {
-            const cap = maxBonusForBudget(selectedPkg, currentBudget, selectedPackageBalance);
-            if (Number.isFinite(numericBonusValue) && numericBonusValue > cap) {
-                setBonusValue(cap);
-            }
-        }
+        // Сумму бонусов выше лимита не режем при вводе — ужимаем при «Применить».
     }, [value, useBonuses, bonusValue, numericBonusValue, selectedPkg, selectedPackageBalance, isSingleCampaignMode, currentBudget, budgetTab]);
 
 
@@ -2517,6 +2630,15 @@ export default function App() {
     pendingSingleCampaignNav,
     consumeSingleCampaignNav,
   } = useProfile();
+  const { promoBonusTotal } = usePromoBonusDemo();
+  const setMassCreationDemoChrome = useSetMassCreationDemoChrome();
+  const { uxId: promoMissedBonusUx } = usePromoMissedBonusUx();
+  const demoBonusPackages = useMemo(
+    () => buildDemoBonusPackages(promoBonusTotal) as BonusPackage[],
+    [promoBonusTotal],
+  );
+  // Держим лимиты пакетов в sync с демо-кейсом до отрисовки карточек бюджета.
+  setRuntimePromoPackageAmounts(demoBonusPackages);
   const location = useLocation();
   const navigate = useNavigate();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -2529,6 +2651,15 @@ export default function App() {
   const [appState, setAppState] = useState<
     'creation' | 'list' | 'editing' | 'single-campaign' | 'new-seller-first-campaign'
   >('list');
+
+  const showMassCreationDemoChrome =
+    isAuthenticated &&
+    appState === 'creation' &&
+    !(isNewSellerProfile(profileId) && !isNewSellerSecondaryShellPath(location.pathname));
+
+  useEffect(() => {
+    setMassCreationDemoChrome(showMassCreationDemoChrome);
+  }, [setMassCreationDemoChrome, showMassCreationDemoChrome]);
 
   const openSingleCampaign = useCallback(() => {
     setAppState('single-campaign');
@@ -2572,6 +2703,21 @@ export default function App() {
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const [toastMessage, setToastMessage] = useState('');
   const [templateGroups, setTemplateGroups] = useState<TemplateGroup[]>([]);
+
+  useEffect(() => {
+    setTemplateGroups((prev) => {
+      let changed = false;
+      const next = prev.map((group) => {
+        const campaigns = clampCampaignsToPromoPackageBalances(group.campaigns);
+        if (campaigns.some((campaign, index) => campaign !== group.campaigns[index])) {
+          changed = true;
+          return { ...group, campaigns };
+        }
+        return group;
+      });
+      return changed ? next : prev;
+    });
+  }, [demoBonusPackages]);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editedCampaigns, setEditedCampaigns] = useState<CampaignRecord[]>([]);
@@ -2606,6 +2752,9 @@ export default function App() {
   const [showAddMoreHint, setShowAddMoreHint] = useState(true);
   // Removed: hasShownFirstListCpcTooltip (tooltip UI removed)
   const [isLaunchSummaryModalOpen, setIsLaunchSummaryModalOpen] = useState(false);
+  /** В окне подтверждения: тратить ли промобонусы, если в таблице они ещё не назначены. */
+  const [launchPayWithBonuses, setLaunchPayWithBonuses] = useState(false);
+  const pendingLaunchBonusRef = useRef<SuggestedBonusAllocation | null>(null);
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [campaignForAutoRefill, setCampaignForAutoRefill] = useState<CampaignRecord | null>(null);
   const [isCreationBulkDailyLimitOpen, setIsCreationBulkDailyLimitOpen] = useState(false);
@@ -3293,12 +3442,54 @@ export default function App() {
     setLastDeleted(null);
   };
   
-  const launchCampaigns = () => setIsLaunchSummaryModalOpen(true);
+  const launchCampaigns = () => {
+    setLaunchPayWithBonuses(false);
+    setIsLaunchSummaryModalOpen(true);
+  };
+
+  const applyLaunchBonusAllocation = (allocation: SuggestedBonusAllocation) => {
+    if (allocation.totalBonus <= 0) return;
+    const patchCampaign = (campaign: CampaignRecord): CampaignRecord => {
+      const assigned = allocation.perCampaign.get(campaign.id);
+      if (!assigned) return campaign;
+      return {
+        ...campaign,
+        usePromoBonuses: true,
+        bonusAmount: assigned.bonusAmount,
+        bonusPackageId: assigned.packageId,
+      };
+    };
+    setTemplateGroups((prev) =>
+      prev.map((group) => ({
+        ...group,
+        campaigns: group.campaigns.map(patchCampaign),
+      })),
+    );
+    if (editingGroupId) {
+      setEditedCampaigns((prev) => prev.map(patchCampaign));
+    }
+  };
 
   const handleProceedToLaunch = () => {
+    if (
+      launchPreview.canOfferBonuses &&
+      launchPayWithBonuses &&
+      launchPreview.suggestedAllocation.totalBonus > 0
+    ) {
+      pendingLaunchBonusRef.current = launchPreview.suggestedAllocation;
+      applyLaunchBonusAllocation(launchPreview.suggestedAllocation);
+    } else {
+      pendingLaunchBonusRef.current = null;
+    }
     setIsLaunchSummaryModalOpen(false);
-    if (areFiltersActive) { setIsConfirmLaunchWithFiltersOpen(true); return; }
-    if (editingGroupId) { setIsConfirmLaunchOpen(true); return; }
+    if (areFiltersActive) {
+      setIsConfirmLaunchWithFiltersOpen(true);
+      return;
+    }
+    if (editingGroupId) {
+      setIsConfirmLaunchOpen(true);
+      return;
+    }
     performLaunch();
   };
 
@@ -3474,27 +3665,45 @@ export default function App() {
         }
 
         if (action === 'budget' && value.isBonusActive) {
-            const bonusPerCampaign = Number(value.bonus);
             const selectedPkg = value.selectedPkg as BonusPackage;
+            const requested = Number(value.bonus);
+            const cap = maxBonusForBudget(
+              selectedPkg,
+              Number(value.total),
+              selectedPkg.amount,
+            );
+            const bonusPerCampaign = Math.min(Math.max(0, requested), cap);
+            const bonusClamped = Number.isFinite(requested) && requested > bonusPerCampaign;
+            const nextValue = {
+              ...value,
+              bonus: bonusPerCampaign,
+              isBonusActive: bonusPerCampaign > 0,
+            };
 
             if (bonusPerCampaign <= 0) {
-                applyBulkChanges(value, selectedCampaignIds, 'budget');
-                return;
-            }
-
-            if (selectedPkg.amount < bonusPerCampaign) {
-                setToastMessage(`Бонусов в пакете не хватает даже для одной кампании по ${bonusPerCampaign} B.`);
-                setShowToast(true);
+                applyBulkChanges(
+                  { ...nextValue, isBonusActive: false, bonus: 0 },
+                  selectedCampaignIds,
+                  'budget',
+                );
+                if (bonusClamped || (Number.isFinite(requested) && requested > 0)) {
+                  setToastMessage('Пополнили промобонусами только на доступное количество');
+                  setShowToast(true);
+                }
                 return;
             }
 
             const fullCoverageCount = Math.floor(selectedPkg.amount / bonusPerCampaign);
             
             if (fullCoverageCount >= selectedCampaignIds.length) {
-                applyBulkChanges(value, selectedCampaignIds, 'budget');
+                applyBulkChanges(nextValue, selectedCampaignIds, 'budget');
+                if (bonusClamped) {
+                  setToastMessage('Пополнили промобонусами только на доступное количество');
+                  setShowToast(true);
+                }
             } else {
                 const remainingBonuses = selectedPkg.amount % bonusPerCampaign;
-                setBonusAppContext({ value, fullCoverageCount, remainingBonuses });
+                setBonusAppContext({ value: nextValue, fullCoverageCount, remainingBonuses });
                 setIsBonusInsufficiencyModalOpen(true);
             }
             return;
@@ -3579,11 +3788,27 @@ export default function App() {
           return;
         }
 
+        const selectedPkg = (value.selectedPkg as BonusPackage | undefined) ?? BONUS_PACKAGES[0];
+        const requested = value.isBonusActive ? Number(value.bonus) : 0;
+        const packageBalance =
+          typeof selectedPkg.amount === 'number'
+            ? selectedPkg.amount
+            : packageBalanceAfterCampaigns(
+                selectedPkg.id,
+                editingGroupId ? editedCampaigns : allValidCampaigns,
+                new Set([campaignForBonusEdit.id]),
+              );
+        const cap = maxBonusForBudget(selectedPkg, Number(value.total), packageBalance);
+        const appliedBonus = value.isBonusActive
+          ? Math.min(Math.max(0, requested), cap)
+          : 0;
+        const bonusClamped = Boolean(value.isBonusActive) && Number.isFinite(requested) && requested > appliedBonus;
+
         const patch: Partial<CampaignRecord> = {
             budget: Number(value.total),
-            bonusAmount: value.isBonusActive ? value.bonus : 0,
-            usePromoBonuses: Boolean(value.isBonusActive),
-            ...(value.selectedPkg?.id ? { bonusPackageId: value.selectedPkg.id } : null),
+            bonusAmount: appliedBonus,
+            usePromoBonuses: appliedBonus > 0,
+            ...(selectedPkg.id ? { bonusPackageId: selectedPkg.id } : null),
         };
 
         const group = templateGroups.find((g) =>
@@ -3599,15 +3824,17 @@ export default function App() {
         }
 
         setCampaignForBonusEdit(null);
+        if (bonusClamped) {
+          setToastMessage('Пополнили промобонусами только на доступное количество');
+          setShowToast(true);
+        }
     };
 
-  const openSingleBudgetModal = (campaign: CampaignRecord) => {
-    setSingleReplenishAction('budget');
-    setCampaignForBonusEdit(campaign);
-  };
-
-  const openAutoRefillModal = (campaign: CampaignRecord) => {
-    setSingleReplenishAction('autorefill');
+  const openSingleBudgetModal = (
+    campaign: CampaignRecord,
+    tab: 'budget' | 'autorefill' = 'budget',
+  ) => {
+    setSingleReplenishAction(tab);
     setCampaignForBonusEdit(campaign);
   };
   const handleSaveAutoRefill = (settings: {
@@ -3714,26 +3941,57 @@ export default function App() {
   };
 
   const launchPreview = useMemo(() => {
-    let amountToDebit = 0;
-    let affordableCount = 0;
-    let runningBalance = UNIFIED_BALANCE;
-    const sortedCampaigns = [...allValidCampaigns].sort((a, b) => (a.budget - effectivePromoBonusAmount(a)) - (b.budget - effectivePromoBonusAmount(b)));
-    
-    for(const a of sortedCampaigns) {
-      const realCost = a.budget - effectivePromoBonusAmount(a);
-      if(runningBalance >= realCost) {
-        runningBalance -= realCost;
-        amountToDebit += realCost;
-        affordableCount++;
-      }
-    }
-    
+    const configured = computeLaunchAffordability(allValidCampaigns);
+    const hasConfiguredBonuses = configured.bonusToDebit > 0;
+    const suggestedAllocation = suggestPromoBonusAllocation(
+      allValidCampaigns,
+      demoBonusPackages,
+    );
+    const canOfferBonuses = !hasConfiguredBonuses && suggestedAllocation.totalBonus > 0;
+    const bonusById = new Map(
+      [...suggestedAllocation.perCampaign.entries()].map(([id, value]) => [
+        id,
+        value.bonusAmount,
+      ]),
+    );
+    const withSuggestedBonuses = computeLaunchAffordability(allValidCampaigns, bonusById);
+
     return {
-        successfulCount: affordableCount,
-        readyToLaunchCount: totalAllValidCount - affordableCount,
-        amountToDebit
+      ...configured,
+      hasConfiguredBonuses,
+      canOfferBonuses,
+      suggestedAllocation,
+      withSuggestedBonuses,
     };
-  }, [allValidCampaigns]);
+  }, [allValidCampaigns, demoBonusPackages]);
+
+  const applySuggestedPromoBonuses = useCallback(() => {
+    const allocation = launchPreview.suggestedAllocation;
+    if (!allocation || allocation.totalBonus <= 0) return;
+
+    const applyToCampaign = (campaign: CampaignRecord): CampaignRecord => {
+      const assigned = allocation.perCampaign.get(campaign.id);
+      if (!assigned) return campaign;
+      return {
+        ...campaign,
+        usePromoBonuses: true,
+        bonusAmount: assigned.bonusAmount,
+        bonusPackageId: assigned.packageId,
+      };
+    };
+
+    setTemplateGroups((prev) =>
+      prev.map((group) => ({
+        ...group,
+        campaigns: group.campaigns.map(applyToCampaign),
+      })),
+    );
+    if (editingGroupId) {
+      setEditedCampaigns((prev) => prev.map(applyToCampaign));
+    }
+    setToastMessage('Промобонусы распределены');
+    setShowToast(true);
+  }, [launchPreview.suggestedAllocation, editingGroupId]);
 
   useEffect(() => {
     if (isLaunching) {
@@ -3741,21 +3999,40 @@ export default function App() {
         let currentBalance = UNIFIED_BALANCE;
         const successful = [];
         const failed = [];
+        const pendingBonuses = pendingLaunchBonusRef.current;
 
-        for(const campaign of allValidCampaigns) {
-          const realCost = campaign.budget - effectivePromoBonusAmount(campaign);
+        for (const campaign of allValidCampaigns) {
+          const pendingBonus = pendingBonuses?.perCampaign.get(campaign.id)?.bonusAmount;
+          const bonus =
+            pendingBonus != null ? pendingBonus : effectivePromoBonusAmount(campaign);
+          const realCost = campaign.budget - bonus;
           if (currentBalance >= realCost) {
             currentBalance -= realCost;
-            successful.push(campaign);
+            successful.push(
+              pendingBonus != null
+                ? {
+                    ...campaign,
+                    usePromoBonuses: true,
+                    bonusAmount: pendingBonus,
+                    bonusPackageId:
+                      pendingBonuses?.perCampaign.get(campaign.id)?.packageId ??
+                      campaign.bonusPackageId,
+                  }
+                : campaign,
+            );
           } else {
-            failed.push({...campaign, errorMessage: "Недостаточно средств на Едином счёте"});
+            failed.push({
+              ...campaign,
+              errorMessage: 'Недостаточно средств на Едином счёте',
+            });
           }
         }
-        
+
+        pendingLaunchBonusRef.current = null;
         setCreationResult({ success: successful.length, error: failed.length });
         setFailedCampaigns(failed);
         setIsLaunching(false);
-      }, 10000); 
+      }, 10000);
       return () => clearTimeout(timer);
     }
   }, [isLaunching, allValidCampaigns]);
@@ -4101,6 +4378,8 @@ export default function App() {
                   />
                   <Route path="/media" element={<MediaPage />} />
                   <Route path="/media/create" element={<MediaCampaignCreatePage />} />
+                  <Route path={MEDIA_FINANCE_PATH} element={<FinancePage />} />
+                  <Route path={`${MEDIA_FINANCE_PATH}/top-up`} element={<FinanceTopUpPage />} />
                   <Route path="/overview" element={<OverviewPage />} />
                   <Route path="/stats" element={<StatsPage />} />
                   <Route path="/stats/acquisition" element={<StatsPage />} />
@@ -4291,9 +4570,213 @@ export default function App() {
   <ConfirmationModal isOpen={isConfirmSwitchEditOpen} onClose={() => setIsConfirmSwitchEditOpen(false)} title="Сохраните изменения" confirmText="Выйти без сохранения" confirmColor="red" onConfirm={() => { setIsConfirmSwitchEditOpen(false); performCancelEditing(); }} secondaryConfirmText="Сохранить" onSecondaryConfirm={() => { setIsConfirmSwitchEditOpen(false); handleSaveEditing(); }} cancelText="Отмена" children={<p>У вас есть несохраненные изменения. Что вы хотите сделать?</p>} />
   <ConfirmationModal isOpen={isConfirmLaunchOpen} onClose={() => setIsConfirmLaunchOpen(false)} onConfirm={() => { handleSaveEditing(); performLaunch(); }} title="Сохранить изменения?" confirmText="Сохранить и запустить" confirmColor="purple" cancelText="Отмена" children={<p>У вас есть несохраненные изменения в одной из групп. Сохранить их и продолжить запуск?</p>} />
   <ConfirmationModal isOpen={isConfirmLaunchWithFiltersOpen} onClose={() => setIsConfirmLaunchWithFiltersOpen(false)} onConfirm={() => { setIsConfirmLaunchWithFiltersOpen(false); if (editingGroupId) setIsConfirmLaunchOpen(true); else performLaunch(); }} title="Запуск кампаний с активным фильтром" confirmText={`Запустить все ${totalAllValidCount}`} confirmColor="purple" cancelText="Отмена" children={ <p> Применены фильтры для просмотра, но будут запущены <b>все {totalAllValidCount} {getPlural(totalAllValidCount, 'готовая кампания', 'готовые кампании', 'готовых кампаний')}</b>. Вы уверены, что хотите продолжить? </p> } />
-  <ConfirmationModal isOpen={isLaunchSummaryModalOpen} onClose={() => setIsLaunchSummaryModalOpen(false)} onConfirm={handleProceedToLaunch} title="Всё готово к запуску" confirmText={`Запустить ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`} confirmColor="purple" cancelText="Отменить" children={ <div className="space-y-3 text-left"> <p className="text-gray-800"> <b>{launchPreview.successfulCount} {getPlural(launchPreview.successfulCount, 'кампания', 'кампании', 'кампаний')}</b> запустятся. </p> <p className="text-gray-800">К списанию с Единого счета: <b>{launchPreview.amountToDebit.toLocaleString('ru-RU')} ₽</b></p> {globalTotals.bonus > 0 && <p className="text-gray-800">Будет оплачено бонусами: <b>{globalTotals.bonus.toLocaleString('ru-RU')} B</b></p>} {launchPreview.readyToLaunchCount > 0 && <p className="text-orange-600">Остальные <b>{launchPreview.readyToLaunchCount}</b> будут созданы в статусе «Готово к запуску».</p>} <p className="text-xs text-gray-500 pt-2"> Кампании можно остановить в любой момент и оставшиеся деньги вернуть на счет. </p> </div> } />
+  {isLaunchSummaryModalOpen ? (() => {
+    const preview =
+      launchPreview.canOfferBonuses && launchPayWithBonuses
+        ? launchPreview.withSuggestedBonuses
+        : launchPreview;
+    const withoutBonusesAmount = launchPreview.amountToDebit;
+    const withBonusesAmount = launchPreview.withSuggestedBonuses.amountToDebit;
+    const suggestedBonus = launchPreview.withSuggestedBonuses.bonusToDebit;
+
+    return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
+      onClick={() => setIsLaunchSummaryModalOpen(false)}
+    >
+      <div
+        className={`relative w-full rounded-2xl bg-white p-5 shadow-xl sm:p-6 ${
+          launchPreview.canOfferBonuses ? 'max-w-[480px]' : 'max-w-md'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="m-0 text-lg font-bold leading-snug text-gray-900 sm:text-xl">
+            Подтвердите создание кампаний
+          </h3>
+          <button
+            type="button"
+            onClick={() => setIsLaunchSummaryModalOpen(false)}
+            className="-mr-1 -mt-1 shrink-0 rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            aria-label="Закрыть"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="mt-4 space-y-0 [&_p]:m-0">
+          {preview.successfulCount > 0 ? (
+            <div className="flex items-start gap-3 border-b border-gray-100 pb-4">
+              <Rocket className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" />
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-sm leading-5 text-gray-500">В статусе «Активна»</p>
+                <p className="text-base font-bold leading-6 tabular-nums text-gray-900">
+                  {preview.successfulCount}{' '}
+                  {getPlural(
+                    preview.successfulCount,
+                    'кампания',
+                    'кампании',
+                    'кампаний',
+                  )}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {preview.readyToLaunchCount > 0 ? (
+            <div className="flex items-start gap-3 border-b border-gray-100 py-4">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-[#F97316]" />
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-sm font-medium leading-5 text-[#F97316]">
+                  В статусе «Готова к запуску»
+                </p>
+                <p className="text-sm leading-5 text-gray-500">
+                  Денег для пополнения этих кампаний не хватило
+                </p>
+                <p className="text-base font-bold leading-6 tabular-nums text-gray-900">
+                  {preview.readyToLaunchCount}{' '}
+                  {getPlural(
+                    preview.readyToLaunchCount,
+                    'кампания',
+                    'кампании',
+                    'кампаний',
+                  )}
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {launchPreview.canOfferBonuses ? (
+            <div className="pt-4">
+              <div className="mb-3 flex items-center gap-2.5">
+                <Wallet className="h-5 w-5 shrink-0 text-gray-400" />
+                <p className="text-sm leading-5 text-gray-500">Итого с единого счёта</p>
+              </div>
+              <div className="grid grid-cols-2 items-stretch gap-2.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setLaunchPayWithBonuses(false)}
+                  className={`rounded-2xl px-3 py-3 text-left transition-colors ${
+                    !launchPayWithBonuses
+                      ? 'bg-white ring-2 ring-[#9A41FE]'
+                      : 'bg-[#F5F5F7] hover:bg-[#EFEFF2]'
+                  }`}
+                >
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className={`mt-0.5 h-4 w-4 shrink-0 rounded-full ${
+                        !launchPayWithBonuses
+                          ? 'bg-[#9A41FE]'
+                          : 'border-2 border-gray-300 bg-white'
+                      }`}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-[15px] font-bold leading-5 tabular-nums text-gray-900">
+                        {withoutBonusesAmount.toLocaleString('ru-RU')} ₽
+                      </p>
+                      <p className="text-xs leading-4 text-gray-500">
+                        Не тратим промобонусы
+                      </p>
+                    </div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLaunchPayWithBonuses(true)}
+                  className={`relative rounded-2xl px-3 pb-3 pt-4 text-left transition-colors ${
+                    launchPayWithBonuses
+                      ? 'bg-white ring-2 ring-[#9A41FE]'
+                      : 'bg-[#F5F5F7] hover:bg-[#EFEFF2]'
+                  }`}
+                >
+                  <span className="absolute left-3 top-0 -translate-y-1/2 whitespace-nowrap rounded-full bg-[#34C759] px-2 py-0.5 text-[10px] font-semibold leading-4 text-white">
+                    С промобонусами
+                  </span>
+                  <div className="flex items-start gap-2.5">
+                    <span
+                      className={`mt-0.5 h-4 w-4 shrink-0 rounded-full ${
+                        launchPayWithBonuses
+                          ? 'bg-[#9A41FE]'
+                          : 'border-2 border-gray-300 bg-white'
+                      }`}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 space-y-0.5">
+                      <p className="text-[15px] font-bold leading-5 tabular-nums text-gray-900">
+                        {withBonusesAmount.toLocaleString('ru-RU')} ₽
+                      </p>
+                      <p className="text-xs leading-4 text-gray-500">
+                        с использованием{' '}
+                        <span className="inline-flex items-center gap-1 tabular-nums">
+                          {suggestedBonus.toLocaleString('ru-RU')} B
+                          <span className="tooltip relative inline-flex shrink-0">
+                            <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
+                            <span className="tooltip-text !bottom-auto !left-auto !right-0 !top-full !mt-2 !w-[15.5rem] !max-w-[15.5rem] !translate-x-0 !whitespace-normal !px-3 !py-2.5 !text-left !text-xs !font-normal !leading-snug z-[120]">
+                              Бонусы распределим по кампаниям автоматически в пределах
+                              лимитов пакетов (до 50% или 99% от бюджета). Если остатка не
+                              хватит на все — сначала покроем кампании с меньшим бюджетом.
+                            </span>
+                          </span>
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-3 border-y border-gray-100 py-4">
+              <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" />
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-sm leading-5 text-gray-500">Спишем с единого счёта</p>
+                {preview.bonusToDebit > 0 ? (
+                  <>
+                    <p className="flex items-baseline gap-1.5 text-base leading-6 tabular-nums">
+                      <span className="text-gray-400 line-through">
+                        {(preview.amountToDebit + preview.bonusToDebit).toLocaleString('ru-RU')} ₽
+                      </span>
+                      <span className="font-bold text-gray-900">
+                        {preview.amountToDebit.toLocaleString('ru-RU')} ₽
+                      </span>
+                    </p>
+                    <p className="text-xs leading-4 text-gray-500">
+                      с использованием {preview.bonusToDebit.toLocaleString('ru-RU')} промобонусов
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-base font-bold leading-6 tabular-nums text-gray-900">
+                    {preview.amountToDebit.toLocaleString('ru-RU')} ₽
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-5 flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={handleProceedToLaunch}
+            className="rounded-xl bg-[#A855F7] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#9333EA]"
+          >
+            {`Создать ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`}
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsLaunchSummaryModalOpen(false)}
+            className="rounded-xl bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-200"
+          >
+            Отмена
+          </button>
+        </div>
+      </div>
+    </div>
+    );
+  })() : null}
   
-  <main className="max-w-[1600px] mx-auto px-6 py-8">
+  <main className="mx-auto max-w-[1968px] px-6 py-8">
         {showQuickSave && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[200] transition-all duration-300 ease-out">
             <div className="flex items-center gap-3 bg-black/90 text-white text-sm font-semibold px-6 py-3 rounded-full shadow-2xl min-w-[180px] justify-center">
@@ -4303,7 +4786,7 @@ export default function App() {
           </div>
         )}
         <section className="mb-6">
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="mx-auto flex w-full min-w-[1392px] max-w-[1920px] flex-wrap items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setIsAddItemModalOpen(true)}
@@ -4435,7 +4918,16 @@ export default function App() {
         ) : null}
 
         {templateGroups.length > 0 ? (
-            <div className="space-y-8"> {templateGroups.map((group) => { 
+            <div className="space-y-8">
+            {promoMissedBonusUx === 'cta-island' && launchPreview.canOfferBonuses ? (
+              <MissedBonusIslandBanner
+                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+                totalBudget={globalTotals.total}
+                onApply={applySuggestedPromoBonuses}
+              />
+            ) : null}
+            {templateGroups.map((group) => { 
             const campaignsForReview = editingGroupId === group.id ? editedCampaigns : group.campaigns.filter(c => c.status !== CampaignStatus.ERROR);
             const filteredGroupCampaigns = campaignsForReview.filter(c => filteredCampaigns.some(fc => fc.id === c.id));
             const validCount = filteredGroupCampaigns.length; 
@@ -4489,8 +4981,7 @@ export default function App() {
                   onToggleSelect={handleSelectCampaign}
                   onToggleSelectAll={handleSelectAllOnPage}
                   onUpdate={(id, patch) => handleUpdateCampaign(group.id, id, patch)}
-                  onOpenAutoRefill={openAutoRefillModal}
-                  onOpenBonusBudget={openSingleBudgetModal}
+                  onOpenBudgetSettings={openSingleBudgetModal}
                   unifiedAccountTotal={totals.total - totals.bonus}
                   promoBonusesTotal={totals.bonus}
                 />
@@ -4537,6 +5028,11 @@ export default function App() {
           setCreationBulkDailyLimitEnabled(false);
           setCreationBulkDailyLimitValue('');
           setCreationBulkSavedDailyLimit('');
+          setCreationBulkDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
+          applyPatchToSelectedCreationCampaigns({ dailyLimit: null });
+          setIsCreationBulkDailyLimitOpen(false);
+          setToastMessage('Дневной лимит отключен');
+          setShowToast(true);
         }}
         dailyLimitValue={creationBulkDailyLimitValue}
         onDailyLimitValueChange={setCreationBulkDailyLimitValue}
@@ -4683,69 +5179,202 @@ export default function App() {
       </div>
     ) : null}
 
-    {totalAllValidCount > 0 && selectedCampaignIds.length === 0 && ( 
-    <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white"> 
-    <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-6 py-4"> 
-    <div className="min-w-0">
-      <div className="flex flex-wrap items-end gap-10">
-        <div>
-          <div className="text-xs font-medium text-gray-500">
-            За {totalAllValidCount}{' '}
-            {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}
+    {totalAllValidCount > 0 &&
+    selectedCampaignIds.length === 0 &&
+    promoMissedBonusUx === 'cta-snackbar' &&
+    launchPreview.canOfferBonuses ? (
+      <MissedBonusSnackbar
+        suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+        amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+        totalBudget={globalTotals.total}
+        onApply={applySuggestedPromoBonuses}
+      />
+    ) : null}
+
+    {totalAllValidCount > 0 &&
+    selectedCampaignIds.length === 0 &&
+    promoMissedBonusUx === 'cta-float' &&
+    launchPreview.canOfferBonuses ? (
+      <MissedBonusFloatingCard
+        suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+        amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+        totalBudget={globalTotals.total}
+        onApply={applySuggestedPromoBonuses}
+      />
+    ) : null}
+
+    {totalAllValidCount > 0 &&
+    selectedCampaignIds.length === 0 &&
+    promoMissedBonusUx === 'cta-progress' &&
+    launchPreview.canOfferBonuses ? (
+      <MissedBonusProgressBar
+        suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+        amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+        totalBudget={globalTotals.total}
+        onApply={applySuggestedPromoBonuses}
+      />
+    ) : null}
+
+    {totalAllValidCount > 0 && selectedCampaignIds.length === 0 ? (
+      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white">
+        <div className="mx-auto flex w-full max-w-[1968px] flex-col gap-3 px-6 py-4">
+          {promoMissedBonusUx === 'cta-banner' && launchPreview.canOfferBonuses ? (
+            <MissedBonusFooterBanner
+              suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+              amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+              totalBudget={globalTotals.total}
+              onApply={applySuggestedPromoBonuses}
+            />
+          ) : null}
+          {promoMissedBonusUx === 'cta-alert-row' && launchPreview.canOfferBonuses ? (
+            <MissedBonusAlertRow
+              suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+              amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+              totalBudget={globalTotals.total}
+              onApply={applySuggestedPromoBonuses}
+            />
+          ) : null}
+          <div className="flex w-full items-center justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
+              <div>
+                <div className="text-xs font-medium text-gray-500">
+                  За {totalAllValidCount}{' '}
+                  {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}
+                </div>
+                <div className="mt-0.5 text-sm font-bold tabular-nums text-gray-900">
+                  {globalTotals.total.toLocaleString('ru-RU')} ₽
+                </div>
+              </div>
+              {shouldReplacePromoColumn(promoMissedBonusUx) && launchPreview.canOfferBonuses ? (
+                <MissedBonusPromoColumn
+                  suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                  onApply={applySuggestedPromoBonuses}
+                />
+              ) : (
+              <div>
+                <div className="text-xs font-medium text-gray-500">Промобонусы</div>
+                {globalTotals.bonus > 0 ? (
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#2E7D32]">
+                    –{globalTotals.bonus.toLocaleString('ru-RU')} B
+                  </div>
+                ) : (
+                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-gray-400">
+                    0 B
+                  </div>
+                )}
+              </div>
+              )}
+              <div>
+                <div className="text-xs font-medium text-gray-500">С единого счета</div>
+                {globalTotals.bonus > 0 ? (
+                  <div className="mt-0.5 flex items-baseline gap-1.5 text-sm">
+                    <span className="tabular-nums text-gray-400 line-through">
+                      {globalTotals.total.toLocaleString('ru-RU')} ₽
+                    </span>
+                    <span
+                      className={`font-bold tabular-nums ${
+                        globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'
+                      }`}
+                    >
+                      {globalTotals.real.toLocaleString('ru-RU')} ₽
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    className={`mt-0.5 text-sm font-bold tabular-nums ${
+                      globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'
+                    }`}
+                  >
+                    {globalTotals.real.toLocaleString('ru-RU')} ₽
+                  </div>
+                )}
+                {shouldShowAccountLink(promoMissedBonusUx) && launchPreview.canOfferBonuses ? (
+                  <MissedBonusAccountLink
+                    suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                    onApply={applySuggestedPromoBonuses}
+                  />
+                ) : null}
+              </div>
+            </div>
+            {globalDeficit > 0 ? (
+              <p className="mb-0 mt-2 text-xs font-medium text-red-500">
+                Не хватает {globalDeficit.toLocaleString('ru-RU')} ₽{' '}
+                <a
+                  href="#"
+                  onClick={(e) => e.preventDefault()}
+                  className="font-medium text-blue-600 hover:underline"
+                >
+                  пополнить
+                </a>
+              </p>
+            ) : null}
+            {promoMissedBonusUx === 'footer-info' && launchPreview.canOfferBonuses ? (
+              <MissedBonusFooterInfo
+                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+              />
+            ) : null}
+            {promoMissedBonusUx === 'cta-inline' && launchPreview.canOfferBonuses ? (
+              <MissedBonusInlineOffer
+                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+                totalBudget={globalTotals.total}
+                onApply={applySuggestedPromoBonuses}
+              />
+            ) : null}
+            {promoMissedBonusUx === 'cta-compare' && launchPreview.canOfferBonuses ? (
+              <MissedBonusCompareCard
+                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
+                totalBudget={globalTotals.total}
+                onApply={applySuggestedPromoBonuses}
+              />
+            ) : null}
+            {promoMissedBonusUx === 'cta-toggle' && launchPreview.canOfferBonuses ? (
+              <MissedBonusToggleOffer
+                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                onApply={applySuggestedPromoBonuses}
+              />
+            ) : null}
           </div>
-          <div className="mt-0.5 text-sm font-semibold tabular-nums text-gray-900">
-            {globalTotals.total.toLocaleString('ru-RU')} ₽
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            {globalDeficit > 0 && launchPreview.readyToLaunchCount > 0 ? (
+              <div className="flex max-w-sm items-start gap-2 text-right text-xs leading-tight text-gray-800">
+                <Bell className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
+                <div>
+                  Не хватает средств для {launchPreview.readyToLaunchCount}{' '}
+                  {getPlural(
+                    launchPreview.readyToLaunchCount,
+                    'кампании',
+                    'кампаний',
+                    'кампаний',
+                  )}
+                  . Они будут созданы в статусе «Готово к запуску».
+                </div>
+              </div>
+            ) : null}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              {promoMissedBonusUx === 'cta-beside' && launchPreview.canOfferBonuses ? (
+                <MissedBonusBesideLaunch
+                  suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
+                  onApply={applySuggestedPromoBonuses}
+                />
+              ) : null}
+              <button
+                type="button"
+                onClick={launchCampaigns}
+                disabled={isLaunching}
+                className="shrink-0 rounded-xl bg-[#9A41FE] px-6 py-3 text-base font-medium text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
+              >
+                {`Создать ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`}
+              </button>
+            </div>
+          </div>
           </div>
         </div>
-        <div>
-          <div className="text-xs font-medium text-gray-500">Промобонусы</div>
-          <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#2E7D32]">
-            {globalTotals.bonus.toLocaleString('ru-RU')} B
-          </div>
-        </div>
-        <div className="self-stretch border-l border-gray-200 pl-10">
-          <div className="text-sm font-medium text-gray-900">Итого с единого счёта</div>
-          <div
-            className={`mt-0.5 text-xl font-bold tabular-nums ${
-              globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'
-            }`}
-          >
-            {globalTotals.real.toLocaleString('ru-RU')} ₽
-          </div>
-        </div>
-      </div>
-      {globalDeficit > 0 && (
-        <p className="mb-0 mt-2 text-xs font-medium text-red-500">
-          Не хватает {globalDeficit.toLocaleString('ru-RU')} ₽{' '}
-          <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
-            className="font-medium text-blue-600 hover:underline"
-          >
-            пополнить
-          </a>
-        </p>
-      )}
+      </footer>
+    ) : null}
     </div>
-    <div className="flex shrink-0 flex-col items-end gap-2">
-      {globalDeficit > 0 && launchPreview.readyToLaunchCount > 0 && (
-        <div className="flex max-w-sm items-start gap-2 text-right text-xs leading-tight text-gray-800">
-          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-          <div>
-            Не хватает средств для {launchPreview.readyToLaunchCount}{' '}
-            {getPlural(launchPreview.readyToLaunchCount, 'кампании', 'кампаний', 'кампаний')}.
-            Они будут созданы в статусе «Готово к запуску».
-          </div>
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={launchCampaigns}
-        disabled={isLaunching}
-        className="shrink-0 rounded-xl bg-[#9A41FE] px-6 py-3 text-base font-medium text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
-      >
-        {`Создать ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`}
-      </button>
-    </div>
-  </div> </footer> )} </div> );
+  );
 }

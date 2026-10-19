@@ -195,21 +195,53 @@ const Pagination = ({ total, pageSize, current, onChange }: { total: number, pag
     const handlePrev = () => { if (current > 1) onChange(current - 1); };
     const handleNext = () => { if (current < totalPages) onChange(current + 1); };
 
-    let items = [];
-    if (totalPages <= 5) {
+    const items: (number | string)[] = [];
+    if (totalPages <= 7) {
         for (let i = 1; i <= totalPages; i++) items.push(i);
     } else {
         items.push(1);
-        if (current > 3) items.push('...');
-        if (current > 2) items.push(current - 1);
-        if (current > 1 && current < totalPages) items.push(current);
-        if (current < totalPages - 1) items.push(current + 1);
-        if (current < totalPages - 2) items.push('...');
+        const left = Math.max(2, current - 1);
+        const right = Math.min(totalPages - 1, current + 1);
+        if (left > 2) items.push('…');
+        for (let i = left; i <= right; i++) items.push(i);
+        if (right < totalPages - 1) items.push('…');
         items.push(totalPages);
     }
-    const uniqueItems = [...new Set(items)];
 
-    return ( <div className="pagination-container"> <button onClick={handlePrev} className={`pagination-item ${current === 1 ? 'disabled' : ''}`} disabled={current === 1}>&lt;</button> {uniqueItems.map((item, index) => ( <button key={index} onClick={() => typeof item === 'number' && onChange(item)} className={`pagination-item ${current === item ? 'active' : ''} ${typeof item !== 'number' ? 'disabled' : ''}`} disabled={typeof item !== 'number'}> {item} </button> ))} <button onClick={handleNext} className={`pagination-item ${current === totalPages ? 'disabled' : ''}`} disabled={current === totalPages}>&gt;</button> </div> );
+    return (
+      <div className="pagination-container">
+        <button
+          type="button"
+          onClick={handlePrev}
+          className={`pagination-item ${current === 1 ? 'disabled' : ''}`}
+          disabled={current === 1}
+          aria-label="Предыдущая страница"
+        >
+          &lt;
+        </button>
+        {items.map((item, index) => (
+          <button
+            key={`${item}-${index}`}
+            type="button"
+            onClick={() => typeof item === 'number' && onChange(item)}
+            className={`pagination-item ${current === item ? 'active' : ''} ${typeof item !== 'number' ? 'disabled' : ''}`}
+            disabled={typeof item !== 'number'}
+            aria-current={current === item ? 'page' : undefined}
+          >
+            {item}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={handleNext}
+          className={`pagination-item ${current === totalPages ? 'disabled' : ''}`}
+          disabled={current === totalPages}
+          aria-label="Следующая страница"
+        >
+          &gt;
+        </button>
+      </div>
+    );
 };
 
 interface SuccessPageProps {

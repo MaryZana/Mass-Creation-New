@@ -1,23 +1,59 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Checkbox } from 'antd';
 import type { CampaignRecord } from '../types';
-import { DAILY_LIMIT_ABSOLUTE_MIN } from '../utils/cpcDailyLimitBid';
-import { effectivePromoBonusAmount, maxPromoBonusForBudget } from '../utils/promoBonus';
+import { DAILY_LIMIT_ABSOLUTE_MIN, minDailyLimitForMaxBid } from '../utils/cpcDailyLimitBid';
+import {
+  DEFAULT_BID_CHASING_POSITION,
+  formatBidChasingClusterBidRangeLabel,
+  formatBidChasingPositionLabel,
+  presetBidChasingPosition,
+  resolveBidChasingDemoBids,
+  searchBidForecastMetaForPosition,
+  type BidChasingPosition,
+} from '../utils/cpcBidChasingPositionTiers';
+import { effectivePromoBonusAmount } from '../utils/promoBonus';
 import {
   AdvancedDailyLimitModal,
+  AutoStrategiesModal,
   createDefaultAdvancedDailyLimitSettings,
+  formatConfiguredDailyLimitConditions,
   type AdvancedDailyLimitSettings,
+  type AutoStrategiesTab,
 } from './CpcCampaignPage';
-import { Calendar, Settings } from './Icons';
+import { AlertTriangle, Bell, Edit2 } from './Icons';
 import {
   useStockRemainderHoverPortal,
   type StockHoverProductItem,
 } from './ProductStockDetailHover';
+import { SearchBidForecastField } from './SearchBidForecastField';
 
 const CHIP_TIP_DELAY_MS = 1000;
 
-/** Демо-остаток по артикулу, если в записи ещё нет stockLeft */
+type AutobidderSetup = {
+  mode: AutoStrategiesTab;
+  settings: AdvancedDailyLimitSettings;
+  position: BidChasingPosition;
+  maxBid: number;
+};
+
+function autobidderCellLabel(setup: AutobidderSetup | undefined): string | null {
+  if (!setup) return null;
+  if (setup.mode === 'profit') return formatConfiguredDailyLimitConditions(setup.settings);
+  return formatBidChasingPositionLabel(setup.position);
+}
+
+function formatRub(value: number): string {
+  return value.toLocaleString('ru-RU');
+}
+
+function parseRubInput(raw: string): number | null {
+  const cleaned = raw.replace(/\s/g, '').replace('₽', '').replace(',', '.').replace(/B/gi, '');
+  if (cleaned === '') return null;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : null;
+}
+
 function stockLeftForRow(row: Pick<CampaignRecord, 'nmId' | 'stockLeft'>): number {
   if (row.stockLeft != null && Number.isFinite(row.stockLeft)) return Math.max(0, row.stockLeft);
   const seed = Math.abs(row.nmId) || 1;
@@ -56,8 +92,8 @@ function MassCreationStockQty({
     <>
       <span
         ref={anchorRef}
-        className={`mt-0.5 inline-block cursor-default text-xs ${
-          stockLeft === 0 ? 'text-red-600' : 'text-gray-400'
+        className={`inline-block cursor-default text-[13px] leading-5 tabular-nums ${
+          stockLeft === 0 ? 'text-red-600' : 'text-gray-500'
         }`}
         onMouseEnter={openHover}
         onMouseLeave={scheduleClose}
@@ -72,21 +108,18 @@ function MassCreationStockQty({
 const ToggleSwitch = ({
   checked,
   onChange,
-  disabled = false,
 }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
-  disabled?: boolean;
 }) => (
   <button
     type="button"
     role="switch"
     aria-checked={checked}
-    onClick={() => !disabled && onChange(!checked)}
-    disabled={disabled}
-    className={`relative inline-flex h-5 w-9 flex-shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-      disabled ? 'cursor-not-allowed bg-gray-200' : 'cursor-pointer'
-    } ${checked ? (disabled ? 'bg-purple-300' : 'bg-purple-600') : 'bg-gray-300'}`}
+    onClick={() => onChange(!checked)}
+    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+      checked ? 'bg-[#9A41FE]' : 'bg-gray-300'
+    }`}
   >
     <span
       aria-hidden
@@ -97,55 +130,189 @@ const ToggleSwitch = ({
   </button>
 );
 
-const BarChartIcon = ({ className }: { className?: string }) => (
-  <svg
-    className={className}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden
-  >
-    <path d="M4 20V10" />
-    <path d="M10 20V4" />
-    <path d="M16 20v-7" />
-    <path d="M22 20V8" />
-  </svg>
-);
-
-function formatRub(value: number): string {
-  return value.toLocaleString('ru-RU');
+function DrrTrendIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" className={className} fill="none" aria-hidden>
+      <path
+        d="M1.5 10.5 5 7l3 3 6.5-6.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
-function parseRubInput(raw: string): number | null {
-  const cleaned = raw.replace(/\s/g, '').replace('₽', '').replace(',', '.');
-  if (cleaned === '') return null;
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : null;
+/** Зелёный кружок с галочкой — автопополнение включено */
+function AutoRefillOnIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={className} aria-hidden>
+      <circle cx="6" cy="6" r="6" fill="#34C759" />
+      <path
+        d="M3.4 6.15 5.05 7.8 8.6 4.2"
+        fill="none"
+        stroke="#0B3D1C"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
-const inputClass =
-  'w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-900 shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500';
+/** Чёрный кружок с крестиком — автопополнение выключено */
+function AutoRefillOffIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={className} aria-hidden>
+      <circle cx="6" cy="6" r="6" fill="#1C1C1E" />
+      <path
+        d="M4 4 8 8M8 4 4 8"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
-const valueInputClass =
-  'w-[146px] shrink-0 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-900 shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500';
+function BudgetSettingsCard({
+  row,
+  onOpenOneTime,
+  onOpenAutoRefill,
+}: {
+  row: CampaignRecord;
+  onOpenOneTime: () => void;
+  onOpenAutoRefill: () => void;
+}) {
+  const bonusAmount = effectivePromoBonusAmount(row);
+  const hasPromo = row.usePromoBonuses && bonusAmount > 0;
 
-type BudgetColumnVariant = 0 | 2 | 4;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpenOneTime}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpenOneTime();
+        }
+      }}
+      className="relative flex min-h-[128px] w-full min-w-[168px] max-w-[200px] cursor-pointer flex-col rounded-2xl border border-gray-200 bg-white p-3 text-left transition-colors hover:bg-[#F5F5F7]"
+      aria-label="Настроить разовое пополнение бюджета"
+    >
+      <span className="pointer-events-none absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#F3F4F6] text-gray-600">
+        <Edit2 className="h-3.5 w-3.5" />
+      </span>
 
-const BUDGET_COLUMN_VARIANTS: { id: BudgetColumnVariant; label: string }[] = [
-  { id: 2, label: 'V2 Чипы' },
-  { id: 0, label: 'Классика' },
-  { id: 4, label: 'V4 Итог' },
-];
+      <p className="pr-8 text-base font-bold leading-5 tabular-nums text-gray-900">
+        {formatRub(row.budget)} ₽
+      </p>
+
+      <p
+        className={`mt-0.5 text-xs font-medium leading-4 tabular-nums ${
+          hasPromo ? 'text-[#2E7D32]' : 'text-gray-400'
+        }`}
+      >
+        {hasPromo
+          ? `–${formatRub(bonusAmount)} ₽ промобонусами`
+          : '0 ₽ промобонусами'}
+      </p>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenAutoRefill();
+        }}
+        className={`mt-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+          row.autoReplenishment
+            ? 'bg-[#E8F5E9] text-[#2E7D32] hover:bg-[#DCEFDE]'
+            : 'bg-[#E5E7EB] text-gray-700 hover:bg-[#D1D5DB]'
+        }`}
+        aria-label="Настроить автопополнение"
+      >
+        {row.autoReplenishment ? (
+          <>
+            <AutoRefillOnIcon className="h-3 w-3 shrink-0" />
+            Автопополнение
+          </>
+        ) : (
+          <>
+            <AutoRefillOffIcon className="h-3 w-3 shrink-0" />
+            Без автопополнения
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function DailyLimitSettingsCard({
+  row,
+  showDailyLimit,
+  hasDynamicRules,
+  onOpen,
+}: {
+  row: CampaignRecord;
+  showDailyLimit: boolean;
+  hasDynamicRules: boolean;
+  onOpen: () => void;
+}) {
+  if (!showDailyLimit) return null;
+
+  const hasLimit = row.dailyLimit != null && row.dailyLimit > 0;
+  const maxBid = Math.max(row.searchBid ?? 0, row.recommendationsBid ?? 0, row.bid ?? 0);
+  const recommended = maxBid > 0 ? minDailyLimitForMaxBid(maxBid) : 0;
+  const needsRaise =
+    hasLimit && recommended > 0 && (row.dailyLimit as number) < recommended;
+
+  if (!hasLimit) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex h-9 items-center rounded-lg bg-[#F3F4F6] px-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#E8E8ED]"
+      >
+        Установить
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="relative flex min-h-[128px] w-full min-w-[148px] max-w-[180px] flex-col rounded-2xl border border-gray-200 bg-white p-3 text-left transition-colors hover:bg-[#F5F5F7]"
+    >
+      <span className="pointer-events-none absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#F3F4F6] text-gray-600">
+        <Edit2 className="h-3.5 w-3.5" />
+      </span>
+      <p className="pr-8 text-base font-bold tabular-nums text-gray-900">
+        {formatRub(row.dailyLimit!)} ₽ в дн
+      </p>
+      {needsRaise ? (
+        <p className="mt-1.5 flex items-start gap-1 text-[11px] font-medium leading-snug text-[#E11D48]">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          Нужно от {formatRub(recommended)} ₽
+        </p>
+      ) : null}
+      {hasDynamicRules ? (
+        <p className="mt-auto inline-flex items-center gap-1 text-[11px] font-medium text-[#2E7D32]">
+          <DrrTrendIcon className="h-3 w-3 shrink-0 text-[#34C759]" />
+          Меняется от ДРР
+        </p>
+      ) : null}
+    </button>
+  );
+}
 
 export type MassCreationIslandProps = {
   title: string;
   zonesPill: string;
-  /** CPC: бюджет + дневной лимит. CPM: только бюджет. */
   showDailyLimit?: boolean;
-  /** zones = Поиск + Рекомендации; unified = одна ставка */
   bidMode?: 'zones' | 'unified';
   defaultZoneBid?: number;
   defaultRecsBid?: number;
@@ -154,8 +321,10 @@ export type MassCreationIslandProps = {
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: (ids: string[], checked: boolean) => void;
   onUpdate: (id: string, patch: Partial<CampaignRecord>) => void;
-  onOpenAutoRefill: (row: CampaignRecord) => void;
-  onOpenBonusBudget: (row: CampaignRecord) => void;
+  onOpenBudgetSettings: (
+    row: CampaignRecord,
+    tab?: 'budget' | 'autorefill',
+  ) => void;
   unifiedAccountTotal: number;
   promoBonusesTotal: number;
 };
@@ -172,8 +341,7 @@ export function MassCreationIsland({
   onToggleSelect,
   onToggleSelectAll,
   onUpdate,
-  onOpenAutoRefill,
-  onOpenBonusBudget,
+  onOpenBudgetSettings,
   unifiedAccountTotal,
   promoBonusesTotal,
 }: MassCreationIslandProps) {
@@ -186,52 +354,28 @@ export function MassCreationIsland({
     createDefaultAdvancedDailyLimitSettings(),
   );
   const [autoRefillOnRulesTrigger, setAutoRefillOnRulesTrigger] = useState(true);
-  const [budgetColumnVariant, setBudgetColumnVariant] = useState<BudgetColumnVariant>(2);
-  /** Черновик суммы бюджета: коммит только на blur, чтобы бонусы не ужимались на промежуточных цифрах. */
-  const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
+  const [autobidderSetup, setAutobidderSetup] = useState<Record<string, AutobidderSetup>>({});
+  const [autobidderRowId, setAutobidderRowId] = useState<string | null>(null);
   const [chipTip, setChipTip] = useState<{
     text: string;
     left: number;
     top: number;
   } | null>(null);
-  const chipTipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const chipTipTimerRef = React.useRef<number | null>(null);
 
-  const clearChipTipTimer = useCallback(() => {
+  const clearChipTipTimer = () => {
     if (chipTipTimerRef.current != null) {
-      clearTimeout(chipTipTimerRef.current);
+      window.clearTimeout(chipTipTimerRef.current);
       chipTipTimerRef.current = null;
     }
-  }, []);
+  };
 
   const hideChipTip = useCallback(() => {
     clearChipTipTimer();
     setChipTip(null);
-  }, [clearChipTipTimer]);
+  }, []);
 
-  const showChipTipDelayed = useCallback(
-    (e: React.MouseEvent<HTMLElement>, text: string) => {
-      clearChipTipTimer();
-      const anchor = e.currentTarget;
-      chipTipTimerRef.current = setTimeout(() => {
-        const rect = anchor.getBoundingClientRect();
-        setChipTip({
-          text,
-          left: rect.left + rect.width / 2,
-          top: rect.bottom + 10,
-        });
-        chipTipTimerRef.current = null;
-      }, CHIP_TIP_DELAY_MS);
-    },
-    [clearChipTipTimer],
-  );
-
-  useEffect(() => () => clearChipTipTimer(), [clearChipTipTimer]);
-
-  useEffect(() => {
-    if (!BUDGET_COLUMN_VARIANTS.some((variant) => variant.id === budgetColumnVariant)) {
-      setBudgetColumnVariant(BUDGET_COLUMN_VARIANTS[0]!.id);
-    }
-  }, [budgetColumnVariant]);
+  useEffect(() => () => clearChipTipTimer(), []);
 
   useEffect(() => {
     if (!dailyLimitCampaign) return;
@@ -240,30 +384,38 @@ export function MassCreationIsland({
     setIsDailyLimitEnabled(limit != null && limit > 0);
     setDailyLimitValue(limitStr);
     setSavedDailyLimit(limitStr);
-    setAdvancedSettings(createDefaultAdvancedDailyLimitSettings());
-    setIsCarryoverEnabled(false);
-    setAutoRefillOnRulesTrigger(true);
-  }, [dailyLimitCampaign]);
-
-  const maxBidForLimit = Math.max(
-    dailyLimitCampaign?.bid ?? 0,
-    dailyLimitCampaign?.searchBid ?? 0,
-    dailyLimitCampaign?.recommendationsBid ?? 0,
-    DAILY_LIMIT_ABSOLUTE_MIN,
-  );
+    const existing = autobidderSetup[dailyLimitCampaign.id];
+    setAdvancedSettings(
+      existing?.mode === 'profit'
+        ? existing.settings
+        : createDefaultAdvancedDailyLimitSettings(),
+    );
+  }, [dailyLimitCampaign, autobidderSetup]);
 
   const enableDailyLimit = useCallback(() => {
-    const next = String(Math.max(DAILY_LIMIT_ABSOLUTE_MIN, maxBidForLimit));
+    if (!dailyLimitCampaign) return;
+    const min = Math.max(
+      DAILY_LIMIT_ABSOLUTE_MIN,
+      Math.max(
+        dailyLimitCampaign.searchBid ?? 0,
+        dailyLimitCampaign.recommendationsBid ?? 0,
+        dailyLimitCampaign.bid ?? 0,
+      ),
+    );
+    const next = String(min);
     setDailyLimitValue(next);
     setSavedDailyLimit(next);
     setIsDailyLimitEnabled(true);
-  }, [maxBidForLimit]);
+  }, [dailyLimitCampaign]);
 
   const disableDailyLimit = useCallback(() => {
+    if (!dailyLimitCampaign) return;
     setIsDailyLimitEnabled(false);
     setDailyLimitValue('');
     setSavedDailyLimit('');
-  }, []);
+    setAdvancedSettings(createDefaultAdvancedDailyLimitSettings());
+    onUpdate(dailyLimitCampaign.id, { dailyLimit: null });
+  }, [dailyLimitCampaign, onUpdate]);
 
   const handleDailyLimitCommit = useCallback(
     (parsed: number) => {
@@ -288,304 +440,73 @@ export function MassCreationIsland({
         : 'кампаний'
   }`;
   const isZones = bidMode === 'zones';
-  const isClassicBudget = budgetColumnVariant === 0;
-  const isChipsBudget = budgetColumnVariant === 2;
 
-  const bonusAmountOf = (row: CampaignRecord) => effectivePromoBonusAmount(row);
+  const totalBudget = campaigns.reduce((sum, row) => sum + row.budget, 0);
+  const totalPromoSpend = campaigns.reduce((sum, row) => sum + effectivePromoBonusAmount(row), 0);
+  const unifiedCharge = Math.max(0, totalBudget - totalPromoSpend);
 
-  const setPromoOn = (row: CampaignRecord, on: boolean) => {
-    if (!on) {
-      onUpdate(row.id, { usePromoBonuses: false, bonusAmount: 0 });
-      return;
-    }
-    onOpenBonusBudget(row);
-  };
+  const maxBidForLimit = dailyLimitCampaign
+    ? Math.max(
+        dailyLimitCampaign.searchBid ?? 0,
+        dailyLimitCampaign.recommendationsBid ?? 0,
+        dailyLimitCampaign.bid ?? 0,
+        defaultZoneBid,
+      )
+    : defaultZoneBid;
 
-  const commitBudget = (row: CampaignRecord, budget: number) => {
-    if (row.usePromoBonuses) {
-      const maxAllowed = maxPromoBonusForBudget(row.bonusPackageId, budget);
-      const current =
-        row.bonusAmount != null && row.bonusAmount > 0
-          ? row.bonusAmount
-          : maxPromoBonusForBudget(row.bonusPackageId, row.budget);
-      // Не поднимаем бонусы при росте бюджета; ужимаем только если новый лимит пакета ниже.
-      onUpdate(row.id, {
-        budget,
-        bonusAmount: Math.min(current, maxAllowed),
-      });
-      return;
-    }
-    onUpdate(row.id, { budget });
-  };
-
-  const budgetInputValue = (row: CampaignRecord) =>
-    budgetDrafts[row.id] ?? `${formatRub(row.budget)} ₽`;
-
-  const handleBudgetDraftChange = (rowId: string, raw: string) => {
-    setBudgetDrafts((prev) => ({ ...prev, [rowId]: raw }));
-  };
-
-  const commitBudgetInput = (row: CampaignRecord, raw: string) => {
-    const parsed = parseRubInput(raw);
-    const next = parsed == null || !Number.isFinite(parsed) || parsed < 1000 ? 1000 : parsed;
-    commitBudget(row, next);
-    setBudgetDrafts((prev) => {
-      if (!(row.id in prev)) return prev;
-      const { [row.id]: _removed, ...rest } = prev;
-      return rest;
-    });
-  };
-
-  const budgetInput = (row: CampaignRecord, widthClass = 'w-[146px]') => (
-    <input
-      type="text"
-      value={budgetInputValue(row)}
-      onChange={(e) => handleBudgetDraftChange(row.id, e.target.value)}
-      onBlur={(e) => commitBudgetInput(row, e.target.value)}
-      className={`shrink-0 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-sm font-medium text-gray-900 shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 ${widthClass}`}
-    />
-  );
-
-  const limitControl = (row: CampaignRecord, className = 'w-[146px]') => {
-    if (!showDailyLimit) return null;
-    if (row.dailyLimit != null && row.dailyLimit > 0) {
-      return (
-        <button
-          type="button"
-          className={`mt-1 inline-flex items-center justify-end gap-1 text-xs hover:opacity-80 ${className}`}
-          onClick={() => setDailyLimitCampaign(row)}
-        >
-          <Calendar className="h-3.5 w-3.5 shrink-0 text-gray-400" aria-hidden />
-          <span className="font-medium text-gray-500">в день</span>
-          <span className="font-medium tabular-nums text-[#3B82F6]">
-            {formatRub(row.dailyLimit)} ₽
-          </span>
-        </button>
-      );
-    }
-    return (
-      <button
-        type="button"
-        className={`mt-1 block text-right text-xs font-medium text-[#3B82F6] hover:underline ${className}`}
-        onClick={() => setDailyLimitCampaign(row)}
-      >
-        Настроить лимит
-      </button>
-    );
-  };
-
-  const limitChip = (row: CampaignRecord) => {
-    if (!showDailyLimit) return null;
-    const hasLimit = row.dailyLimit != null && row.dailyLimit > 0;
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          hideChipTip();
-          setDailyLimitCampaign(row);
-        }}
-        onMouseEnter={(e) =>
-          showChipTipDelayed(e, hasLimit ? 'Лимит в день' : 'Задать дневной лимит')
-        }
-        onMouseLeave={hideChipTip}
-        className={
-          hasLimit
-            ? 'inline-flex shrink-0 items-center whitespace-nowrap rounded-md bg-[#E8F5E9] px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-[#2E7D32] hover:bg-[#C8E6C9]'
-            : 'inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:border-[#2E7D32] hover:text-[#2E7D32]'
-        }
-      >
-        {hasLimit ? `${formatRub(row.dailyLimit!)} ₽ в дн` : '+ Лимит'}
-      </button>
-    );
-  };
-
-  const bonusChip = (row: CampaignRecord) => {
-    const amount = bonusAmountOf(row);
-    if (row.usePromoBonuses) {
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            hideChipTip();
-            onOpenBonusBudget(row);
-          }}
-          onMouseEnter={(e) =>
-            showChipTipDelayed(
-              e,
-              `Списывать ${formatRub(amount)} B с промобонусов на бюджет`,
-            )
-          }
-          onMouseLeave={hideChipTip}
-          className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md bg-[#E8F5E9] px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-[#2E7D32] hover:bg-[#C8E6C9]"
-        >
-          {`${formatRub(amount)} B`}
-        </button>
-      );
-    }
-    return (
-      <button
-        type="button"
-        onClick={() => setPromoOn(row, true)}
-        onMouseEnter={(e) => showChipTipDelayed(e, 'Тратить бонусы')}
-        onMouseLeave={hideChipTip}
-        className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:border-[#2E7D32] hover:text-[#2E7D32]"
-      >
-        +Бонусы
-      </button>
-    );
-  };
-
-  const autoChip = (row: CampaignRecord) => {
-    if (row.autoReplenishment) {
-      const threshold = row.autoRefillThreshold ?? 1000;
-      const amount = row.autoRefillAmount ?? 3000;
-      const tooltip = `Если бюджет меньше ${formatRub(threshold)} ₽ — пополнять на ${formatRub(amount)} ₽`;
-      return (
-        <button
-          type="button"
-          onClick={() => {
-            hideChipTip();
-            onOpenAutoRefill(row);
-          }}
-          onMouseEnter={(e) => showChipTipDelayed(e, tooltip)}
-          onMouseLeave={hideChipTip}
-          className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md bg-[#E8F5E9] px-1.5 py-0.5 text-[11px] font-medium text-[#2E7D32] hover:bg-[#C8E6C9]"
-        >
-          Автопополнение
-        </button>
-      );
-    }
-    return (
-      <button
-        type="button"
-        onClick={() => {
-          hideChipTip();
-          onOpenAutoRefill(row);
-        }}
-        onMouseEnter={(e) => showChipTipDelayed(e, 'Задать автопополнение бюджета')}
-        onMouseLeave={hideChipTip}
-        className="inline-flex shrink-0 items-center whitespace-nowrap rounded-md border border-dashed border-gray-300 px-1.5 py-0.5 text-[11px] font-medium text-gray-500 hover:border-[#2E7D32] hover:text-[#2E7D32]"
-      >
-        +Автопополнение
-      </button>
-    );
-  };
-
-  const renderUnifiedBudgetCell = (row: CampaignRecord) => {
-    const amount = bonusAmountOf(row);
-    switch (budgetColumnVariant) {
-      case 2: {
-        return (
-          <div className="w-[280px]">
-            <input
-              type="text"
-              value={budgetInputValue(row)}
-              onChange={(e) => handleBudgetDraftChange(row.id, e.target.value)}
-              onBlur={(e) => commitBudgetInput(row, e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-right text-sm font-medium tabular-nums text-gray-900 shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
-            />
-            <div className="mt-1.5 flex flex-nowrap items-center justify-end gap-1">
-              {bonusChip(row)}
-              {autoChip(row)}
-              {limitChip(row)}
-            </div>
-          </div>
-        );
-      }
-      case 4: {
-        const hasLimit = row.dailyLimit != null && row.dailyLimit > 0;
-        return (
-          <div className="w-[220px]">
-            <div className="rounded-xl border border-gray-200 bg-white px-2.5 py-2 shadow-sm focus-within:border-purple-400 focus-within:ring-1 focus-within:ring-purple-400">
-              <input
-                type="text"
-                value={budgetInputValue(row)}
-                onChange={(e) => handleBudgetDraftChange(row.id, e.target.value)}
-                onBlur={(e) => commitBudgetInput(row, e.target.value)}
-                className="w-full border-0 bg-transparent p-0 text-right text-sm font-semibold tabular-nums text-gray-900 outline-none"
-              />
-              <div className="mt-1 flex flex-nowrap items-center justify-end gap-2 text-[11px] leading-none">
-                {showDailyLimit ? (
-                  <button
-                    type="button"
-                    onClick={() => setDailyLimitCampaign(row)}
-                    className={
-                      hasLimit
-                        ? 'shrink-0 whitespace-nowrap font-medium tabular-nums text-[#9A41FE] hover:underline'
-                        : 'shrink-0 whitespace-nowrap font-medium text-gray-400 hover:text-[#9A41FE] hover:underline'
-                    }
-                  >
-                    {hasLimit
-                      ? `${formatRub(row.dailyLimit!)} ₽ лимит/дн`
-                      : 'Без лимита'}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() =>
-                    row.usePromoBonuses ? onOpenBonusBudget(row) : setPromoOn(row, true)
-                  }
-                  className={
-                    row.usePromoBonuses
-                      ? 'shrink-0 whitespace-nowrap font-medium tabular-nums text-[#9A41FE] hover:underline'
-                      : 'shrink-0 whitespace-nowrap font-medium text-gray-400 hover:text-[#9A41FE] hover:underline'
-                  }
-                >
-                  {row.usePromoBonuses
-                    ? `${formatRub(amount)} B`
-                    : 'Без бонусов'}
-                </button>
-              </div>
-            </div>
-            {row.usePromoBonuses ? (
-              <div className="mt-1 text-right text-[11px] leading-none text-gray-400">
-                К оплате {formatRub(Math.max(0, row.budget - amount))} ₽
-              </div>
-            ) : null}
-          </div>
-        );
-      }
-      default:
-        return null;
-    }
-  };
+  const autobidderCampaign =
+    campaigns.find((row) => row.id === autobidderRowId) ?? null;
 
   return (
-    <section className="space-y-4 rounded-2xl bg-white px-6 pb-6 pt-5 shadow-sm animate-fade-in">
-      <div>
-        <h2 className="text-2xl font-bold tracking-tight text-gray-900">{title}</h2>
-        <div className="mt-2.5 flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded-full bg-[#F3F4F6] px-3 py-1 text-xs font-medium text-gray-600">
-            {countLabel}
-          </span>
-          <span className="inline-flex items-center rounded-full bg-[#F3F4F6] px-3 py-1 text-xs font-medium text-gray-600">
-            {zonesPill}
-          </span>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-gray-500">Колонка бюджета:</span>
-          {BUDGET_COLUMN_VARIANTS.map((v) => (
-            <button
-              key={v.id}
-              type="button"
-              onClick={() => setBudgetColumnVariant(v.id)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
-                budgetColumnVariant === v.id
-                  ? 'bg-[#9A41FE] text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {v.label}
-            </button>
-          ))}
+    <section className="mx-auto w-full min-w-[1392px] max-w-[1920px] space-y-4 rounded-2xl bg-white px-6 pb-6 pt-5 shadow-sm animate-fade-in">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-gray-900">{title}</h2>
+          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-[#F3F4F6] px-3 py-1 text-xs font-medium text-gray-600">
+              {countLabel}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-[#F3F4F6] px-3 py-1 text-xs font-medium text-gray-600">
+              {zonesPill}
+            </span>
+          </div>
         </div>
       </div>
 
+      <div className="flex items-center justify-start gap-2.5 rounded-xl bg-[#FBF7FF] px-4 py-3 text-left">
+        <span
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F3E8FF] text-[#9A41FE]"
+          aria-hidden
+        >
+          <Bell className="h-4 w-4" />
+        </span>
+        <p className="mb-0 text-sm font-bold leading-snug text-[#9A41FE]">
+          Умный алгоритм помогает платить меньше с{' '}
+          <span className="underline decoration-[#9A41FE]/50 underline-offset-2">
+            аукционом второй цены
+          </span>
+        </p>
+      </div>
+
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[1240px] table-fixed text-left text-sm">
+        <table className="w-full min-w-[1420px] table-fixed text-left text-sm">
+          <colgroup>
+            <col className="w-[30%]" />
+            <col className="w-[14%]" />
+            {showDailyLimit ? <col className="w-[12%]" /> : null}
+            <col className="w-[12%]" />
+            {isZones ? (
+              <>
+                <col className="w-[18%]" />
+                <col className="w-[14%]" />
+              </>
+            ) : (
+              <col className="w-[18%]" />
+            )}
+          </colgroup>
           <thead>
             <tr className="border-b border-gray-100 text-[13px] font-semibold text-gray-700">
-              <th className={`${isZones ? 'w-[20%]' : 'w-[22%]'} px-2 py-3 font-semibold`}>
+              <th className="px-2 py-3 font-semibold">
                 <div className="flex items-center gap-2.5">
                   <Checkbox
                     checked={allSelected}
@@ -593,52 +514,21 @@ export function MassCreationIsland({
                     onChange={(e) => onToggleSelectAll(pageIds, e.target.checked)}
                     className="h-4 w-4 text-purple-600"
                   />
-                  <span>Товар</span>
+                  <span>Товар (кампания)</span>
                 </div>
               </th>
-              <th
-                className={`${
-                  isChipsBudget ? (isZones ? 'w-[16%]' : 'w-[18%]') : isZones ? 'w-[18%]' : 'w-[22%]'
-                } px-2 py-3 font-semibold`}
-              >
-                Название кампании
-              </th>
-              {!isChipsBudget ? (
-                <th className="w-[9%] px-2 py-3 text-right font-semibold">Автопополнение</th>
+              <th className="px-2 py-3 font-semibold">Бюджет</th>
+              {showDailyLimit ? (
+                <th className="px-2 py-3 font-semibold">Дневной лимит</th>
               ) : null}
-              {isClassicBudget ? (
-                <>
-                  <th className="w-[12%] px-2 py-3 text-right font-semibold">Пополнить промобонусами</th>
-                  <th className="w-[13%] px-2 py-3 font-semibold">
-                    <span className="block w-[146px] text-right">
-                      {showDailyLimit ? 'Бюджет и лимит' : 'Бюджет'}
-                    </span>
-                  </th>
-                </>
-              ) : (
-                <th
-                  className={`w-[22%] py-3 font-semibold ${
-                    isChipsBudget ? 'pl-8 pr-2 text-left' : 'px-2 text-right'
-                  }`}
-                >
-                  {isChipsBudget ? (
-                    <span className="block w-[280px] text-right">Бюджет</span>
-                  ) : (
-                    'Бюджет'
-                  )}
-                </th>
-              )}
+              <th className="px-2 py-3 font-semibold">Автобиддер</th>
               {isZones ? (
                 <>
-                  <th className={`${isChipsBudget ? 'w-[16%]' : 'w-[14%]'} px-2 py-3 font-semibold`}>
-                    Поиск
-                  </th>
-                  <th className={`${isChipsBudget ? 'w-[16%]' : 'w-[14%]'} px-2 py-3 font-semibold`}>
-                    Рекомендации
-                  </th>
+                  <th className="px-2 py-3 font-semibold">Поиск</th>
+                  <th className="px-2 py-3 font-semibold">Рекомендации</th>
                 </>
               ) : (
-                <th className="w-[22%] px-2 py-3 font-semibold">Ставка</th>
+                <th className="px-2 py-3 font-semibold">Ставка</th>
               )}
             </tr>
           </thead>
@@ -647,148 +537,211 @@ export function MassCreationIsland({
               const searchOn = row.searchBid != null;
               const recsOn = row.recommendationsBid != null;
               const stockLeft = rowIndex === 0 ? 0 : stockLeftForRow(row);
+              const bidderSetup = autobidderSetup[row.id];
+              const bidderLabel = autobidderCellLabel(bidderSetup);
+              const showDiscount = rowIndex === 1 || rowIndex === 3;
+              const showConflict = rowIndex === 2;
+              const hasDynamicRules =
+                bidderSetup?.mode === 'profit' ||
+                (advancedSettings.autoIncreaseEnabled &&
+                  dailyLimitCampaign?.id === row.id) ||
+                (row.dailyLimit != null &&
+                  row.dailyLimit > 0 &&
+                  (rowIndex === 1 || rowIndex === 4));
+
               return (
                 <tr key={row.id} className="align-top">
                   <td className="px-2 py-3.5">
-                    <div className="flex items-start gap-2.5">
+                    <div className="flex items-start gap-3">
                       <Checkbox
                         checked={selectedIds.includes(row.id)}
                         onChange={() => onToggleSelect(row.id)}
-                        className="mt-1 h-4 w-4 text-purple-600"
+                        className="mt-7 h-4 w-4 text-purple-600"
                       />
                       <img
                         src={row.imageUrl}
                         alt=""
-                        className="h-10 w-10 shrink-0 rounded-lg object-cover bg-gray-100"
+                        className="h-[72px] w-[52px] shrink-0 rounded-lg bg-gray-100 object-cover"
                       />
-                      <div className="min-w-0">
-                        <div className="truncate text-[13px] font-semibold leading-snug text-gray-900">
+                      <div className="min-w-0 flex-1">
+                        <input
+                          type="text"
+                          value={row.campaignName}
+                          onChange={(e) => onUpdate(row.id, { campaignName: e.target.value })}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full cursor-text truncate rounded-[10px] border border-[#D8D8D8] bg-white px-2.5 py-1.5 text-[13px] font-semibold leading-snug text-gray-900 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                          aria-label="Название кампании"
+                        />
+                        <div className="mt-1 truncate text-[13px] leading-5 text-gray-500">
                           {row.productName}
                         </div>
-                        <div className="mt-0.5 text-xs text-gray-400">
-                          Артикул: {row.nmId}
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px]">
+                          <MassCreationStockQty row={row} stockLeft={stockLeft} />
+                          <span className="tabular-nums text-gray-500">{row.nmId}</span>
+                          {showDiscount ? (
+                            <span className="inline-flex rounded-md bg-[#E8F5E9] px-1.5 py-0.5 text-[11px] font-semibold text-[#2E7D32]">
+                              –30%
+                            </span>
+                          ) : null}
                         </div>
-                        <MassCreationStockQty row={row} stockLeft={stockLeft} />
+                        {showConflict ? (
+                          <div className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-[#E11D48]">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                            Конфликт кампаний
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </td>
 
                   <td className="px-2 py-3.5">
-                    <input
-                      type="text"
-                      value={row.campaignName}
-                      onChange={(e) => onUpdate(row.id, { campaignName: e.target.value })}
-                      className={inputClass}
+                    <BudgetSettingsCard
+                      row={row}
+                      onOpenOneTime={() => onOpenBudgetSettings(row, 'budget')}
+                      onOpenAutoRefill={() => onOpenBudgetSettings(row, 'autorefill')}
                     />
                   </td>
 
-                  {!isChipsBudget ? (
+                  {showDailyLimit ? (
                     <td className="px-2 py-3.5">
-                      <div className="flex items-center justify-end gap-2">
-                        <ToggleSwitch
-                          checked={row.autoReplenishment}
-                          onChange={(checked) => {
-                            if (!checked) {
-                              onUpdate(row.id, { autoReplenishment: false });
-                              return;
-                            }
-                            onOpenAutoRefill(row);
-                          }}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => onOpenAutoRefill(row)}
-                          className="text-gray-400 transition-colors hover:text-purple-600"
-                          aria-label="Настройки автопополнения"
-                        >
-                          <Settings className="h-4 w-4" />
-                        </button>
-                      </div>
+                      <DailyLimitSettingsCard
+                        row={row}
+                        showDailyLimit={showDailyLimit}
+                        hasDynamicRules={Boolean(hasDynamicRules && row.dailyLimit)}
+                        onOpen={() => setDailyLimitCampaign(row)}
+                      />
                     </td>
                   ) : null}
 
-                  {isClassicBudget ? (
-                    <>
-                      <td className="px-2 py-3.5">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="flex h-8 min-w-[108px] items-center justify-end">
-                            {row.usePromoBonuses ? (
-                              <button
-                                type="button"
-                                onClick={() => onOpenBonusBudget(row)}
-                                className="inline-flex items-center rounded-lg px-1.5 py-1 text-sm font-medium tabular-nums text-[#3B82F6] transition-colors hover:bg-gray-50"
-                              >
-                                <span>
-                                  {`${formatRub(bonusAmountOf(row))} B`}
-                                </span>
-                              </button>
-                            ) : null}
-                          </div>
-                          <ToggleSwitch
-                            checked={row.usePromoBonuses}
-                            onChange={(checked) => setPromoOn(row, checked)}
-                          />
-                        </div>
-                      </td>
-                      <td className="px-2 py-3.5">
-                        <div className="relative w-[146px]">
-                          <input
-                            type="text"
-                            value={budgetInputValue(row)}
-                            onChange={(e) => handleBudgetDraftChange(row.id, e.target.value)}
-                            onBlur={(e) => commitBudgetInput(row, e.target.value)}
-                            className={valueInputClass}
-                          />
-                        </div>
-                        {limitControl(row)}
-                      </td>
-                    </>
-                  ) : (
-                    <td className={isChipsBudget ? 'pl-8 pr-2 py-3.5' : 'px-2 py-3.5'}>
-                      <div className={`flex ${isChipsBudget ? 'justify-start' : 'justify-end'}`}>
-                        {renderUnifiedBudgetCell(row)}
-                      </div>
-                    </td>
-                  )}
+                  <td className="px-2 py-3.5">
+                    {bidderLabel ? (
+                      <button
+                        type="button"
+                        className="text-left text-sm font-medium leading-snug text-blue-600 hover:text-blue-700 hover:underline"
+                        onClick={() => {
+                          hideChipTip();
+                          setAutobidderRowId(row.id);
+                        }}
+                      >
+                        {bidderLabel}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={isZones && !searchOn}
+                        title={
+                          isZones && !searchOn
+                            ? 'Автобиддер настраивается только для поиска'
+                            : undefined
+                        }
+                        className={`h-9 rounded-lg px-4 text-sm font-medium ${
+                          isZones && !searchOn
+                            ? 'cursor-not-allowed bg-gray-100 text-gray-400'
+                            : 'bg-[#F2F2F7] text-gray-800 hover:bg-[#e8e8ed]'
+                        }`}
+                        onClick={() => {
+                          hideChipTip();
+                          setAutobidderRowId(row.id);
+                        }}
+                      >
+                        Настроить
+                      </button>
+                    )}
+                  </td>
 
                   {isZones ? (
                     <>
                       <td className="px-2 py-3.5">
-                        <div className="flex items-center gap-2">
-                          <ToggleSwitch
-                            checked={searchOn}
-                            onChange={(checked) =>
-                              onUpdate(row.id, {
-                                searchBid: checked
-                                  ? row.searchBid ?? defaultZoneBid
-                                  : undefined,
-                              })
-                            }
-                          />
-                          <div className="relative w-[146px] shrink-0">
-                            <input
-                              type="text"
-                              disabled={!searchOn}
-                              value={
-                                searchOn && row.searchBid != null
-                                  ? `${formatRub(row.searchBid)} ₽`
-                                  : ''
-                              }
-                              onChange={(e) => {
-                                const parsed = parseRubInput(e.target.value);
-                                if (parsed != null) onUpdate(row.id, { searchBid: parsed });
+                        <div className="flex items-start gap-2">
+                          <div className={searchOn ? (bidderSetup?.mode === 'positions' ? 'pt-2' : 'pt-3') : undefined}>
+                            <ToggleSwitch
+                              checked={searchOn}
+                              onChange={(checked) => {
+                                onUpdate(row.id, {
+                                  searchBid: checked
+                                    ? row.searchBid ?? defaultZoneBid
+                                    : undefined,
+                                });
+                                if (!checked) {
+                                  hideChipTip();
+                                  setAutobidderSetup((prev) => {
+                                    if (!(row.id in prev)) return prev;
+                                    const { [row.id]: _removed, ...rest } = prev;
+                                    return rest;
+                                  });
+                                  setAutobidderRowId((current) =>
+                                    current === row.id ? null : current,
+                                  );
+                                }
                               }}
-                              className={`${valueInputClass} pr-8 text-right ${
-                                !searchOn
-                                  ? 'cursor-not-allowed bg-gray-50 text-gray-400'
-                                  : ''
-                              }`}
                             />
-                            <BarChartIcon className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
                           </div>
+                          {searchOn ? (
+                            bidderSetup?.mode === 'positions' ? (
+                              <div
+                                className="flex h-9 items-center text-sm font-medium tabular-nums text-gray-900"
+                                title="Диапазон ставок"
+                              >
+                                {(() => {
+                                  const bids = resolveBidChasingDemoBids(bidderSetup.position);
+                                  return `${formatBidChasingClusterBidRangeLabel(
+                                    bids.demoBidMinRub,
+                                    bids.demoBidMaxRub,
+                                  )} ₽`;
+                                })()}
+                              </div>
+                            ) : (
+                              <SearchBidForecastField
+                                value={`${formatRub(
+                                  row.searchBid ?? bidderSetup?.maxBid ?? defaultZoneBid,
+                                )} ₽`}
+                                disabled={false}
+                                readOnly={Boolean(bidderLabel)}
+                                filled={
+                                  (bidderSetup?.mode === 'positions'
+                                    ? searchBidForecastMetaForPosition(bidderSetup.position)
+                                    : searchBidForecastMetaForPosition(
+                                        presetBidChasingPosition('11-34'),
+                                      )
+                                  ).filled
+                                }
+                                caption={`Ставка за ${
+                                  (bidderSetup?.mode === 'positions'
+                                    ? searchBidForecastMetaForPosition(bidderSetup.position)
+                                    : searchBidForecastMetaForPosition(
+                                        presetBidChasingPosition('11-34'),
+                                      )
+                                  ).label
+                                }`}
+                                onChange={(raw) => {
+                                  const parsed = parseRubInput(raw);
+                                  if (parsed != null) onUpdate(row.id, { searchBid: parsed });
+                                }}
+                                onBarsClick={() => {
+                                  hideChipTip();
+                                  setAutobidderRowId(row.id);
+                                }}
+                                onTipEnter={
+                                  bidderLabel
+                                    ? (e) => {
+                                        clearChipTipTimer();
+                                        chipTipTimerRef.current = window.setTimeout(() => {
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setChipTip({
+                                            text: 'Ставку регулирует алгоритм',
+                                            left: rect.left + rect.width / 2,
+                                            top: rect.bottom + 10,
+                                          });
+                                        }, CHIP_TIP_DELAY_MS);
+                                      }
+                                    : undefined
+                                }
+                                onTipLeave={bidderLabel ? hideChipTip : undefined}
+                              />
+                            )
+                          ) : null}
                         </div>
                       </td>
-
                       <td className="px-2 py-3.5">
                         <div className="flex items-center gap-2">
                           <ToggleSwitch
@@ -814,10 +767,10 @@ export function MassCreationIsland({
                               if (parsed != null)
                                 onUpdate(row.id, { recommendationsBid: parsed });
                             }}
-                            className={`${valueInputClass} text-right ${
+                            className={`h-[38px] w-[120px] shrink-0 rounded-[10px] border border-[#D8D8D8] bg-white px-3 text-right text-sm font-medium tabular-nums outline-none focus:border-purple-500 ${
                               !recsOn
-                                ? 'cursor-not-allowed bg-gray-50 text-gray-400'
-                                : ''
+                                ? 'cursor-not-allowed bg-[#F7F7F8] text-gray-400'
+                                : 'text-gray-900'
                             }`}
                           />
                         </div>
@@ -832,7 +785,7 @@ export function MassCreationIsland({
                           const parsed = parseRubInput(e.target.value);
                           if (parsed != null) onUpdate(row.id, { bid: parsed });
                         }}
-                        className={`${valueInputClass} text-right`}
+                        className="h-[38px] w-[140px] rounded-[10px] border border-[#D8D8D8] bg-white px-3 text-right text-sm font-medium tabular-nums text-gray-900 outline-none focus:border-purple-500"
                       />
                     </td>
                   )}
@@ -843,20 +796,83 @@ export function MassCreationIsland({
         </table>
       </div>
 
-      <div className="flex flex-wrap items-end gap-10 pt-2">
+      <div className="flex flex-wrap items-end gap-x-8 gap-y-2 border-t border-gray-100 pt-4">
         <div>
-          <div className="text-sm font-medium text-gray-900">Единый счет</div>
-          <div className="mt-0.5 text-xl font-bold tabular-nums text-gray-900">
-            {formatRub(unifiedAccountTotal)} ₽
-          </div>
+          <div className="text-xs font-medium text-gray-500">Промобонусы</div>
+          {(totalPromoSpend || promoBonusesTotal) > 0 ? (
+            <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#2E7D32]">
+              –{formatRub(totalPromoSpend || promoBonusesTotal)} B
+            </div>
+          ) : (
+            <div className="mt-0.5 text-sm font-semibold tabular-nums text-gray-400">
+              0 B
+            </div>
+          )}
         </div>
         <div>
-          <div className="text-sm font-medium text-gray-400">Промобонусы</div>
-          <div className="mt-0.5 text-xl font-bold tabular-nums text-gray-400">
-            {formatRub(promoBonusesTotal)} ₽
-          </div>
+          <div className="text-xs font-medium text-gray-500">С единого счета</div>
+          {totalPromoSpend > 0 ? (
+            <div className="mt-0.5 flex items-baseline gap-1.5 text-sm">
+              <span className="tabular-nums text-gray-400 line-through">
+                {formatRub(totalBudget || unifiedAccountTotal)} ₽
+              </span>
+              <span className="font-bold tabular-nums text-gray-900">
+                {formatRub(unifiedCharge || Math.max(0, unifiedAccountTotal - promoBonusesTotal))} ₽
+              </span>
+            </div>
+          ) : (
+            <div className="mt-0.5 text-sm font-bold tabular-nums text-gray-900">
+              {formatRub(unifiedCharge || unifiedAccountTotal)} ₽
+            </div>
+          )}
         </div>
       </div>
+
+      {autobidderCampaign ? (
+        <AutoStrategiesModal
+          key={autobidderCampaign.id}
+          isOpen
+          onClose={() => setAutobidderRowId(null)}
+          bidChasing={{
+            initialPosition:
+              autobidderSetup[autobidderCampaign.id]?.position ?? DEFAULT_BID_CHASING_POSITION,
+            initialMaxBid:
+              autobidderSetup[autobidderCampaign.id]?.maxBid ??
+              autobidderCampaign.searchBid ??
+              defaultZoneBid,
+            isDailyLimitEnabled: (autobidderCampaign.dailyLimit ?? 0) > 0,
+            savedDailyLimitRub: autobidderCampaign.dailyLimit ?? 0,
+            otherMaxProductBidRub: Math.max(
+              autobidderCampaign.searchBid ?? 0,
+              autobidderCampaign.recommendationsBid ?? 0,
+              autobidderCampaign.bid ?? 0,
+            ),
+            isBidChasingEnabled: autobidderSetup[autobidderCampaign.id]?.mode === 'positions',
+            onDisable: () => {
+              setAutobidderSetup((prev) => {
+                const next = { ...prev };
+                delete next[autobidderCampaign.id];
+                return next;
+              });
+              setAutobidderRowId(null);
+            },
+            onApply: ({ position, maxBid }) => {
+              setAutobidderSetup((prev) => ({
+                ...prev,
+                [autobidderCampaign.id]: {
+                  mode: 'positions',
+                  settings:
+                    prev[autobidderCampaign.id]?.settings ??
+                    createDefaultAdvancedDailyLimitSettings(),
+                  position,
+                  maxBid,
+                },
+              }));
+              setAutobidderRowId(null);
+            },
+          }}
+        />
+      ) : null}
 
       {dailyLimitCampaign ? (
         <AdvancedDailyLimitModal
@@ -886,18 +902,36 @@ export function MassCreationIsland({
               setDailyLimitCampaign(null);
               return;
             }
+            const typedLimit = Number.parseFloat(dailyLimitValue);
+            const savedLimit = Number.parseFloat(savedDailyLimit);
+            const liveLimit =
+              Number.isFinite(typedLimit) && typedLimit > 0
+                ? typedLimit
+                : Number.isFinite(savedLimit) && savedLimit > 0
+                  ? savedLimit
+                  : null;
             const limitFromSettings =
               settings.strategyId === 'maxSpend' &&
               settings.maxSpendLimitRub != null &&
               settings.maxSpendLimitRub > 0
                 ? settings.maxSpendLimitRub
-                : Number.parseFloat(savedDailyLimit) ||
-                  Number.parseFloat(dailyLimitValue) ||
-                  null;
+                : liveLimit;
             onUpdate(dailyLimitCampaign.id, {
               dailyLimit:
                 limitFromSettings != null && limitFromSettings > 0 ? limitFromSettings : null,
             });
+            if (settings.autoIncreaseEnabled) {
+              setAutobidderSetup((prev) => ({
+                ...prev,
+                [dailyLimitCampaign.id]: {
+                  mode: 'profit',
+                  settings,
+                  position:
+                    prev[dailyLimitCampaign.id]?.position ?? DEFAULT_BID_CHASING_POSITION,
+                  maxBid: prev[dailyLimitCampaign.id]?.maxBid ?? maxBidForLimit,
+                },
+              }));
+            }
             setDailyLimitCampaign(null);
           }}
         />
@@ -907,7 +941,7 @@ export function MassCreationIsland({
         ? createPortal(
             <div
               role="tooltip"
-              className="pointer-events-none fixed z-[9999] w-max max-w-[260px] rounded-lg bg-gray-900 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white shadow-lg"
+              className="pointer-events-none fixed z-[9999] w-max max-w-[350px] rounded-lg bg-gray-900 px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug text-white shadow-lg"
               style={{
                 left: chipTip.left,
                 top: chipTip.top,

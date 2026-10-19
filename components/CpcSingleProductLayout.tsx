@@ -519,7 +519,9 @@ export function CpcSingleProductStrategyCard({
     onDisplayZonesChange({ [key]: checked });
   };
 
-  const positionRangeLabel = POSITION_RANGE_LABEL[bidChasingPosition];
+  const positionRangeLabel = isBidChasingEnabled
+    ? bidChasingPositionLabel.replace(/\sпозиции в поиске$/, '').replace(/\sпозиции$/, '')
+    : POSITION_RANGE_LABEL[bidChasingPosition];
 
   const bidInputClass =
     'h-9 w-full min-w-[5.5rem] rounded-lg border border-gray-200 bg-white px-2.5 pr-7 text-sm font-semibold tabular-nums text-gray-900 outline-none focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]';

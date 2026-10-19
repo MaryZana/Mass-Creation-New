@@ -45,14 +45,26 @@ import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DynamicDailyLimitMark } from './DynamicDailyLimitMark';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
 import { BudgetRangeConceptBlock, SpendHistoryModal, BUDGET_CLICKS_SERIES } from './BudgetRangeConceptBlock';
-import { ProductBidField, PRODUCT_BID_INPUT_WIDTH_CLASS } from './ProductBidField';
-import { SearchBidPositionHint } from './SearchBidPositionHint';
-import { BidHistogramButton, SearchBidPositionPicker } from './SearchBidPositionPicker';
+import { SearchBidPositionPicker } from './SearchBidPositionPicker';
+import { SearchBidForecastField } from './SearchBidForecastField';
 import {
   BID_CHASING_POSITION_OPTIONS,
-  BID_CHASING_TARGET_AVG_POSITION,
+  DEFAULT_BID_CHASING_POSITION,
+  MAX_CUSTOM_BID_CHASING_SEARCH_POSITION,
+  MIN_BID_CHASING_SEARCH_POSITION,
+  MIN_CUSTOM_BID_CHASING_SPAN,
   bidChasingPositionOption,
+  bidChasingTargetAvgPosition,
+  formatBidChasingClusterBidRangeLabel,
+  formatBidChasingPositionLabel,
+  formatBidChasingPositionLinkLabel,
   isBidChasingHoldOfferedForChartRange,
+  isValidCustomBidChasingRange,
+  nearestPresetForBidChasingPosition,
+  presetBidChasingPosition,
+  resolveBidChasingDemoBids,
+  searchBidForecastMetaForPosition,
+  type BidChasingPosition,
   type BidChasingRange,
 } from '../utils/cpcBidChasingPositionTiers';
 import { useProfile, type RepeatLaunchPreset } from './ProfileContext';
@@ -100,11 +112,31 @@ const formatCurrency = (num: number | null | undefined): string => {
   return `${num.toLocaleString('ru-RU')} ₽`;
 };
 
+const BUDGET_REMAINDER_BONUS_RUB = 400_000;
+const BUDGET_REMAINDER_BUFFER_RUB = 120_000;
+
+function budgetRemainderSources(total: number) {
+  const safe = Math.max(0, total);
+  const bonusAndBuffer = BUDGET_REMAINDER_BONUS_RUB + BUDGET_REMAINDER_BUFFER_RUB;
+  if (safe >= bonusAndBuffer) {
+    return {
+      account: safe - bonusAndBuffer,
+      bonus: BUDGET_REMAINDER_BONUS_RUB,
+      buffer: BUDGET_REMAINDER_BUFFER_RUB,
+    };
+  }
+  if (safe === 0) return { account: 0, bonus: 0, buffer: 0 };
+  const bonus = Math.round((safe * BUDGET_REMAINDER_BONUS_RUB) / bonusAndBuffer);
+  const buffer = Math.min(safe - bonus, Math.round((safe * BUDGET_REMAINDER_BUFFER_RUB) / bonusAndBuffer));
+  return { account: Math.max(0, safe - bonus - buffer), bonus, buffer };
+}
+
 const parseDisplayValue = (str: string): number => {
   return Number(String(str).replace(/\s/g, '').replace(/,/g, '.'));
 };
 
 const DEMO_CPC_PRODUCT_NM = 791194805;
+const DEMO_CPC_PRODUCT_2_NM = 215685549;
 
 const DEMO_CPC_PRODUCT = {
   nmId: DEMO_CPC_PRODUCT_NM,
@@ -114,6 +146,33 @@ const DEMO_CPC_PRODUCT = {
   imageUrl: '',
   category: 'Футболки',
 };
+
+type DemoCpcCampaignProduct = typeof DEMO_CPC_PRODUCT;
+
+function getDemoCpcCampaignProduct(nmId: number): DemoCpcCampaignProduct {
+  if (nmId === DEMO_CPC_PRODUCT_NM) return DEMO_CPC_PRODUCT;
+  return {
+    nmId: DEMO_CPC_PRODUCT_2_NM,
+    productName: 'Фото',
+    brand: 'Wildberries',
+    articleSeller: '215685549',
+    imageUrl: '',
+    category: 'Карточки',
+  };
+}
+
+function formatSearchBidForecastDisplay(raw: string): string {
+  const parsed = parseDisplayValue(raw);
+  if (raw === '' || Number.isNaN(parsed)) return '';
+  const formatted = parsed.toLocaleString('ru-RU', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+  return `${formatted} ₽`;
+}
+
+const RECOMMENDATIONS_BID_INPUT_CLASS =
+  'box-border h-[38px] w-[140px] rounded-[10px] border border-[#D8D8D8] bg-white px-3 text-right text-sm font-medium tabular-nums text-gray-900 outline-none focus:border-purple-500';
 
 const PRODUCT_THUMB_CLASS =
   'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
@@ -197,19 +256,6 @@ function HeaderHint({ label, className }: { label: string; className?: string })
       <HelpCircle className="h-3.5 w-3.5 text-gray-300" aria-hidden />
     </span>
   );
-}
-
-function formatRecommendedBidRub(value: number): string {
-  return value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function formatApproxDailyBudgetRub(bidRub: number, clicksPerDay: number): string {
-  const total = bidRub * clicksPerDay;
-  return total.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
-}
-
-function formatApproxClicksPerDay(clicks: number): string {
-  return clicks.toLocaleString('ru-RU');
 }
 
 const CAMPAIGN_PAGE_VIDEO_SRC = '/videos/help-instruction-demo.mp4';
@@ -358,24 +404,6 @@ function CampaignHistoryLink() {
           </div>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-/** Ставка в поиске при включённом преследовании — только отображение, без поля ввода */
-function ProductBidReadOnly({ value }: { value: string }) {
-  const parsed = parseDisplayValue(value);
-  const display =
-    value === '' || Number.isNaN(parsed)
-      ? '—'
-      : formatForDisplay(parsed);
-  return (
-    <div
-      className={`inline-flex h-9 ${PRODUCT_BID_INPUT_WIDTH_CLASS} items-center justify-end gap-0.5 px-2 text-sm tabular-nums text-gray-900`}
-      aria-label={`Ставка в поиске ${display === '—' ? 'не задана' : `${display} ₽`}`}
-    >
-      <span>{display}</span>
-      <span className="shrink-0 text-gray-400">₽</span>
     </div>
   );
 }
@@ -2470,27 +2498,41 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [isCarryoverTooltipVisible, setIsCarryoverTooltipVisible] = useState(false);
   const [isBonusSpendHistoryOpen, setIsBonusSpendHistoryOpen] = useState(false);
   const productsSectionRef = useRef<HTMLElement>(null);
-  const [campaignProductNmIds, setCampaignProductNmIds] = useState([DEMO_CPC_PRODUCT_NM]);
+  const [campaignProductNmIds, setCampaignProductNmIds] = useState([
+    DEMO_CPC_PRODUCT_NM,
+    DEMO_CPC_PRODUCT_2_NM,
+  ]);
   const canRemoveProductFromCampaign = campaignProductNmIds.length > 1;
-  const productKey = String(DEMO_CPC_PRODUCT_NM);
+  const productKey = String(campaignProductNmIds[0] ?? DEMO_CPC_PRODUCT_NM);
   const [productSearchBids, setProductSearchBids] = useState<Record<string, ProductBidEntry>>({
-    [productKey]: { draft: '17.9', saved: '17.9' },
+    [String(DEMO_CPC_PRODUCT_NM)]: { draft: '1', saved: '1' },
+    [String(DEMO_CPC_PRODUCT_2_NM)]: { draft: '6.84', saved: '6.84' },
   });
-  const [productRecommendationsBids, setProductRecommendationsBids] = useState<Record<string, ProductBidEntry>>({
-    [productKey]: { draft: '7.9', saved: '7.9' },
+  const [productRecommendationsBids, setProductRecommendationsBids] = useState<
+    Record<string, ProductBidEntry>
+  >({
+    [String(DEMO_CPC_PRODUCT_NM)]: { draft: '1', saved: '1' },
+    [String(DEMO_CPC_PRODUCT_2_NM)]: { draft: '2.21', saved: '2.21' },
   });
-  const [isProductActionsMenuOpen, setIsProductActionsMenuOpen] = useState(false);
+  const [productSearchTier, setProductSearchTier] = useState<Record<string, BidChasingRange>>({
+    [String(DEMO_CPC_PRODUCT_NM)]: '1-2',
+    [String(DEMO_CPC_PRODUCT_2_NM)]: '3-10',
+  });
+  const [productActionsMenuKey, setProductActionsMenuKey] = useState<string | null>(null);
   const [isRankingFactorsOpen, setIsRankingFactorsOpen] = useState(false);
   const productActionsMenuRef = useRef<HTMLDivElement>(null);
-  const [isSearchBidPickerOpen, setIsSearchBidPickerOpen] = useState(false);
+  const [searchBidPickerProductKey, setSearchBidPickerProductKey] = useState<string | null>(null);
   const searchBidPickerRef = useRef<HTMLDivElement>(null);
   const searchBidPickerPopoverRef = useRef<HTMLDivElement>(null);
   const [isBidChasingEnabled, setIsBidChasingEnabled] = useState(false);
-  const [autoStrategiesModal, setAutoStrategiesModal] = useState<{
-    tab: 'positions' | 'profit';
-  } | null>(null);
-  const openAutoStrategies = (tab: 'positions' | 'profit' = 'profit') => setAutoStrategiesModal({ tab });
-  const closeAutoStrategies = () => setAutoStrategiesModal(null);
+  const [bidChasingProductKey, setBidChasingProductKey] = useState<string | null>(null);
+  const [autobidderModalProductKey, setAutobidderModalProductKey] = useState(productKey);
+  const [isAutoStrategiesOpen, setIsAutoStrategiesOpen] = useState(false);
+  const openAutoStrategiesForProduct = useCallback((pk: string) => {
+    setAutobidderModalProductKey(pk);
+    setIsAutoStrategiesOpen(true);
+  }, []);
+  const closeAutoStrategies = () => setIsAutoStrategiesOpen(false);
   const [isAdvancedDailyLimitModalOpen, setIsAdvancedDailyLimitModalOpen] = useState(false);
   const [isAutomationDailyLimitModalOpen, setIsAutomationDailyLimitModalOpen] = useState(false);
   const [isBidChasingSetupModalOpen, setIsBidChasingSetupModalOpen] = useState(false);
@@ -2551,7 +2593,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       ] as DailyLimitIncreaseRule[],
     };
   });
-  const [bidChasingPosition, setBidChasingPosition] = useState<'1-2' | '3-10' | '11-34'>('1-2');
+  const [bidChasingPosition, setBidChasingPosition] = useState<BidChasingPosition>(
+    DEFAULT_BID_CHASING_POSITION,
+  );
   const [bidChasingMaxBid, setBidChasingMaxBid] = useState(11.88);
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
   const [bidLimitBudgetConflictModal, setBidLimitBudgetConflictModal] = useState<
@@ -2565,7 +2609,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       }
     | {
         kind: 'bidChasing';
-        position: '1-2' | '3-10' | '11-34';
+        position: BidChasingPosition;
         maxBid: number;
         shortfall: number;
       }
@@ -2574,13 +2618,15 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [dailyLimitBidRaiseModal, setDailyLimitBidRaiseModal] = useState<
     | {
         kind: 'productBid';
+        productKey: string;
         zone: 'search' | 'recommendations';
         attemptedBid: number;
         recommendedLimit: number;
       }
     | {
         kind: 'bidChasing';
-        position: '1-2' | '3-10' | '11-34';
+        productKey: string;
+        position: BidChasingPosition;
         maxBid: number;
         recommendedLimit: number;
       }
@@ -2598,14 +2644,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     return values.length ? Math.max(...values) : 0;
   }, [productSearchBids, productRecommendationsBids, isBidChasingEnabled, bidChasingMaxBid]);
 
-  const bidChasingPositionLinkLabel = useMemo(() => {
-    const labels: Record<'1-2' | '3-10' | '11-34', string> = {
-      '1-2': '1–2',
-      '3-10': '3–10',
-      '11-34': '11–34',
-    };
-    return `${labels[bidChasingPosition]} позиции в поиске`;
-  }, [bidChasingPosition]);
+  const bidChasingPositionLinkLabel = useMemo(
+    () => formatBidChasingPositionLinkLabel(bidChasingPosition),
+    [bidChasingPosition],
+  );
 
   const recommendedDailyLimitForBids = useMemo(
     () => minDailyLimitForMaxBid(maxSavedProductBidRub),
@@ -2619,10 +2661,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 
   const dailyLimitTrafficReference = useMemo(() => {
     if (isBidChasingEnabled) {
-      const tier = bidChasingPositionOption(bidChasingPosition);
+      const bids = resolveBidChasingDemoBids(bidChasingPosition);
       return {
-        cpcBidRub: tier.demoBidRub,
-        targetAvgPosition: BID_CHASING_TARGET_AVG_POSITION[bidChasingPosition],
+        cpcBidRub: bids.demoBidRub,
+        targetAvgPosition: bidChasingTargetAvgPosition(bidChasingPosition),
       };
     }
     const searchBid = parseDisplayValue(productSearchBids[productKey]?.saved ?? '0');
@@ -2642,7 +2684,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     const searchBid = String(searchTier.demoBidRub);
     setProductSearchBids({ [productKey]: { draft: searchBid, saved: searchBid } });
     setProductRecommendationsBids({ [productKey]: { draft: '30', saved: '30' } });
-    setBidChasingPosition('3-10');
+    setBidChasingPosition(presetBidChasingPosition('3-10'));
     setIsDailyLimitEnabled(true);
     setDailyLimitValue('2000');
     setSavedDailyLimit('2000');
@@ -2653,7 +2695,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     if (!isCpmCampaign) return;
     setProductSearchBids({ [productKey]: { draft: '400', saved: '400' } });
     setProductRecommendationsBids({ [productKey]: { draft: '300', saved: '300' } });
-    setBidChasingPosition('3-10');
+    setBidChasingPosition(presetBidChasingPosition('3-10'));
     setIsDailyLimitEnabled(false);
     setDailyLimitValue('');
     setSavedDailyLimit('');
@@ -2702,7 +2744,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   );
 
   const applyBidChasingWithDailyLimitDisabled = useCallback(
-    (position: '1-2' | '3-10' | '11-34', maxBid: number) => {
+    (position: BidChasingPosition, maxBid: number, pk: string) => {
       setIsDailyLimitEnabled(false);
       setDailyLimitValue('');
       setSavedDailyLimit('');
@@ -2714,6 +2756,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       }
       setBidChasingPosition(position);
       setBidChasingMaxBid(maxBid);
+      setBidChasingProductKey(pk);
+      setProductSearchTier((prev) => ({
+        ...prev,
+        [pk]: nearestPresetForBidChasingPosition(position),
+      }));
       setIsBidChasingEnabled(true);
       setToastMessage('Преследование ставки настроено');
       setToastIsError(false);
@@ -2723,9 +2770,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   );
 
   const commitProductBid = useCallback(
-    (zone: 'search' | 'recommendations', parsed: number) => {
+    (zone: 'search' | 'recommendations', parsed: number, pk: string) => {
       const bids = zone === 'search' ? productSearchBids : productRecommendationsBids;
-      const entry = bids[productKey];
+      const entry = bids[pk];
       if (!entry) return;
       let finalBid = parsed;
       let cpmDidRound = false;
@@ -2741,7 +2788,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
         setter((prev) => ({
           ...prev,
-          [productKey]: { ...entry, draft: entry.saved },
+          [pk]: { ...entry, draft: entry.saved },
         }));
         setToastMessage(`Максимальная ставка в CPC — ${formatForDisplay(CPC_MAX_BID_RUB)} ₽`);
         setToastIsError(true);
@@ -2752,7 +2799,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
       setter((prev) => ({
         ...prev,
-        [productKey]: { draft: bidStr, saved: bidStr },
+        [pk]: { draft: bidStr, saved: bidStr },
       }));
       if (!isCpmCampaign || !cpmDidRound) {
         setToastMessage('Ставка изменена');
@@ -2760,19 +2807,26 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         setShowToast(true);
       }
     },
-    [isCpmCampaign, productKey, productSearchBids, productRecommendationsBids, showCpmBidRoundedAlert],
+    [isCpmCampaign, productSearchBids, productRecommendationsBids, showCpmBidRoundedAlert],
   );
 
   const maxBidRubAfterProductBid = useCallback(
-    (zone: 'search' | 'recommendations', parsed: number) => {
+    (zone: 'search' | 'recommendations', parsed: number, pk: string) => {
       const otherSaved =
         zone === 'search'
-          ? parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0')
-          : parseDisplayValue(productSearchBids[productKey]?.saved ?? '0');
-      const chasingCeiling = isBidChasingEnabled ? bidChasingMaxBid : 0;
+          ? parseDisplayValue(productRecommendationsBids[pk]?.saved ?? '0')
+          : parseDisplayValue(productSearchBids[pk]?.saved ?? '0');
+      const chasingCeiling =
+        isBidChasingEnabled && bidChasingProductKey === pk ? bidChasingMaxBid : 0;
       return Math.max(parsed, otherSaved, chasingCeiling);
     },
-    [productKey, productSearchBids, productRecommendationsBids, isBidChasingEnabled, bidChasingMaxBid],
+    [
+      productSearchBids,
+      productRecommendationsBids,
+      isBidChasingEnabled,
+      bidChasingProductKey,
+      bidChasingMaxBid,
+    ],
   );
 
   const applySavedDailyLimitRub = useCallback(
@@ -2787,7 +2841,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           }
         | {
             kind: 'bidChasing';
-            position: '1-2' | '3-10' | '11-34';
+            position: BidChasingPosition;
             maxBid: number;
           },
     ) => {
@@ -2829,24 +2883,25 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   );
 
   const promptOrCommitProductBid = useCallback(
-    (zone: 'search' | 'recommendations', parsed: number) => {
+    (zone: 'search' | 'recommendations', parsed: number, pk: string) => {
       if (isCpmCampaign) {
-        commitProductBid(zone, parsed);
+        commitProductBid(zone, parsed, pk);
         return;
       }
-      const maxBid = maxBidRubAfterProductBid(zone, parsed);
+      const maxBid = maxBidRubAfterProductBid(zone, parsed, pk);
       if (
         shouldPromptRaiseDailyLimitForMaxBid(isDailyLimitEnabled, savedDailyLimitRub, maxBid)
       ) {
         setDailyLimitBidRaiseModal({
           kind: 'productBid',
+          productKey: pk,
           zone,
           attemptedBid: parsed,
           recommendedLimit: minDailyLimitForMaxBid(maxBid),
         });
         return;
       }
-      commitProductBid(zone, parsed);
+      commitProductBid(zone, parsed, pk);
     },
     [
       commitProductBid,
@@ -2858,9 +2913,14 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   );
 
   const applyBidChasingConfig = useCallback(
-    (position: '1-2' | '3-10' | '11-34', maxBid: number) => {
+    (position: BidChasingPosition, maxBid: number, pk: string) => {
       setBidChasingPosition(position);
       setBidChasingMaxBid(maxBid);
+      setBidChasingProductKey(pk);
+      setProductSearchTier((prev) => ({
+        ...prev,
+        [pk]: nearestPresetForBidChasingPosition(position),
+      }));
       setIsBidChasingEnabled(true);
       closeAutoStrategies();
       setToastMessage('Преследование ставки настроено');
@@ -2871,14 +2931,14 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   );
 
   const promptOrApplyBidChasing = useCallback(
-    (position: '1-2' | '3-10' | '11-34', maxBid: number) => {
+    (position: BidChasingPosition, maxBid: number, pk: string) => {
       if (isCpmCampaign) {
-        applyBidChasingConfig(position, maxBid);
+        applyBidChasingConfig(position, maxBid, pk);
         return;
       }
       const otherMax = Math.max(
-        parseDisplayValue(productSearchBids[productKey]?.saved ?? '0'),
-        parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0'),
+        parseDisplayValue(productSearchBids[pk]?.saved ?? '0'),
+        parseDisplayValue(productRecommendationsBids[pk]?.saved ?? '0'),
       );
       const effectiveMax = Math.max(maxBid, otherMax);
       if (
@@ -2887,19 +2947,19 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         closeAutoStrategies();
         setDailyLimitBidRaiseModal({
           kind: 'bidChasing',
+          productKey: pk,
           position,
           maxBid,
           recommendedLimit: minDailyLimitForMaxBid(effectiveMax),
         });
         return;
       }
-      applyBidChasingConfig(position, maxBid);
+      applyBidChasingConfig(position, maxBid, pk);
     },
     [
       applyBidChasingConfig,
       isCpmCampaign,
       isDailyLimitEnabled,
-      productKey,
       productRecommendationsBids,
       productSearchBids,
       savedDailyLimitRub,
@@ -2907,60 +2967,61 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   );
 
   const handleProductBidDraftChange = useCallback(
-    (zone: 'search' | 'recommendations', raw: string) => {
+    (pk: string, zone: 'search' | 'recommendations', raw: string) => {
       const v = raw.replace(',', '.');
       if (v === '' || /^\d*\.?\d*$/.test(v)) {
         const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
         setter((prev) => ({
           ...prev,
-          [productKey]: {
-            ...prev[productKey],
+          [pk]: {
+            ...prev[pk],
             draft: v,
           },
         }));
       }
     },
-    [productKey],
+    [],
   );
 
-  const handleSearchPositionTierSelect = useCallback(
-    (position: BidChasingRange) => {
-      setBidChasingPosition(position);
-      const bidStr = String(bidChasingPositionOption(position).demoBidRub);
-      setProductSearchBids((prev) => ({
-        ...prev,
-        [productKey]: { draft: bidStr, saved: bidStr },
-      }));
-    },
-    [productKey],
-  );
+  const handleSearchPositionTierSelect = useCallback((pk: string, position: BidChasingRange) => {
+    setProductSearchTier((prev) => ({ ...prev, [pk]: position }));
+    if (isBidChasingEnabled && bidChasingProductKey === pk) {
+      setBidChasingPosition(presetBidChasingPosition(position));
+    }
+    const bidStr = String(bidChasingPositionOption(position).demoBidRub);
+    setProductSearchBids((prev) => ({
+      ...prev,
+      [pk]: { draft: bidStr, saved: bidStr },
+    }));
+    setSearchBidPickerProductKey(null);
+  }, [bidChasingProductKey, isBidChasingEnabled]);
 
   const handleProductBidBlur = useCallback(
-    (zone: 'search' | 'recommendations') => {
+    (pk: string, zone: 'search' | 'recommendations') => {
       const bids = zone === 'search' ? productSearchBids : productRecommendationsBids;
-      const entry = bids[productKey];
+      const entry = bids[pk];
       if (!entry) return;
       const parsed = parseDisplayValue(entry.draft);
       if (entry.draft === '' || isNaN(parsed) || parsed <= 0) {
         const setter = zone === 'search' ? setProductSearchBids : setProductRecommendationsBids;
         setter((prev) => ({
           ...prev,
-          [productKey]: { ...entry, draft: entry.saved },
+          [pk]: { ...entry, draft: entry.saved },
         }));
         return;
       }
       if (parseDisplayValue(entry.draft) === parseDisplayValue(entry.saved)) return;
-      promptOrCommitProductBid(zone, parsed);
+      promptOrCommitProductBid(zone, parsed, pk);
     },
-    [productKey, productSearchBids, productRecommendationsBids, promptOrCommitProductBid],
+    [productSearchBids, productRecommendationsBids, promptOrCommitProductBid],
   );
 
   const handleApplyBidRecommendation = useCallback(
     (item: BidRecommendationItem) => {
-      promptOrCommitProductBid(item.zone, item.suggestedBidRub);
+      promptOrCommitProductBid(item.zone, item.suggestedBidRub, productKey);
       productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     },
-    [promptOrCommitProductBid],
+    [promptOrCommitProductBid, productKey],
   );
 
   const bidRecommendationProductName =
@@ -3070,22 +3131,22 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   }, [isFirstVisit, isDailyLimitTooltipVisible]);
 
   useEffect(() => {
-    if (!isProductActionsMenuOpen) return;
+    if (!productActionsMenuKey) return;
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
         productActionsMenuRef.current &&
         !productActionsMenuRef.current.contains(target)
       ) {
-        setIsProductActionsMenuOpen(false);
+        setProductActionsMenuKey(null);
       }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [isProductActionsMenuOpen]);
+  }, [productActionsMenuKey]);
 
   useEffect(() => {
-    if (!isSearchBidPickerOpen) return;
+    if (!searchBidPickerProductKey) return;
     const onDoc = (e: MouseEvent) => {
       const target = e.target as Node;
       if (
@@ -3094,16 +3155,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       ) {
         return;
       }
-      setIsSearchBidPickerOpen(false);
+      setSearchBidPickerProductKey(null);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [isSearchBidPickerOpen]);
+  }, [searchBidPickerProductKey]);
 
   const isCardWorkBonusScenario = fromReadyToRepeat && profileId === '2';
 
   const statsCurrentSearchPosition = useMemo(() => {
-    if (isBidChasingEnabled) return BID_CHASING_TARGET_AVG_POSITION[bidChasingPosition];
+    if (isBidChasingEnabled) return bidChasingTargetAvgPosition(bidChasingPosition);
     const bid = parseDisplayValue(productSearchBids[productKey]?.saved ?? '0');
     const limitRub = parseDisplayValue(
       isDailyLimitEnabled && savedDailyLimit ? savedDailyLimit : dailyLimitValue,
@@ -3443,9 +3504,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     }));
                   }
                 }}
-                onSearchBidBlur={() => handleProductBidBlur('search')}
-                bidChasingPosition={bidChasingPosition}
-                onSearchPositionTierSelect={handleSearchPositionTierSelect}
+                onSearchBidBlur={() => handleProductBidBlur(productKey, 'search')}
+                bidChasingPosition={nearestPresetForBidChasingPosition(bidChasingPosition)}
+                onSearchPositionTierSelect={(position) =>
+                  handleSearchPositionTierSelect(productKey, position)
+                }
                 recommendationsBidDraft={productRecommendationsBids[productKey]?.draft ?? ''}
                 onRecommendationsBidDraftChange={(v) => {
                   if (v === '' || /^\d*\.?\d*$/.test(v)) {
@@ -3455,9 +3518,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     }));
                   }
                 }}
-                onRecommendationsBidBlur={() => handleProductBidBlur('recommendations')}
-                onOpenPositionStrategy={() => openAutoStrategies('positions')}
-                onSelectManualSearchStrategy={() => setIsBidChasingEnabled(false)}
+                onRecommendationsBidBlur={() => handleProductBidBlur(productKey, 'recommendations')}
+                onOpenPositionStrategy={() => openAutoStrategiesForProduct(productKey)}
+                onSelectManualSearchStrategy={() => {
+                  setIsBidChasingEnabled(false);
+                  setBidChasingProductKey(null);
+                }}
               />
             </div>
             <CpcSingleProductClustersCard />
@@ -3481,8 +3547,26 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             <button className="px-4 py-2 text-sm font-medium bg-gray-800 text-white rounded-lg hover:bg-gray-900">
               Приостановить
             </button>
-            <button className="px-4 py-2 text-sm font-medium bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300">
+            <button
+              type="button"
+              className="tooltip px-4 py-2 text-sm font-medium bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
+            >
               Завершить
+              <span className="tooltip-text !bottom-auto !left-auto !right-0 !top-full !mt-2 !flex !w-[15.5rem] !max-w-[15.5rem] !translate-x-0 !flex-col !gap-1.5 !whitespace-normal !px-3 !py-2.5 !text-left !font-normal !leading-snug">
+                <span className="text-white/90">При завершении вернём</span>
+                {(
+                  [
+                    ['на счёт', budgetRemainderSources(campaignBudget).account],
+                    ['на буфер', budgetRemainderSources(campaignBudget).buffer],
+                    ['промобонусы', budgetRemainderSources(campaignBudget).bonus],
+                  ] as const
+                ).map(([label, amount]) => (
+                  <span key={label} className="flex items-baseline justify-between gap-3">
+                    <span className="text-white/80">{label}</span>
+                    <span className="shrink-0 tabular-nums">{formatCurrency(amount)}</span>
+                  </span>
+                ))}
+              </span>
             </button>
             <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
             <CampaignHistoryLink />
@@ -3538,7 +3622,23 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 </span>
               </div>
               <p className="mt-auto pt-6 text-[22px] font-semibold leading-none tabular-nums text-gray-900">
-                {formatCurrency(campaignBudget)}
+                <span className="tooltip">
+                  {formatCurrency(campaignBudget)}
+                  <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-2 !flex !w-[15.5rem] !max-w-[15.5rem] !translate-x-0 !flex-col !gap-1.5 !whitespace-normal !px-3 !py-2.5 !text-left !font-normal !leading-snug">
+                    {(
+                      [
+                        ['Счёт', budgetRemainderSources(campaignBudget).account],
+                        ['Промобонусы', budgetRemainderSources(campaignBudget).bonus],
+                        ['Буфер', budgetRemainderSources(campaignBudget).buffer],
+                      ] as const
+                    ).map(([label, amount]) => (
+                      <span key={label} className="flex items-baseline justify-between gap-3">
+                        <span className="text-white/80">{label}</span>
+                        <span className="tabular-nums">{formatCurrency(amount)}</span>
+                      </span>
+                    ))}
+                  </span>
+                </span>
               </p>
             </button>
 
@@ -4057,237 +4157,363 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 
         <section
           ref={productsSectionRef}
-          className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-8"
+          className="mb-8 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm"
         >
-          <h2 className="mb-5 text-xl font-bold text-gray-900">
-            Товары{' '}
-            <span className="font-normal text-gray-500">{campaignProductNmIds.length} шт.</span>
-          </h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-gray-900">
+              Товары{' '}
+              <span className="font-normal text-gray-500">{campaignProductNmIds.length} шт.</span>
+            </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex h-10 items-center gap-1.5 rounded-[10px] border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-50"
+                onClick={() => {
+                  setToastMessage('Добавление товаров');
+                  setToastIsError(false);
+                  setShowToast(true);
+                }}
+              >
+                <Plus className="h-4 w-4" />
+                Добавить товары
+              </button>
+              <button
+                type="button"
+                className="inline-flex h-10 items-center gap-1 rounded-[10px] bg-[#F2F2F7] px-4 text-sm font-medium text-gray-800 transition-colors hover:bg-[#e8e8ed]"
+                onClick={() => {
+                  setToastMessage('Загрузка товаров');
+                  setToastIsError(false);
+                  setShowToast(true);
+                }}
+              >
+                Загрузить
+                <ChevronDown className="h-4 w-4 text-gray-500" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mb-5 flex items-center justify-start gap-2.5 rounded-xl bg-[#FBF7FF] px-4 py-3 text-left">
+            <span
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F3E8FF] text-[#9A41FE]"
+              aria-hidden
+            >
+              <Bell className="h-4 w-4" />
+            </span>
+            <p className="mb-0 text-sm font-bold leading-snug text-[#9A41FE]">
+              Умный алгоритм помогает платить меньше с{' '}
+              <button
+                type="button"
+                className="font-bold text-[#9A41FE] underline decoration-[#9A41FE]/50 underline-offset-2 hover:decoration-[#9A41FE]"
+                onClick={() => {
+                  setToastMessage('Аукцион второй цены');
+                  setShowToast(true);
+                }}
+              >
+                аукционом второй цены
+              </button>
+            </p>
+          </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[880px] table-fixed text-sm">
+            <table className="w-full min-w-[1160px] table-fixed text-left text-sm">
               <colgroup>
-                <col className="w-[52px]" />
-                <col />
-                <col className="w-[6.5rem]" />
-                <col className="w-[10.5rem]" />
-                <col className="w-[11.5rem]" />
-                <col className="w-[5.5rem]" />
+                <col className="w-[56px]" />
+                <col className="min-w-[240px]" />
+                <col className="w-[88px]" />
+                <col className="w-[168px]" />
+                <col className="w-[196px]" />
+                <col className="w-[156px]" />
+                <col className="w-[88px]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-gray-100 text-left">
-                  <th className="pb-3 pr-3 font-normal align-bottom">
+                <tr className="border-b border-gray-100 text-[13px] text-gray-700">
+                  <th className="pb-3 pr-2 font-normal align-bottom">
                     <HeaderHint label="Фото" />
                   </th>
                   <th className="pb-3 pr-4 font-normal align-bottom">
                     <HeaderHint label="Бренд · Артикул · Название" />
                   </th>
-                  <th className="pb-3 pr-3 font-normal align-bottom text-right">
-                    <span className="inline-flex justify-end w-full">
-                      <HeaderHint label="Рекомендации" />
-                    </span>
+                  <th className="pb-3 pr-2 font-normal align-bottom">
+                    <HeaderHint label="Остатки" />
                   </th>
-                  <th className="pb-3 pr-3 font-normal align-bottom text-right">
-                    <span className="inline-flex justify-end w-full">
-                      <HeaderHint label="Поиск" className="pr-[42px]" />
-                    </span>
-                  </th>
-                  <th className="pb-3 pr-3 font-normal align-bottom">
+                  <th className="pb-3 pr-2 font-normal align-bottom">
                     <HeaderHint label="Автобиддер в поиске" />
+                  </th>
+                  <th className="pb-3 pr-2 font-normal align-bottom">
+                    <HeaderHint label="Поиск" />
+                  </th>
+                  <th className="pb-3 pr-2 font-normal align-bottom">
+                    <HeaderHint label="Рекомендации" />
                   </th>
                   <th className="pb-3 font-normal align-bottom" aria-hidden />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                <tr>
-                  <td className="py-3 pr-3 align-top">
-                    <CampaignProductThumb
-                      nmId={DEMO_CPC_PRODUCT.nmId}
-                      imageUrl={DEMO_CPC_PRODUCT.imageUrl}
-                      category={DEMO_CPC_PRODUCT.category}
-                      alt={DEMO_CPC_PRODUCT.productName}
-                    />
-                  </td>
-                  <td className="py-3 pr-4 align-top">
-                    <p className="text-sm font-semibold leading-tight text-gray-900">
-                      {DEMO_CPC_PRODUCT.productName}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
-                      <span>{DEMO_CPC_PRODUCT.nmId}</span>
-                      <CopyNmIdButton nmId={DEMO_CPC_PRODUCT.nmId} />
-                      <button
-                        type="button"
-                        onClick={() => setIsRankingFactorsOpen(true)}
-                        className="font-medium text-gray-500 transition-colors hover:text-gray-700"
-                      >
-                        Факторы ранжирования <span className="text-[#F07167]">-2</span>
-                      </button>
-                    </div>
-                  </td>
-                  <td className="py-3 pr-3 align-top text-right">
-                    <div className="flex justify-end">
-                      <ProductBidField
-                        value={productRecommendationsBids[productKey]?.draft ?? ''}
-                        onChange={(e) => {
-                          const v = e.target.value.replace(',', '.');
-                          if (v === '' || /^\d*\.?\d*$/.test(v)) {
-                            setProductRecommendationsBids((prev) => ({
-                              ...prev,
-                              [productKey]: {
-                                ...prev[productKey],
-                                draft: v,
-                              },
-                            }));
-                          }
-                        }}
-                        onBlur={() => handleProductBidBlur('recommendations')}
-                      />
-                    </div>
-                  </td>
-                  <td className="py-3 pr-3 align-top text-right">
-                    <div className="flex items-start justify-end gap-1.5">
-                      <div className="shrink-0">
-                        {isBidChasingEnabled ? (
-                          <ProductBidReadOnly
-                            value={
-                              productSearchBids[productKey]?.saved ||
-                              productSearchBids[productKey]?.draft ||
-                              ''
-                            }
-                          />
-                        ) : (
-                          <>
-                            <ProductBidField
-                              value={productSearchBids[productKey]?.draft ?? ''}
-                              onChange={(e) => handleProductBidDraftChange('search', e.target.value)}
-                              onBlur={() => handleProductBidBlur('search')}
-                            />
-                            <SearchBidPositionHint
-                              selectedPosition={bidChasingPosition}
-                              onSelectPosition={handleSearchPositionTierSelect}
-                            />
-                          </>
-                        )}
-                      </div>
-                      {!isBidChasingEnabled ? (
-                        <div className="relative shrink-0" ref={searchBidPickerRef}>
-                          <BidHistogramButton
-                            isActive={isSearchBidPickerOpen}
-                            onClick={() => setIsSearchBidPickerOpen((open) => !open)}
-                          />
-                          {isSearchBidPickerOpen ? (
-                            <SearchBidPositionPicker
-                              anchorRef={searchBidPickerRef}
-                              popoverRef={searchBidPickerPopoverRef}
-                              selectedPosition={bidChasingPosition}
-                              onSelectPosition={handleSearchPositionTierSelect}
-                              onClose={() => setIsSearchBidPickerOpen(false)}
-                            />
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </td>
-                  <td className="py-3 pr-3 align-top">
-                    <div className="flex min-h-9 items-start">
-                      {isBidChasingEnabled ? (
-                        <button
-                          type="button"
-                          className="text-left text-sm font-medium leading-snug text-blue-600 hover:text-blue-700 hover:underline"
-                          onClick={() => openAutoStrategies('positions')}
-                        >
-                          {bidChasingPositionLinkLabel}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className="h-9 rounded-lg bg-[#F2F2F7] px-4 text-sm font-medium text-gray-800 hover:bg-[#e8e8ed]"
-                          onClick={() => openAutoStrategies('positions')}
-                        >
-                          Настроить
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-3 align-top text-right">
-                    <div className="flex items-center justify-end gap-0.5">
-                      <div className="relative inline-flex" ref={productActionsMenuRef}>
-                        <button
-                          type="button"
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
-                          aria-label="Действия"
-                          aria-haspopup="menu"
-                          aria-expanded={isProductActionsMenuOpen}
-                          onClick={() => setIsProductActionsMenuOpen((v) => !v)}
-                        >
-                          <MoreVertical className="h-5 w-5" />
-                        </button>
-                        {isProductActionsMenuOpen && (
-                          <div
-                            role="menu"
-                            className="absolute right-0 bottom-[calc(100%+6px)] z-50 min-w-[10rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-                          >
-                            {isBidChasingEnabled ? (
-                              <button
-                                type="button"
-                                role="menuitem"
-                                className="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
-                                onClick={() => {
-                                  setIsProductActionsMenuOpen(false);
-                                  setIsBidChasingEnabled(false);
-                                  setToastMessage('Преследование ставки отключено');
-                                  setShowToast(true);
-                                }}
-                              >
-                                Отключить преследование
-                              </button>
-                            ) : null}
+                {campaignProductNmIds.map((nmId) => {
+                  const product = getDemoCpcCampaignProduct(nmId);
+                  const pk = String(nmId);
+                  const searchOn = displayZones.search;
+                  const recsOn = displayZones.recommendations;
+                  const isRowChasing = isBidChasingEnabled && bidChasingProductKey === pk;
+                  const forecastPos: BidChasingPosition = isRowChasing
+                    ? bidChasingPosition
+                    : presetBidChasingPosition(productSearchTier[pk] ?? '3-10');
+                  const forecastMeta = searchBidForecastMetaForPosition(forecastPos);
+                  const searchBidEntry = productSearchBids[pk];
+                  const recsBidEntry = productRecommendationsBids[pk];
+                  const autobidderDisabled = !searchOn;
+
+                  return (
+                    <tr key={pk} className="align-top">
+                      <td className="py-3.5 pr-2">
+                        <CampaignProductThumb
+                          nmId={product.nmId}
+                          imageUrl={product.imageUrl}
+                          category={product.category}
+                          alt={product.productName}
+                        />
+                      </td>
+                      <td className="py-3.5 pr-4">
+                        <p className="text-sm font-semibold leading-tight text-gray-900">
+                          {product.productName}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+                          <span>{product.nmId}</span>
+                          <CopyNmIdButton nmId={product.nmId} />
+                          {nmId === DEMO_CPC_PRODUCT_NM ? (
                             <button
                               type="button"
-                              role="menuitem"
-                              disabled={!canRemoveProductFromCampaign}
-                              className={`block w-full px-3 py-2 text-left text-sm ${
-                                canRemoveProductFromCampaign
-                                  ? 'text-red-600 hover:bg-red-50'
-                                  : 'cursor-not-allowed text-gray-400'
-                              }`}
-                              onClick={() => {
-                                setIsProductActionsMenuOpen(false);
-                                if (!canRemoveProductFromCampaign) {
-                                  setToastMessage('Нельзя удалить единственный товар в кампании');
-                                  setToastIsError(true);
-                                  setShowToast(true);
-                                  return;
-                                }
-                                setCampaignProductNmIds((prev) =>
-                                  prev.filter((id) => id !== DEMO_CPC_PRODUCT_NM),
-                                );
-                                setToastMessage('Товар удалён из кампании');
-                                setToastIsError(false);
-                                setShowToast(true);
-                              }}
+                              onClick={() => setIsRankingFactorsOpen(true)}
+                              className="font-medium text-gray-500 transition-colors hover:text-gray-700"
                             >
-                              Удалить
+                              Факторы ранжирования{' '}
+                              <span className="text-[#F07167]">-2</span>
                             </button>
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100"
-                        aria-label="Подробнее"
-                        onClick={() => {
-                          setToastMessage('Детали товара');
-                          setShowToast(true);
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="py-3.5 pr-2 text-sm text-gray-500">Н/Д</td>
+                      <td className="py-3.5 pr-2">
+                        <div className="flex min-h-9 items-start">
+                          {isRowChasing ? (
+                            <button
+                              type="button"
+                              className="text-left text-sm font-medium leading-snug text-blue-600 hover:text-blue-700 hover:underline"
+                              onClick={() => openAutoStrategiesForProduct(pk)}
+                            >
+                              {formatBidChasingPositionLabel(bidChasingPosition)}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={autobidderDisabled}
+                              title={
+                                autobidderDisabled
+                                  ? 'Автобиддер настраивается только для поиска'
+                                  : undefined
+                              }
+                              className={`h-9 rounded-lg px-4 text-sm font-medium ${
+                                autobidderDisabled
+                                  ? 'cursor-not-allowed bg-gray-100 text-gray-400'
+                                  : 'bg-[#F2F2F7] text-gray-800 hover:bg-[#e8e8ed]'
+                              }`}
+                              onClick={() => openAutoStrategiesForProduct(pk)}
+                            >
+                              Настроить
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td
+                        className="py-3.5 pr-2"
+                        ref={(node) => {
+                          if (searchBidPickerProductKey === pk) {
+                            searchBidPickerRef.current = node;
+                          }
                         }}
                       >
-                        <ChevronDown className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+                        {isRowChasing ? (
+                          <div
+                            className="flex h-9 items-center text-sm font-medium tabular-nums text-gray-900"
+                            title="Диапазон ставок"
+                          >
+                            {(() => {
+                              const bids = resolveBidChasingDemoBids(bidChasingPosition);
+                              return `${formatBidChasingClusterBidRangeLabel(
+                                bids.demoBidMinRub,
+                                bids.demoBidMaxRub,
+                              )} ₽`;
+                            })()}
+                          </div>
+                        ) : (
+                          <SearchBidForecastField
+                            value={formatSearchBidForecastDisplay(
+                              searchBidEntry?.draft ?? searchBidEntry?.saved ?? '',
+                            )}
+                            disabled={!searchOn}
+                            readOnly={false}
+                            filled={forecastMeta.filled}
+                            caption={`Ставка за ${forecastMeta.label}`}
+                            onChange={(raw) => {
+                              const cleaned = raw
+                                .replace(/\s/g, '')
+                                .replace(/₽/g, '')
+                                .replace(',', '.');
+                              if (cleaned === '' || /^\d*\.?\d*$/.test(cleaned)) {
+                                handleProductBidDraftChange(pk, 'search', cleaned);
+                              }
+                            }}
+                            onBlur={() => handleProductBidBlur(pk, 'search')}
+                            onBarsClick={
+                              !searchOn
+                                ? undefined
+                                : () =>
+                                    setSearchBidPickerProductKey((current) =>
+                                      current === pk ? null : pk,
+                                    )
+                            }
+                            barsActive={searchBidPickerProductKey === pk}
+                          />
+                        )}
+                      </td>
+                      <td className="py-3.5 pr-2">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          disabled={!recsOn}
+                          value={
+                            recsOn
+                              ? formatSearchBidForecastDisplay(
+                                  recsBidEntry?.draft ?? recsBidEntry?.saved ?? '',
+                                )
+                              : ''
+                          }
+                          onChange={(e) => {
+                            const cleaned = e.target.value
+                              .replace(/\s/g, '')
+                              .replace(/₽/g, '')
+                              .replace(',', '.');
+                            if (cleaned === '' || /^\d*\.?\d*$/.test(cleaned)) {
+                              handleProductBidDraftChange(pk, 'recommendations', cleaned);
+                            }
+                          }}
+                          onBlur={() => handleProductBidBlur(pk, 'recommendations')}
+                          className={
+                            recsOn
+                              ? RECOMMENDATIONS_BID_INPUT_CLASS
+                              : `${RECOMMENDATIONS_BID_INPUT_CLASS} cursor-not-allowed bg-[#F7F7F8] text-gray-400`
+                          }
+                        />
+                      </td>
+                      <td className="py-3.5">
+                        <div className="flex items-center justify-end gap-0.5">
+                          <div
+                            className="relative inline-flex"
+                            ref={productActionsMenuKey === pk ? productActionsMenuRef : undefined}
+                          >
+                            <button
+                              type="button"
+                              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100"
+                              aria-label="Действия"
+                              aria-haspopup="menu"
+                              aria-expanded={productActionsMenuKey === pk}
+                              onClick={() =>
+                                setProductActionsMenuKey((current) =>
+                                  current === pk ? null : pk,
+                                )
+                              }
+                            >
+                              <MoreVertical className="h-5 w-5" />
+                            </button>
+                            {productActionsMenuKey === pk ? (
+                              <div
+                                role="menu"
+                                className="absolute right-0 bottom-[calc(100%+6px)] z-50 min-w-[10rem] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                              >
+                                {isRowChasing ? (
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="block w-full px-3 py-2 text-left text-sm text-gray-800 hover:bg-gray-50"
+                                    onClick={() => {
+                                      setProductActionsMenuKey(null);
+                                      setIsBidChasingEnabled(false);
+                                      setBidChasingProductKey(null);
+                                      setToastMessage('Преследование ставки отключено');
+                                      setShowToast(true);
+                                    }}
+                                  >
+                                    Отключить преследование
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  disabled={!canRemoveProductFromCampaign}
+                                  className={`block w-full px-3 py-2 text-left text-sm ${
+                                    canRemoveProductFromCampaign
+                                      ? 'text-red-600 hover:bg-red-50'
+                                      : 'cursor-not-allowed text-gray-400'
+                                  }`}
+                                  onClick={() => {
+                                    setProductActionsMenuKey(null);
+                                    if (!canRemoveProductFromCampaign) {
+                                      setToastMessage('Нельзя удалить единственный товар в кампании');
+                                      setToastIsError(true);
+                                      setShowToast(true);
+                                      return;
+                                    }
+                                    setCampaignProductNmIds((prev) =>
+                                      prev.filter((id) => id !== nmId),
+                                    );
+                                    if (bidChasingProductKey === pk) {
+                                      setIsBidChasingEnabled(false);
+                                      setBidChasingProductKey(null);
+                                    }
+                                    setToastMessage('Товар удалён из кампании');
+                                    setToastIsError(false);
+                                    setShowToast(true);
+                                  }}
+                                >
+                                  Удалить
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100"
+                            aria-label="Подробнее"
+                            onClick={() => {
+                              setToastMessage('Детали товара');
+                              setShowToast(true);
+                            }}
+                          >
+                            <ChevronDown className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+            {searchBidPickerProductKey ? (
+              <SearchBidPositionPicker
+                anchorRef={searchBidPickerRef}
+                popoverRef={searchBidPickerPopoverRef}
+                selectedPosition={
+                  productSearchTier[searchBidPickerProductKey] ??
+                  (isBidChasingEnabled && bidChasingProductKey === searchBidPickerProductKey
+                    ? nearestPresetForBidChasingPosition(bidChasingPosition)
+                    : '3-10')
+                }
+                onSelectPosition={(position) =>
+                  handleSearchPositionTierSelect(searchBidPickerProductKey, position)
+                }
+                onClose={() => setSearchBidPickerProductKey(null)}
+              />
+            ) : null}
           </div>
         </section>
         </>
@@ -4322,9 +4548,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
 
 
       <AutoStrategiesModal
-        isOpen={autoStrategiesModal !== null}
-        tab={autoStrategiesModal?.tab ?? 'profit'}
-        onTabChange={(tab) => setAutoStrategiesModal({ tab })}
+        isOpen={isAutoStrategiesOpen}
         onClose={closeAutoStrategies}
         bidChasing={{
           initialPosition: bidChasingPosition,
@@ -4332,76 +4556,21 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
           isDailyLimitEnabled,
           savedDailyLimitRub,
           otherMaxProductBidRub: Math.max(
-            parseDisplayValue(productSearchBids[productKey]?.saved ?? '0'),
-            parseDisplayValue(productRecommendationsBids[productKey]?.saved ?? '0'),
+            parseDisplayValue(productSearchBids[autobidderModalProductKey]?.saved ?? '0'),
+            parseDisplayValue(productRecommendationsBids[autobidderModalProductKey]?.saved ?? '0'),
           ),
-          isBidChasingEnabled,
+          isBidChasingEnabled:
+            isBidChasingEnabled && bidChasingProductKey === autobidderModalProductKey,
           onDisable: () => {
             setIsBidChasingEnabled(false);
+            setBidChasingProductKey(null);
             closeAutoStrategies();
             setToastMessage('Преследование ставки отключено');
             setToastIsError(false);
             setShowToast(true);
           },
           onApply: ({ position, maxBid }) => {
-            promptOrApplyBidChasing(position, maxBid);
-          },
-        }}
-        dailyLimit={{
-          advancedSettingsOnly: true,
-          conditionRuleBuilder: true,
-          isDailyLimitEnabled,
-          onEnableDailyLimit: applyMinDailyLimitOnEnable,
-          onDisableDailyLimit: disableDailyLimit,
-          dailyLimitValue,
-          onDailyLimitValueChange: setDailyLimitValue,
-          onDailyLimitCommit: (parsed, options) => {
-            if (isNaN(parsed) || parsed < DAILY_LIMIT_ABSOLUTE_MIN) {
-              setDailyLimitValue(savedDailyLimit || '');
-              setToastMessage(
-                `Минимальный дневной лимит — ${formatForDisplay(DAILY_LIMIT_ABSOLUTE_MIN)} ₽`,
-              );
-              setToastIsError(true);
-              setShowToast(true);
-              return;
-            }
-            if (parsed > campaignBudget) {
-              setDailyLimitValue(savedDailyLimit || '');
-              setDailyLimitBudgetShortfall(parsed - campaignBudget);
-              return;
-            }
-            setSavedDailyLimit(dailyLimitValue);
-            setDailyLimitBudgetShortfall(null);
-            if (!options?.silent) {
-              setToastMessage(
-                `Новый дневной лимит установлен.\nРаспределяем ${formatForDisplay(parsed)}₽ в течении суток равномерно`,
-              );
-              setToastIsError(false);
-              setShowToast(true);
-            }
-            if (onUpdateData) {
-              onUpdateData({ dailyLimit: parsed, scheduledDailyLimit: null });
-            }
-            setIsDailyLimitEnabled(true);
-          },
-          savedDailyLimit,
-          isCarryoverEnabled,
-          onCarryoverChange: setIsCarryoverEnabled,
-          campaignBudget,
-          initialSettings: advancedDailyLimitSettings,
-          referenceCpcBidRub: dailyLimitTrafficReference.cpcBidRub,
-          targetAvgPosition: dailyLimitTrafficReference.targetAvgPosition,
-          autoRefillOnRulesTrigger,
-          onAutoRefillOnRulesTriggerChange: setAutoRefillOnRulesTrigger,
-          onApply: (settings) => {
-            setAdvancedDailyLimitSettings(settings);
-            closeAutoStrategies();
-            onUpdateData?.({
-              dynamicDailyLimit: isDynamicDailyLimitConfigured(settings),
-            });
-            setToastMessage('Настройки стратегии «Тратить эффективно» сохранены');
-            setToastIsError(false);
-            setShowToast(true);
+            promptOrApplyBidChasing(position, maxBid, autobidderModalProductKey);
           },
         }}
       />
@@ -4560,6 +4729,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         isBidChasingEnabled={isBidChasingEnabled}
         onDisable={() => {
           setIsBidChasingEnabled(false);
+          setBidChasingProductKey(null);
           setIsBidChasingSetupModalOpen(false);
           setToastMessage('Преследование ставки отключено');
           setToastIsError(false);
@@ -4567,7 +4737,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         }}
         onApply={({ position, maxBid }) => {
           setIsBidChasingSetupModalOpen(false);
-          promptOrApplyBidChasing(position, maxBid);
+          promptOrApplyBidChasing(position, maxBid, productKey);
         }}
       />
 
@@ -4599,9 +4769,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             const payload = dailyLimitBidRaiseModal;
             setDailyLimitBidRaiseModal(null);
             if (payload.kind === 'productBid') {
-              commitProductBid(payload.zone, payload.attemptedBid);
+              commitProductBid(payload.zone, payload.attemptedBid, payload.productKey);
             } else {
-              applyBidChasingConfig(payload.position, payload.maxBid);
+              applyBidChasingConfig(payload.position, payload.maxBid, payload.productKey);
             }
           }}
         >
@@ -4615,9 +4785,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                 const payload = dailyLimitBidRaiseModal;
                 setDailyLimitBidRaiseModal(null);
                 if (payload.kind === 'productBid') {
-                  commitProductBid(payload.zone, payload.attemptedBid);
+                  commitProductBid(payload.zone, payload.attemptedBid, payload.productKey);
                 } else {
-                  applyBidChasingConfig(payload.position, payload.maxBid);
+                  applyBidChasingConfig(payload.position, payload.maxBid, payload.productKey);
                 }
               }}
               className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
@@ -4643,9 +4813,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   const payload = dailyLimitBidRaiseModal;
                   setDailyLimitBidRaiseModal(null);
                   if (payload.kind === 'productBid') {
-                    commitProductBid(payload.zone, payload.attemptedBid);
+                    commitProductBid(payload.zone, payload.attemptedBid, payload.productKey);
                   } else {
-                    applyBidChasingConfig(payload.position, payload.maxBid);
+                    applyBidChasingConfig(payload.position, payload.maxBid, payload.productKey);
                   }
                 }}
                 className="rounded-lg px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100"
@@ -4660,7 +4830,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     payload.kind === 'productBid'
                       ? {
                           kind: 'productBid' as const,
-                          productKey,
+                          productKey: payload.productKey,
                           zone: payload.zone,
                           attemptedBid: payload.attemptedBid,
                         }
@@ -4676,9 +4846,9 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   setDailyLimitBidRaiseModal(null);
                   if (!raised) return;
                   if (payload.kind === 'productBid') {
-                    commitProductBid(payload.zone, payload.attemptedBid);
+                    commitProductBid(payload.zone, payload.attemptedBid, payload.productKey);
                   } else {
-                    applyBidChasingConfig(payload.position, payload.maxBid);
+                    applyBidChasingConfig(payload.position, payload.maxBid, payload.productKey);
                   }
                 }}
                 className="rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-700"
@@ -4746,7 +4916,11 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                       payload.attemptedBid,
                     );
                   } else {
-                    applyBidChasingWithDailyLimitDisabled(payload.position, payload.maxBid);
+                    applyBidChasingWithDailyLimitDisabled(
+                      payload.position,
+                      payload.maxBid,
+                      bidChasingProductKey ?? autobidderModalProductKey ?? productKey,
+                    );
                   }
                 }}
                 className="text-left text-sm font-medium leading-snug text-blue-600 transition-colors hover:text-blue-700 hover:underline sm:text-right"
@@ -5196,22 +5370,14 @@ const BudgetRefillModal: React.FC<{
 
 const BID_CHASING_MIN_BID_RUB = 1.88;
 
-type AutoStrategiesTab = 'positions' | 'profit';
+export type AutoStrategiesTab = 'positions' | 'profit';
 
-const AutoStrategiesModal: React.FC<{
+export const AutoStrategiesModal: React.FC<{
   isOpen: boolean;
-  tab: AutoStrategiesTab;
-  onTabChange: (tab: AutoStrategiesTab) => void;
   onClose: () => void;
   bidChasing: React.ComponentProps<typeof BidChasingClustersModal>;
-  dailyLimit: React.ComponentProps<typeof AdvancedDailyLimitModal>;
-}> = ({ isOpen, tab, onTabChange, onClose, bidChasing, dailyLimit }) => {
+}> = ({ isOpen, onClose, bidChasing }) => {
   if (!isOpen) return null;
-
-  const tabClass = (active: boolean) =>
-    `flex-1 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
-    }`;
 
   return (
     <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} role="presentation">
@@ -5236,39 +5402,11 @@ const AutoStrategiesModal: React.FC<{
           >
             <div className="shrink-0 px-6 pt-6 pb-4 sm:px-8">
               <h2 id="auto-strategies-title" className="text-xl font-bold leading-snug text-gray-900">
-                Автостратегии
+                Автобиддер
               </h2>
-              <div
-                className="mt-4 flex gap-1 rounded-xl bg-[#F2F2F7] p-1"
-                role="tablist"
-                aria-label="Стратегии"
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === 'profit'}
-                  className={tabClass(tab === 'profit')}
-                  onClick={() => onTabChange('profit')}
-                >
-                  Тратить эффективно
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === 'positions'}
-                  className={tabClass(tab === 'positions')}
-                  onClick={() => onTabChange('positions')}
-                >
-                  Вывести в топ
-                </button>
-              </div>
             </div>
 
-            {tab === 'positions' ? (
-              <BidChasingClustersModal {...bidChasing} embedded isOpen onClose={onClose} />
-            ) : (
-              <AdvancedDailyLimitModal {...dailyLimit} embedded isOpen onClose={onClose} />
-            )}
+            <BidChasingClustersModal {...bidChasing} embedded isOpen onClose={onClose} />
           </div>
         </div>
       </div>
@@ -5280,8 +5418,8 @@ export const BidChasingClustersModal: React.FC<{
   embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
-  onApply: (config: { position: BidChasingRange; maxBid: number }) => void;
-  initialPosition: BidChasingRange;
+  onApply: (config: { position: BidChasingPosition; maxBid: number }) => void;
+  initialPosition: BidChasingPosition;
   initialMaxBid: number;
   isDailyLimitEnabled: boolean;
   savedDailyLimitRub: number;
@@ -5301,16 +5439,45 @@ export const BidChasingClustersModal: React.FC<{
   isBidChasingEnabled,
   onDisable,
 }) => {
-  const [position, setPosition] = useState<BidChasingRange>(initialPosition);
+  const [position, setPosition] = useState<BidChasingPosition>(initialPosition);
+  const [customFromDraft, setCustomFromDraft] = useState('5');
+  const [customToDraft, setCustomToDraft] = useState('7');
   const [maxBidDraft, setMaxBidDraft] = useState(String(initialMaxBid));
 
   useEffect(() => {
     if (!isOpen) return;
     setPosition(initialPosition);
+    if (initialPosition.kind === 'custom') {
+      setCustomFromDraft(String(initialPosition.from));
+      setCustomToDraft(String(initialPosition.to));
+    }
     setMaxBidDraft(String(initialMaxBid));
   }, [isOpen, initialPosition, initialMaxBid]);
 
   if (!isOpen) return null;
+
+  const parsedCustomFrom = Number.parseInt(customFromDraft, 10);
+  const parsedCustomTo = Number.parseInt(customToDraft, 10);
+  const customRangeValid = isValidCustomBidChasingRange(parsedCustomFrom, parsedCustomTo);
+  const customSelected = position.kind === 'custom';
+  const positionValid = position.kind === 'preset' || customRangeValid;
+
+  const resolvedPosition: BidChasingPosition =
+    customSelected && customRangeValid
+      ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
+      : position.kind === 'preset'
+        ? position
+        : customRangeValid
+          ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
+          : DEFAULT_BID_CHASING_POSITION;
+
+  const customFromForBids = Number.isFinite(parsedCustomFrom) ? parsedCustomFrom : 5;
+  const customToForBids = Number.isFinite(parsedCustomTo) ? parsedCustomTo : 7;
+  const customDemoBids = resolveBidChasingDemoBids({
+    kind: 'custom',
+    from: customFromForBids,
+    to: Math.max(customToForBids, customFromForBids + MIN_CUSTOM_BID_CHASING_SPAN),
+  });
 
   const parsedMaxBid = parseDisplayValue(maxBidDraft.replace(',', '.'));
   const maxBidValid =
@@ -5318,13 +5485,29 @@ export const BidChasingClustersModal: React.FC<{
     parsedMaxBid >= BID_CHASING_MIN_BID_RUB &&
     parsedMaxBid <= CPC_MAX_BID_RUB;
 
-  const effectiveMaxBidRub = Math.max(
-    Number.isFinite(parsedMaxBid) ? parsedMaxBid : 0,
-    otherMaxProductBidRub,
-  );
+  const canApply = maxBidValid && positionValid;
+
   const handleApply = () => {
-    if (!maxBidValid) return;
-    onApply({ position, maxBid: parsedMaxBid });
+    if (!canApply) return;
+    const nextPosition: BidChasingPosition =
+      customSelected && customRangeValid
+        ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
+        : position.kind === 'preset'
+          ? position
+          : resolvedPosition;
+    onApply({ position: nextPosition, maxBid: parsedMaxBid });
+  };
+
+  const selectCustom = () => {
+    setPosition(
+      customRangeValid
+        ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
+        : { kind: 'custom', from: 5, to: 7 },
+    );
+    if (!customRangeValid) {
+      setCustomFromDraft('5');
+      setCustomToDraft('7');
+    }
   };
 
   const body = (
@@ -5344,15 +5527,15 @@ export const BidChasingClustersModal: React.FC<{
 
           <div className={`rounded-2xl border border-gray-100 bg-white p-5 ${embedded ? '' : 'mt-6'}`}>
             <h3 className="text-base font-semibold text-gray-900">Какие позиции хотите занимать в поиске</h3>
-            <p className="mt-1 text-sm text-gray-500">Показываем диапазоны ставок для разных позиций</p>
+            <p className="mt-1 text-sm text-gray-500">Для каждого кластера рассчитываем свою ставку</p>
             <div className="mt-4 flex flex-col gap-2">
               {BID_CHASING_POSITION_OPTIONS.map((opt) => {
-                const selected = position === opt.id;
+                const selected = position.kind === 'preset' && position.id === opt.id;
                 return (
                   <button
                     key={opt.id}
                     type="button"
-                    onClick={() => setPosition(opt.id)}
+                    onClick={() => setPosition(presetBidChasingPosition(opt.id))}
                     className={`flex w-full items-start gap-3 rounded-xl border border-gray-100 border-l-4 px-4 py-3 text-left transition-colors ${opt.accentClass} ${
                       selected ? opt.selectedBgClass : 'bg-white hover:bg-gray-50/80'
                     }`}
@@ -5368,19 +5551,114 @@ export const BidChasingClustersModal: React.FC<{
                     <span className="min-w-0">
                       <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
                       <span className="mt-1 block text-xs text-gray-500">
-                        Рекомендуемая ставка: {formatRecommendedBidRub(opt.demoBidRub)} ₽
-                      </span>
-                      <span className="mt-0.5 block text-xs text-gray-500">
-                        Клики: ~ {formatApproxClicksPerDay(opt.demoClicksPerDay)} в день
-                      </span>
-                      <span className="mt-0.5 block text-xs text-gray-500">
-                        Примерный дневной бюджет: ~{' '}
-                        {formatApproxDailyBudgetRub(opt.demoBidRub, opt.demoClicksPerDay)} ₽
+                        Ставки:{' '}
+                        {formatBidChasingClusterBidRangeLabel(opt.demoBidMinRub, opt.demoBidMaxRub)} ₽
                       </span>
                     </span>
                   </button>
                 );
               })}
+
+              <div
+                className={`rounded-xl border border-gray-100 border-l-4 border-l-gray-400 px-4 py-3 transition-colors ${
+                  customSelected ? 'bg-gray-50' : 'bg-white'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={selectCustom}
+                  className="flex w-full items-start gap-3 text-left"
+                >
+                  <span
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                      customSelected ? 'border-purple-600 bg-purple-600' : 'border-gray-300 bg-white'
+                    }`}
+                    aria-hidden
+                  >
+                    {customSelected ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium text-gray-900">Свой диапазон позиций</span>
+                    <span className="mt-1 block text-xs text-gray-500">
+                      Ставки:{' '}
+                      {formatBidChasingClusterBidRangeLabel(
+                        customDemoBids.demoBidMinRub,
+                        customDemoBids.demoBidMaxRub,
+                      )}{' '}
+                      ₽
+                    </span>
+                  </span>
+                </button>
+
+                {customSelected ? (
+                  <div className="mt-3 ml-8 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label
+                        className="inline-flex h-9 w-[5.5rem] items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500"
+                        htmlFor="bid-chasing-custom-from"
+                      >
+                        <span className="shrink-0 text-xs text-gray-400">С</span>
+                        <input
+                          id="bid-chasing-custom-from"
+                          type="text"
+                          inputMode="numeric"
+                          value={customFromDraft}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            setCustomFromDraft(v);
+                            const from = Number.parseInt(v, 10);
+                            const to = Number.parseInt(customToDraft, 10);
+                            if (isValidCustomBidChasingRange(from, to)) {
+                              setPosition({ kind: 'custom', from, to });
+                            } else {
+                              setPosition({
+                                kind: 'custom',
+                                from: from || 1,
+                                to: to || from + MIN_CUSTOM_BID_CHASING_SPAN,
+                              });
+                            }
+                          }}
+                          className="min-w-0 flex-1 bg-transparent text-left text-sm tabular-nums text-gray-900 outline-none"
+                          aria-label="Позиция с"
+                        />
+                      </label>
+                      <label
+                        className="inline-flex h-9 w-[5.5rem] items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500"
+                        htmlFor="bid-chasing-custom-to"
+                      >
+                        <span className="shrink-0 text-xs text-gray-400">По</span>
+                        <input
+                          id="bid-chasing-custom-to"
+                          type="text"
+                          inputMode="numeric"
+                          value={customToDraft}
+                          onChange={(e) => {
+                            const v = e.target.value.replace(/\D/g, '');
+                            setCustomToDraft(v);
+                            const from = Number.parseInt(customFromDraft, 10);
+                            const to = Number.parseInt(v, 10);
+                            if (isValidCustomBidChasingRange(from, to)) {
+                              setPosition({ kind: 'custom', from, to });
+                            } else {
+                              setPosition({
+                                kind: 'custom',
+                                from: from || 1,
+                                to: to || (from || 1) + MIN_CUSTOM_BID_CHASING_SPAN,
+                              });
+                            }
+                          }}
+                          className="min-w-0 flex-1 bg-transparent text-left text-sm tabular-nums text-gray-900 outline-none"
+                          aria-label="Позиция по"
+                        />
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      Выберите от {MIN_BID_CHASING_SEARCH_POSITION} до{' '}
+                      {MAX_CUSTOM_BID_CHASING_SEARCH_POSITION} позиции
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -5451,7 +5729,7 @@ export const BidChasingClustersModal: React.FC<{
               </button>
               <button
                 type="button"
-                disabled={!maxBidValid}
+                disabled={!canApply}
                 onClick={handleApply}
                 className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-300"
               >
@@ -5740,6 +6018,27 @@ function defaultCompareForMetric(metric: DailyLimitConditionMetric): DailyLimitC
   return 'above';
 }
 
+function conditionOrderWarning(
+  metric: DailyLimitConditionMetric,
+  conditions: DailyLimitIncreaseCondition[],
+): { conditionId: string; text: string } | null {
+  const filled = conditions.filter((condition) => condition.threshold > 0);
+  const expectLower = defaultCompareForMetric(metric) === 'below';
+  for (let index = 1; index < filled.length; index += 1) {
+    const previous = filled[index - 1];
+    const next = filled[index];
+    const inOrder = expectLower
+      ? next.threshold < previous.threshold
+      : next.threshold > previous.threshold;
+    if (inOrder) continue;
+    return {
+      conditionId: next.id,
+      text: 'Расположите условия последовательно: значения метрики должны только увеличиваться или только уменьшаться',
+    };
+  }
+  return null;
+}
+
 function resolveConditionCompare(
   condition: DailyLimitIncreaseCondition,
   ruleMetric?: DailyLimitConditionMetric | null,
@@ -5804,6 +6103,17 @@ function formatDailyLimitSpendRulesActiveLinkLabel(
     return `${phrase} → ${formatConditionBudgetChangeLabel(c)}`;
   });
   return `${verb} лимит: ${parts.join('; ')}`;
+}
+
+export function formatConfiguredDailyLimitConditions(
+  settings: AdvancedDailyLimitSettings,
+): string | null {
+  if (!isDynamicDailyLimitConfigured(settings)) return null;
+  const activeRule = (settings.increaseRules ?? []).find(
+    (rule) => rule.enabled && isDailyLimitIncreaseRuleValid(rule),
+  );
+  if (!activeRule) return null;
+  return formatDailyLimitSpendRulesActiveLinkLabel(activeRule) ?? null;
 }
 
 const CONDITION_PERCENT_THRESHOLD_MIN = 1;
@@ -6071,6 +6381,9 @@ function getDailyLimitIncreaseRulesSaveError(
   if (hasConflictingDailyLimitConditions(rule)) {
     return 'Условия противоречат друг другу. Для одного порога нельзя задать две разные суммы увеличения';
   }
+
+  const orderWarning = conditionOrderWarning(metric, conditions);
+  if (orderWarning) return orderWarning.text;
 
   return null;
 }
@@ -6775,7 +7088,7 @@ function DailyLimitConditionRulesBuilder({
                   }`}
                 >
                   <p className="min-w-0 shrink text-[13px] leading-snug text-gray-600">
-                    Увеличивать на
+                    Повысить до
                   </p>
                   <input
                     type="text"
@@ -6912,6 +7225,7 @@ export const AdvancedDailyLimitModal: React.FC<{
   budgetStrategyTabs = false,
   isOpen,
   onClose,
+  onDisableDailyLimit,
   dailyLimitValue,
   onDailyLimitValueChange,
   onDailyLimitCommit,
@@ -7318,7 +7632,7 @@ export const AdvancedDailyLimitModal: React.FC<{
   };
 
   const handleDisableSpendRules = () => {
-    handleResetAdvancedSettings();
+    onDisableDailyLimit();
     onClose();
   };
 
