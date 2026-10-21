@@ -4,6 +4,7 @@ import { Checkbox } from 'antd';
 import type { CampaignRecord } from '../types';
 import { DAILY_LIMIT_ABSOLUTE_MIN, minDailyLimitForMaxBid } from '../utils/cpcDailyLimitBid';
 import {
+  DEFAULT_BID_CHASING_MAX_BID_RUB,
   DEFAULT_BID_CHASING_POSITION,
   formatBidChasingClusterBidRangeLabel,
   formatBidChasingPositionLabel,
@@ -830,8 +831,7 @@ export function MassCreationIsland({
               autobidderSetup[autobidderCampaign.id]?.position ?? DEFAULT_BID_CHASING_POSITION,
             initialMaxBid:
               autobidderSetup[autobidderCampaign.id]?.maxBid ??
-              autobidderCampaign.searchBid ??
-              defaultZoneBid,
+              DEFAULT_BID_CHASING_MAX_BID_RUB,
             isDailyLimitEnabled: (autobidderCampaign.dailyLimit ?? 0) > 0,
             savedDailyLimitRub: autobidderCampaign.dailyLimit ?? 0,
             otherMaxProductBidRub: Math.max(

@@ -28,6 +28,7 @@ import { useCpmBidRoundedAlert } from './components/CpmBidRoundedAlert';
 import { CPM_BID_STEP_RUB, normalizeCpmBidRub } from './utils/cpmBidRounding';
 import { DAILY_LIMIT_ABSOLUTE_MIN } from './utils/cpcDailyLimitBid';
 import {
+  DEFAULT_BID_CHASING_MAX_BID_RUB,
   DEFAULT_BID_CHASING_POSITION,
   formatBidChasingPositionLabel,
   type BidChasingPosition,
@@ -4976,26 +4977,12 @@ export default function App() {
           selectedCreationBulkAutobidderProducts
             .map((p) => creationAutobidderSetup[p.id]?.position)
             .find((p) => p != null) ?? DEFAULT_BID_CHASING_POSITION,
-        initialMaxBid: Math.max(
-          15,
-          ...selectedCreationCampaigns
-            .filter((c) => {
-              if (autobidderBulkPaymentModel == null) return true;
-              return templateGroups.some(
-                (g) =>
-                  g.config.paymentModel === autobidderBulkPaymentModel &&
-                  g.campaigns.some((gc) => gc.id === c.id),
-              );
-            })
-            .map((c) =>
-              Math.max(
-                creationAutobidderSetup[c.id]?.maxBid ?? 0,
-                c.bid ?? 0,
-                c.searchBid ?? 0,
-                15,
-              ),
-            ),
-        ),
+        initialMaxBid: (() => {
+          const saved = selectedCreationBulkAutobidderProducts
+            .map((p) => creationAutobidderSetup[p.id]?.maxBid)
+            .find((v) => v != null && v > 0);
+          return saved ?? DEFAULT_BID_CHASING_MAX_BID_RUB;
+        })(),
         isDailyLimitEnabled: false,
         savedDailyLimitRub: 0,
         otherMaxProductBidRub: 0,

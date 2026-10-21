@@ -104,6 +104,9 @@ export const DEFAULT_BID_CHASING_POSITION: BidChasingPosition = {
   id: '1-2',
 };
 
+/** Дефолтный лимит ставки автобиддера (₽) — одинаковый везде */
+export const DEFAULT_BID_CHASING_MAX_BID_RUB = 50;
+
 export function formatBidChasingClusterBidRangeLabel(minRub: number, maxRub: number): string {
   const fmt = (value: number) =>
     value.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -223,20 +226,16 @@ export function resolveBidChasingDemoBids(pos: BidChasingPosition): {
 /**
  * Диапазон ставок автобиддера для конкретного товара:
  * за одно и то же место у разных товаров свои ставки.
+ * Лимит ставки на диапазон не влияет — это потолок «на случай роста».
  */
 export function resolveProductBidChasingRange(
   seed: number,
   pos: BidChasingPosition,
-  maxBidCap?: number,
 ): { minRub: number; maxRub: number } {
   const base = resolveBidChasingDemoBids(pos);
   const factor = 0.75 + ((Math.abs(seed) * 17) % 55) / 100;
-  let minRub = Math.round(base.demoBidMinRub * factor * 100) / 100;
+  const minRub = Math.round(base.demoBidMinRub * factor * 100) / 100;
   let maxRub = Math.round(base.demoBidMaxRub * factor * 100) / 100;
-  if (maxBidCap != null && Number.isFinite(maxBidCap) && maxBidCap > 0) {
-    minRub = Math.min(minRub, maxBidCap);
-    maxRub = Math.min(maxRub, maxBidCap);
-  }
   if (maxRub < minRub) maxRub = minRub;
   return { minRub, maxRub };
 }

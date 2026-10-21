@@ -12,6 +12,7 @@ import {
   isDailyLimitBelowRecommendedForMaxBid,
 } from '../utils/cpcDailyLimitBid';
 import {
+  DEFAULT_BID_CHASING_MAX_BID_RUB,
   DEFAULT_BID_CHASING_POSITION,
   formatBidChasingPositionLabel,
   formatBidChasingPositionShortLabel,
@@ -9303,13 +9304,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     return rows;
   }, [campaignBulkAutobidderScopeCampaigns, profileProductTree, autobidderFocusProductId]);
 
-  const campaignBulkAutobidderInitialMaxBid = useMemo(() => {
-    if (campaignBulkAutobidderScopeCampaigns.length === 0) return 15;
-    return Math.max(
-      15,
-      ...campaignBulkAutobidderScopeCampaigns.map((c) => listCampaignMaxCpcBidRub(c)),
-    );
-  }, [campaignBulkAutobidderScopeCampaigns]);
+  const campaignBulkAutobidderInitialMaxBid = DEFAULT_BID_CHASING_MAX_BID_RUB;
 
   const closeCampaignBulkAutobidder = useCallback(() => {
     setIsCampaignBulkAutobidderOpen(false);

@@ -49,6 +49,7 @@ import { SearchBidPositionPicker } from './SearchBidPositionPicker';
 import { SearchBidForecastField } from './SearchBidForecastField';
 import {
   BID_CHASING_POSITION_OPTIONS,
+  DEFAULT_BID_CHASING_MAX_BID_RUB,
   DEFAULT_BID_CHASING_POSITION,
   bidChasingPositionOption,
   bidChasingTargetAvgPosition,
@@ -2613,7 +2614,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [bidChasingPosition, setBidChasingPosition] = useState<BidChasingPosition>(
     presetBidChasingPosition('1-2'),
   );
-  const [bidChasingMaxBid, setBidChasingMaxBid] = useState(11.88);
+  const [bidChasingMaxBid, setBidChasingMaxBid] = useState(DEFAULT_BID_CHASING_MAX_BID_RUB);
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
   const [bidLimitBudgetConflictModal, setBidLimitBudgetConflictModal] = useState<
     | {
@@ -5513,12 +5514,15 @@ function parseBidChasingMaxBidDraft(draft: string): number {
   return parseDisplayValue(draft.replace(',', '.'));
 }
 
-function isBidChasingMaxBidValid(value: number): boolean {
-  return (
-    Number.isFinite(value) &&
-    value >= BID_CHASING_MIN_BID_RUB &&
-    value <= CPC_MAX_BID_RUB
-  );
+function formatBidChasingMaxBidDraftValue(value: number): string {
+  if (!Number.isFinite(value)) return '';
+  const rounded = Math.round(value * 100) / 100;
+  return Number.isInteger(rounded) ? String(rounded) : String(rounded);
+}
+
+function clampBidChasingMaxBidToMin(value: number, minRub: number): number {
+  if (!Number.isFinite(value) || value < minRub) return minRub;
+  return Math.round(value * 100) / 100;
 }
 
 export const BidChasingClustersModal: React.FC<{
@@ -5572,18 +5576,24 @@ export const BidChasingClustersModal: React.FC<{
         ? initialPosition
         : presetBidChasingPosition(nearestPresetForBidChasingPosition(initialPosition));
     setPosition(sharedPosition);
-    setMaxBidDraft(String(initialMaxBid));
 
     const defaultPreset = nearestPresetForBidChasingPosition(sharedPosition);
     if (products && products.length > 0) {
       const nextMax: Record<string, string> = {};
       const nextPositions: Record<string, BidChasingRange> = {};
       for (const product of products) {
-        nextMax[product.id] = String(initialMaxBid);
         const own = initialPositionsById?.[product.id];
-        nextPositions[product.id] = own
+        const preset = own
           ? nearestPresetForBidChasingPosition(own)
           : defaultPreset;
+        nextPositions[product.id] = preset;
+        const range = resolveProductBidChasingRange(
+          product.seed,
+          presetBidChasingPosition(preset),
+        );
+        nextMax[product.id] = formatBidChasingMaxBidDraftValue(
+          clampBidChasingMaxBidToMin(initialMaxBid, range.maxRub),
+        );
       }
       setMaxBidDraftsById(nextMax);
       setPositionsById(nextPositions);
@@ -5592,6 +5602,12 @@ export const BidChasingClustersModal: React.FC<{
       setMaxBidDraftsById({});
       setPositionsById({});
       setAssignmentMode('shared');
+      const openMin = resolveBidChasingDemoBids(sharedPosition).demoBidMaxRub;
+      setMaxBidDraft(
+        formatBidChasingMaxBidDraftValue(
+          clampBidChasingMaxBidToMin(initialMaxBid, openMin),
+        ),
+      );
     }
     // initialPositionsById читаем только при открытии / смене списка товаров
     // eslint-disable-next-line react-hooks/exhaustive-deps -- не сбрасывать форму на новый object identity
@@ -5604,30 +5620,54 @@ export const BidChasingClustersModal: React.FC<{
     position.kind === 'preset' ? position : DEFAULT_BID_CHASING_POSITION;
   const positionValid = resolvedPosition.kind === 'preset';
 
-  const parsedMaxBid = parseBidChasingMaxBidDraft(maxBidDraft);
-  const maxBidValid = isBidChasingMaxBidValid(parsedMaxBid);
+  const sharedRangeBids = resolveBidChasingDemoBids(resolvedPosition);
+  const sharedLimitMinRub = sharedRangeBids.demoBidMaxRub;
 
-  const productMaxBidsParsed = hasProducts
+  const productRowsMeta = hasProducts
     ? (products ?? []).map((product) => {
+        const rowPreset = isManualAssignment
+          ? positionsById[product.id] ??
+            nearestPresetForBidChasingPosition(resolvedPosition)
+          : nearestPresetForBidChasingPosition(resolvedPosition);
+        const rowPosition = presetBidChasingPosition(rowPreset);
+        const range = resolveProductBidChasingRange(product.seed, rowPosition);
         const draft = maxBidDraftsById[product.id] ?? String(initialMaxBid);
         const value = parseBidChasingMaxBidDraft(draft);
-        return { id: product.id, draft, value, valid: isBidChasingMaxBidValid(value) };
+        const minRub = range.maxRub;
+        return {
+          product,
+          rowPreset,
+          rowPosition,
+          range,
+          draft,
+          value,
+          minRub,
+        };
       })
     : [];
-  const productMaxBidsValid =
-    !hasProducts || productMaxBidsParsed.every((item) => item.valid);
-  const canApply =
-    (isManualAssignment || positionValid) &&
-    (hasProducts ? productMaxBidsValid : maxBidValid);
+
+  const parsedMaxBid = parseBidChasingMaxBidDraft(maxBidDraft);
+  const canApply = isManualAssignment || positionValid;
 
   const handleMaxBidDraftChange = (raw: string, setter: (next: string) => void) => {
     const v = raw.replace(',', '.');
     if (v === '' || /^\d*\.?\d*$/.test(v)) setter(v);
   };
 
+  const snapMaxBidDraft = (raw: string, minRub: number, setter: (next: string) => void) => {
+    const parsed = parseBidChasingMaxBidDraft(raw);
+    setter(formatBidChasingMaxBidDraftValue(clampBidChasingMaxBidToMin(parsed, minRub)));
+  };
+
   const selectSharedPosition = (next: BidChasingPosition) => {
     setAssignmentMode('shared');
     setPosition(next);
+    const nextMin = resolveBidChasingDemoBids(next).demoBidMaxRub;
+    setMaxBidDraft((prev) =>
+      formatBidChasingMaxBidDraftValue(
+        clampBidChasingMaxBidToMin(parseBidChasingMaxBidDraft(prev), nextMin),
+      ),
+    );
     if (next.kind === 'preset' && products && products.length > 0) {
       setPositionsById((prev) => {
         const synced: Record<string, BidChasingRange> = { ...prev };
@@ -5635,6 +5675,17 @@ export const BidChasingClustersModal: React.FC<{
           synced[product.id] = next.id;
         }
         return synced;
+      });
+      setMaxBidDraftsById((prev) => {
+        const nextDrafts: Record<string, string> = { ...prev };
+        for (const product of products) {
+          const range = resolveProductBidChasingRange(product.seed, next);
+          const draft = prev[product.id] ?? String(initialMaxBid);
+          nextDrafts[product.id] = formatBidChasingMaxBidDraftValue(
+            clampBidChasingMaxBidToMin(parseBidChasingMaxBidDraft(draft), range.maxRub),
+          );
+        }
+        return nextDrafts;
       });
     }
   };
@@ -5656,17 +5707,15 @@ export const BidChasingClustersModal: React.FC<{
     if (hasProducts) {
       const maxBidsById: Record<string, number> = {};
       let maxBid = BID_CHASING_MIN_BID_RUB;
-      for (const item of productMaxBidsParsed) {
-        maxBidsById[item.id] = item.value;
-        maxBid = Math.max(maxBid, item.value);
+      for (const item of productRowsMeta) {
+        const clamped = clampBidChasingMaxBidToMin(item.value, item.minRub);
+        maxBidsById[item.id] = clamped;
+        maxBid = Math.max(maxBid, clamped);
       }
       if (isManualAssignment) {
         const nextPositionsById: Record<string, BidChasingPosition> = {};
-        for (const product of products ?? []) {
-          nextPositionsById[product.id] = presetBidChasingPosition(
-            positionsById[product.id] ??
-              nearestPresetForBidChasingPosition(resolvedPosition),
-          );
+        for (const item of productRowsMeta) {
+          nextPositionsById[item.product.id] = item.rowPosition;
         }
         const firstPosition =
           Object.values(nextPositionsById)[0] ?? resolvedPosition;
@@ -5681,7 +5730,10 @@ export const BidChasingClustersModal: React.FC<{
       onApply({ position: resolvedPosition, maxBid, maxBidsById });
       return;
     }
-    onApply({ position: resolvedPosition, maxBid: parsedMaxBid });
+    onApply({
+      position: resolvedPosition,
+      maxBid: clampBidChasingMaxBidToMin(parsedMaxBid, sharedLimitMinRub),
+    });
   };
 
   const body = (
@@ -5807,19 +5859,15 @@ export const BidChasingClustersModal: React.FC<{
                   onChange={(e) =>
                     handleMaxBidDraftChange(e.target.value, setMaxBidDraft)
                   }
-                  className={`w-full rounded-xl border px-4 py-3 pr-10 text-base text-gray-900 outline-none transition-colors ${
-                    maxBidValid || maxBidDraft === ''
-                      ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
-                      : 'border-red-300 focus:border-red-400 focus:ring-1 focus:ring-red-400'
-                  }`}
+                  onBlur={() => snapMaxBidDraft(maxBidDraft, sharedLimitMinRub, setMaxBidDraft)}
+                  className="w-full rounded-xl border border-gray-200 px-4 py-3 pr-10 text-base text-gray-900 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                 />
                 <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
                   ₽
                 </span>
               </div>
               <p className="mt-2 text-xs text-gray-400">
-                От {BID_CHASING_MIN_BID_RUB.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} до{' '}
-                {formatForDisplay(CPC_MAX_BID_RUB)} ₽
+                От {formatBidChasingMaxBidDraftValue(sharedLimitMinRub)} ₽
               </p>
             </div>
           ) : null}
@@ -5843,21 +5891,8 @@ export const BidChasingClustersModal: React.FC<{
                     <BidChasingLimitInformer />
                   </p>
                 </div>
-                {products!.map((product) => {
-                  const draft =
-                    maxBidDraftsById[product.id] ?? String(initialMaxBid);
-                  const parsedProductMax = parseBidChasingMaxBidDraft(draft);
-                  const productMaxValid = isBidChasingMaxBidValid(parsedProductMax);
-                  const rowPreset = isManualAssignment
-                    ? positionsById[product.id] ??
-                      nearestPresetForBidChasingPosition(resolvedPosition)
-                    : nearestPresetForBidChasingPosition(resolvedPosition);
-                  const rowPosition = presetBidChasingPosition(rowPreset);
-                  const range = resolveProductBidChasingRange(
-                    product.seed,
-                    rowPosition,
-                    productMaxValid ? parsedProductMax : undefined,
-                  );
+                {productRowsMeta.map((row) => {
+                  const { product, rowPreset, range, draft, minRub } = row;
                   const brandLine = [product.brand, product.article]
                     .filter(Boolean)
                     .join(' • ');
@@ -5888,10 +5923,28 @@ export const BidChasingClustersModal: React.FC<{
                           value={rowPreset}
                           onChange={(e) => {
                             const nextId = e.target.value as BidChasingRange;
+                            const nextPosition = presetBidChasingPosition(nextId);
+                            const nextRange = resolveProductBidChasingRange(
+                              product.seed,
+                              nextPosition,
+                            );
                             setPositionsById((prev) => ({
                               ...prev,
                               [product.id]: nextId,
                             }));
+                            setMaxBidDraftsById((prev) => {
+                              const current =
+                                prev[product.id] ?? String(initialMaxBid);
+                              return {
+                                ...prev,
+                                [product.id]: formatBidChasingMaxBidDraftValue(
+                                  clampBidChasingMaxBidToMin(
+                                    parseBidChasingMaxBidDraft(current),
+                                    nextRange.maxRub,
+                                  ),
+                                ),
+                              };
+                            });
                           }}
                           className={`w-full appearance-none rounded-lg border py-2 pl-2 pr-7 text-sm tabular-nums text-gray-900 outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-100 ${
                             isManualAssignment
@@ -5933,11 +5986,15 @@ export const BidChasingClustersModal: React.FC<{
                               })),
                             )
                           }
-                          className={`w-full rounded-lg border px-2.5 py-2 pr-7 text-sm tabular-nums text-gray-900 outline-none transition-colors ${
-                            productMaxValid || draft === ''
-                              ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
-                              : 'border-red-300 focus:border-red-400 focus:ring-1 focus:ring-red-400'
-                          }`}
+                          onBlur={() =>
+                            snapMaxBidDraft(draft, minRub, (next) =>
+                              setMaxBidDraftsById((prev) => ({
+                                ...prev,
+                                [product.id]: next,
+                              })),
+                            )
+                          }
+                          className="w-full rounded-lg border border-gray-200 px-2.5 py-2 pr-7 text-sm tabular-nums text-gray-900 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                         />
                         <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">
                           ₽
