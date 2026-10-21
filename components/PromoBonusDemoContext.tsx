@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
 
 export type PromoBonusDemoCaseId = '100' | '250000' | '1600';
 
@@ -72,7 +71,6 @@ export function PromoBonusDemoProvider({ children }: { children: React.ReactNode
     <PromoBonusDemoContext.Provider value={value}>
       <MassCreationDemoChromeContext.Provider value={chromeValue}>
         {children}
-        <PromoBonusDemoSwitcher />
       </MassCreationDemoChromeContext.Provider>
     </PromoBonusDemoContext.Provider>
   );
@@ -127,38 +125,4 @@ export function buildDemoBonusPackages(total: number): Array<{
       displayBurn: fmt(p2Amount),
     },
   ];
-}
-
-function PromoBonusDemoSwitcher() {
-  const { caseId, setCaseId } = usePromoBonusDemo();
-  const visible = useMassCreationDemoChromeVisible();
-  if (!visible) return null;
-
-  return createPortal(
-    <div
-      className="fixed bottom-44 right-3 z-[90] inline-flex items-center gap-0.5 rounded-full border border-gray-200/80 bg-white/70 p-0.5 shadow-sm backdrop-blur-sm"
-      role="group"
-      aria-label="Демо: баланс промобонусов"
-    >
-      {PROMO_BONUS_DEMO_CASES.map((item) => {
-        const active = item.id === caseId;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setCaseId(item.id)}
-            title={`Промобонусы: ${item.label}`}
-            className={`rounded-full px-2 py-1 text-[11px] font-medium tabular-nums transition-colors ${
-              active
-                ? 'bg-gray-900 text-white'
-                : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-            }`}
-          >
-            {item.label}
-          </button>
-        );
-      })}
-    </div>,
-    document.body,
-  );
 }

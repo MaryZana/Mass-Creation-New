@@ -89,8 +89,8 @@ export function UnifiedAccountInstructionModal({
           <div className="mt-5 space-y-4 text-sm leading-relaxed text-gray-700">
             <p>
               <span className="font-semibold text-gray-900">Единый счёт</span> — основной источник
-              средств для пополнения кампаний. Он объединяет «счёт» и «запасные деньги WB Продвижение».
-              Сначала деньги списываются со счёта, а если их не хватает — с запасных денег.
+              средств для пополнения кампаний. Он объединяет «счёт» и «баланс WB Продвижение».
+              Сначала деньги списываются со счёта, а если их не хватает — с баланса.
             </p>
             <p>
               <span className="font-semibold text-gray-900">Промобонусы</span> — дополнительный источник
@@ -120,7 +120,7 @@ export function UnifiedAccountInstructionModal({
                   </span>
                 </p>
                 <p>
-                  Запасные деньги:{' '}
+                  Баланс:{' '}
                   <span className="font-semibold tabular-nums text-gray-900">
                     {fmtRub(balanceRub)} ₽
                   </span>

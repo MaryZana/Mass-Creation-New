@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'reac
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar, Coins, Columns2, Rocket
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar, Coins, Columns2, Rocket, TrendingUp, Lock
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -14,14 +14,26 @@ import { ReviewEditsModal } from './components/ReviewEditsModal';
 import { ChangesHistoryModal } from './components/ChangesHistoryModal';
 import {
   AdvancedDailyLimitModal,
+  AutoStrategiesModal,
   CpcCampaignPage,
   createDefaultAdvancedDailyLimitSettings,
   type AdvancedDailyLimitSettings,
+  type BidChasingModalProduct,
 } from './components/CpcCampaignPage';
 import { MassCreationIsland } from './components/CpcMassCreationIsland';
 import { useCpmBidRoundedAlert } from './components/CpmBidRoundedAlert';
 import { CPM_BID_STEP_RUB, normalizeCpmBidRub } from './utils/cpmBidRounding';
 import { DAILY_LIMIT_ABSOLUTE_MIN } from './utils/cpcDailyLimitBid';
+import {
+  DEFAULT_BID_CHASING_POSITION,
+  formatBidChasingPositionLabel,
+  type BidChasingPosition,
+} from './utils/cpcBidChasingPositionTiers';
+import {
+  BulkSearchBidModal,
+  buildBulkSearchRecommendedTiers,
+  type BulkSearchBidItem,
+} from './components/BulkSearchBidModal';
 import {
   clampCampaignsToPromoPackageBalances,
   effectivePromoBonusAmount,
@@ -69,6 +81,7 @@ import {
 } from './components/ProfileContext';
 import { NewSellerFirstCampaignPage } from './components/newSeller/NewSellerFirstCampaignPage';
 import { NEW_SELLER_CREATE_CAMPAIGN_PATH } from './components/AppHeader';
+import { PRODUCT_PROMOTION_CONCEPT_PATH } from './constants/campaignListRoutes';
 import { MEDIA_FINANCE_PATH } from './utils/financeRoutes';
 import CampaignsPage from './pages/CampaignsPage';
 import CampaignsWithWidgetsPage from './pages/CampaignsWithWidgetsPage';
@@ -114,8 +127,39 @@ const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 30000;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
-const SELLER_PASSWORD = 'Uy4b3n2';
+const RESEARCH_PASSWORDS = {
+  bonuses: '93876',
+  'mass-creation': '38462',
+} as const;
 const AUTH_SESSION_KEY = 'mass_creation_authed_v1';
+const AUTH_DESTINATION_KEY = 'mass_creation_auth_dest_v1';
+
+type AuthDestination = 'default' | 'bonuses' | 'mass-creation';
+
+const RESEARCH_DESTINATIONS = [
+  { id: 'bonuses' as const, label: 'Промобонусы' },
+  { id: 'mass-creation' as const, label: 'Массовое создание' },
+];
+
+function readAuthDestination(): AuthDestination {
+  try {
+    const value = sessionStorage.getItem(AUTH_DESTINATION_KEY);
+    if (value === 'bonuses' || value === 'mass-creation' || value === 'default') {
+      return value;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'default';
+}
+
+function writeAuthDestination(destination: AuthDestination) {
+  try {
+    sessionStorage.setItem(AUTH_DESTINATION_KEY, destination);
+  } catch {
+    /* ignore */
+  }
+}
 
 const SHELL_APP_PATHS = new Set([
   '/campaigns',
@@ -321,71 +365,165 @@ const PROSPECT_PICK_REASONS = [
 
 // FirstListCpcTooltip removed per UX request.
 
-const AuthScreen = ({ onAuth }: { onAuth: () => void }) => {
+const AuthScreen = ({
+  onAuth,
+}: {
+  onAuth: (destination: AuthDestination) => void;
+}) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
-  const [activeTab, setActiveTab] = useState<'team' | 'seller'>('team');
+  const [activeTab, setActiveTab] = useState<'team' | 'research'>('research');
+  const [researchPick, setResearchPick] = useState<'bonuses' | 'mass-creation'>('bonuses');
+  const [researchMenuOpen, setResearchMenuOpen] = useState(false);
+  const researchMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!researchMenuOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (researchMenuRef.current?.contains(event.target as Node)) return;
+      setResearchMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setResearchMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [researchMenuOpen]);
+
+  const researchLabel =
+    RESEARCH_DESTINATIONS.find((item) => item.id === researchPick)?.label ??
+    'Промобонусы';
 
   const handleLogin = (e?: React.FormEvent) => {
     e?.preventDefault();
-    const isValid =
-      activeTab === 'team'
-        ? password === MASTER_PASSWORD
-        : password === SELLER_PASSWORD;
-
-    if (isValid) {
-      onAuth();
-    } else {
+    const expectedPassword =
+      activeTab === 'research'
+        ? RESEARCH_PASSWORDS[researchPick]
+        : MASTER_PASSWORD;
+    if (password !== expectedPassword) {
       setError(true);
       setPassword('');
       setTimeout(() => setError(false), 2000);
+      return;
     }
+    onAuth(activeTab === 'research' ? researchPick : 'default');
   };
 
   return (
     <div className="fixed inset-0 bg-[#F6F6F9] flex items-center justify-center z-[200]">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-gray-100">
         <h1 className="text-xl font-bold text-center mb-6">Вход в систему</h1>
-        <div className="flex items-center justify-center mb-4 gap-2 bg-gray-50 rounded-xl p-1">
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-gray-50 p-1">
           <button
             type="button"
-            onClick={() => { setActiveTab('team'); setPassword(''); setError(false); }}
-            className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
+            onClick={() => {
+              setActiveTab('research');
+              setPassword('');
+              setError(false);
+            }}
+            className={`flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+              activeTab === 'research'
+                ? 'bg-purple-600 text-white shadow-sm'
+                : 'bg-transparent text-gray-700 hover:bg-white'
+            }`}
+          >
+            Исследования
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('team');
+              setPassword('');
+              setError(false);
+              setResearchMenuOpen(false);
+            }}
+            className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
               activeTab === 'team'
                 ? 'bg-purple-600 text-white shadow-sm'
                 : 'bg-transparent text-gray-700 hover:bg-white'
             }`}
           >
+            <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
             Команда
           </button>
-          <button
-            type="button"
-            onClick={() => { setActiveTab('seller'); setPassword(''); setError(false); }}
-            className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors ${
-              activeTab === 'seller'
-                ? 'bg-purple-600 text-white shadow-sm'
-                : 'bg-transparent text-gray-700 hover:bg-white'
-            }`}
-          >
-            Селлер
-          </button>
         </div>
+
+        {activeTab === 'research' ? (
+          <div className="relative mb-4" ref={researchMenuRef}>
+            <p className="mb-1.5 text-sm font-medium text-gray-700">Раздел</p>
+            <button
+              type="button"
+              onClick={() => setResearchMenuOpen((open) => !open)}
+              aria-expanded={researchMenuOpen}
+              aria-haspopup="listbox"
+              className="flex w-full items-center justify-between rounded-xl border border-gray-300 bg-white px-4 py-3 text-left text-sm font-medium text-gray-900 outline-none transition-colors hover:border-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+            >
+              <span>{researchLabel}</span>
+              <ChevronDown
+                className={`h-4 w-4 text-gray-500 transition-transform ${
+                  researchMenuOpen ? 'rotate-180' : ''
+                }`}
+              />
+            </button>
+            {researchMenuOpen ? (
+              <ul
+                role="listbox"
+                className="absolute left-0 right-0 z-10 mt-1.5 overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+              >
+                {RESEARCH_DESTINATIONS.map((item) => {
+                  const selected = item.id === researchPick;
+                  return (
+                    <li key={item.id} role="option" aria-selected={selected}>
+                      <button
+                        type="button"
+                        className={`flex w-full px-4 py-2.5 text-left text-sm transition-colors ${
+                          selected
+                            ? 'bg-[#F6F2FF] font-medium text-gray-900'
+                            : 'text-gray-800 hover:bg-gray-50'
+                        }`}
+                        onClick={() => {
+                          setResearchPick(item.id);
+                          setPassword('');
+                          setError(false);
+                          setResearchMenuOpen(false);
+                        }}
+                      >
+                        {item.label}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
+          </div>
+        ) : null}
+
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Введите пароль</label>
-            <input 
-              type="password" 
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Введите пароль
+            </label>
+            <input
+              type="password"
               autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={`w-full px-4 py-3 rounded-xl border ${error ? 'border-red-500 animate-shake' : 'border-gray-300'} focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition-all text-center tracking-widest text-lg`}
+              className={`w-full rounded-xl border px-4 py-3 text-center text-lg tracking-widest outline-none transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 ${
+                error ? 'animate-shake border-red-500' : 'border-gray-300'
+              }`}
               placeholder="••••••••"
             />
-            {error && <p className="text-red-500 text-xs mt-2 text-center">Неверный пароль</p>}
+            {error ? (
+              <p className="mt-2 text-center text-xs text-red-500">Неверный пароль</p>
+            ) : null}
           </div>
-          <button 
+          <button
             type="submit"
-            className="w-full bg-purple-600 text-white font-bold py-3.5 rounded-xl hover:bg-purple-700 transition-all shadow-lg shadow-purple-200 active:scale-[0.98]"
+            className="w-full rounded-xl bg-purple-600 py-3.5 font-bold text-white shadow-lg shadow-purple-200 transition-all hover:bg-purple-700 active:scale-[0.98]"
           >
             Войти
           </button>
@@ -1485,7 +1623,6 @@ const BulkEditModal = ({
         }
         switch (action) {
             case 'bid': return 'Задать ставки';
-            case 'autobidder': return 'Преследование ставки';
             default: return '';
         }
     }
@@ -2504,7 +2641,23 @@ const UploadEditsModal = ({
   );
 };
 
-const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onDailyLimit, onClear }: { count: number, onConfigureAR: () => void, onDownload: () => void, onEdit?: () => void, onDailyLimit?: () => void, onClear: () => void }) => {
+const BulkActionIsland = ({
+  count,
+  onConfigureAR,
+  onDownload,
+  onEdit,
+  onDailyLimit,
+  onBid,
+  onClear,
+}: {
+  count: number;
+  onConfigureAR: () => void;
+  onDownload: () => void;
+  onEdit?: () => void;
+  onDailyLimit?: () => void;
+  onBid?: () => void;
+  onClear: () => void;
+}) => {
     return (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md rounded-xl shadow-2xl z-[80] p-2 flex items-center gap-2 border border-gray-200 animate-in slide-in-from-bottom-4 fade-in">
             <span className="text-sm font-medium text-gray-800 px-3 whitespace-nowrap">Выбрано: {count}</span>
@@ -2513,6 +2666,12 @@ const BulkActionIsland = ({ count, onConfigureAR, onDownload, onEdit, onDailyLim
                 <button onClick={onEdit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
                     <Edit2 className="w-4 h-4 text-gray-500" />
                     <span>Редактировать</span>
+                </button>
+            )}
+            {onBid && (
+                <button onClick={onBid} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
+                    <Zap className="w-4 h-4 text-gray-500" />
+                    <span>Ставка</span>
                 </button>
             )}
             {onDailyLimit && (
@@ -2546,6 +2705,8 @@ const CreationSelectionBar = ({
   onAutoRefill,
   onBid,
   onZones,
+  onAutobidder,
+  autobidderModels,
   onDelete,
   onClear,
 }: {
@@ -2555,10 +2716,33 @@ const CreationSelectionBar = ({
   onAutoRefill: () => void;
   onBid: () => void;
   onZones: () => void;
+  onAutobidder: (paymentModel?: PaymentModel) => void;
+  /** Модели среди выбранных кампаний — шеврон, если есть и CPC, и CPM */
+  autobidderModels: PaymentModel[];
   onDelete: () => void;
   onClear: () => void;
 }) => {
   const countLabel = `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
+  const [autobidderMenuOpen, setAutobidderMenuOpen] = useState(false);
+  const autobidderMenuRef = useRef<HTMLDivElement>(null);
+  const showAutobidderModelMenu = autobidderModels.length > 1;
+
+  useEffect(() => {
+    if (!autobidderMenuOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (autobidderMenuRef.current?.contains(event.target as Node)) return;
+      setAutobidderMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setAutobidderMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [autobidderMenuOpen]);
 
   return (
     <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
@@ -2588,6 +2772,75 @@ const CreationSelectionBar = ({
           <Columns2 className="h-4 w-4 text-gray-700" />
           <span>Зоны показа</span>
         </button>
+        {showAutobidderModelMenu ? (
+          <div className="relative flex shrink-0" ref={autobidderMenuRef}>
+            <button
+              type="button"
+              onClick={() => setAutobidderMenuOpen((open) => !open)}
+              className={`${creationBarBtnClass} rounded-r-none pr-2.5`}
+            >
+              <TrendingUp className="h-4 w-4 text-gray-700" />
+              <span>Автобиддер</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Выбрать модель оплаты для автобиддера"
+              aria-expanded={autobidderMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setAutobidderMenuOpen((open) => !open)}
+              className="inline-flex h-[40px] items-center rounded-r-xl border-l border-white/70 bg-[#F3F4F6] px-2 text-gray-700 transition-colors hover:bg-gray-200"
+            >
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform ${autobidderMenuOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+            {autobidderMenuOpen ? (
+              <div
+                role="menu"
+                className="absolute bottom-full left-0 z-[90] mb-2 min-w-[220px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+              >
+                <p className="px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                  Настроить автобиддер
+                </p>
+                {autobidderModels.includes(PaymentModel.CPC) ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full px-3 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50"
+                    onClick={() => {
+                      setAutobidderMenuOpen(false);
+                      onAutobidder(PaymentModel.CPC);
+                    }}
+                  >
+                    Для CPC
+                  </button>
+                ) : null}
+                {autobidderModels.includes(PaymentModel.CPM) ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="flex w-full px-3 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50"
+                    onClick={() => {
+                      setAutobidderMenuOpen(false);
+                      onAutobidder(PaymentModel.CPM);
+                    }}
+                  >
+                    Для CPM
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => onAutobidder(autobidderModels[0])}
+            className={creationBarBtnClass}
+          >
+            <TrendingUp className="h-4 w-4 text-gray-700" />
+            <span>Автобиддер</span>
+          </button>
+        )}
       </div>
       <div className="ml-1 flex items-center gap-1">
         <button
@@ -2648,12 +2901,19 @@ export default function App() {
       return false;
     }
   });
+  const [authDestination, setAuthDestination] = useState<AuthDestination>(() =>
+    readAuthDestination(),
+  );
+  const isMassCreationResearchAccess = authDestination === 'mass-creation';
+  const isBonusesResearchAccess = authDestination === 'bonuses';
   const [appState, setAppState] = useState<
     'creation' | 'list' | 'editing' | 'single-campaign' | 'new-seller-first-campaign'
-  >('list');
+  >(() => (readAuthDestination() === 'mass-creation' ? 'creation' : 'list'));
 
   const showMassCreationDemoChrome =
     isAuthenticated &&
+    !isMassCreationResearchAccess &&
+    !isBonusesResearchAccess &&
     appState === 'creation' &&
     !(isNewSellerProfile(profileId) && !isNewSellerSecondaryShellPath(location.pathname));
 
@@ -2661,18 +2921,42 @@ export default function App() {
     setMassCreationDemoChrome(showMassCreationDemoChrome);
   }, [setMassCreationDemoChrome, showMassCreationDemoChrome]);
 
+  // Исследования → «Массовое создание»: только экран массового создания
+  useEffect(() => {
+    if (!isMassCreationResearchAccess) return;
+    setAppState('creation');
+  }, [isMassCreationResearchAccess]);
+
+  // Исследования → «Промобонусы»: только главная (+ запуск одной кампании)
+  useEffect(() => {
+    if (!isBonusesResearchAccess) return;
+    if (appState === 'single-campaign') return;
+    if (appState !== 'list') setAppState('list');
+    if (location.pathname !== PRODUCT_PROMOTION_CONCEPT_PATH) {
+      navigate(PRODUCT_PROMOTION_CONCEPT_PATH, { replace: true });
+    }
+  }, [isBonusesResearchAccess, appState, location.pathname, navigate]);
+
   const openSingleCampaign = useCallback(() => {
+    if (isMassCreationResearchAccess) return;
     setAppState('single-campaign');
-  }, []);
+  }, [isMassCreationResearchAccess]);
 
   const openNewSellerCampaignCreation = useCallback(() => {
+    if (isMassCreationResearchAccess || isBonusesResearchAccess) return;
     setAppState('new-seller-first-campaign');
     if (location.pathname !== NEW_SELLER_CREATE_CAMPAIGN_PATH) {
       navigate(NEW_SELLER_CREATE_CAMPAIGN_PATH, { replace: true });
     }
-  }, [location.pathname, navigate]);
+  }, [
+    isMassCreationResearchAccess,
+    isBonusesResearchAccess,
+    location.pathname,
+    navigate,
+  ]);
 
   useEffect(() => {
+    if (isMassCreationResearchAccess || isBonusesResearchAccess) return;
     if (!isNewSellerProfile(profileId)) {
       setAppState((prev) => (prev === 'new-seller-first-campaign' ? 'list' : prev));
       if (location.pathname === NEW_SELLER_CREATE_CAMPAIGN_PATH) {
@@ -2691,13 +2975,25 @@ export default function App() {
     if (location.pathname !== NEW_SELLER_CREATE_CAMPAIGN_PATH) {
       navigate(NEW_SELLER_CREATE_CAMPAIGN_PATH, { replace: true });
     }
-  }, [profileId, location.pathname, navigate]);
+  }, [
+    isMassCreationResearchAccess,
+    isBonusesResearchAccess,
+    profileId,
+    location.pathname,
+    navigate,
+  ]);
 
   useEffect(() => {
+    if (isMassCreationResearchAccess || isBonusesResearchAccess) return;
     if (!isShellAppPath(location.pathname)) return;
     if (isNewSellerProfile(profileId)) return;
     setAppState((prev) => (prev === 'cpc-detail' ? prev : 'list'));
-  }, [location.pathname, profileId]);
+  }, [
+    isMassCreationResearchAccess,
+    isBonusesResearchAccess,
+    location.pathname,
+    profileId,
+  ]);
   const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
   const [showToast, setShowToast] = useState(false);
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
@@ -2767,6 +3063,9 @@ export default function App() {
   const [creationBulkAutoRefillOnRules, setCreationBulkAutoRefillOnRules] = useState(true);
   const [isCreationZonesModalOpen, setIsCreationZonesModalOpen] = useState(false);
   const [creationZonesDraft, setCreationZonesDraft] = useState({ search: true, recommendations: true });
+  /** Скоуп автобиддера из дропдауна CPC/CPM в массовых действиях */
+  const [autobidderBulkPaymentModel, setAutobidderBulkPaymentModel] =
+    useState<PaymentModel | null>(null);
   const [campaignForBonusEdit, setCampaignForBonusEdit] = useState<CampaignRecord | null>(null);
   const [singleReplenishAction, setSingleReplenishAction] = useState<'budget' | 'autorefill'>('budget');
   const [isUploadEditsModalOpen, setIsUploadEditsModalOpen] = useState(false);
@@ -2822,6 +3121,7 @@ export default function App() {
   } | null>(null);
   const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; autoRefill?: boolean; dynamicDailyLimit?: boolean; status?: 'active' | 'paused'; statusText?: string }) => void) | null>(null);
   const bulkDailyLimitOpenerRef = useRef<(() => void) | null>(null);
+  const bulkSearchBidOpenerRef = useRef<(() => void) | null>(null);
 
   type CampaignListDataPatch = {
     name?: string;
@@ -2875,11 +3175,24 @@ export default function App() {
   const [bonusAppContext, setBonusAppContext] = useState<{ value: any, fullCoverageCount: number, remainingBonuses: number } | null>(null);
 
   const handleNavigateToList = () => {
+    if (isMassCreationResearchAccess) {
+      setAppState('creation');
+      return;
+    }
     setWbDiscountPromoteProducts(null);
     setAppState('list');
+    if (isBonusesResearchAccess) {
+      navigate(PRODUCT_PROMOTION_CONCEPT_PATH, { replace: true });
+    }
   };
-  const handleNavigateToCreation = () => setAppState('creation');
-  const handleNavigateToEditing = () => setAppState('editing');
+  const handleNavigateToCreation = () => {
+    if (isBonusesResearchAccess) return;
+    setAppState('creation');
+  };
+  const handleNavigateToEditing = () => {
+    if (isMassCreationResearchAccess || isBonusesResearchAccess) return;
+    setAppState('editing');
+  };
 
   const buildGrowingDemandMassCreationCampaigns = useCallback((): CampaignRecord[] => {
     const currentDate = new Date().toLocaleDateString('ru-RU');
@@ -2918,6 +3231,10 @@ export default function App() {
   }, []);
 
   const handleNavigateToCreationWithGrowingDemand = useCallback(() => {
+    if (isBonusesResearchAccess) {
+      openSingleCampaign();
+      return;
+    }
     const config: Pick<CampaignConfig, 'paymentModel' | 'bidType'> = {
       paymentModel: PaymentModel.CPC,
       bidType: BidType.UNIFIED,
@@ -2947,7 +3264,7 @@ export default function App() {
     );
     setShowToast(true);
     setAppState('creation');
-  }, [buildGrowingDemandMassCreationCampaigns]);
+  }, [buildGrowingDemandMassCreationCampaigns, isBonusesResearchAccess, openSingleCampaign]);
 
   useEffect(() => {
     if (!pendingReferralCreationNav || profileId !== '2') return;
@@ -3130,6 +3447,10 @@ export default function App() {
 
   const handleNavigateToCreationWithSingleCampaignProducts = useCallback(
     (items: { nmId: number; productName: string; imageUrl: string; category: string }[]) => {
+      if (isBonusesResearchAccess) {
+        openSingleCampaign();
+        return;
+      }
       if (!items || items.length === 0) {
         setAppState('creation');
         return;
@@ -3163,7 +3484,7 @@ export default function App() {
       );
       setAppState('creation');
     },
-    [handleAddItemSubmit],
+    [handleAddItemSubmit, isBonusesResearchAccess, openSingleCampaign],
   );
 
   const massCreationCuratedCatalog = useMemo((): CuratedPickProduct[] => {
@@ -3497,10 +3818,14 @@ export default function App() {
     setCreationResult(null);
     setFailedCampaigns([]);
     setIsLaunching(true);
-    setAppState('list');
+    if (isMassCreationResearchAccess) {
+      setAppState('creation');
+    } else {
+      setAppState('list');
+    }
     setIsConfirmLaunchOpen(false);
     setIsConfirmLaunchWithFiltersOpen(false);
-  }
+  };
 
   const handleSelectCampaign = (id: string) => {
     setSelectedCampaignIds(prev => prev.includes(id) ? prev.filter(cid => cid !== id) : [...prev, id]);
@@ -3518,7 +3843,10 @@ export default function App() {
       return [...new Set(selectedCampaigns.map(c => c.category))];
   }, [selectedCampaignIds, currentBulkAction, templateGroups]);
 
-    const openBulkActionModal = (action: BulkActionType) => {
+    const openBulkActionModal = (
+      action: BulkActionType,
+      paymentModelFilter?: PaymentModel,
+    ) => {
         setClearSelectionOnBulkClose(false);
         if (action === 'delete') {
             setIsConfirmBulkDeleteOpen(true);
@@ -3526,13 +3854,19 @@ export default function App() {
         }
         
         if (action === 'autobidder') {
-            // "Преследование ставки" нельзя настраивать одновременно для разных типов кампаний
-            // (например CPM ручная/единая и CPC). Требуем, чтобы выбранные кампании были одного типа.
+            // Нельзя смешивать разные типы внутри выбранной модели (например CPM ручная + единая).
             const selectedIds = new Set(selectedCampaignIds);
             const typeKeys = new Set<string>();
             const typeLabels = new Set<string>();
+            let scopedCount = 0;
 
             for (const g of templateGroups) {
+                if (
+                  paymentModelFilter != null &&
+                  g.config.paymentModel !== paymentModelFilter
+                ) {
+                  continue;
+                }
                 const key = `${g.config.paymentModel}-${g.config.bidType}`;
                 const label =
                     g.config.paymentModel === PaymentModel.CPM
@@ -3541,22 +3875,42 @@ export default function App() {
 
                 for (const c of g.campaigns) {
                     if (selectedIds.has(c.id)) {
+                        scopedCount += 1;
                         typeKeys.add(key);
                         typeLabels.add(label);
-                        // небольшая оптимизация: если уже больше одного типа — дальше можно не искать
                         if (typeKeys.size > 1) break;
                     }
                 }
                 if (typeKeys.size > 1) break;
             }
 
-            if (typeKeys.size > 1) {
+            if (scopedCount === 0) {
                 setToastMessage(
-                    `Нельзя настроить «Преследование ставки» сразу для разных типов кампаний. Сейчас выбраны: ${Array.from(typeLabels).join(', ')}. Оставьте выбранным только один тип и попробуйте снова.`
+                  paymentModelFilter
+                    ? `Среди выбранных нет кампаний ${paymentModelFilter}`
+                    : 'Среди выбранных нет кампаний для автобиддера',
                 );
                 setShowToast(true);
                 return;
             }
+
+            if (typeKeys.size > 1) {
+                setToastMessage(
+                    `Нельзя настроить автобиддер сразу для разных типов кампаний. Сейчас выбраны: ${Array.from(typeLabels).join(', ')}. Оставьте выбранным только один тип и попробуйте снова.`
+                );
+                setShowToast(true);
+                return;
+            }
+
+            const firstKey = [...typeKeys][0] ?? '';
+            setAutobidderBulkPaymentModel(
+              paymentModelFilter ??
+                (firstKey.startsWith(PaymentModel.CPM)
+                  ? PaymentModel.CPM
+                  : PaymentModel.CPC),
+            );
+        } else {
+            setAutobidderBulkPaymentModel(null);
         }
 
         const campaignsToInspect = editingGroupId ? editedCampaigns : allValidCampaigns;
@@ -3589,6 +3943,7 @@ export default function App() {
 
     const closeBulkActionModal = () => {
     setIsBulkActionModalOpen(false);
+    setAutobidderBulkPaymentModel(null);
     if (clearSelectionOnBulkClose) {
       setSelectedCampaignIds([]);
       setClearSelectionOnBulkClose(false);
@@ -3657,7 +4012,35 @@ export default function App() {
     const handleBulkSave = (value: any) => {
         const mode = value?.__mode as string | undefined;
         const action =
-          mode === 'budget' ? 'budget' : mode === 'autorefill' ? 'autorefill' : currentBulkAction;
+          mode === 'budget'
+            ? 'budget'
+            : mode === 'autorefill'
+              ? 'autorefill'
+              : mode === 'autobidder'
+                ? 'autobidder'
+                : currentBulkAction;
+
+        if (action === 'autobidder') {
+            const position = (value?.position ?? DEFAULT_BID_CHASING_POSITION) as BidChasingPosition;
+            const modelFilter = autobidderBulkPaymentModel;
+            const scopedCount =
+              modelFilter == null
+                ? selectedCampaignIds.length
+                : selectedCampaignIds.filter((id) =>
+                    templateGroups.some(
+                      (g) =>
+                        g.config.paymentModel === modelFilter &&
+                        g.campaigns.some((c) => c.id === id),
+                    ),
+                  ).length;
+            closeBulkActionModal();
+            const modelLabel = modelFilter ? ` ${modelFilter}` : '';
+            setToastMessage(
+              `Автобиддер${modelLabel} (${formatBidChasingPositionLabel(position)}) настроен для ${scopedCount} ${getPlural(scopedCount, 'кампании', 'кампаний', 'кампаний')}`,
+            );
+            setShowToast(true);
+            return;
+        }
 
         if (action === 'autorefill') {
             applyBulkChanges(value, selectedCampaignIds, 'autorefill');
@@ -3874,6 +4257,73 @@ export default function App() {
     return templateGroups.flatMap((g) => g.campaigns.filter((c) => ids.has(c.id)));
   }, [selectedCampaignIds, templateGroups]);
 
+  const selectedCreationAutobidderModels = useMemo(() => {
+    const ids = new Set(selectedCampaignIds);
+    const models = new Set<PaymentModel>();
+    for (const group of templateGroups) {
+      if (group.campaigns.some((c) => ids.has(c.id))) {
+        models.add(group.config.paymentModel);
+      }
+    }
+    const ordered: PaymentModel[] = [];
+    if (models.has(PaymentModel.CPC)) ordered.push(PaymentModel.CPC);
+    if (models.has(PaymentModel.CPM)) ordered.push(PaymentModel.CPM);
+    return ordered;
+  }, [selectedCampaignIds, templateGroups]);
+
+  const selectedCreationBulkBidItems = useMemo((): BulkSearchBidItem[] => {
+    const source = editingGroupId ? editedCampaigns : allValidCampaigns;
+    const ids = new Set(selectedCampaignIds);
+    return source
+      .filter((c) => ids.has(c.id))
+      .map((c) => {
+        const bid =
+          c.searchBid ??
+          c.bid ??
+          c.recommendationsBid ??
+          150;
+        return {
+          id: c.id,
+          name: c.productName,
+          imageUrl: c.imageUrl,
+          brand: c.category,
+          article: String(c.nmId),
+          bid,
+          recommendedByTier: buildBulkSearchRecommendedTiers(c.nmId || c.id.length),
+        };
+      });
+  }, [editingGroupId, editedCampaigns, allValidCampaigns, selectedCampaignIds]);
+
+  const selectedCreationBulkAutobidderProducts = useMemo((): BidChasingModalProduct[] => {
+    const source = editingGroupId ? editedCampaigns : allValidCampaigns;
+    const ids = new Set(selectedCampaignIds);
+    return source
+      .filter((c) => {
+        if (!ids.has(c.id)) return false;
+        if (autobidderBulkPaymentModel == null) return true;
+        return templateGroups.some(
+          (g) =>
+            g.config.paymentModel === autobidderBulkPaymentModel &&
+            g.campaigns.some((gc) => gc.id === c.id),
+        );
+      })
+      .map((c) => ({
+        id: c.id,
+        name: c.productName,
+        imageUrl: c.imageUrl,
+        brand: c.category,
+        article: String(c.nmId),
+        seed: c.nmId || c.id.length,
+      }));
+  }, [
+    editingGroupId,
+    editedCampaigns,
+    allValidCampaigns,
+    selectedCampaignIds,
+    autobidderBulkPaymentModel,
+    templateGroups,
+  ]);
+
   const creationBulkCampaignBudget = useMemo(() => {
     if (selectedCreationCampaigns.length === 0) return 0;
     return Math.min(...selectedCreationCampaigns.map((c) => c.budget || 0));
@@ -4032,10 +4482,23 @@ export default function App() {
         setCreationResult({ success: successful.length, error: failed.length });
         setFailedCampaigns(failed);
         setIsLaunching(false);
+        if (isMassCreationResearchAccess) {
+          setTemplateGroups([]);
+          setEditingGroupId(null);
+          setEditedCampaigns([]);
+          setSelectedCampaignIds([]);
+          setInlineErrors({});
+          setToastMessage(
+            successful.length > 0
+              ? `Запущено: ${successful.length}`
+              : 'Запуск завершён',
+          );
+          setShowToast(true);
+        }
       }, 10000);
       return () => clearTimeout(timer);
     }
-  }, [isLaunching, allValidCampaigns]);
+  }, [isLaunching, allValidCampaigns, isMassCreationResearchAccess]);
 
   const editableInputClass = "w-full text-sm bg-white border shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5 rounded-lg";
   const [showQuickSave, setShowQuickSave] = useState(false);
@@ -4046,19 +4509,30 @@ export default function App() {
   if (!isAuthenticated) {
     return (
       <AuthScreen
-        onAuth={() => {
+        onAuth={(destination) => {
           try {
             sessionStorage.setItem(AUTH_SESSION_KEY, '1');
           } catch {
             /* ignore */
           }
+          writeAuthDestination(destination);
+          setAuthDestination(destination);
           setIsAuthenticated(true);
+          if (destination === 'bonuses') {
+            setAppState('list');
+            navigate(PRODUCT_PROMOTION_CONCEPT_PATH, { replace: true });
+            return;
+          }
+          if (destination === 'mass-creation') {
+            setAppState('creation');
+            return;
+          }
         }}
       />
     );
   }
 
-  if (appState === 'editing') {
+  if (!isMassCreationResearchAccess && !isBonusesResearchAccess && appState === 'editing') {
     return (
       <MassEditPage 
         onNavigateToList={() => {
@@ -4071,21 +4545,33 @@ export default function App() {
     );
   }
 
-  if (appState === 'single-campaign') {
+  if (!isMassCreationResearchAccess && appState === 'single-campaign') {
     return (
       <SingleCampaignPage 
         onBack={() => handleNavigationAttempt(handleNavigateToList)}
-        onNavigateToMassCreation={(items) =>
+        onNavigateToMassCreation={(items) => {
+          if (isBonusesResearchAccess) {
+            setToastMessage('Кампания запущена');
+            setShowToast(true);
+            handleNavigateToList();
+            return;
+          }
           handleNavigationAttempt(() =>
             handleNavigateToCreationWithSingleCampaignProducts(items),
-          )
-        }
+          );
+        }}
+        researchAccess={isBonusesResearchAccess ? 'bonuses' : null}
       />
     );
   }
 
   // Новый селлер: сразу экран создания (не ждём appState — иначе ломается на гонке с Routes)
-  if (isNewSellerProfile(profileId) && !isNewSellerSecondaryShellPath(location.pathname)) {
+  if (
+    !isMassCreationResearchAccess &&
+    !isBonusesResearchAccess &&
+    isNewSellerProfile(profileId) &&
+    !isNewSellerSecondaryShellPath(location.pathname)
+  ) {
     return (
       <NewSellerFirstCampaignPage
         onBack={openNewSellerCampaignCreation}
@@ -4094,7 +4580,7 @@ export default function App() {
     );
   }
 
-  if (appState === 'list') {
+  if (!isMassCreationResearchAccess && appState === 'list') {
     const campaignsListContent = (
       <>
                 <main className="mx-auto w-full min-h-[calc(100vh-3.5rem)] max-w-[1920px] bg-[#F3F5F8] px-7 pt-4 pb-10">
@@ -4104,17 +4590,34 @@ export default function App() {
                     launchResult={creationResult}
                     failedCampaigns={failedCampaigns}
                     onClearLaunchResult={() => setCreationResult(null)}
-                    onNavigateToCreation={() => handleNavigationAttempt(handleNavigateToCreation)}
-                    onNavigateToCreationWithProducts={(items) =>
+                    onNavigateToCreation={() => {
+                      if (isBonusesResearchAccess) {
+                        openSingleCampaign();
+                        return;
+                      }
+                      handleNavigationAttempt(handleNavigateToCreation);
+                    }}
+                    onNavigateToCreationWithProducts={(items) => {
+                      if (isBonusesResearchAccess) {
+                        openSingleCampaign();
+                        return;
+                      }
                       handleNavigationAttempt(() =>
                         handleNavigateToCreationWithSingleCampaignProducts(items),
-                      )
-                    }
-                    onNavigateToCreationWithGrowingDemand={() =>
-                      handleNavigationAttempt(handleNavigateToCreationWithGrowingDemand)
-                    }
+                      );
+                    }}
+                    onNavigateToCreationWithGrowingDemand={() => {
+                      if (isBonusesResearchAccess) {
+                        openSingleCampaign();
+                        return;
+                      }
+                      handleNavigationAttempt(handleNavigateToCreationWithGrowingDemand);
+                    }}
                     onConfirmWbDiscountPromote={handleConfirmWbDiscountPromote}
-                    onOpenUploadEditsModal={() => setIsUploadEditsModalOpen(true)}
+                    onOpenUploadEditsModal={() => {
+                      if (isBonusesResearchAccess) return;
+                      setIsUploadEditsModalOpen(true);
+                    }}
                     selectedCampaigns={selectedListedCampaignIds}
                     onSelectionChange={setSelectedListedCampaignIds}
                     isApplyingEdits={isApplyingEdits}
@@ -4141,6 +4644,7 @@ export default function App() {
                       budgetConceptDemo,
                       budgetRangeConceptDemo,
                     }) => {
+                      if (isBonusesResearchAccess) return;
                       const patch = campaignListPatches[campaignId];
                       setSelectedCpcCampaign({
                         id: campaignId,
@@ -4183,9 +4687,13 @@ export default function App() {
                     onRegisterBulkDailyLimitOpener={(open) => {
                       bulkDailyLimitOpenerRef.current = open;
                     }}
+                    onRegisterBulkSearchBidOpener={(open) => {
+                      bulkSearchBidOpenerRef.current = open;
+                    }}
                     campaignListPatches={campaignListPatches}
                     onPersistCampaignListPatch={persistCampaignListPatch}
                     onOpenSingleCampaign={openSingleCampaign}
+                    researchAccess={isBonusesResearchAccess ? 'bonuses' : null}
                   />
                 </main>
                 <UploadEditsModal
@@ -4216,6 +4724,7 @@ export default function App() {
                       setIsFromExcelModal(false);
                       handleNavigationAttempt(handleNavigateToEditing);
                     }}
+                    onBid={() => bulkSearchBidOpenerRef.current?.()}
                     onDailyLimit={() => bulkDailyLimitOpenerRef.current?.()}
                     onConfigureAR={() => {
                       setToastMessage("Функция 'Настроить АП' в разработке");
@@ -4325,18 +4834,39 @@ export default function App() {
             isNewSellerProfile(profileId) ? openNewSellerCampaignCreation : undefined
           }
           campaignCreationActive={false}
+          researchAccess={isBonusesResearchAccess ? 'bonuses' : null}
         />
         <CampaignsInsightFilterProvider>
           <OverviewBridgeProvider
             value={{
-              openMassCreationWithProducts: (items) =>
+              openMassCreationWithProducts: (items) => {
+                if (isBonusesResearchAccess) {
+                  openSingleCampaign();
+                  return;
+                }
                 handleNavigationAttempt(() =>
                   handleNavigateToCreationWithSingleCampaignProducts(items),
-                ),
+                );
+              },
             }}
           >
             <Routes>
-              {isNewSellerProfile(profileId) ? (
+              {isBonusesResearchAccess ? (
+                <>
+                  <Route
+                    path={PRODUCT_PROMOTION_CONCEPT_PATH}
+                    element={
+                      <ProductPromotionConceptPage>
+                        <CampaignsPage>{campaignsListContent}</CampaignsPage>
+                      </ProductPromotionConceptPage>
+                    }
+                  />
+                  <Route
+                    path="*"
+                    element={<Navigate to={PRODUCT_PROMOTION_CONCEPT_PATH} replace />}
+                  />
+                </>
+              ) : isNewSellerProfile(profileId) ? (
                 <>
                   <Route path="/finance" element={<FinancePage />} />
                   <Route path="/finance/top-up" element={<FinanceTopUpPage />} />
@@ -4400,7 +4930,12 @@ export default function App() {
     );
   }
 
-  if (appState === 'cpc-detail' && selectedCpcCampaign) {
+  if (
+    !isMassCreationResearchAccess &&
+    !isBonusesResearchAccess &&
+    appState === 'cpc-detail' &&
+    selectedCpcCampaign
+  ) {
     return (
       <CpcCampaignPage
         campaignId={selectedCpcCampaign.id}
@@ -4461,6 +4996,13 @@ export default function App() {
     <AppHeader
       onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
       onLaunchPromotion={() => handleNavigationAttempt(() => openSingleCampaign())}
+      researchAccess={
+        isMassCreationResearchAccess
+          ? 'mass-creation'
+          : isBonusesResearchAccess
+            ? 'bonuses'
+            : null
+      }
     />
     <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
     {cpmBidRoundedAlertNode}
@@ -4491,20 +5033,89 @@ export default function App() {
         cancelText="Остаться"
         children={<p>Вы уверены, что хотите выйти? Все данные будут потеряны.</p>}
     />
-  <BulkEditModal 
-      isOpen={isBulkActionModalOpen} 
-      onClose={closeBulkActionModal} 
-      action={currentBulkAction} 
-      onSave={handleBulkSave} 
-      categories={uniqueCategoriesForSelection} 
-      selectedCampaignsCount={selectedCampaignIds.length} 
-      onOpenAutoRefill={() => { setCampaignForAutoRefill(null); setIsAutoRefillModalOpen(true); }}
+  {isBulkActionModalOpen && currentBulkAction === 'bid' ? (
+    <BulkSearchBidModal
+      isOpen
+      items={selectedCreationBulkBidItems}
+      onClose={closeBulkActionModal}
+      onApply={(bidsById) => {
+        const ids = Object.keys(bidsById);
+        const updateLogic = (campaign: CampaignRecord): CampaignRecord => {
+          if (!(campaign.id in bidsById)) return campaign;
+          const nextBid = bidsById[campaign.id]!;
+          return {
+            ...campaign,
+            bid: nextBid,
+            searchBid: nextBid,
+          };
+        };
+        if (editingGroupId) {
+          setEditedCampaigns((prev) => prev.map(updateLogic));
+        }
+        setTemplateGroups((prev) =>
+          prev.map((group) => ({
+            ...group,
+            campaigns: group.campaigns.map(updateLogic),
+          })),
+        );
+        setToastMessage(
+          `Ставки обновлены для ${ids.length} ${getPlural(ids.length, 'товара', 'товаров', 'товаров')}`,
+        );
+        setShowToast(true);
+        closeBulkActionModal();
+      }}
+    />
+  ) : isBulkActionModalOpen && currentBulkAction === 'autobidder' ? (
+    <AutoStrategiesModal
+      isOpen
+      onClose={closeBulkActionModal}
+      bidChasing={{
+        isOpen: true,
+        onClose: closeBulkActionModal,
+        initialPosition: DEFAULT_BID_CHASING_POSITION,
+        initialMaxBid: Math.max(
+          15,
+          ...selectedCreationCampaigns
+            .filter((c) => {
+              if (autobidderBulkPaymentModel == null) return true;
+              return templateGroups.some(
+                (g) =>
+                  g.config.paymentModel === autobidderBulkPaymentModel &&
+                  g.campaigns.some((gc) => gc.id === c.id),
+              );
+            })
+            .map((c) => Math.max(c.bid ?? 0, c.searchBid ?? 0, 15)),
+        ),
+        isDailyLimitEnabled: false,
+        savedDailyLimitRub: 0,
+        otherMaxProductBidRub: 0,
+        isBidChasingEnabled: false,
+        onDisable: closeBulkActionModal,
+        products: selectedCreationBulkAutobidderProducts,
+        onApply: ({ position, maxBid }) => {
+          handleBulkSave({ __mode: 'autobidder', position, maxBid });
+        },
+      }}
+    />
+  ) : (
+    <BulkEditModal
+      isOpen={isBulkActionModalOpen}
+      onClose={closeBulkActionModal}
+      action={currentBulkAction}
+      onSave={handleBulkSave}
+      categories={uniqueCategoriesForSelection}
+      selectedCampaignsCount={selectedCampaignIds.length}
+      onOpenAutoRefill={() => {
+        setCampaignForAutoRefill(null);
+        setIsAutoRefillModalOpen(true);
+      }}
       prefillData={bulkEditPrefillData}
       editingGroupId={editingGroupId}
       editedCampaigns={editedCampaigns}
       allValidCampaigns={allValidCampaigns}
       selectedCampaignIds={selectedCampaignIds}
-  />
+    />
+  )}
   <BulkEditModal 
       isOpen={!!campaignForBonusEdit} 
       onClose={() => setCampaignForBonusEdit(null)} 
@@ -5005,6 +5616,10 @@ export default function App() {
         onAutoRefill={() => openBulkActionModal('autorefill')}
         onBid={() => openBulkActionModal('bid')}
         onZones={openCreationZonesModal}
+        autobidderModels={selectedCreationAutobidderModels}
+        onAutobidder={(paymentModel) =>
+          openBulkActionModal('autobidder', paymentModel)
+        }
         onDelete={() => openBulkActionModal('delete')}
         onClear={() => setSelectedCampaignIds([])}
       />

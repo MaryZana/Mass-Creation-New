@@ -7,6 +7,7 @@ import App from './App';
 import { ProfileProvider } from './components/ProfileContext';
 import { PromoBonusDemoProvider } from './components/PromoBonusDemoContext';
 import { PromoMissedBonusUxProvider } from './components/PromoMissedBonusUxContext';
+import { MassCreationDemoChromePanel } from './components/MassCreationDemoChromePanel';
 
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -70,6 +71,7 @@ window.__MASS_CREATION_ROOT__.render(
           <PromoBonusDemoProvider>
             <PromoMissedBonusUxProvider>
               <App />
+              <MassCreationDemoChromePanel />
             </PromoMissedBonusUxProvider>
           </PromoBonusDemoProvider>
         </ProfileProvider>

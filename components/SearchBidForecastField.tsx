@@ -5,6 +5,8 @@ export const SEARCH_BID_FORECAST: Record<BidChasingRange, { label: string; fille
   '1-2': { label: '1-2', filled: 3 },
   '3-10': { label: '3-10', filled: 2 },
   '11-34': { label: '11-34', filled: 1 },
+  '35-50': { label: '35-50', filled: 1 },
+  '51-100': { label: '51-100', filled: 1 },
 };
 
 export function BidBarsIcon({ className }: { className?: string }) {

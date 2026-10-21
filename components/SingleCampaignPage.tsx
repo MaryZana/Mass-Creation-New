@@ -367,6 +367,8 @@ function HeaderHint({ label }: { label: string }) {
 interface SingleCampaignPageProps {
   onBack: () => void;
   onNavigateToMassCreation: (items: CampaignProductRow[]) => void;
+  /** Урезанный доступ «Исследования» */
+  researchAccess?: 'bonuses' | null;
 }
 
 // Шапка приложения вынесена в общий компонент `AppHeader`.
@@ -857,7 +859,9 @@ function SingleCampaignPaymentModelSelector({
 export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   onBack,
   onNavigateToMassCreation,
+  researchAccess = null,
 }) => {
+  const isBonusesResearchAccess = researchAccess === 'bonuses';
   const {
     profileId,
     showReferralInviteCreationBanner,
@@ -1330,7 +1334,10 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
 
   return (
     <div className="min-h-screen bg-[#F7F7FA] font-sans text-gray-900" style={{ background: '#F7F7FA' }}>
-      <AppHeader onNavigate={onBack} />
+      <AppHeader
+        onNavigate={onBack}
+        researchAccess={isBonusesResearchAccess ? 'bonuses' : null}
+      />
       
       <main className="flex flex-col items-center gap-6 px-6 py-8 pb-24">
         {profileId === '2' && showReferralInviteCreationBanner && (
@@ -2146,11 +2153,12 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
                 type="button"
                 onClick={() => {
                   setIsMultiCategoryWarningOpen(false);
+                  if (isBonusesResearchAccess) return;
                   onNavigateToMassCreation(products);
                 }}
                 className="rounded-xl bg-[#2E3038] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#23252c]"
               >
-                Добавить товар
+                {isBonusesResearchAccess ? 'Понятно' : 'Добавить товар'}
               </button>
             </div>
           </div>

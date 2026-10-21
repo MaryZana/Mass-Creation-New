@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { useMassCreationDemoChromeVisible } from './PromoBonusDemoContext';
 
 /** Базовые механики + 10 UI-скинов для футер+CTA. */
 export type PromoMissedBonusUxId =
@@ -152,7 +150,6 @@ export function PromoMissedBonusUxProvider({ children }: { children: React.React
   return (
     <PromoMissedBonusUxContext.Provider value={value}>
       {children}
-      <PromoMissedBonusUxSwitcher />
     </PromoMissedBonusUxContext.Provider>
   );
 }
@@ -163,66 +160,4 @@ export function usePromoMissedBonusUx(): PromoMissedBonusUxContextValue {
     throw new Error('usePromoMissedBonusUx must be used within PromoMissedBonusUxProvider');
   }
   return ctx;
-}
-
-function PromoMissedBonusUxSwitcher() {
-  const { uxId, setUxId } = usePromoMissedBonusUx();
-  const visible = useMassCreationDemoChromeVisible();
-  const baseCases = PROMO_MISSED_BONUS_UX_CASES.filter((item) => item.group === 'base');
-  const ctaCases = PROMO_MISSED_BONUS_UX_CASES.filter((item) => item.group === 'cta');
-  if (!visible) return null;
-
-  return createPortal(
-    <div className="fixed bottom-52 right-3 z-[90] flex max-w-[min(100vw-1.5rem,22rem)] flex-col items-end gap-1">
-      <div
-        className="inline-flex items-center gap-0.5 rounded-full border border-gray-200/80 bg-white/70 p-0.5 shadow-sm backdrop-blur-sm"
-        role="group"
-        aria-label="Демо: упущенная выгода — база"
-      >
-        {baseCases.map((item) => {
-          const active = item.id === uxId;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setUxId(item.id)}
-              title={item.title}
-              className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
-                active
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-      <div
-        className="inline-flex flex-wrap items-center justify-end gap-0.5 rounded-full border border-gray-200/80 bg-white/70 p-0.5 shadow-sm backdrop-blur-sm"
-        role="group"
-        aria-label="Демо: упущенная выгода — CTA UI"
-      >
-        {ctaCases.map((item) => {
-          const active = item.id === uxId;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setUxId(item.id)}
-              title={item.title}
-              className={`rounded-full px-1.5 py-1 text-[10px] font-semibold tabular-nums transition-colors ${
-                active
-                  ? 'bg-[#9A41FE] text-white'
-                  : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>,
-    document.body,
-  );
 }

@@ -232,6 +232,7 @@ export function AppHeader({
   onLaunchPromotion,
   onOpenCampaignCreation,
   campaignCreationActive = false,
+  researchAccess = null,
 }: {
   onNavigate: () => void;
   onLaunchPromotion?: () => void;
@@ -239,7 +240,12 @@ export function AppHeader({
   onOpenCampaignCreation?: () => void;
   /** Подсветка пункта «Создание кампании» */
   campaignCreationActive?: boolean;
+  /** Урезанный доступ «Исследования»: скрыть лишнюю навигацию */
+  researchAccess?: 'mass-creation' | 'bonuses' | null;
 }) {
+  const isMassCreationResearch = researchAccess === 'mass-creation';
+  const isBonusesResearch = researchAccess === 'bonuses';
+  const isResearchAccess = isMassCreationResearch || isBonusesResearch;
   const { profileId, setProfileId, activeProfile } = useProfile();
   const { promoBonusTotal } = usePromoBonusDemo();
   const location = useLocation();
@@ -310,6 +316,16 @@ export function AppHeader({
     <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
       <div className="flex items-center justify-between px-6 h-14 bg-white">
         <div className="flex items-center gap-4">
+          {isResearchAccess ? (
+            <div className="inline-flex h-9 items-center gap-2 rounded-[10px] px-2.5">
+              <span className="text-[15px] font-bold leading-none tracking-tight text-gray-900">
+                {activeProductSpace.shortLabel}
+              </span>
+              <span className="text-sm font-medium text-gray-500">
+                {isMassCreationResearch ? 'Массовое создание' : 'Промобонусы'}
+              </span>
+            </div>
+          ) : (
           <div
             className="relative shrink-0"
             onMouseEnter={() => openNavMenuNow('product')}
@@ -374,7 +390,9 @@ export function AppHeader({
               </ul>
             </div>
           </div>
+          )}
 
+          {!isResearchAccess ? (
           <nav className="flex items-center gap-1 text-sm font-medium">
             {isNewSeller ? (
               <>
@@ -727,6 +745,7 @@ export function AppHeader({
               </div>
             </div>
           </nav>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-3 text-sm font-medium text-black">
@@ -739,68 +758,81 @@ export function AppHeader({
                 {formatBonusAmount(promoBonusTotal)} B
               </p>
             </div>
-            <NavLink
-              to={financeTopUpTo}
-              onClick={onNavigate}
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
-              aria-label="Пополнить счёт"
-            >
-              <Plus className="h-4 w-4" aria-hidden />
-            </NavLink>
-          </div>
-
-          <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
-
-          <div
-            className="relative"
-            onMouseEnter={() => openNavMenuNow('profile')}
-            onMouseLeave={() => scheduleCloseNavMenu('profile')}
-          >
-            <button
-              type="button"
-              className={`flex max-w-[240px] items-center gap-1.5 rounded-lg py-1 pl-1 pr-0.5 text-black transition-colors hover:bg-gray-50 ${
-                openNavMenu === 'profile' ? 'bg-gray-50' : ''
-              }`}
-              aria-haspopup="listbox"
-              aria-expanded={openNavMenu === 'profile'}
-            >
-              <span className="truncate text-left">{truncateCompany(activeProfile.company)}</span>
-              <ChevronDown
-                className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
-                  openNavMenu === 'profile' ? 'rotate-180' : ''
-                }`}
-              />
-            </button>
-
-            <div className={headerMenuPanelClass(openNavMenu === 'profile', { align: 'right', pad: 'pt-1' })}>
-              <ul
-                className="min-w-[220px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-                role="listbox"
-                aria-label="Выбор профиля"
+            {!isResearchAccess ? (
+              <NavLink
+                to={financeTopUpTo}
+                onClick={onNavigate}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
+                aria-label="Пополнить счёт"
               >
-                {PROFILES.map((profile) => {
-                  const selected = profile.id === profileId;
-                  return (
-                    <li key={profile.id} role="option" aria-selected={selected}>
-                      <button
-                        type="button"
-                        onClick={() => setProfileId(profile.id)}
-                        className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${
-                          selected ? 'bg-violet-50/80 text-gray-900' : 'text-gray-800'
-                        }`}
-                      >
-                        <span>
-                          <span className="block font-medium">{profile.label}</span>
-                          <span className="block text-xs text-gray-500">{profile.company}</span>
-                        </span>
-                        {selected && <Check className="h-4 w-4 shrink-0 text-[#9a41fe]" aria-hidden />}
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
+                <Plus className="h-4 w-4" aria-hidden />
+              </NavLink>
+            ) : null}
           </div>
+
+          {!isResearchAccess ? (
+            <>
+              <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
+
+              <div
+                className="relative"
+                onMouseEnter={() => openNavMenuNow('profile')}
+                onMouseLeave={() => scheduleCloseNavMenu('profile')}
+              >
+                <button
+                  type="button"
+                  className={`flex max-w-[240px] items-center gap-1.5 rounded-lg py-1 pl-1 pr-0.5 text-black transition-colors hover:bg-gray-50 ${
+                    openNavMenu === 'profile' ? 'bg-gray-50' : ''
+                  }`}
+                  aria-haspopup="listbox"
+                  aria-expanded={openNavMenu === 'profile'}
+                >
+                  <span className="truncate text-left">{truncateCompany(activeProfile.company)}</span>
+                  <ChevronDown
+                    className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${
+                      openNavMenu === 'profile' ? 'rotate-180' : ''
+                    }`}
+                  />
+                </button>
+
+                <div className={headerMenuPanelClass(openNavMenu === 'profile', { align: 'right', pad: 'pt-1' })}>
+                  <ul
+                    className="min-w-[220px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                    role="listbox"
+                    aria-label="Выбор профиля"
+                  >
+                    {PROFILES.map((profile) => {
+                      const selected = profile.id === profileId;
+                      return (
+                        <li key={profile.id} role="option" aria-selected={selected}>
+                          <button
+                            type="button"
+                            onClick={() => setProfileId(profile.id)}
+                            className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${
+                              selected ? 'bg-violet-50/80 text-gray-900' : 'text-gray-800'
+                            }`}
+                          >
+                            <span>
+                              <span className="block font-medium">{profile.label}</span>
+                              <span className="block text-xs text-gray-500">{profile.company}</span>
+                            </span>
+                            {selected && <Check className="h-4 w-4 shrink-0 text-[#9a41fe]" aria-hidden />}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
+              <span className="max-w-[240px] truncate text-sm text-gray-700">
+                {truncateCompany(activeProfile.company)}
+              </span>
+            </>
+          )}
         </div>
       </div>
 

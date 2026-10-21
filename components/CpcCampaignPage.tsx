@@ -50,24 +50,22 @@ import { SearchBidForecastField } from './SearchBidForecastField';
 import {
   BID_CHASING_POSITION_OPTIONS,
   DEFAULT_BID_CHASING_POSITION,
-  MAX_CUSTOM_BID_CHASING_SEARCH_POSITION,
-  MIN_BID_CHASING_SEARCH_POSITION,
-  MIN_CUSTOM_BID_CHASING_SPAN,
   bidChasingPositionOption,
   bidChasingTargetAvgPosition,
   formatBidChasingClusterBidRangeLabel,
   formatBidChasingPositionLabel,
   formatBidChasingPositionLinkLabel,
   isBidChasingHoldOfferedForChartRange,
-  isValidCustomBidChasingRange,
   nearestPresetForBidChasingPosition,
   presetBidChasingPosition,
   resolveBidChasingDemoBids,
+  resolveProductBidChasingRange,
   searchBidForecastMetaForPosition,
   type BidChasingPosition,
   type BidChasingRange,
 } from '../utils/cpcBidChasingPositionTiers';
 import { useProfile, type RepeatLaunchPreset } from './ProfileContext';
+import { AutobidderPositionBadge } from './AutobidderPositionBadge';
 import {
   DAILY_LIMIT_ABSOLUTE_MIN,
   minDailyLimitForMaxBid,
@@ -105,6 +103,16 @@ const formatForDisplay = (num: number | string | undefined | null): string => {
   const numValue = typeof num === 'string' ? parseDisplayValue(num) : num;
   if (isNaN(numValue) || numValue === null || numValue === undefined) return '0';
   return numValue.toLocaleString('ru-RU', { useGrouping: true });
+};
+
+const getPlural = (number: number, one: string, two: string, five: string) => {
+  let n = Math.abs(number);
+  n %= 100;
+  if (n >= 5 && n <= 20) return five;
+  n %= 10;
+  if (n === 1) return one;
+  if (n >= 2 && n <= 4) return two;
+  return five;
 };
 
 const formatCurrency = (num: number | null | undefined): string => {
@@ -2524,8 +2532,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
   const [searchBidPickerProductKey, setSearchBidPickerProductKey] = useState<string | null>(null);
   const searchBidPickerRef = useRef<HTMLDivElement>(null);
   const searchBidPickerPopoverRef = useRef<HTMLDivElement>(null);
-  const [isBidChasingEnabled, setIsBidChasingEnabled] = useState(false);
-  const [bidChasingProductKey, setBidChasingProductKey] = useState<string | null>(null);
+  const [isBidChasingEnabled, setIsBidChasingEnabled] = useState(true);
+  const [bidChasingProductKey, setBidChasingProductKey] = useState<string | null>(
+    String(DEMO_CPC_PRODUCT_NM),
+  );
+  /** Доп. товары с автобиддером (демо: не только первый NM) */
+  const [otherProductBidChasing, setOtherProductBidChasing] = useState<
+    Record<string, BidChasingPosition>
+  >({
+    [String(DEMO_CPC_PRODUCT_2_NM)]: presetBidChasingPosition('3-10'),
+  });
   const [autobidderModalProductKey, setAutobidderModalProductKey] = useState(productKey);
   const [isAutoStrategiesOpen, setIsAutoStrategiesOpen] = useState(false);
   const openAutoStrategiesForProduct = useCallback((pk: string) => {
@@ -2594,7 +2610,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
     };
   });
   const [bidChasingPosition, setBidChasingPosition] = useState<BidChasingPosition>(
-    DEFAULT_BID_CHASING_POSITION,
+    presetBidChasingPosition('1-2'),
   );
   const [bidChasingMaxBid, setBidChasingMaxBid] = useState(11.88);
   const [displayZones, setDisplayZones] = useState({ search: true, recommendations: true });
@@ -2757,6 +2773,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       setBidChasingPosition(position);
       setBidChasingMaxBid(maxBid);
       setBidChasingProductKey(pk);
+      setOtherProductBidChasing((prev) => {
+        if (!(pk in prev)) return prev;
+        const next = { ...prev };
+        delete next[pk];
+        return next;
+      });
       setProductSearchTier((prev) => ({
         ...prev,
         [pk]: nearestPresetForBidChasingPosition(position),
@@ -2917,6 +2939,12 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
       setBidChasingPosition(position);
       setBidChasingMaxBid(maxBid);
       setBidChasingProductKey(pk);
+      setOtherProductBidChasing((prev) => {
+        if (!(pk in prev)) return prev;
+        const next = { ...prev };
+        delete next[pk];
+        return next;
+      });
       setProductSearchTier((prev) => ({
         ...prev,
         [pk]: nearestPresetForBidChasingPosition(position),
@@ -4254,9 +4282,16 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                   const pk = String(nmId);
                   const searchOn = displayZones.search;
                   const recsOn = displayZones.recommendations;
-                  const isRowChasing = isBidChasingEnabled && bidChasingProductKey === pk;
-                  const forecastPos: BidChasingPosition = isRowChasing
+                  const isPrimaryChasing =
+                    isBidChasingEnabled && bidChasingProductKey === pk;
+                  const otherChasingPos = otherProductBidChasing[pk];
+                  const isRowChasing = isPrimaryChasing || Boolean(otherChasingPos);
+                  const rowBidChasingPosition: BidChasingPosition = isPrimaryChasing
                     ? bidChasingPosition
+                    : otherChasingPos ??
+                      presetBidChasingPosition(productSearchTier[pk] ?? '3-10');
+                  const forecastPos: BidChasingPosition = isRowChasing
+                    ? rowBidChasingPosition
                     : presetBidChasingPosition(productSearchTier[pk] ?? '3-10');
                   const forecastMeta = searchBidForecastMetaForPosition(forecastPos);
                   const searchBidEntry = productSearchBids[pk];
@@ -4296,13 +4331,22 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                       <td className="py-3.5 pr-2">
                         <div className="flex min-h-9 items-start">
                           {isRowChasing ? (
-                            <button
-                              type="button"
-                              className="text-left text-sm font-medium leading-snug text-blue-600 hover:text-blue-700 hover:underline"
+                            <AutobidderPositionBadge
+                              variant="position"
+                              position={rowBidChasingPosition}
+                              products={[
+                                {
+                                  name: product.productName,
+                                  imageUrl: resolveProductTableThumbSrc(
+                                    pk,
+                                    product.imageUrl,
+                                    product.category,
+                                  ),
+                                  position: rowBidChasingPosition,
+                                },
+                              ]}
                               onClick={() => openAutoStrategiesForProduct(pk)}
-                            >
-                              {formatBidChasingPositionLabel(bidChasingPosition)}
-                            </button>
+                            />
                           ) : (
                             <button
                               type="button"
@@ -4551,7 +4595,10 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         isOpen={isAutoStrategiesOpen}
         onClose={closeAutoStrategies}
         bidChasing={{
-          initialPosition: bidChasingPosition,
+          initialPosition:
+            isBidChasingEnabled && bidChasingProductKey === autobidderModalProductKey
+              ? bidChasingPosition
+              : otherProductBidChasing[autobidderModalProductKey] ?? bidChasingPosition,
           initialMaxBid: bidChasingMaxBid,
           isDailyLimitEnabled,
           savedDailyLimitRub,
@@ -4560,10 +4607,19 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
             parseDisplayValue(productRecommendationsBids[autobidderModalProductKey]?.saved ?? '0'),
           ),
           isBidChasingEnabled:
-            isBidChasingEnabled && bidChasingProductKey === autobidderModalProductKey,
+            (isBidChasingEnabled && bidChasingProductKey === autobidderModalProductKey) ||
+            Boolean(otherProductBidChasing[autobidderModalProductKey]),
           onDisable: () => {
-            setIsBidChasingEnabled(false);
-            setBidChasingProductKey(null);
+            if (bidChasingProductKey === autobidderModalProductKey) {
+              setIsBidChasingEnabled(false);
+              setBidChasingProductKey(null);
+            }
+            setOtherProductBidChasing((prev) => {
+              if (!(autobidderModalProductKey in prev)) return prev;
+              const next = { ...prev };
+              delete next[autobidderModalProductKey];
+              return next;
+            });
             closeAutoStrategies();
             setToastMessage('Преследование ставки отключено');
             setToastIsError(false);
@@ -5372,12 +5428,24 @@ const BID_CHASING_MIN_BID_RUB = 1.88;
 
 export type AutoStrategiesTab = 'positions' | 'profit';
 
+/** Товары в массовом автобиддере — у каждого свой диапазон ставки за те же позиции. */
+export type BidChasingModalProduct = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  brand?: string;
+  article: string;
+  seed: number;
+};
+
 export const AutoStrategiesModal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
   bidChasing: React.ComponentProps<typeof BidChasingClustersModal>;
 }> = ({ isOpen, onClose, bidChasing }) => {
   if (!isOpen) return null;
+
+  const productCount = bidChasing.products?.length ?? 0;
 
   return (
     <div className="fixed inset-0 z-[110] bg-black/50" onClick={onClose} role="presentation">
@@ -5404,6 +5472,12 @@ export const AutoStrategiesModal: React.FC<{
               <h2 id="auto-strategies-title" className="text-xl font-bold leading-snug text-gray-900">
                 Автобиддер
               </h2>
+              {productCount > 0 ? (
+                <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                  Выбрано {productCount}{' '}
+                  {getPlural(productCount, 'товар', 'товара', 'товаров')}
+                </p>
+              ) : null}
             </div>
 
             <BidChasingClustersModal {...bidChasing} embedded isOpen onClose={onClose} />
@@ -5426,6 +5500,8 @@ export const BidChasingClustersModal: React.FC<{
   otherMaxProductBidRub: number;
   isBidChasingEnabled: boolean;
   onDisable: () => void;
+  /** Массовая настройка: список товаров с индивидуальными диапазонами ставок */
+  products?: BidChasingModalProduct[];
 }> = ({
   embedded = false,
   isOpen,
@@ -5438,46 +5514,26 @@ export const BidChasingClustersModal: React.FC<{
   otherMaxProductBidRub,
   isBidChasingEnabled,
   onDisable,
+  products,
 }) => {
   const [position, setPosition] = useState<BidChasingPosition>(initialPosition);
-  const [customFromDraft, setCustomFromDraft] = useState('5');
-  const [customToDraft, setCustomToDraft] = useState('7');
   const [maxBidDraft, setMaxBidDraft] = useState(String(initialMaxBid));
 
   useEffect(() => {
     if (!isOpen) return;
-    setPosition(initialPosition);
-    if (initialPosition.kind === 'custom') {
-      setCustomFromDraft(String(initialPosition.from));
-      setCustomToDraft(String(initialPosition.to));
-    }
+    setPosition(
+      initialPosition.kind === 'preset'
+        ? initialPosition
+        : presetBidChasingPosition(nearestPresetForBidChasingPosition(initialPosition)),
+    );
     setMaxBidDraft(String(initialMaxBid));
   }, [isOpen, initialPosition, initialMaxBid]);
 
   if (!isOpen) return null;
 
-  const parsedCustomFrom = Number.parseInt(customFromDraft, 10);
-  const parsedCustomTo = Number.parseInt(customToDraft, 10);
-  const customRangeValid = isValidCustomBidChasingRange(parsedCustomFrom, parsedCustomTo);
-  const customSelected = position.kind === 'custom';
-  const positionValid = position.kind === 'preset' || customRangeValid;
-
   const resolvedPosition: BidChasingPosition =
-    customSelected && customRangeValid
-      ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
-      : position.kind === 'preset'
-        ? position
-        : customRangeValid
-          ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
-          : DEFAULT_BID_CHASING_POSITION;
-
-  const customFromForBids = Number.isFinite(parsedCustomFrom) ? parsedCustomFrom : 5;
-  const customToForBids = Number.isFinite(parsedCustomTo) ? parsedCustomTo : 7;
-  const customDemoBids = resolveBidChasingDemoBids({
-    kind: 'custom',
-    from: customFromForBids,
-    to: Math.max(customToForBids, customFromForBids + MIN_CUSTOM_BID_CHASING_SPAN),
-  });
+    position.kind === 'preset' ? position : DEFAULT_BID_CHASING_POSITION;
+  const positionValid = resolvedPosition.kind === 'preset';
 
   const parsedMaxBid = parseDisplayValue(maxBidDraft.replace(',', '.'));
   const maxBidValid =
@@ -5489,25 +5545,7 @@ export const BidChasingClustersModal: React.FC<{
 
   const handleApply = () => {
     if (!canApply) return;
-    const nextPosition: BidChasingPosition =
-      customSelected && customRangeValid
-        ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
-        : position.kind === 'preset'
-          ? position
-          : resolvedPosition;
-    onApply({ position: nextPosition, maxBid: parsedMaxBid });
-  };
-
-  const selectCustom = () => {
-    setPosition(
-      customRangeValid
-        ? { kind: 'custom', from: parsedCustomFrom, to: parsedCustomTo }
-        : { kind: 'custom', from: 5, to: 7 },
-    );
-    if (!customRangeValid) {
-      setCustomFromDraft('5');
-      setCustomToDraft('7');
-    }
+    onApply({ position: resolvedPosition, maxBid: parsedMaxBid });
   };
 
   const body = (
@@ -5558,107 +5596,6 @@ export const BidChasingClustersModal: React.FC<{
                   </button>
                 );
               })}
-
-              <div
-                className={`rounded-xl border border-gray-100 border-l-4 border-l-gray-400 px-4 py-3 transition-colors ${
-                  customSelected ? 'bg-gray-50' : 'bg-white'
-                }`}
-              >
-                <button
-                  type="button"
-                  onClick={selectCustom}
-                  className="flex w-full items-start gap-3 text-left"
-                >
-                  <span
-                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                      customSelected ? 'border-purple-600 bg-purple-600' : 'border-gray-300 bg-white'
-                    }`}
-                    aria-hidden
-                  >
-                    {customSelected ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block text-sm font-medium text-gray-900">Свой диапазон позиций</span>
-                    <span className="mt-1 block text-xs text-gray-500">
-                      Ставки:{' '}
-                      {formatBidChasingClusterBidRangeLabel(
-                        customDemoBids.demoBidMinRub,
-                        customDemoBids.demoBidMaxRub,
-                      )}{' '}
-                      ₽
-                    </span>
-                  </span>
-                </button>
-
-                {customSelected ? (
-                  <div className="mt-3 ml-8 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label
-                        className="inline-flex h-9 w-[5.5rem] items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500"
-                        htmlFor="bid-chasing-custom-from"
-                      >
-                        <span className="shrink-0 text-xs text-gray-400">С</span>
-                        <input
-                          id="bid-chasing-custom-from"
-                          type="text"
-                          inputMode="numeric"
-                          value={customFromDraft}
-                          onChange={(e) => {
-                            const v = e.target.value.replace(/\D/g, '');
-                            setCustomFromDraft(v);
-                            const from = Number.parseInt(v, 10);
-                            const to = Number.parseInt(customToDraft, 10);
-                            if (isValidCustomBidChasingRange(from, to)) {
-                              setPosition({ kind: 'custom', from, to });
-                            } else {
-                              setPosition({
-                                kind: 'custom',
-                                from: from || 1,
-                                to: to || from + MIN_CUSTOM_BID_CHASING_SPAN,
-                              });
-                            }
-                          }}
-                          className="min-w-0 flex-1 bg-transparent text-left text-sm tabular-nums text-gray-900 outline-none"
-                          aria-label="Позиция с"
-                        />
-                      </label>
-                      <label
-                        className="inline-flex h-9 w-[5.5rem] items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500"
-                        htmlFor="bid-chasing-custom-to"
-                      >
-                        <span className="shrink-0 text-xs text-gray-400">По</span>
-                        <input
-                          id="bid-chasing-custom-to"
-                          type="text"
-                          inputMode="numeric"
-                          value={customToDraft}
-                          onChange={(e) => {
-                            const v = e.target.value.replace(/\D/g, '');
-                            setCustomToDraft(v);
-                            const from = Number.parseInt(customFromDraft, 10);
-                            const to = Number.parseInt(v, 10);
-                            if (isValidCustomBidChasingRange(from, to)) {
-                              setPosition({ kind: 'custom', from, to });
-                            } else {
-                              setPosition({
-                                kind: 'custom',
-                                from: from || 1,
-                                to: to || (from || 1) + MIN_CUSTOM_BID_CHASING_SPAN,
-                              });
-                            }
-                          }}
-                          className="min-w-0 flex-1 bg-transparent text-left text-sm tabular-nums text-gray-900 outline-none"
-                          aria-label="Позиция по"
-                        />
-                      </label>
-                    </div>
-                    <p className="text-xs text-gray-400">
-                      Выберите от {MIN_BID_CHASING_SEARCH_POSITION} до{' '}
-                      {MAX_CUSTOM_BID_CHASING_SEARCH_POSITION} позиции
-                    </p>
-                  </div>
-                ) : null}
-              </div>
             </div>
           </div>
 
@@ -5707,6 +5644,59 @@ export const BidChasingClustersModal: React.FC<{
               <p className="mt-0.5 text-gray-500">При слишком высокой ставке применим лимит</p>
             </div>
           </div>
+
+          {products && products.length > 0 ? (
+            <div className="mt-6">
+              <h3 className="text-base font-semibold text-gray-900">Ставки по товарам</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                За выбранные позиции у каждого товара свой диапазон — алгоритм подстроит ставку
+                индивидуально
+              </p>
+              <div className="mt-3">
+                {products.map((product) => {
+                  const range = resolveProductBidChasingRange(
+                    product.seed,
+                    resolvedPosition,
+                    maxBidValid ? parsedMaxBid : undefined,
+                  );
+                  const brandLine = [product.brand, product.article]
+                    .filter(Boolean)
+                    .join(' • ');
+                  const positionMeta = searchBidForecastMetaForPosition(resolvedPosition);
+                  return (
+                    <div
+                      key={product.id}
+                      className="flex items-start justify-between gap-4 border-b border-gray-100 py-3.5 last:border-b-0"
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        <img
+                          src={product.imageUrl}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-lg bg-gray-50 object-cover"
+                        />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-950">
+                            {product.name}
+                          </p>
+                          {brandLine ? (
+                            <p className="mt-0.5 truncate text-xs text-gray-500">{brandLine}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-medium tabular-nums text-gray-900">
+                          {formatBidChasingClusterBidRangeLabel(range.minRub, range.maxRub)} ₽
+                        </p>
+                        <p className="mt-0.5 whitespace-nowrap text-[11px] leading-4 text-[#76757C]">
+                          Ставка за {positionMeta.label}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
             </div>
 
             <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">

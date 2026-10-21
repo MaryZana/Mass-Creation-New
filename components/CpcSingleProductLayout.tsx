@@ -87,6 +87,8 @@ const POSITION_RANGE_LABEL: Record<BidChasingRange, string> = {
   '1-2': '1–2',
   '3-10': '3–10',
   '11-34': '14–35',
+  '35-50': '35–50',
+  '51-100': '51–100',
 };
 
 function SingleProductSpendProgressControls({

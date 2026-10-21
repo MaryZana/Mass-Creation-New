@@ -33,7 +33,7 @@ import { financeTopUpPath } from '../utils/financeRoutes';
 const UNIFIED_ACCOUNT_VIDEO_SRC = '/videos/help-instruction-demo.mp4';
 
 const FINANCE_TITLE_GUIDE = {
-  title: 'Как работает счёт и запасные деньги продвижения',
+  title: 'Как работает счёт и баланс продвижения',
   duration: '4:12',
   src: UNIFIED_ACCOUNT_VIDEO_SRC,
 } as const;
@@ -349,7 +349,7 @@ function FinanceTitleHelp() {
         <div className="absolute left-0 top-full z-40 pt-1.5">
           <div className="w-[17rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
             <p>
-              Здесь счёт и запасные деньги продвижения, промобонусы, история операций и возвраты. Видео поможет
+              Здесь счёт и баланс продвижения, промобонусы, история операций и возвраты. Видео поможет
               разобраться, как всё устроено.
             </p>
             <button
@@ -531,14 +531,13 @@ const EXPENSE_CAMPAIGNS: Pick<
   },
 ];
 
-const EXPENSE_SOURCES = ['Счёт', 'Запасные деньги', 'Промо бонусы'] as const;
+const EXPENSE_SOURCES = ['Счёт', 'Баланс', 'Промо бонусы'] as const;
 const WIBES_EXPENSE_SOURCES = ['Баланс', 'Счёт', 'Промо-бонусы', 'Бонусы'] as const;
 
 const EXPENSE_SOURCE_ICON = {
   Счёт: { Icon: Wallet, circle: 'bg-[#E8F1FF] text-[#007AFF]' },
-  'Запасные деньги': { Icon: Coins, circle: 'bg-[#E7F8EE] text-[#12A150]' },
+  Баланс: { Icon: Coins, circle: 'bg-[#E7F8EE] text-[#12A150]' },
   'Промо бонусы': { Icon: Gift, circle: 'bg-[#F3E8FF] text-[#9A41FE]' },
-  Баланс: { Icon: Wallet, circle: 'bg-[#E8F1FF] text-[#007AFF]' },
   'Промо-бонусы': { Icon: Gift, circle: 'bg-[#F3E8FF] text-[#9A41FE]' },
   Бонусы: { Icon: Gift, circle: 'bg-[#F3E8FF] text-[#9A41FE]' },
 } as const;
@@ -1255,11 +1254,11 @@ function BufferSchemeModal({
       ? [
           {
             value: `${fmtRub(row.tuesdayRub)} ₽`,
-            label: 'Запасные деньги, начисленные во вторник (75%)',
+            label: 'Баланс, начисленный во вторник (75%)',
           },
           {
             value: `+ ${fmtRub(row.thursdayRub)} ₽`,
-            label: 'Запасные деньги, начисленные в четверг (25%)',
+            label: 'Баланс, начисленный в четверг (25%)',
           },
           {
             value: `- ${fmtRub(row.inCampaignsRub)} ₽`,
@@ -1267,22 +1266,22 @@ function BufferSchemeModal({
           },
           {
             value: `- ${fmtRub(row.spentOnPromoRub)} ₽`,
-            label: 'Сумма с запасных денег, использованная на продвижение',
+            label: 'Сумма с баланса, использованная на продвижение',
           },
           {
             value: `= ${fmtRub(row.bufferLeftRub)} ₽`,
-            label: 'Осталось на запасных деньгах',
+            label: 'Осталось на балансе',
             tone: 'good' as const,
           },
         ]
       : [
           {
             value: `${fmtRub(row.tuesdayRub)} ₽`,
-            label: 'Запасные деньги во вторник (75%)',
+            label: 'Баланс во вторник (75%)',
           },
           {
             value: `+ ${fmtRub(row.thursdayRub)} ₽`,
-            label: 'Запасные деньги в четверг (25%)',
+            label: 'Баланс в четверг (25%)',
           },
           {
             value: `− ${fmtRub(row.inCampaignsRub)} ₽`,
@@ -1294,7 +1293,7 @@ function BufferSchemeModal({
           },
           {
             value: `= ${fmtRub(row.bufferLeftRub)} ₽`,
-            label: 'Осталось на запасных деньгах',
+            label: 'Осталось на балансе',
             tone: 'good' as const,
           },
         ];
@@ -1327,7 +1326,7 @@ function BufferSchemeModal({
               {kind === 'balance' ? (
                 <>
                   <h2 id="buffer-scheme-title" className="text-2xl font-bold tracking-tight text-gray-900">
-                    Запасные деньги
+                    Баланс
                   </h2>
                   <div className="mt-6">
                     <span className="block text-sm font-medium text-gray-500">Доступно сейчас</span>
@@ -1360,10 +1359,10 @@ function BufferSchemeModal({
                     {formulaOpen ? (
                       <div className="mt-3 rounded-2xl bg-[#F7F7F9] p-5">
                         <p className="text-sm leading-relaxed text-gray-500">
-                          Начисляем запасные деньги 2 раза в неделю: 75% — во вторник, и 25 % — в четверг
+                          Начисляем баланс 2 раза в неделю: 75% — во вторник, и 25 % — в четверг
                         </p>
                         <p className="mt-4 text-sm leading-relaxed text-gray-500">
-                          Запасные деньги равны средней сумме в графе «Итого к оплате» в{' '}
+                          Баланс равен средней сумме в графе «Итого к оплате» в{' '}
                           <button type="button" className="font-medium text-[#007AFF] hover:underline">
                             финансовых отчётах
                           </button>{' '}
@@ -1395,13 +1394,13 @@ function BufferSchemeModal({
                 <>
                   <p className="text-xs font-medium text-gray-500">{row.periodLabel}</p>
                   <p id="buffer-scheme-title" className="mt-1 text-xl font-bold leading-snug text-gray-900">
-                    К начислению запасных денег на этой неделе:
+                    К начислению баланса на этой неделе:
                   </p>
                   <p className="mt-4 text-[32px] font-bold leading-none tabular-nums text-gray-900">
                     {fmtRub(row.weekTotalRub)} ₽
                   </p>
                   <p className="mt-3 text-sm leading-relaxed text-gray-500">
-                    Запасные деньги равны средней сумме в графе «Итого к оплате» в{' '}
+                    Баланс равен средней сумме в графе «Итого к оплате» в{' '}
                     <button type="button" className="font-medium text-[#007AFF] hover:underline">
                       финансовых отчётах
                     </button>{' '}
@@ -1414,9 +1413,9 @@ function BufferSchemeModal({
                         <CoinStackIcon className="h-6 w-6" />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <p className="text-lg font-bold text-gray-900">Остаток запасных денег</p>
+                        <p className="text-lg font-bold text-gray-900">Остаток баланса</p>
                         <p className="mt-1 text-sm leading-relaxed text-gray-500">
-                          Начисляем запасные деньги 2 раза в неделю: 75% — во вторник, и 25% — в четверг
+                          Начисляем баланс 2 раза в неделю: 75% — во вторник, и 25% — в четверг
                         </p>
                       </div>
                     </div>
@@ -1524,10 +1523,10 @@ function FinanceBalancesCard() {
                 {labelTip.show ? (
                   <div className="absolute left-0 top-full z-40 pt-1.5">
                     <div className="w-[17rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
-                      <p>Сумма ваших денег и запасных денег</p>
+                      <p>Сумма ваших денег и баланса</p>
                       <p className="mt-1.5">
                         Когда пополняете кампанию, деньги сначала списываются со счёта, а если суммы не
-                        хватит — с запасных денег
+                        хватит — с баланса
                       </p>
                       <button
                         type="button"
@@ -1565,12 +1564,12 @@ function FinanceBalancesCard() {
               <span className="text-right font-medium tabular-nums text-gray-900">
                 {fmtRub(accountRub)} ₽
               </span>
-              <span className="text-gray-500">Запасные деньги</span>
+              <span className="text-gray-500">Баланс</span>
               <button
                 type="button"
                 onClick={() => setBalanceSchemeOpen(true)}
                 className="text-right font-medium tabular-nums text-gray-900 underline decoration-dotted underline-offset-4 transition-colors hover:text-gray-700"
-                aria-label="Как начисляются запасные деньги"
+                aria-label="Как начисляется баланс"
               >
                 {fmtRub(balanceRub)} ₽
               </button>
@@ -1614,7 +1613,7 @@ function FinanceBalancesCard() {
         <div
           className="fixed bottom-24 right-4 z-[90] inline-flex items-center gap-0.5 rounded-full border border-gray-200/80 bg-white/90 p-0.5 shadow-sm backdrop-blur-sm"
           role="group"
-          aria-label="Кейс запасных денег"
+          aria-label="Кейс баланса"
         >
           {BALANCE_DEMO_CASES.map((item) => {
             const active = item.id === balanceCaseId;
@@ -1630,7 +1629,7 @@ function FinanceBalancesCard() {
                   active ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
                 }`}
               >
-                Запасные деньги {item.label}
+                Баланс {item.label}
               </button>
             );
           })}
@@ -1776,7 +1775,7 @@ function BalanceSpendCard() {
       ) : null}
 
       <h2 className={`${postponed ? 'mt-3' : ''} text-xl font-bold tracking-tight text-gray-900`}>
-        Расход запасных денег
+        Расход баланса
       </h2>
 
       <div className="mt-4 space-y-2.5 text-sm">
@@ -2633,7 +2632,7 @@ const FinancePage: React.FC = () => {
                   options={[
                     { value: 'expenses', label: 'Списания по кампаниям' },
                     { value: 'topups', label: 'Пополнения счёта' },
-                    { value: 'buffer', label: 'История запасных денег' },
+                    { value: 'buffer', label: 'История баланса' },
                     { value: 'expired_bonuses', label: 'Истёкшие бонусы' },
                     { value: 'pending_refunds', label: 'Возвраты с кампаний' },
                   ]}
@@ -2692,7 +2691,7 @@ const FinancePage: React.FC = () => {
                   <div
                     className="inline-flex w-fit shrink-0 gap-1 rounded-xl bg-[#F2F2F7] p-1"
                     role="tablist"
-                    aria-label="Операции запасных денег"
+                    aria-label="Операции баланса"
                   >
                     <button
                       type="button"
