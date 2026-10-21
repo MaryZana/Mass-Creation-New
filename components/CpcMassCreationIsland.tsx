@@ -21,7 +21,7 @@ import {
   type AdvancedDailyLimitSettings,
   type AutoStrategiesTab,
 } from './CpcCampaignPage';
-import { AlertTriangle, Bell, Edit2 } from './Icons';
+import { AlertTriangle, Edit2 } from './Icons';
 import {
   useStockRemainderHoverPortal,
   type StockHoverProductItem,
@@ -30,14 +30,14 @@ import { SearchBidForecastField } from './SearchBidForecastField';
 
 const CHIP_TIP_DELAY_MS = 1000;
 
-type AutobidderSetup = {
+export type MassCreationAutobidderSetup = {
   mode: AutoStrategiesTab;
   settings: AdvancedDailyLimitSettings;
   position: BidChasingPosition;
   maxBid: number;
 };
 
-function autobidderCellLabel(setup: AutobidderSetup | undefined): string | null {
+function autobidderCellLabel(setup: MassCreationAutobidderSetup | undefined): string | null {
   if (!setup) return null;
   if (setup.mode === 'profit') return formatConfiguredDailyLimitConditions(setup.settings);
   return formatBidChasingPositionLabel(setup.position);
@@ -207,7 +207,7 @@ function BudgetSettingsCard({
         <Edit2 className="h-3.5 w-3.5" />
       </span>
 
-      <p className="pr-8 text-base font-bold leading-5 tabular-nums text-gray-900">
+      <p className="mb-0 pr-8 text-base font-bold leading-5 tabular-nums text-gray-900">
         {formatRub(row.budget)} ₽
       </p>
 
@@ -327,6 +327,11 @@ export type MassCreationIslandProps = {
   ) => void;
   unifiedAccountTotal: number;
   promoBonusesTotal: number;
+  /** Состояние автобиддера по id кампании (общий стейт для массовой настройки) */
+  autobidderSetup: Record<string, MassCreationAutobidderSetup>;
+  onAutobidderSetupChange: React.Dispatch<
+    React.SetStateAction<Record<string, MassCreationAutobidderSetup>>
+  >;
 };
 
 export function MassCreationIsland({
@@ -344,6 +349,8 @@ export function MassCreationIsland({
   onOpenBudgetSettings,
   unifiedAccountTotal,
   promoBonusesTotal,
+  autobidderSetup,
+  onAutobidderSetupChange,
 }: MassCreationIslandProps) {
   const [dailyLimitCampaign, setDailyLimitCampaign] = useState<CampaignRecord | null>(null);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
@@ -354,7 +361,7 @@ export function MassCreationIsland({
     createDefaultAdvancedDailyLimitSettings(),
   );
   const [autoRefillOnRulesTrigger, setAutoRefillOnRulesTrigger] = useState(true);
-  const [autobidderSetup, setAutobidderSetup] = useState<Record<string, AutobidderSetup>>({});
+  const setAutobidderSetup = onAutobidderSetupChange;
   const [autobidderRowId, setAutobidderRowId] = useState<string | null>(null);
   const [chipTip, setChipTip] = useState<{
     text: string;
@@ -471,21 +478,6 @@ export function MassCreationIsland({
             </span>
           </div>
         </div>
-      </div>
-
-      <div className="flex items-center justify-start gap-2.5 rounded-xl bg-[#FBF7FF] px-4 py-3 text-left">
-        <span
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F3E8FF] text-[#9A41FE]"
-          aria-hidden
-        >
-          <Bell className="h-4 w-4" />
-        </span>
-        <p className="mb-0 text-sm font-bold leading-snug text-[#9A41FE]">
-          Умный алгоритм помогает платить меньше с{' '}
-          <span className="underline decoration-[#9A41FE]/50 underline-offset-2">
-            аукционом второй цены
-          </span>
-        </p>
       </div>
 
       <div className="overflow-x-auto">
@@ -617,7 +609,7 @@ export function MassCreationIsland({
                     {bidderLabel ? (
                       <button
                         type="button"
-                        className="text-left text-sm font-medium leading-snug text-blue-600 hover:text-blue-700 hover:underline"
+                        className="h-9 rounded-lg bg-[#FBF7FF] px-4 text-sm font-medium text-[#9A41FE] hover:bg-[#F3E8FF]"
                         onClick={() => {
                           hideChipTip();
                           setAutobidderRowId(row.id);

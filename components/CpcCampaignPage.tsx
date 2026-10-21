@@ -55,6 +55,7 @@ import {
   formatBidChasingClusterBidRangeLabel,
   formatBidChasingPositionLabel,
   formatBidChasingPositionLinkLabel,
+  formatBidChasingPositionShortLabel,
   isBidChasingHoldOfferedForChartRange,
   nearestPresetForBidChasingPosition,
   presetBidChasingPosition,
@@ -5463,21 +5464,27 @@ export const AutoStrategiesModal: React.FC<{
           </div>
 
           <div
-            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            className="flex h-full w-[640px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-modal="true"
             aria-labelledby="auto-strategies-title"
           >
             <div className="shrink-0 px-6 pt-6 pb-4 sm:px-8">
-              <h2 id="auto-strategies-title" className="text-xl font-bold leading-snug text-gray-900">
-                Автобиддер
-              </h2>
-              {productCount > 0 ? (
-                <p className="mt-2 text-sm leading-relaxed text-gray-500">
-                  Выбрано {productCount}{' '}
-                  {getPlural(productCount, 'товар', 'товара', 'товаров')}
-                </p>
-              ) : null}
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 id="auto-strategies-title" className="text-xl font-bold leading-snug text-gray-900">
+                  Автобиддер
+                </h2>
+                {productCount > 0 ? (
+                  <p className="shrink-0 text-sm font-medium text-gray-500">
+                    Выбрано {productCount}{' '}
+                    {getPlural(productCount, 'товар', 'товара', 'товаров')}
+                  </p>
+                ) : null}
+              </div>
+              <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                Алгоритм будет автоматически регулировать ставки, чтобы карточка занимала выбранные
+                позиции в поисковой выдаче, а бюджет расходовался эффективно
+              </p>
             </div>
 
             <BidChasingClustersModal {...bidChasing} embedded isOpen onClose={onClose} />
@@ -5488,11 +5495,43 @@ export const AutoStrategiesModal: React.FC<{
   );
 };
 
+function BidChasingLimitInformer() {
+  return (
+    <span className="tooltip inline-flex shrink-0">
+      <HelpCircle className="h-4 w-4 cursor-help text-gray-400" aria-hidden />
+      <span className="tooltip-text !bottom-auto !left-auto !right-0 !top-full !mt-2 !flex !w-[16.5rem] !max-w-[16.5rem] !translate-x-0 !flex-col !gap-1 !whitespace-normal !px-3 !py-2.5 !text-left !text-xs !font-normal !leading-snug z-[120]">
+        <span className="font-semibold text-white">
+          Если не получится удержать позиции, применим рекомендованную ставку
+        </span>
+        <span className="text-white/80">При слишком высокой ставке применим лимит</span>
+      </span>
+    </span>
+  );
+}
+
+function parseBidChasingMaxBidDraft(draft: string): number {
+  return parseDisplayValue(draft.replace(',', '.'));
+}
+
+function isBidChasingMaxBidValid(value: number): boolean {
+  return (
+    Number.isFinite(value) &&
+    value >= BID_CHASING_MIN_BID_RUB &&
+    value <= CPC_MAX_BID_RUB
+  );
+}
+
 export const BidChasingClustersModal: React.FC<{
   embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
-  onApply: (config: { position: BidChasingPosition; maxBid: number }) => void;
+  onApply: (config: {
+    position: BidChasingPosition;
+    maxBid: number;
+    maxBidsById?: Record<string, number>;
+    /** Ручная массовая настройка: своя позиция на товар */
+    positionsById?: Record<string, BidChasingPosition>;
+  }) => void;
   initialPosition: BidChasingPosition;
   initialMaxBid: number;
   isDailyLimitEnabled: boolean;
@@ -5502,6 +5541,8 @@ export const BidChasingClustersModal: React.FC<{
   onDisable: () => void;
   /** Массовая настройка: список товаров с индивидуальными диапазонами ставок */
   products?: BidChasingModalProduct[];
+  /** Уже заданные позиции по товарам (для режима «Ручная») */
+  initialPositionsById?: Record<string, BidChasingPosition>;
 }> = ({
   embedded = false,
   isOpen,
@@ -5515,36 +5556,131 @@ export const BidChasingClustersModal: React.FC<{
   isBidChasingEnabled,
   onDisable,
   products,
+  initialPositionsById,
 }) => {
+  const hasProducts = Boolean(products && products.length > 0);
   const [position, setPosition] = useState<BidChasingPosition>(initialPosition);
+  const [assignmentMode, setAssignmentMode] = useState<'shared' | 'manual'>('manual');
+  const [positionsById, setPositionsById] = useState<Record<string, BidChasingRange>>({});
   const [maxBidDraft, setMaxBidDraft] = useState(String(initialMaxBid));
+  const [maxBidDraftsById, setMaxBidDraftsById] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!isOpen) return;
-    setPosition(
+    const sharedPosition =
       initialPosition.kind === 'preset'
         ? initialPosition
-        : presetBidChasingPosition(nearestPresetForBidChasingPosition(initialPosition)),
-    );
+        : presetBidChasingPosition(nearestPresetForBidChasingPosition(initialPosition));
+    setPosition(sharedPosition);
     setMaxBidDraft(String(initialMaxBid));
-  }, [isOpen, initialPosition, initialMaxBid]);
+
+    const defaultPreset = nearestPresetForBidChasingPosition(sharedPosition);
+    if (products && products.length > 0) {
+      const nextMax: Record<string, string> = {};
+      const nextPositions: Record<string, BidChasingRange> = {};
+      for (const product of products) {
+        nextMax[product.id] = String(initialMaxBid);
+        const own = initialPositionsById?.[product.id];
+        nextPositions[product.id] = own
+          ? nearestPresetForBidChasingPosition(own)
+          : defaultPreset;
+      }
+      setMaxBidDraftsById(nextMax);
+      setPositionsById(nextPositions);
+      setAssignmentMode('manual');
+    } else {
+      setMaxBidDraftsById({});
+      setPositionsById({});
+      setAssignmentMode('shared');
+    }
+    // initialPositionsById читаем только при открытии / смене списка товаров
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- не сбрасывать форму на новый object identity
+  }, [isOpen, initialPosition, initialMaxBid, products]);
 
   if (!isOpen) return null;
 
+  const isManualAssignment = hasProducts && assignmentMode === 'manual';
   const resolvedPosition: BidChasingPosition =
     position.kind === 'preset' ? position : DEFAULT_BID_CHASING_POSITION;
   const positionValid = resolvedPosition.kind === 'preset';
 
-  const parsedMaxBid = parseDisplayValue(maxBidDraft.replace(',', '.'));
-  const maxBidValid =
-    Number.isFinite(parsedMaxBid) &&
-    parsedMaxBid >= BID_CHASING_MIN_BID_RUB &&
-    parsedMaxBid <= CPC_MAX_BID_RUB;
+  const parsedMaxBid = parseBidChasingMaxBidDraft(maxBidDraft);
+  const maxBidValid = isBidChasingMaxBidValid(parsedMaxBid);
 
-  const canApply = maxBidValid && positionValid;
+  const productMaxBidsParsed = hasProducts
+    ? (products ?? []).map((product) => {
+        const draft = maxBidDraftsById[product.id] ?? String(initialMaxBid);
+        const value = parseBidChasingMaxBidDraft(draft);
+        return { id: product.id, draft, value, valid: isBidChasingMaxBidValid(value) };
+      })
+    : [];
+  const productMaxBidsValid =
+    !hasProducts || productMaxBidsParsed.every((item) => item.valid);
+  const canApply =
+    (isManualAssignment || positionValid) &&
+    (hasProducts ? productMaxBidsValid : maxBidValid);
+
+  const handleMaxBidDraftChange = (raw: string, setter: (next: string) => void) => {
+    const v = raw.replace(',', '.');
+    if (v === '' || /^\d*\.?\d*$/.test(v)) setter(v);
+  };
+
+  const selectSharedPosition = (next: BidChasingPosition) => {
+    setAssignmentMode('shared');
+    setPosition(next);
+    if (next.kind === 'preset' && products && products.length > 0) {
+      setPositionsById((prev) => {
+        const synced: Record<string, BidChasingRange> = { ...prev };
+        for (const product of products) {
+          synced[product.id] = next.id;
+        }
+        return synced;
+      });
+    }
+  };
+
+  const selectManualAssignment = () => {
+    setAssignmentMode('manual');
+    const fallback = nearestPresetForBidChasingPosition(resolvedPosition);
+    setPositionsById((prev) => {
+      const next: Record<string, BidChasingRange> = { ...prev };
+      for (const product of products ?? []) {
+        if (!next[product.id]) next[product.id] = fallback;
+      }
+      return next;
+    });
+  };
 
   const handleApply = () => {
     if (!canApply) return;
+    if (hasProducts) {
+      const maxBidsById: Record<string, number> = {};
+      let maxBid = BID_CHASING_MIN_BID_RUB;
+      for (const item of productMaxBidsParsed) {
+        maxBidsById[item.id] = item.value;
+        maxBid = Math.max(maxBid, item.value);
+      }
+      if (isManualAssignment) {
+        const nextPositionsById: Record<string, BidChasingPosition> = {};
+        for (const product of products ?? []) {
+          nextPositionsById[product.id] = presetBidChasingPosition(
+            positionsById[product.id] ??
+              nearestPresetForBidChasingPosition(resolvedPosition),
+          );
+        }
+        const firstPosition =
+          Object.values(nextPositionsById)[0] ?? resolvedPosition;
+        onApply({
+          position: firstPosition,
+          maxBid,
+          maxBidsById,
+          positionsById: nextPositionsById,
+        });
+        return;
+      }
+      onApply({ position: resolvedPosition, maxBid, maxBidsById });
+      return;
+    }
     onApply({ position: resolvedPosition, maxBid: parsedMaxBid });
   };
 
@@ -5565,108 +5701,170 @@ export const BidChasingClustersModal: React.FC<{
 
           <div className={`rounded-2xl border border-gray-100 bg-white p-5 ${embedded ? '' : 'mt-6'}`}>
             <h3 className="text-base font-semibold text-gray-900">Какие позиции хотите занимать в поиске</h3>
-            <p className="mt-1 text-sm text-gray-500">Для каждого кластера рассчитываем свою ставку</p>
-            <div className="mt-4 flex flex-col gap-2">
-              {BID_CHASING_POSITION_OPTIONS.map((opt) => {
-                const selected = position.kind === 'preset' && position.id === opt.id;
-                return (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setPosition(presetBidChasingPosition(opt.id))}
-                    className={`flex w-full items-start gap-3 rounded-xl border border-gray-100 border-l-4 px-4 py-3 text-left transition-colors ${opt.accentClass} ${
-                      selected ? opt.selectedBgClass : 'bg-white hover:bg-gray-50/80'
-                    }`}
-                  >
-                    <span
-                      className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                        selected ? 'border-purple-600 bg-purple-600' : 'border-gray-300 bg-white'
+            {hasProducts ? (
+              <div
+                className="mt-4 flex flex-wrap gap-1 rounded-[10px] bg-white p-1"
+                role="tablist"
+                aria-label="Позиции в поиске"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={isManualAssignment}
+                  onClick={selectManualAssignment}
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all sm:text-sm ${
+                    isManualAssignment
+                      ? 'bg-black text-white'
+                      : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+                  }`}
+                >
+                  Ручная
+                </button>
+                {BID_CHASING_POSITION_OPTIONS.map((opt) => {
+                  const selected =
+                    !isManualAssignment &&
+                    position.kind === 'preset' &&
+                    position.id === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      onClick={() => selectSharedPosition(presetBidChasingPosition(opt.id))}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all sm:text-sm ${
+                        selected
+                          ? 'bg-black text-white'
+                          : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
                       }`}
-                      aria-hidden
                     >
-                      {selected ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
-                    </span>
-                    <span className="min-w-0">
-                      <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
-                      <span className="mt-1 block text-xs text-gray-500">
-                        Ставки:{' '}
-                        {formatBidChasingClusterBidRangeLabel(opt.demoBidMinRub, opt.demoBidMaxRub)} ₽
+                      <span
+                        className={`h-1.5 w-1.5 shrink-0 rounded-full ${opt.segmentActiveClass}`}
+                        aria-hidden
+                      />
+                      {formatBidChasingPositionShortLabel(presetBidChasingPosition(opt.id))}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col gap-2" role="radiogroup" aria-label="Позиции в поиске">
+                {BID_CHASING_POSITION_OPTIONS.map((opt) => {
+                  const selected = position.kind === 'preset' && position.id === opt.id;
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => selectSharedPosition(presetBidChasingPosition(opt.id))}
+                      className={`flex w-full items-start gap-3 rounded-xl border border-gray-100 border-l-4 px-4 py-3 text-left transition-colors ${opt.accentClass} ${
+                        selected ? opt.selectedBgClass : 'bg-white hover:bg-gray-50/80'
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                          selected ? 'border-purple-600 bg-purple-600' : 'border-gray-300 bg-white'
+                        }`}
+                        aria-hidden
+                      >
+                        {selected ? <span className="h-2 w-2 rounded-full bg-white" /> : null}
                       </span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-gray-900">{opt.label}</span>
+                        <span className="mt-1 block text-xs text-gray-500">
+                          Ставки:{' '}
+                          {formatBidChasingClusterBidRangeLabel(
+                            opt.demoBidMinRub,
+                            opt.demoBidMaxRub,
+                          )}{' '}
+                          ₽
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-5">
-            <h3 className="text-base font-semibold text-gray-900">Установите лимит ставки</h3>
-            <p className="mt-1 text-sm text-gray-500">
-              Алгоритм не превысит его, даже если ставка в кластерах вырастет
-            </p>
-            <div className="relative mt-4">
-              <input
-                type="text"
-                inputMode="decimal"
-                value={maxBidDraft}
-                onChange={(e) => {
-                  const v = e.target.value.replace(',', '.');
-                  if (v === '' || /^\d*\.?\d*$/.test(v)) setMaxBidDraft(v);
-                }}
-                className={`w-full rounded-xl border px-4 py-3 pr-10 text-base text-gray-900 outline-none transition-colors ${
-                  maxBidValid || maxBidDraft === ''
-                    ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
-                    : 'border-red-300 focus:border-red-400 focus:ring-1 focus:ring-red-400'
-                }`}
-              />
-              <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                ₽
-              </span>
-            </div>
-            <p className="mt-2 text-xs text-gray-400">
-              От {BID_CHASING_MIN_BID_RUB.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} до{' '}
-              {formatForDisplay(CPC_MAX_BID_RUB)} ₽
-            </p>
-
-          </div>
-
-          <div className="mt-4 flex gap-3 rounded-2xl bg-[#F6F2FF] px-4 py-3">
-            <span
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-600 text-white text-sm font-bold"
-              aria-hidden
-            >
-              !
-            </span>
-            <div className="min-w-0 text-sm leading-snug">
-              <p className="font-semibold text-gray-900">
-                Если не получится удержать позиции, применим рекомендованную ставку
+          {!hasProducts ? (
+            <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-base font-semibold text-gray-900">Установите лимит ставки</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    Алгоритм не превысит его, даже если ставка в кластерах вырастет
+                  </p>
+                </div>
+                <BidChasingLimitInformer />
+              </div>
+              <div className="relative mt-4">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={maxBidDraft}
+                  onChange={(e) =>
+                    handleMaxBidDraftChange(e.target.value, setMaxBidDraft)
+                  }
+                  className={`w-full rounded-xl border px-4 py-3 pr-10 text-base text-gray-900 outline-none transition-colors ${
+                    maxBidValid || maxBidDraft === ''
+                      ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                      : 'border-red-300 focus:border-red-400 focus:ring-1 focus:ring-red-400'
+                  }`}
+                />
+                <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
+                  ₽
+                </span>
+              </div>
+              <p className="mt-2 text-xs text-gray-400">
+                От {BID_CHASING_MIN_BID_RUB.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} до{' '}
+                {formatForDisplay(CPC_MAX_BID_RUB)} ₽
               </p>
-              <p className="mt-0.5 text-gray-500">При слишком высокой ставке применим лимит</p>
             </div>
-          </div>
+          ) : null}
 
-          {products && products.length > 0 ? (
+          {hasProducts ? (
             <div className="mt-6">
               <h3 className="text-base font-semibold text-gray-900">Ставки по товарам</h3>
-              <p className="mt-1 text-sm text-gray-500">
-                За выбранные позиции у каждого товара свой диапазон — алгоритм подстроит ставку
-                индивидуально
-              </p>
               <div className="mt-3">
-                {products.map((product) => {
+                <div className="mb-1 grid grid-cols-[minmax(0,1fr)_5.75rem_6.5rem_6.75rem] items-end gap-3 border-b border-gray-100 px-0 pb-2">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                    Товар
+                  </p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                    Позиции
+                  </p>
+                  <p className="text-right text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                    Диапазон
+                  </p>
+                  <p className="inline-flex items-center justify-end gap-1 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                    <span>Лимит</span>
+                    <BidChasingLimitInformer />
+                  </p>
+                </div>
+                {products!.map((product) => {
+                  const draft =
+                    maxBidDraftsById[product.id] ?? String(initialMaxBid);
+                  const parsedProductMax = parseBidChasingMaxBidDraft(draft);
+                  const productMaxValid = isBidChasingMaxBidValid(parsedProductMax);
+                  const rowPreset = isManualAssignment
+                    ? positionsById[product.id] ??
+                      nearestPresetForBidChasingPosition(resolvedPosition)
+                    : nearestPresetForBidChasingPosition(resolvedPosition);
+                  const rowPosition = presetBidChasingPosition(rowPreset);
                   const range = resolveProductBidChasingRange(
                     product.seed,
-                    resolvedPosition,
-                    maxBidValid ? parsedMaxBid : undefined,
+                    rowPosition,
+                    productMaxValid ? parsedProductMax : undefined,
                   );
                   const brandLine = [product.brand, product.article]
                     .filter(Boolean)
                     .join(' • ');
-                  const positionMeta = searchBidForecastMetaForPosition(resolvedPosition);
                   return (
                     <div
                       key={product.id}
-                      className="flex items-start justify-between gap-4 border-b border-gray-100 py-3.5 last:border-b-0"
+                      className="grid grid-cols-[minmax(0,1fr)_5.75rem_6.5rem_6.75rem] items-center gap-3 border-b border-gray-100 py-3.5 last:border-b-0"
                     >
                       <div className="flex min-w-0 items-start gap-3">
                         <img
@@ -5675,7 +5873,7 @@ export const BidChasingClustersModal: React.FC<{
                           className="h-12 w-12 shrink-0 rounded-lg bg-gray-50 object-cover"
                         />
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-gray-950">
+                          <p className="mb-0 truncate text-sm font-semibold text-gray-950">
                             {product.name}
                           </p>
                           {brandLine ? (
@@ -5683,13 +5881,67 @@ export const BidChasingClustersModal: React.FC<{
                           ) : null}
                         </div>
                       </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-sm font-medium tabular-nums text-gray-900">
+                      <div className="relative w-[5.75rem]">
+                        <select
+                          aria-label={`Позиции для ${product.name}`}
+                          disabled={!isManualAssignment}
+                          value={rowPreset}
+                          onChange={(e) => {
+                            const nextId = e.target.value as BidChasingRange;
+                            setPositionsById((prev) => ({
+                              ...prev,
+                              [product.id]: nextId,
+                            }));
+                          }}
+                          className={`w-full appearance-none rounded-lg border py-2 pl-2 pr-7 text-sm tabular-nums text-gray-900 outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-100 ${
+                            isManualAssignment
+                              ? 'border-gray-200 bg-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                              : 'border-gray-100 bg-gray-50'
+                          }`}
+                        >
+                          {BID_CHASING_POSITION_OPTIONS.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {formatBidChasingPositionShortLabel(
+                                presetBidChasingPosition(opt.id),
+                              )}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown
+                          className={`pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${
+                            isManualAssignment ? 'text-gray-400' : 'text-gray-300'
+                          }`}
+                          aria-hidden
+                        />
+                      </div>
+                      <div className="min-w-0 text-right">
+                        <p className="mb-0 text-sm font-medium tabular-nums text-gray-900">
                           {formatBidChasingClusterBidRangeLabel(range.minRub, range.maxRub)} ₽
                         </p>
-                        <p className="mt-0.5 whitespace-nowrap text-[11px] leading-4 text-[#76757C]">
-                          Ставка за {positionMeta.label}
-                        </p>
+                      </div>
+                      <div className="relative min-w-0">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          aria-label={`Лимит ставки для ${product.name}`}
+                          value={draft}
+                          onChange={(e) =>
+                            handleMaxBidDraftChange(e.target.value, (next) =>
+                              setMaxBidDraftsById((prev) => ({
+                                ...prev,
+                                [product.id]: next,
+                              })),
+                            )
+                          }
+                          className={`w-full rounded-lg border px-2.5 py-2 pr-7 text-sm tabular-nums text-gray-900 outline-none transition-colors ${
+                            productMaxValid || draft === ''
+                              ? 'border-gray-200 focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
+                              : 'border-red-300 focus:border-red-400 focus:ring-1 focus:ring-red-400'
+                          }`}
+                        />
+                        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                          ₽
+                        </span>
                       </div>
                     </div>
                   );
@@ -5700,31 +5952,35 @@ export const BidChasingClustersModal: React.FC<{
             </div>
 
             <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">
-              {isBidChasingEnabled ? (
-                <button
-                  type="button"
-                  onClick={onDisable}
-                  className="self-start text-sm font-medium text-gray-600 hover:text-red-600 transition-colors"
-                >
-                  Отключить преследование ставки
-                </button>
-              ) : null}
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
-              >
-                Отмена
-              </button>
-              <button
-                type="button"
-                disabled={!canApply}
-                onClick={handleApply}
-                className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-              >
-                Применить
-              </button>
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {isBidChasingEnabled ? (
+                  <button
+                    type="button"
+                    onClick={onDisable}
+                    className="rounded-xl px-2 py-2.5 text-left text-sm font-medium text-red-500/80 hover:bg-red-50 hover:text-red-600 sm:-ml-2"
+                  >
+                    Отключить
+                  </button>
+                ) : (
+                  <span className="hidden sm:block" aria-hidden />
+                )}
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canApply}
+                    onClick={handleApply}
+                    className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  >
+                    Применить
+                  </button>
+                </div>
               </div>
             </div>
     </>

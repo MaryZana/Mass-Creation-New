@@ -12,10 +12,12 @@ import {
   isDailyLimitBelowRecommendedForMaxBid,
 } from '../utils/cpcDailyLimitBid';
 import {
+  DEFAULT_BID_CHASING_POSITION,
+  formatBidChasingPositionLabel,
+  formatBidChasingPositionShortLabel,
   presetBidChasingPosition,
   type BidChasingPosition,
 } from '../utils/cpcBidChasingPositionTiers';
-import { AutobidderPositionBadge } from './AutobidderPositionBadge';
 import {
   BulkSearchBidModal,
   buildBulkSearchRecommendedTiers,
@@ -75,6 +77,7 @@ import {
     Check,
     Sparkles,
     Wallet,
+    Coins,
     TrendingUp,
     FileIcon,
 } from './Icons';
@@ -126,8 +129,10 @@ import {
 } from './CampaignListAutomationModals';
 import {
   AdvancedDailyLimitModal,
+  AutoStrategiesModal,
   createDefaultAdvancedDailyLimitSettings,
   type AdvancedDailyLimitSettings,
+  type BidChasingModalProduct,
 } from './CpcCampaignPage';
 
 // --- Constants ---
@@ -149,6 +154,73 @@ const PRODUCTS_PROMO_BANNER = {
 
 // --- Helpers ---
 const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
+
+const listSelectionBarBtnClass =
+  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#F3F4F6] px-3.5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-200';
+
+const CampaignListSelectionBar = ({
+  count,
+  onDailyLimit,
+  onBudget,
+  onBid,
+  onAutobidder,
+  onDownload,
+  onClear,
+}: {
+  count: number;
+  onDailyLimit: () => void;
+  onBudget: () => void;
+  onBid: () => void;
+  /** Автобиддер только для CPC */
+  onAutobidder: () => void;
+  onDownload?: () => void;
+  onClear: () => void;
+}) => {
+  const countLabel = `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
+
+  return (
+    <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
+      <span className="whitespace-nowrap px-1 text-sm font-medium text-gray-400">
+        Выбрано {countLabel}
+      </span>
+      <div className="h-6 w-px shrink-0 bg-gray-200" />
+      <div className="flex items-center gap-2">
+        <button type="button" onClick={onBid} className={listSelectionBarBtnClass}>
+          <Zap className="h-4 w-4 text-gray-700" />
+          <span>Ставка</span>
+        </button>
+        <button type="button" onClick={onDailyLimit} className={listSelectionBarBtnClass}>
+          <Calendar className="h-4 w-4 text-gray-700" />
+          <span>Дневной лимит</span>
+        </button>
+        <button type="button" onClick={onBudget} className={listSelectionBarBtnClass}>
+          <Coins className="h-4 w-4 text-gray-700" />
+          <span>Бюджет</span>
+        </button>
+        <button type="button" onClick={onAutobidder} className={listSelectionBarBtnClass}>
+          <TrendingUp className="h-4 w-4 text-gray-700" />
+          <span>Автобиддер</span>
+        </button>
+        {onDownload ? (
+          <button type="button" onClick={onDownload} className={listSelectionBarBtnClass}>
+            <Download className="h-4 w-4 text-gray-700" />
+            <span>Скачать Excel для правок</span>
+          </button>
+        ) : null}
+      </div>
+      <div className="ml-1 flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+          aria-label="Снять выделение"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // --- Sub-Components ---
 const CompactLaunchLoader: React.FC<{ total: number }> = ({ total }) => (
@@ -308,6 +380,14 @@ interface SuccessPageProps {
   onRegisterBulkDailyLimitOpener?: (open: () => void) => void;
   /** Открыть массовую настройку CPC в поиске для текущего выделения (панель в App) */
   onRegisterBulkSearchBidOpener?: (open: () => void) => void;
+  /** Открыть модалку бюджета/автопополнения (App) для выбранных кампаний списка */
+  onOpenListBudgetModal?: (campaignIds: string[]) => void;
+  /** Применить результат модалки бюджета к кампаниям списка */
+  onRegisterListBudgetApplier?: (
+    apply: (campaignIds: string[], value: Record<string, unknown>) => void,
+  ) => void;
+  /** Скачать Excel для правок по выбранным кампаниям */
+  onBulkDownloadExcel?: () => void;
   onOpenSingleCampaign?: () => void;
   /** Патчи данных кампаний с CPC-страницы (список при этом размонтирован) */
   campaignListPatches?: Record<number, CampaignListDataPatch>;
@@ -1087,6 +1167,7 @@ const PRODUCTS_PRIMARY_COLUMN_IDS = [
 
 const PRODUCTS_MIDDLE_COLUMN_IDS = [
   { id: 'dailyLimit', label: 'Дневной лимит' },
+  { id: 'autobidder', label: 'Автобиддер' },
   { id: 'tags', label: 'Ярлыки' },
 ] as const;
 
@@ -2928,13 +3009,16 @@ const CONCEPT_NOT_PROMOTED_REC_BID_CPM_SEARCH_COL_WIDTH_PX = 184;
 const CONCEPT_NOT_PROMOTED_REC_BID_CPM_REC_COL_WIDTH_PX = 168;
 const CONCEPT_NOT_PROMOTED_STAT_COL_WIDTH_PX = 108;
 const CONCEPT_NOT_PROMOTED_STOCK_COL_WIDTH_PX = 88;
+const CONCEPT_NOT_PROMOTED_AUTOBIDDER_COL_WIDTH_PX = 180;
 
 function conceptNotPromotedTableMinWidthPx(
   showTagsColumn: boolean,
   showBonusCampaignColumn = false,
+  showAutobidderColumn = true,
 ): number {
   let total =
     CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX + CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX;
+  if (showAutobidderColumn) total += CONCEPT_NOT_PROMOTED_AUTOBIDDER_COL_WIDTH_PX;
   if (showTagsColumn) total += CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX;
   if (showBonusCampaignColumn) total += CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_COL_WIDTH_PX;
   total += CONCEPT_NOT_PROMOTED_REC_BID_CPC_SEARCH_COL_WIDTH_PX;
@@ -4378,6 +4462,9 @@ function ConceptAllTabMulticardGroupStatsRow({
           aria-hidden
         />
       ) : null}
+      {productsColVisible('autobidder') ? (
+        <td className="w-[180px] min-w-[180px] p-4 align-top" aria-hidden />
+      ) : null}
       {productsColVisible('tags') ? (
         <td className="p-4 align-top w-[220px] min-w-[220px] max-w-[240px]" aria-hidden />
       ) : null}
@@ -4530,26 +4617,6 @@ function ProductCollapsedRowCell({
         {showExpandControl && campaignCount > 0 ? (
           <span className="shrink-0 whitespace-nowrap">{formatProductCampaignCount(campaignCount)}</span>
         ) : null}
-        {product.campaigns
-          .filter((camp) => camp.bidChasingPosition)
-          .slice(0, 2)
-          .map((camp) =>
-            camp.bidChasingPosition ? (
-              <AutobidderPositionBadge
-                key={`ab-${camp.id}`}
-                variant="position"
-                position={camp.bidChasingPosition}
-                className="shrink-0"
-                products={[
-                  {
-                    name: product.name,
-                    imageUrl: product.image,
-                    position: camp.bidChasingPosition,
-                  },
-                ]}
-              />
-            ) : null,
-          )}
         {showConflict ? (
           <span className="inline-flex min-w-0 shrink items-center gap-1 whitespace-nowrap text-gray-600">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" aria-hidden />
@@ -4898,7 +4965,8 @@ const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN: DisplayCampaign = {
   dailyLimitExhausted: false,
   maxCpcBidRub: 30,
   productId: 'pr1',
-  productIds: ['pr1'],
+  /** Мультитовар: 5 nm в одной кампании — в столбце Автобиддер «5 товаров» */
+  productIds: ['pr1', 'pr2', 'pr3', 'pr4', 'pr5'] as string[],
   category: 'Платья',
   image: productTableThumbUrl('pr1', 'Платья'),
 };
@@ -4906,6 +4974,7 @@ const PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN: DisplayCampaign = {
 /** 3-я строка в списке кампаний (после предсобранной и кампании pr1): мультитовар без длинной сетки */
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID = '1400002';
 const CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS = ['pr2', 'pr3', 'pr4', 'pr5', 'pr6'] as const;
+const PREBUILT_MULTI_PRODUCT_IDS = ['pr1', 'pr2', 'pr3', 'pr4', 'pr5'] as const;
 
 /** Строковый id дубликата 2-й кампании (profile 1) для концепта бюджета */
 const BUDGET_CONCEPT_DEMO_CAMPAIGN_LIST_ID = 'budget-concept-demo-cpc';
@@ -4934,27 +5003,34 @@ function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
             ...c,
             isBonusCampaign: false,
             ...(c.id === PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID
-              ? { bidChasingPosition: presetBidChasingPosition('1-2') }
+              ? (() => {
+                  const pos = presetBidChasingPosition('1-2');
+                  return {
+                    bidChasingPosition: pos,
+                    productIds: [...PREBUILT_MULTI_PRODUCT_IDS],
+                    bidChasingProductIds: [...PREBUILT_MULTI_PRODUCT_IDS],
+                    bidChasingByProduct: Object.fromEntries(
+                      PREBUILT_MULTI_PRODUCT_IDS.map((id) => [id, pos]),
+                    ),
+                  };
+                })()
               : {}),
           };
     if (c.id === CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID) {
       const primaryId = CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[0];
+      const pos = presetBidChasingPosition('1-2');
       base = {
         ...base,
         productId: primaryId,
         productIds: [...CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS],
         category: base.category ?? 'Платья',
         image: productTableThumbUrl(primaryId, base.category ?? 'Платья'),
-        // На мультитоварной: автобиддер только на части товаров, разные позиции
-        bidChasingPosition: presetBidChasingPosition('1-2'),
-        bidChasingProductIds: [
-          CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[0],
-          CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[2],
-        ],
-        bidChasingByProduct: {
-          [CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[0]]: presetBidChasingPosition('1-2'),
-          [CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[2]]: presetBidChasingPosition('3-10'),
-        },
+        // Мультитоварная: автобиддер на каждом из 5 товаров
+        bidChasingPosition: pos,
+        bidChasingProductIds: [...CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS],
+        bidChasingByProduct: Object.fromEntries(
+          CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS.map((id) => [id, pos]),
+        ),
       };
     }
     if (profileId !== '2') return base;
@@ -5715,7 +5791,7 @@ const DailyLimitTooltip: React.FC<{
       ) : (
         <CheckCircle className="w-4 h-4 text-green-600 shrink-0" aria-hidden />
       )}
-      <span className="text-blue-600 group-hover/limit:text-purple-600 transition-colors">Дневной лимит</span>
+      <span className="text-blue-600 transition-colors group-hover/limit:text-blue-800">Дневной лимит</span>
     </div>
   );
 
@@ -5812,7 +5888,7 @@ const DailyLimitCell: React.FC<{
     dailyLimit != null ? (
       <div className="inline-flex max-w-full items-start gap-1">
         <div className="w-max max-w-full space-y-0.5">
-          <span className="whitespace-nowrap text-sm font-medium tabular-nums">
+          <span className="whitespace-nowrap text-sm font-medium tabular-nums text-blue-600 transition-colors group-hover/limit:text-blue-800">
             {budgetRangeConceptDemo
               ? `${formatForDisplay(dailyLimit)} ₽ в день`
               : `${formatForDisplay(dailyLimit)} ₽`}
@@ -5855,7 +5931,9 @@ const DailyLimitCell: React.FC<{
         ) : null}
       </div>
     ) : (
-      <span className="text-sm font-medium text-blue-600">Настроить</span>
+      <span className="text-sm font-medium text-blue-600 transition-colors group-hover/limit:text-blue-800">
+        Настроить
+      </span>
     );
 
   const showMainTooltip =
@@ -5879,7 +5957,7 @@ const DailyLimitCell: React.FC<{
           tabIndex={0}
           onClick={(e) => { e.stopPropagation(); onClick(); }}
           onKeyDown={(e) => { e.key === 'Enter' && (e.preventDefault(), onClick()); }}
-          className="cursor-pointer"
+          className="group/limit cursor-pointer"
         >
           {content}
         </div>
@@ -6775,14 +6853,166 @@ function Widgets2Strip({
   );
 }
 
+function campaignAutobidderProductCount(
+  c: Pick<
+    DisplayCampaign,
+    'bidChasingPosition' | 'bidChasingProductIds' | 'bidChasingByProduct' | 'productIds' | 'productId'
+  >,
+): number {
+  if (!c.bidChasingPosition) return 0;
+  if (c.bidChasingProductIds && c.bidChasingProductIds.length > 0) {
+    return c.bidChasingProductIds.length;
+  }
+  const byProductKeys = c.bidChasingByProduct ? Object.keys(c.bidChasingByProduct) : [];
+  if (byProductKeys.length > 0) return byProductKeys.length;
+  if (c.productIds && c.productIds.length > 0) return c.productIds.length;
+  return 1;
+}
+
+/** Все товары кампании, на которые включаем автобиддер (уровень кампании = все nm). */
+function resolveAutobidderProductIds(
+  c: Pick<DisplayCampaign, 'bidChasingProductIds' | 'productIds' | 'productId'>,
+): string[] | undefined {
+  if (c.productIds && c.productIds.length > 0) return [...c.productIds];
+  if (c.productId) return [c.productId];
+  if (c.bidChasingProductIds && c.bidChasingProductIds.length > 0) {
+    return [...c.bidChasingProductIds];
+  }
+  return undefined;
+}
+
+function withCampaignAutobidder(
+  c: DisplayCampaign,
+  position: BidChasingPosition,
+  positionsByProductId?: Record<string, BidChasingPosition>,
+): DisplayCampaign {
+  const productIds = resolveAutobidderProductIds(c);
+  if (!productIds || productIds.length === 0) {
+    return { ...c, bidChasingPosition: position };
+  }
+  const bidChasingByProduct = Object.fromEntries(
+    productIds.map((id) => [id, positionsByProductId?.[id] ?? position]),
+  );
+  return {
+    ...c,
+    bidChasingPosition: bidChasingByProduct[productIds[0]] ?? position,
+    bidChasingProductIds: productIds,
+    bidChasingByProduct,
+  };
+}
+
+function formatAutobidderProductCountLabel(count: number): string {
+  return `на ${count} ${getPlural(count, 'товар', 'товара', 'товаров')}`;
+}
+
+function formatAutobidderCampaignCountLabel(count: number): string {
+  return `на ${count} ${getPlural(count, 'кампанию', 'кампании', 'кампаний')}`;
+}
+
+function capitalizeAutobidderCountLabel(label: string): string {
+  if (!label) return label;
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+/** Строки модалки автобиддера: по одному на каждый товар кампании. */
+function campaignToAutobidderModalProducts(
+  c: DisplayCampaign,
+  productTree: ProductRow[],
+): BidChasingModalProduct[] {
+  const productIds = resolveAutobidderProductIds(c);
+  if (!productIds || productIds.length === 0) {
+    return [
+      {
+        id: c.productId ?? c.id,
+        name: c.name,
+        imageUrl: c.image,
+        brand: c.category,
+        article: String(c.campaignId),
+        seed: c.campaignId,
+      },
+    ];
+  }
+  return productIds.map((pid, index) => {
+    const row = productTree.find((p) => p.id === pid);
+    return {
+      id: pid,
+      name: row?.name ?? c.name,
+      imageUrl: row?.image ?? productTableThumbUrl(pid, c.category ?? 'Платья'),
+      brand: row?.category ?? c.category,
+      article: row?.articleWb ?? row?.article ?? pid,
+      seed: c.campaignId * 100 + index,
+    };
+  });
+}
+
+/** Ячейка столбца «Автобиддер» в списках кампаний и товаров */
+const ListAutobidderCell = ({
+  enabled,
+  detail,
+  onEnable,
+  onOpen,
+}: {
+  enabled: boolean;
+  /** Основной синий текст, напр. «На 2 товара» / «На 1 кампанию» */
+  detail?: string;
+  onEnable: () => void;
+  onOpen: () => void;
+}) => {
+  if (!enabled) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEnable();
+        }}
+        className="text-sm font-medium text-blue-600 transition-colors hover:text-blue-800"
+      >
+        Настроить
+      </button>
+    );
+  }
+  const label = capitalizeAutobidderCountLabel(detail?.trim() || '') || 'Включён';
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      className="group/ab inline-flex max-w-full items-center gap-1 whitespace-nowrap text-left text-sm font-medium text-blue-600 transition-colors hover:text-blue-800"
+      aria-label={`Автобиддер включён · ${label}`}
+    >
+      <CheckCircle className="h-4 w-4 shrink-0 text-green-600" aria-hidden />
+      <span className="whitespace-nowrap">{label}</span>
+    </button>
+  );
+};
+
+function campaignAutobidderPositionForProduct(
+  campaign: DisplayCampaign | undefined,
+  productId: string,
+  fallback?: BidChasingPosition,
+): BidChasingPosition | undefined {
+  if (!campaign?.bidChasingPosition && !fallback) return undefined;
+  if (campaign?.bidChasingByProduct?.[productId]) {
+    return campaign.bidChasingByProduct[productId];
+  }
+  if (
+    campaign?.bidChasingProductIds?.length &&
+    !campaign.bidChasingProductIds.includes(productId)
+  ) {
+    return undefined;
+  }
+  return campaign?.bidChasingPosition ?? fallback;
+}
+
 const StatusBadge = ({
   status,
   text,
-  variant,
 }: {
   status: DisplayCampaign['status'];
   text: string;
-  variant?: 'testLayout';
 }) => {
   // Цветные плашки статуса: закругления как у ярлыков (rounded-md)
   const baseClasses = 'px-2.5 py-0.5 text-xs font-medium rounded-md';
@@ -6793,8 +7023,7 @@ const StatusBadge = ({
     error: 'bg-red-100 text-red-700',
   };
 
-  const variantClass = variant === 'testLayout' ? 'bg-orange-100 text-orange-600' : styles[status];
-  return <span className={`${baseClasses} ${variantClass}`}>{text}</span>;
+  return <span className={`${baseClasses} ${styles[status]}`}>{text}</span>;
 };
 
 const ResultBlock = ({ successCount, errorCount, onClear }: { successCount: number, errorCount: number, failedCampaigns: CampaignRecord[], onClear: () => void }) => {
@@ -7327,13 +7556,14 @@ const ExcelActionsDropdown = ({ onOpenUpload, onOpenHistory, showUploadHint = fa
     );
 };
 
-type FilterTab = 'status' | 'autorefill' | 'payment' | 'sort' | 'category' | 'tags';
+type FilterTab = 'status' | 'autorefill' | 'autobidder' | 'payment' | 'sort' | 'category' | 'tags';
 
 type ProductsFilterSection =
   | 'categories'
   | 'conflicts'
   | 'status'
   | 'autorefill'
+  | 'autobidder'
   | 'payment'
   | 'sort'
   | 'campaignTypes';
@@ -7363,11 +7593,13 @@ const FilterDropdown = ({
   category, onCategoryChange,
   status, onStatusChange,
   autorefill, onAutorefillChange,
+  autobidder, onAutobidderChange,
   payment, onPaymentChange,
   sort, onSortChange,
   filterByCategory, onFilterByCategoryChange,
   tempStatus, onTempStatusChange,
   tempAutorefill, onTempAutorefillChange,
+  tempAutobidder, onTempAutobidderChange,
   tempPayment, onTempPaymentChange,
   tempSort, onTempSortChange,
   tempCategory, onTempCategoryChange,
@@ -7408,6 +7640,8 @@ const FilterDropdown = ({
   onStatusChange: (val: string) => void;
   autorefill: string;
   onAutorefillChange: (val: string) => void;
+  autobidder: string;
+  onAutobidderChange: (val: string) => void;
   payment: string;
   onPaymentChange: (val: string) => void;
   sort: string;
@@ -7418,6 +7652,8 @@ const FilterDropdown = ({
   onTempStatusChange: (val: string) => void;
   tempAutorefill: string;
   onTempAutorefillChange: (val: string) => void;
+  tempAutobidder: string;
+  onTempAutobidderChange: (val: string) => void;
   tempPayment: string;
   onTempPaymentChange: (val: string) => void;
   tempSort: string;
@@ -7460,6 +7696,8 @@ const FilterDropdown = ({
         return 'Статус кампаний';
       case 'autorefill':
         return 'Автопополнение';
+      case 'autobidder':
+        return 'Автобиддер';
       case 'payment':
         return 'Модель оплаты';
       case 'sort':
@@ -7508,6 +7746,7 @@ const FilterDropdown = ({
             <p className="px-4 pt-3 pb-1 text-xs font-medium text-gray-400">Кампании</p>
             {productsNavBtn('status', 'Статус кампаний')}
             {productsNavBtn('autorefill', 'Автопополнение')}
+            {productsNavBtn('autobidder', 'Автобиддер')}
             {productsNavBtn('payment', 'Модель оплаты')}
             {productsNavBtn('sort', 'Тип сортировки кампаний')}
             {productsNavBtn('campaignTypes', 'Типы кампании')}
@@ -7628,6 +7867,24 @@ const FilterDropdown = ({
                   ))}
                 </div>
               )}
+              {productsSection === 'autobidder' && (
+                <div className="space-y-3">
+                  <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
+                  {[
+                    { value: 'all', label: 'Все' },
+                    { value: 'enabled', label: 'Включён' },
+                    { value: 'disabled', label: 'Выключен' },
+                  ].map((option) => (
+                    <label key={option.value} className="flex cursor-pointer items-center gap-3">
+                      <Checkbox
+                        checked={tempAutobidder === option.value}
+                        onChange={() => onTempAutobidderChange(option.value)}
+                      />
+                      <span className="text-sm text-gray-900">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
               {productsSection === 'payment' && (
                 <div className="space-y-3">
                   <h4 className="mb-4 text-base font-bold text-gray-900">{productsSectionTitle}</h4>
@@ -7723,6 +7980,16 @@ const FilterDropdown = ({
               }`}
             >
               Автопополнение
+            </button>
+            <button
+              onClick={() => onTempCategoryChange('autobidder')}
+              className={`text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                tempCategory === 'autobidder'
+                  ? 'bg-purple-50 text-purple-700'
+                  : 'text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Автобиддер
             </button>
             <button 
               onClick={() => onTempCategoryChange('payment')} 
@@ -7829,6 +8096,50 @@ const FilterDropdown = ({
                       checked={tempAutorefill === option.value} 
                       onChange={(e) => onTempAutorefillChange(e.target.value)} 
                       className="sr-only" 
+                    />
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+
+          {tempCategory === 'autobidder' && (
+            <>
+              <h3 className="mb-4 text-lg font-semibold text-gray-900">Автобиддер</h3>
+              <div className="space-y-3">
+                {[
+                  { value: 'all', label: 'Все' },
+                  { value: 'enabled', label: 'Включён' },
+                  { value: 'disabled', label: 'Выключен' },
+                ].map((option) => (
+                  <label key={option.value} className="group flex cursor-pointer items-center gap-3">
+                    <div
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border-2 transition-all ${
+                        tempAutobidder === option.value
+                          ? 'border-purple-600 bg-purple-600'
+                          : 'border-gray-300 group-hover:border-purple-400'
+                      }`}
+                    >
+                      {tempAutobidder === option.value ? (
+                        <div className="h-2 w-2 rounded-full bg-white" />
+                      ) : null}
+                    </div>
+                    <span
+                      className={`text-sm ${
+                        tempAutobidder === option.value
+                          ? 'font-medium text-gray-900'
+                          : 'text-gray-700'
+                      }`}
+                    >
+                      {option.label}
+                    </span>
+                    <input
+                      type="radio"
+                      name="autobidder"
+                      value={option.value}
+                      checked={tempAutobidder === option.value}
+                      onChange={(e) => onTempAutobidderChange(e.target.value)}
+                      className="sr-only"
                     />
                   </label>
                 ))}
@@ -8065,6 +8376,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     onRegisterUpdateFn,
     onRegisterBulkDailyLimitOpener,
     onRegisterBulkSearchBidOpener,
+    onOpenListBudgetModal,
+    onRegisterListBudgetApplier,
+    onBulkDownloadExcel,
     campaignListPatches,
     onPersistCampaignListPatch,
     researchAccess = null,
@@ -8292,6 +8606,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [filterCategory, setFilterCategory] = useState<FilterTab>('status');
   const [filterStatus, setFilterStatus] = useState<string>('all-except-archived');
   const [filterAutorefill, setFilterAutorefill] = useState<string>('all');
+  const [filterAutobidder, setFilterAutobidder] = useState<string>('all');
   const [filterPayment, setFilterPayment] = useState<string>('all');
   const [filterSort, setFilterSort] = useState<string>('by-date');
   const [filterByCategory, setFilterByCategory] = useState<string>('');
@@ -8302,6 +8617,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [tempFilterCategory, setTempFilterCategory] = useState<FilterTab>('status');
   const [tempFilterStatus, setTempFilterStatus] = useState<string>('all-except-archived');
   const [tempFilterAutorefill, setTempFilterAutorefill] = useState<string>('all');
+  const [tempFilterAutobidder, setTempFilterAutobidder] = useState<string>('all');
   const [tempFilterPayment, setTempFilterPayment] = useState<string>('all');
   const [tempFilterSort, setTempFilterSort] = useState<string>('by-date');
   const [tempFilterByCategory, setTempFilterByCategory] = useState<string>('');
@@ -8425,7 +8741,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         }
         if (
           columnId === 'budgetRemainder' ||
-          columnId === 'dailyLimit'
+          columnId === 'dailyLimit' ||
+          columnId === 'autobidder'
         ) {
           return productsColumnVisibility[columnId] !== false;
         }
@@ -8435,7 +8752,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         if (
           columnId === 'select' ||
           columnId === 'product' ||
-          columnId === 'tags'
+          columnId === 'tags' ||
+          columnId === 'autobidder'
         ) {
           return productsColumnVisibility[columnId] !== false;
         }
@@ -8525,15 +8843,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     conceptCompactProductsTable && productsColumnVisibility.tags !== false;
   const conceptBonusCampaignColumn = conceptNotPromotedProductsList && productsPickTab === 'not_promoted_v3';
 
+  const conceptNotPromotedShowAutobidderColumn =
+    conceptCompactProductsTable && productsColumnVisibility.autobidder !== false;
+
   const productsTableMinWidthStyle = useMemo((): React.CSSProperties | undefined => {
     if (!conceptCompactProductsTable) return undefined;
     return {
       minWidth: conceptNotPromotedTableMinWidthPx(
         conceptNotPromotedShowTagsColumn,
         conceptBonusCampaignColumn,
+        conceptNotPromotedShowAutobidderColumn,
       ),
     };
-  }, [conceptCompactProductsTable, conceptNotPromotedShowTagsColumn, conceptBonusCampaignColumn]);
+  }, [
+    conceptCompactProductsTable,
+    conceptNotPromotedShowTagsColumn,
+    conceptBonusCampaignColumn,
+    conceptNotPromotedShowAutobidderColumn,
+  ]);
 
   const showProductsBidColumn = productsPinVisibility.bid === true;
   const showProductsCampaignTypeColumn = productsPinVisibility.campaignType === true;
@@ -8858,6 +9185,51 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setIsBulkDailyLimitModalOpen(true);
   }, [allCampaigns, selectedCampaigns]);
 
+  const openBulkBudgetForSelection = useCallback(() => {
+    if (selectedCampaigns.length === 0) return;
+    if (onOpenListBudgetModal) {
+      onOpenListBudgetModal([...selectedCampaigns]);
+      return;
+    }
+    setMassBudgetRefillTargetIds([...selectedCampaigns]);
+    setIsMassBudgetRefillModalOpen(true);
+  }, [onOpenListBudgetModal, selectedCampaigns]);
+
+  useEffect(() => {
+    if (!onRegisterListBudgetApplier) return;
+    onRegisterListBudgetApplier((campaignIds, value) => {
+      const idSet = new Set(campaignIds);
+      const mode = value.__mode;
+      setAllCampaigns((prev) =>
+        prev.map((c) => {
+          if (!idSet.has(c.id)) return c;
+          if (mode === 'autorefill') {
+            const enabled = value.enabled !== false;
+            return {
+              ...c,
+              autoRefill: enabled,
+              autoRefillStatus: enabled ? ('ok' as const) : ('off' as const),
+            };
+          }
+          const amount = Number(value.total);
+          if (!Number.isFinite(amount) || amount <= 0) return c;
+          return {
+            ...c,
+            remainingBudget: (c.remainingBudget || 0) + amount,
+          };
+        }),
+      );
+      const count = campaignIds.length;
+      const notice =
+        mode === 'autorefill'
+          ? value.enabled === false
+            ? `Автопополнение отключено для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`
+            : `Автопополнение настроено для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`
+          : `Бюджет пополнен для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`;
+      setProductBulkNotice(notice);
+    });
+  }, [onRegisterListBudgetApplier]);
+
   useEffect(() => {
     if (onRegisterBulkDailyLimitOpener) {
       onRegisterBulkDailyLimitOpener(openBulkDailyLimitForSelection);
@@ -8865,6 +9237,14 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   }, [onRegisterBulkDailyLimitOpener, openBulkDailyLimitForSelection]);
 
   const [isCampaignBulkSearchBidOpen, setIsCampaignBulkSearchBidOpen] = useState(false);
+  const [isCampaignBulkAutobidderOpen, setIsCampaignBulkAutobidderOpen] = useState(false);
+  const [campaignBulkAutobidderModel, setCampaignBulkAutobidderModel] = useState<
+    'CPC' | 'CPM' | null
+  >(null);
+  /** Если задано — модалка автобиддера только для этих кампаний (кнопка в строке) */
+  const [autobidderScopeIds, setAutobidderScopeIds] = useState<string[] | null>(null);
+  /** Со строки товара: в модалке только этот nm, даже если кампания мультитоварная */
+  const [autobidderFocusProductId, setAutobidderFocusProductId] = useState<string | null>(null);
 
   const campaignBulkSearchBidItems = useMemo((): BulkSearchBidItem[] => {
     return allCampaigns
@@ -8898,6 +9278,130 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     if (!onRegisterBulkSearchBidOpener) return;
     onRegisterBulkSearchBidOpener(openBulkSearchBidForSelection);
   }, [onRegisterBulkSearchBidOpener, openBulkSearchBidForSelection]);
+
+  const campaignBulkAutobidderScopeCampaigns = useMemo(() => {
+    const scopeIds = autobidderScopeIds ?? selectedCampaigns;
+    const idSet = new Set(scopeIds);
+    return allCampaigns.filter((c) => {
+      if (!idSet.has(c.id)) return false;
+      // Автобиддер только для CPC
+      return c.type === 'CPC';
+    });
+  }, [allCampaigns, selectedCampaigns, autobidderScopeIds]);
+
+  const campaignBulkAutobidderProducts = useMemo((): BidChasingModalProduct[] => {
+    const seen = new Set<string>();
+    const rows: BidChasingModalProduct[] = [];
+    for (const c of campaignBulkAutobidderScopeCampaigns) {
+      for (const product of campaignToAutobidderModalProducts(c, profileProductTree)) {
+        if (autobidderFocusProductId && product.id !== autobidderFocusProductId) continue;
+        if (seen.has(product.id)) continue;
+        seen.add(product.id);
+        rows.push(product);
+      }
+    }
+    return rows;
+  }, [campaignBulkAutobidderScopeCampaigns, profileProductTree, autobidderFocusProductId]);
+
+  const campaignBulkAutobidderInitialMaxBid = useMemo(() => {
+    if (campaignBulkAutobidderScopeCampaigns.length === 0) return 15;
+    return Math.max(
+      15,
+      ...campaignBulkAutobidderScopeCampaigns.map((c) => listCampaignMaxCpcBidRub(c)),
+    );
+  }, [campaignBulkAutobidderScopeCampaigns]);
+
+  const closeCampaignBulkAutobidder = useCallback(() => {
+    setIsCampaignBulkAutobidderOpen(false);
+    setCampaignBulkAutobidderModel(null);
+    setAutobidderScopeIds(null);
+    setAutobidderFocusProductId(null);
+  }, []);
+
+  const openCampaignBulkAutobidder = useCallback(() => {
+    if (selectedCampaigns.length === 0) return;
+    const hasCpc = allCampaigns.some(
+      (c) => selectedCampaigns.includes(c.id) && c.type === 'CPC',
+    );
+    if (!hasCpc) {
+      setProductBulkNotice('Автобиддер доступен только для CPC-кампаний');
+      return;
+    }
+    setAutobidderScopeIds(null);
+    setAutobidderFocusProductId(null);
+    setCampaignBulkAutobidderModel('CPC');
+    setIsCampaignBulkAutobidderOpen(true);
+  }, [selectedCampaigns, allCampaigns]);
+
+  const openCampaignAutobidderForCampaign = useCallback((c: DisplayCampaign) => {
+    if (c.type !== 'CPC') return;
+    setAutobidderScopeIds([c.id]);
+    setAutobidderFocusProductId(null);
+    setCampaignBulkAutobidderModel('CPC');
+    setIsCampaignBulkAutobidderOpen(true);
+  }, []);
+
+  const resolveListCampaignsForProduct = useCallback(
+    (product: ProductRow): DisplayCampaign[] => {
+      const byCampaignId = new Map<number, DisplayCampaign>();
+      for (const camp of product.campaigns) {
+        const listCamp = allCampaigns.find((c) => c.campaignId === camp.campaignId);
+        if (listCamp) byCampaignId.set(listCamp.campaignId, listCamp);
+      }
+      for (const c of allCampaigns) {
+        if (byCampaignId.has(c.campaignId)) continue;
+        const inProductIds = c.productIds?.includes(product.id) || c.productId === product.id;
+        const inAutobidderIds = c.bidChasingProductIds?.includes(product.id);
+        if (inProductIds || inAutobidderIds) {
+          byCampaignId.set(c.campaignId, c);
+        }
+      }
+      return [...byCampaignId.values()];
+    },
+    [allCampaigns],
+  );
+
+  const openProductAutobidder = useCallback(
+    (product: ProductRow) => {
+      const matches = resolveListCampaignsForProduct(product).filter((c) => c.type === 'CPC');
+      if (matches.length === 0) return;
+      setAutobidderScopeIds(matches.map((c) => c.id));
+      setAutobidderFocusProductId(product.id);
+      setCampaignBulkAutobidderModel('CPC');
+      setIsCampaignBulkAutobidderOpen(true);
+    },
+    [resolveListCampaignsForProduct],
+  );
+
+  const resolveProductAutobidderState = useCallback(
+    (product: ProductRow) => {
+      const listCampaigns = resolveListCampaignsForProduct(product).filter(
+        (c) => c.type === 'CPC',
+      );
+      const nestedById = new Map(
+        product.campaigns.map((camp) => [camp.campaignId, camp] as const),
+      );
+      const matched = listCampaigns
+        .map((listCamp) => {
+          const nested = nestedById.get(listCamp.campaignId);
+          const position = campaignAutobidderPositionForProduct(
+            listCamp,
+            product.id,
+            nested?.bidChasingPosition,
+          );
+          return position ? { listCamp, position } : null;
+        })
+        .filter((item): item is { listCamp: DisplayCampaign; position: BidChasingPosition } =>
+          Boolean(item),
+        );
+      return {
+        enabled: matched.length > 0,
+        campaignCount: matched.length,
+        hasAnyCampaign: listCampaigns.length > 0,
+      };
+    },
+    [resolveListCampaignsForProduct],
+  );
 
   const handleBulkDailyLimitApply = useCallback(
     ({ limit, eligibleIds }: { limit: number | null; eligibleIds: Set<string> }) => {
@@ -9083,6 +9587,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       setTempFilterCategory(filterCategory);
       setTempFilterStatus(filterStatus);
       setTempFilterAutorefill(filterAutorefill);
+      setTempFilterAutobidder(filterAutobidder);
       setTempFilterPayment(filterPayment);
       setTempFilterSort(filterSort);
       setTempFilterByCategory(filterByCategory);
@@ -9100,6 +9605,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     filterCategory,
     filterStatus,
     filterAutorefill,
+    filterAutobidder,
     filterPayment,
     filterSort,
     filterByCategory,
@@ -9127,6 +9633,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     }
     setFilterStatus(tempFilterStatus);
     setFilterAutorefill(tempFilterAutorefill);
+    setFilterAutobidder(tempFilterAutobidder);
     setFilterPayment(tempFilterPayment);
     setFilterSort(tempFilterSort);
     setIsFilterDropdownOpen(false);
@@ -9136,6 +9643,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setTempFilterCategory(filterCategory);
     setTempFilterStatus(filterStatus);
     setTempFilterAutorefill(filterAutorefill);
+    setTempFilterAutobidder(filterAutobidder);
     setTempFilterPayment(filterPayment);
     setTempFilterSort(filterSort);
     setTempFilterByCategory(filterByCategory);
@@ -9175,6 +9683,15 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         filtered = filtered.filter(c => c.autoRefill === true);
       } else if (filterAutorefill === 'disabled') {
         filtered = filtered.filter(c => c.autoRefill === false);
+      }
+    }
+
+    // Filter by autobidder
+    if (filterAutobidder !== 'all') {
+      if (filterAutobidder === 'enabled') {
+        filtered = filtered.filter((c) => Boolean(c.bidChasingPosition));
+      } else if (filterAutobidder === 'disabled') {
+        filtered = filtered.filter((c) => !c.bidChasingPosition);
       }
     }
 
@@ -9242,6 +9759,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     allCampaigns,
     filterStatus,
     filterAutorefill,
+    filterAutobidder,
     filterPayment,
     filterSort,
     filterByCategory,
@@ -9261,6 +9779,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         const noCampaignFilters =
           filterStatus === 'all-except-archived' &&
           filterAutorefill === 'all' &&
+          filterAutobidder === 'all' &&
           filterPayment === 'all' &&
           filterTags.length === 0 &&
           filterCampaignTypes.length === 0 &&
@@ -9284,6 +9803,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           if (filterStatus === 'archived' && effectiveStatus !== 'error') return false;
         } else if (effectiveStatus === 'error') return false;
         if (filterAutorefill !== 'all' && (filterAutorefill === 'enabled') !== camp.autoRefill) return false;
+        if (filterAutobidder !== 'all') {
+          const listCamp = allCampaigns.find((c) => c.campaignId === camp.campaignId);
+          const enabled = Boolean(
+            campaignAutobidderPositionForProduct(listCamp, product.id, camp.bidChasingPosition),
+          );
+          if ((filterAutobidder === 'enabled') !== enabled) return false;
+        }
         if (filterPayment !== 'all' && camp.type !== filterPayment) return false;
         if (filterTags.length > 0 && !filterTags.some((t) => productTagsResolved.includes(t))) return false;
         if (insightFilter) {
@@ -9333,8 +9859,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     });
   }, [
     profileProductTree,
+    allCampaigns,
     filterStatus,
     filterAutorefill,
+    filterAutobidder,
     filterPayment,
     filterTags,
     filterByCategory,
@@ -10321,6 +10849,133 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
         />
       ) : null}
+      {isCampaignBulkAutobidderOpen ? (
+        <AutoStrategiesModal
+          isOpen
+          onClose={closeCampaignBulkAutobidder}
+          bidChasing={{
+            isOpen: true,
+            onClose: closeCampaignBulkAutobidder,
+            initialPosition:
+              campaignBulkAutobidderScopeCampaigns
+                .map((c) => c.bidChasingPosition)
+                .find((p) => p != null) ?? DEFAULT_BID_CHASING_POSITION,
+            initialMaxBid: campaignBulkAutobidderInitialMaxBid,
+            isDailyLimitEnabled: false,
+            savedDailyLimitRub: 0,
+            otherMaxProductBidRub: 0,
+            isBidChasingEnabled:
+              campaignBulkAutobidderScopeCampaigns.length > 0 &&
+              campaignBulkAutobidderScopeCampaigns.every((c) => Boolean(c.bidChasingPosition)),
+            onDisable: () => {
+              const scopedIds = new Set(
+                campaignBulkAutobidderScopeCampaigns.map((c) => c.id),
+              );
+              setAllCampaigns((prev) =>
+                prev.map((c) => {
+                  if (!scopedIds.has(c.id)) return c;
+                  const {
+                    bidChasingPosition: _removed,
+                    bidChasingProductIds: _pids,
+                    bidChasingByProduct: _byProduct,
+                    ...rest
+                  } = c;
+                  return rest;
+                }),
+              );
+              const count = scopedIds.size;
+              setProductBulkNotice(
+                `Автобиддер отключён для ${count} ${getPlural(
+                  count,
+                  'кампании',
+                  'кампаний',
+                  'кампаний',
+                )}`,
+              );
+              closeCampaignBulkAutobidder();
+            },
+            // 1 товар — обычная модалка; 2+ — массовая со списком товаров и «Ручная»
+            products:
+              campaignBulkAutobidderProducts.length > 1
+                ? campaignBulkAutobidderProducts
+                : undefined,
+            initialPositionsById:
+              campaignBulkAutobidderProducts.length > 1
+                ? Object.fromEntries(
+                    campaignBulkAutobidderScopeCampaigns.flatMap((c) => {
+                      const productIds = resolveAutobidderProductIds(c) ?? [];
+                      return productIds
+                        .map((pid) => {
+                          const pos = campaignAutobidderPositionForProduct(c, pid);
+                          return pos ? ([pid, pos] as const) : null;
+                        })
+                        .filter(
+                          (entry): entry is readonly [string, BidChasingPosition] =>
+                            entry != null,
+                        );
+                    }),
+                  )
+                : undefined,
+            onApply: ({ position, positionsById }) => {
+              const scopedIds = new Set(
+                campaignBulkAutobidderScopeCampaigns.map((c) => c.id),
+              );
+              const isMassProducts = campaignBulkAutobidderProducts.length > 1;
+              const hasPerRow = Boolean(
+                isMassProducts && positionsById && Object.keys(positionsById).length > 0,
+              );
+              setAllCampaigns((prev) =>
+                prev.map((c) => {
+                  if (!scopedIds.has(c.id)) return c;
+                  if (autobidderFocusProductId) {
+                    const nextByProduct = {
+                      ...(c.bidChasingByProduct ?? {}),
+                      [autobidderFocusProductId]:
+                        positionsById?.[autobidderFocusProductId] ?? position,
+                    };
+                    const nextIds = Array.from(
+                      new Set([
+                        ...(c.bidChasingProductIds ?? resolveAutobidderProductIds(c) ?? []),
+                        autobidderFocusProductId,
+                      ]),
+                    );
+                    return {
+                      ...c,
+                      bidChasingPosition: position,
+                      bidChasingProductIds: nextIds,
+                      bidChasingByProduct: nextByProduct,
+                    };
+                  }
+                  return withCampaignAutobidder(
+                    c,
+                    position,
+                    hasPerRow ? positionsById : undefined,
+                  );
+                }),
+              );
+              const productCount = Math.max(1, campaignBulkAutobidderProducts.length);
+              const campaignCount = scopedIds.size;
+              const modelLabel = campaignBulkAutobidderModel
+                ? ` ${campaignBulkAutobidderModel}`
+                : '';
+              const positionLabel = hasPerRow
+                ? 'ручная настройка'
+                : formatBidChasingPositionLabel(position);
+              setProductBulkNotice(
+                `Автобиддер${modelLabel} (${positionLabel}) настроен ${formatAutobidderProductCountLabel(
+                  productCount,
+                )} · ${campaignCount} ${getPlural(
+                  campaignCount,
+                  'кампания',
+                  'кампании',
+                  'кампаний',
+                )}`,
+              );
+              closeCampaignBulkAutobidder();
+            },
+          }}
+        />
+      ) : null}
       {isProductPromotionConceptPage && productBidBulkModalKind === 'search' ? (
         <BulkSearchBidModal
           isOpen
@@ -10453,6 +11108,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       onStatusChange={setFilterStatus}
                       autorefill={filterAutorefill}
                       onAutorefillChange={setFilterAutorefill}
+                      autobidder={filterAutobidder}
+                      onAutobidderChange={setFilterAutobidder}
                       payment={filterPayment}
                       onPaymentChange={setFilterPayment}
                       sort={filterSort}
@@ -10465,6 +11122,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       onTempStatusChange={setTempFilterStatus}
                       tempAutorefill={tempFilterAutorefill}
                       onTempAutorefillChange={setTempFilterAutorefill}
+                      tempAutobidder={tempFilterAutobidder}
+                      onTempAutobidderChange={setTempFilterAutobidder}
                       tempPayment={tempFilterPayment}
                       onTempPaymentChange={setTempFilterPayment}
                       tempSort={tempFilterSort}
@@ -10665,6 +11324,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       onStatusChange={setFilterStatus}
                       autorefill={filterAutorefill}
                       onAutorefillChange={setFilterAutorefill}
+                      autobidder={filterAutobidder}
+                      onAutobidderChange={setFilterAutobidder}
                       payment={filterPayment}
                       onPaymentChange={setFilterPayment}
                       sort={filterSort}
@@ -10677,6 +11338,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       onTempStatusChange={setTempFilterStatus}
                       tempAutorefill={tempFilterAutorefill}
                       onTempAutorefillChange={setTempFilterAutorefill}
+                      tempAutobidder={tempFilterAutobidder}
+                      onTempAutobidderChange={setTempFilterAutobidder}
                       tempPayment={tempFilterPayment}
                       onTempPaymentChange={setTempFilterPayment}
                       tempSort={tempFilterSort}
@@ -10954,6 +11617,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       onStatusChange={setFilterStatus}
                       autorefill={filterAutorefill}
                       onAutorefillChange={setFilterAutorefill}
+                      autobidder={filterAutobidder}
+                      onAutobidderChange={setFilterAutobidder}
                       payment={filterPayment}
                       onPaymentChange={setFilterPayment}
                       sort={filterSort}
@@ -10966,6 +11631,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       onTempStatusChange={setTempFilterStatus}
                       tempAutorefill={tempFilterAutorefill}
                       onTempAutorefillChange={setTempFilterAutorefill}
+                      tempAutobidder={tempFilterAutobidder}
+                      onTempAutobidderChange={setTempFilterAutobidder}
                       tempPayment={tempFilterPayment}
                       onTempPaymentChange={setTempFilterPayment}
                       tempSort={tempFilterSort}
@@ -11022,6 +11689,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       </div>
 
       {listTab === 'campaigns' && (
+      <>
       <div className="w-full max-w-[1920px]">
           <div
             className={`w-full bg-white rounded-xl shadow-sm border border-gray-100 ${
@@ -11087,6 +11755,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     onStatusChange={setFilterStatus}
                     autorefill={filterAutorefill}
                     onAutorefillChange={setFilterAutorefill}
+                    autobidder={filterAutobidder}
+                    onAutobidderChange={setFilterAutobidder}
                     payment={filterPayment}
                     onPaymentChange={setFilterPayment}
                     sort={filterSort}
@@ -11099,6 +11769,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                     onTempStatusChange={setTempFilterStatus}
                     tempAutorefill={tempFilterAutorefill}
                     onTempAutorefillChange={setTempFilterAutorefill}
+                    tempAutobidder={tempFilterAutobidder}
+                    onTempAutobidderChange={setTempFilterAutobidder}
                     tempPayment={tempFilterPayment}
                     onTempPaymentChange={setTempFilterPayment}
                     tempSort={tempFilterSort}
@@ -11278,7 +11950,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             }}
           >
               {/* Тень между закреплёнными колонками и прокручиваемыми данными */}
-              <table className="relative w-full text-sm min-w-[1680px]">
+              <table className="relative w-full text-sm min-w-[1860px]">
                   <thead
                     className={`font-medium ${
                       isProductPromotionConceptPage
@@ -11320,6 +11992,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </div>
                             )}
                             </th>
+                          <th className="w-[180px] min-w-[180px] p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Автобиддер
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
                           <th className="p-4 text-left font-medium">
                             <div className="flex items-center gap-1">
                               Остаток бюджета
@@ -11368,7 +12046,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <tbody className="divide-y divide-gray-100">
                       {!dismissedCampaignsBonusBanner && profileProductTree[0] ? (
                         <tr className="hover:bg-transparent">
-                          <td colSpan={31} className="p-0">
+                          <td colSpan={32} className="p-0">
                             <div className="sticky left-0 z-[1] box-border w-[100cqw] max-w-[100cqw] px-4 py-3">
                               <CampaignsListBonusBanner
                                 image={profileProductTree[0].image}
@@ -11442,66 +12120,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       <div className="min-w-0">
                                           <p className="mb-1 font-medium text-gray-800 truncate" title={c.name}>{c.name}</p>
                                           <div className="flex items-center gap-2 text-xs text-gray-500 mt-1 flex-wrap">
-                                              <StatusBadge
-                                                status={c.status}
-                                                text={
-                                                  idx === 0
-                                                    ? 'Тест нового дейаута'
-                                                    : idx === 1
-                                                      ? 'Тест нового бюджета'
-                                                      : c.statusText
-                                                }
-                                                variant={idx === 0 || idx === 1 ? 'testLayout' : undefined}
-                                              />
+                                              <StatusBadge status={c.status} text={c.statusText} />
                                               <span>ID {c.campaignId}</span>
-                                              {c.bidChasingPosition ? (
-                                                <AutobidderPositionBadge
-                                                  variant="enabled"
-                                                  position={c.bidChasingPosition}
-                                                  products={(() => {
-                                                    const ids =
-                                                      c.bidChasingProductIds?.length
-                                                        ? c.bidChasingProductIds
-                                                        : c.productId
-                                                          ? [c.productId]
-                                                          : c.productIds?.length
-                                                            ? [c.productIds[0]]
-                                                            : [];
-                                                    const fromTree = ids
-                                                      .map((pid) => {
-                                                        const row = profileProductTree.find(
-                                                          (p) => p.id === pid,
-                                                        );
-                                                        if (!row) return null;
-                                                        const pos =
-                                                          c.bidChasingByProduct?.[pid] ??
-                                                          c.bidChasingPosition!;
-                                                        return {
-                                                          name: row.name,
-                                                          imageUrl: row.image,
-                                                          position: pos,
-                                                        };
-                                                      })
-                                                      .filter(
-                                                        (
-                                                          item,
-                                                        ): item is {
-                                                          name: string;
-                                                          imageUrl: string;
-                                                          position: BidChasingPosition;
-                                                        } => Boolean(item),
-                                                      );
-                                                    if (fromTree.length > 0) return fromTree;
-                                                    return [
-                                                      {
-                                                        name: c.name,
-                                                        imageUrl: c.image,
-                                                        position: c.bidChasingPosition!,
-                                                      },
-                                                    ];
-                                                  })()}
-                                                />
-                                              ) : null}
                                               {c.tags.map(tag => (
                                                   <div key={tag.text} className={`flex items-center gap-1 ${tag.type === 'warning' ? 'text-amber-700' : tag.type === 'error' ? 'text-red-700' : ''}`}>
                                                       {tag.icon} {tag.text}
@@ -11522,6 +12142,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       </div>
                                   </div>
                               </td>
+                              <td
+                                className="w-[180px] min-w-[180px] p-4 align-middle"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <ListAutobidderCell
+                                  enabled={Boolean(c.bidChasingPosition)}
+                                  detail={
+                                    c.bidChasingPosition
+                                      ? formatAutobidderProductCountLabel(
+                                          campaignAutobidderProductCount(c),
+                                        )
+                                      : undefined
+                                  }
+                                  onEnable={() => openCampaignAutobidderForCampaign(c)}
+                                  onOpen={() => openCampaignAutobidderForCampaign(c)}
+                                />
+                              </td>
                               <td className="p-4" onClick={(e) => e.stopPropagation()}>
                                   <div className="relative inline-flex items-center group" onClick={(e) => e.stopPropagation()}>
                                       <button
@@ -11536,7 +12173,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                               setSelectedCampaignForRefill(c);
                                               setIsBudgetRefillModalOpen(true);
                                           }}
-                                          className="font-semibold text-blue-600 hover:text-purple-600 transition-colors cursor-pointer"
+                                          className="cursor-pointer font-semibold text-blue-600 transition-colors hover:text-blue-800"
                                       >
                                           {isBudgetRangeConceptCampaign(c)
                                             ? `${formatForDisplay(
@@ -11560,8 +12197,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       </button>
                                   </div>
                                   {c.autoRefill && (
-                                      <div className="flex items-center gap-1 text-xs mt-1 text-green-600">
-                                          <CheckCircle className="w-3.5 h-3.5" />
+                                      <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                                          <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-600" aria-hidden />
                                           Автопополнение
                                       </div>
                                   )}
@@ -11613,6 +12250,19 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           />
           </div>
       </div>
+
+      {selectedCampaigns.length > 0 ? (
+        <CampaignListSelectionBar
+          count={selectedCampaigns.length}
+          onDailyLimit={openBulkDailyLimitForSelection}
+          onBudget={openBulkBudgetForSelection}
+          onBid={openBulkSearchBidForSelection}
+          onAutobidder={openCampaignBulkAutobidder}
+          onDownload={onBulkDownloadExcel}
+          onClear={() => onSelectionChange([])}
+        />
+      ) : null}
+      </>
       )}
 
       {listTab === 'products' && (
@@ -11761,105 +12411,132 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             )}
 
             {isProductPromotionConceptPage ? (
-              <div className="relative z-40">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 py-3 sm:px-6">
+              <div className="relative z-40 border-b border-gray-100">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 px-4 pt-3 sm:px-6">
                   {conceptCreateCampaignControls}
                   {conceptMainSectionTabs}
-                  <div className="ml-auto flex flex-row flex-wrap items-center justify-end gap-1.5">
-                    <div className="inline-flex shrink-0 items-center gap-1.5">
-                      <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
-                        <button
-                          type="button"
-                          onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
-                          className={conceptToolbarTextControlClass}
-                          aria-expanded={isFilterDropdownOpen}
-                          aria-haspopup="dialog"
-                        >
-                          <span>Фильтры</span>
-                          <ChevronDown
-                            className={`h-4 w-4 shrink-0 text-[#767386] transition-transform ${
-                              isFilterDropdownOpen ? 'rotate-180' : ''
-                            }`}
-                            aria-hidden
-                          />
-                        </button>
-                        <FilterDropdown
-                          variant="products"
-                        isOpen={isFilterDropdownOpen}
-                        onClose={handleCancelFilters}
-                        onApply={handleApplyFilters}
-                        productCategoryOptions={productFilterCategoryOptions}
-                        productsSection={tempProductsFilterSection}
-                        onProductsSectionChange={setTempProductsFilterSection}
-                        tempProductCategories={tempFilterProductCategories}
-                        onTempProductCategoriesChange={setTempFilterProductCategories}
-                        tempConflictOnly={tempFilterConflictOnly}
-                        onTempConflictOnlyChange={setTempFilterConflictOnly}
-                        tempCampaignTypes={tempFilterCampaignTypes}
-                        onTempCampaignTypesChange={setTempFilterCampaignTypes}
-                        category={filterCategory}
-                        onCategoryChange={setFilterCategory}
-                        status={filterStatus}
-                        onStatusChange={setFilterStatus}
-                        autorefill={filterAutorefill}
-                        onAutorefillChange={setFilterAutorefill}
-                        payment={filterPayment}
-                        onPaymentChange={setFilterPayment}
-                        sort={filterSort}
-                        onSortChange={setFilterSort}
-                        filterByCategory={filterByCategory}
-                        onFilterByCategoryChange={setFilterByCategory}
-                        tempCategory={tempFilterCategory}
-                        onTempCategoryChange={setTempFilterCategory}
-                        tempStatus={tempFilterStatus}
-                        onTempStatusChange={setTempFilterStatus}
-                        tempAutorefill={tempFilterAutorefill}
-                        onTempAutorefillChange={setTempFilterAutorefill}
-                        tempPayment={tempFilterPayment}
-                        onTempPaymentChange={setTempFilterPayment}
-                        tempSort={tempFilterSort}
-                        onTempSortChange={setTempFilterSort}
-                        tempFilterByCategory={tempFilterByCategory}
-                        onTempFilterByCategoryChange={setTempFilterByCategory}
-                        tempTags={tempTags}
-                        onTempTagsChange={setTempTags}
-                        tempTagsSearch={tempTagsSearch}
-                        onTempTagsSearchChange={setTempTagsSearch}
-                        tempTagsCategory={tempTagsCategory}
-                        onTempTagsCategoryChange={setTempTagsCategory}
-                        tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
-                        onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
-                          availableTags={availableTags}
-                        />
-                      </div>
-                    </div>
-                    <div className="relative shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setIsProductsColumnSettingsOpen((prev) => !prev)}
-                        className={`${conceptToolbarIconControlClass} ${
-                          isProductsColumnSettingsOpen ? 'ring-2 ring-[#9a41fe]/30' : ''
-                        }`}
-                        title="Настройки колонок"
-                        aria-label="Настройки колонок"
-                        aria-expanded={isProductsColumnSettingsOpen}
-                      >
-                        <Settings className="h-4 w-4 text-gray-600" aria-hidden />
-                      </button>
-                      <ProductsColumnSettingsDropdown
-                        open={isProductsColumnSettingsOpen}
-                        onClose={() => setIsProductsColumnSettingsOpen(false)}
-                        visibility={productsColumnVisibility}
-                        onToggle={(columnId, visible) => {
-                          setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
-                        }}
-                        onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
-                      />
-                    </div>
+                  <ExcelActionsDropdown
+                    onOpenUpload={onOpenUploadEditsModal}
+                    onOpenHistory={onOpenHistoryModal}
+                    showUploadHint={showUploadHint}
+                    onDismissUploadHint={onDismissUploadHint}
+                    trigger="menu"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-6">
+                  <div className="relative min-w-[200px] flex-1">
+                    <input
+                      type="search"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Поиск по товару, артикулу или кампании"
+                      aria-label="Поиск по товару, артикулу или кампании"
+                      className="h-11 w-full rounded-[10px] border border-[#e3e4ea] bg-white py-0 pl-3 pr-10 text-sm text-gray-900 placeholder:text-[#767386] focus:border-[#9a41fe] focus:outline-none focus:ring-1 focus:ring-[#9a41fe]"
+                    />
+                    <Search
+                      className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-[#767386]"
+                      aria-hidden
+                    />
                   </div>
+                  <div className={`relative shrink-0 ${isFilterDropdownOpen ? 'z-[50]' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setIsFilterDropdownOpen((prev) => !prev)}
+                      className={conceptToolbarTextControlClass}
+                      aria-expanded={isFilterDropdownOpen}
+                      aria-haspopup="dialog"
+                    >
+                      <Filter className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                      <span>Фильтр</span>
+                    </button>
+                    <FilterDropdown
+                      variant="products"
+                      isOpen={isFilterDropdownOpen}
+                      onClose={handleCancelFilters}
+                      onApply={handleApplyFilters}
+                      productCategoryOptions={productFilterCategoryOptions}
+                      productsSection={tempProductsFilterSection}
+                      onProductsSectionChange={setTempProductsFilterSection}
+                      tempProductCategories={tempFilterProductCategories}
+                      onTempProductCategoriesChange={setTempFilterProductCategories}
+                      tempConflictOnly={tempFilterConflictOnly}
+                      onTempConflictOnlyChange={setTempFilterConflictOnly}
+                      tempCampaignTypes={tempFilterCampaignTypes}
+                      onTempCampaignTypesChange={setTempFilterCampaignTypes}
+                      category={filterCategory}
+                      onCategoryChange={setFilterCategory}
+                      status={filterStatus}
+                      onStatusChange={setFilterStatus}
+                      autorefill={filterAutorefill}
+                      onAutorefillChange={setFilterAutorefill}
+                      autobidder={filterAutobidder}
+                      onAutobidderChange={setFilterAutobidder}
+                      payment={filterPayment}
+                      onPaymentChange={setFilterPayment}
+                      sort={filterSort}
+                      onSortChange={setFilterSort}
+                      filterByCategory={filterByCategory}
+                      onFilterByCategoryChange={setFilterByCategory}
+                      tempCategory={tempFilterCategory}
+                      onTempCategoryChange={setTempFilterCategory}
+                      tempStatus={tempFilterStatus}
+                      onTempStatusChange={setTempFilterStatus}
+                      tempAutorefill={tempFilterAutorefill}
+                      onTempAutorefillChange={setTempFilterAutorefill}
+                      tempAutobidder={tempFilterAutobidder}
+                      onTempAutobidderChange={setTempFilterAutobidder}
+                      tempPayment={tempFilterPayment}
+                      onTempPaymentChange={setTempFilterPayment}
+                      tempSort={tempFilterSort}
+                      onTempSortChange={setTempFilterSort}
+                      tempFilterByCategory={tempFilterByCategory}
+                      onTempFilterByCategoryChange={setTempFilterByCategory}
+                      tempTags={tempTags}
+                      onTempTagsChange={setTempTags}
+                      tempTagsSearch={tempTagsSearch}
+                      onTempTagsSearchChange={setTempTagsSearch}
+                      tempTagsCategory={tempTagsCategory}
+                      onTempTagsCategoryChange={setTempTagsCategory}
+                      tempFilterPromoTagsOnly={tempFilterPromoTagsOnly}
+                      onTempFilterPromoTagsOnlyChange={setTempFilterPromoTagsOnly}
+                      availableTags={availableTags}
+                    />
+                  </div>
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setIsProductsColumnSettingsOpen((prev) => !prev)}
+                      className={`${conceptToolbarIconControlClass} ${
+                        isProductsColumnSettingsOpen ? 'ring-2 ring-[#9a41fe]/30' : ''
+                      }`}
+                      title="Настройки колонок"
+                      aria-label="Настройки колонок"
+                      aria-expanded={isProductsColumnSettingsOpen}
+                    >
+                      <Settings className="h-5 w-5 text-gray-700" aria-hidden />
+                    </button>
+                    <ProductsColumnSettingsDropdown
+                      open={isProductsColumnSettingsOpen}
+                      onClose={() => setIsProductsColumnSettingsOpen(false)}
+                      visibility={productsColumnVisibility}
+                      onToggle={(columnId, visible) => {
+                        setProductsColumnVisibility((prev) => ({ ...prev, [columnId]: visible }));
+                      }}
+                      onReset={() => setProductsColumnVisibility(defaultProductsColumnVisibility())}
+                    />
+                  </div>
+                  <button type="button" className={conceptToolbarTextControlClass}>
+                    <FileIcon className="h-5 w-5 shrink-0 text-gray-700" aria-hidden />
+                    <span>Создать отчёт</span>
+                  </button>
+                  <ExcelActionsDropdown
+                    onOpenUpload={onOpenUploadEditsModal}
+                    onOpenHistory={onOpenHistoryModal}
+                    trigger="download"
+                  />
                 </div>
                 {listTab === 'products' && !conceptAllProductsPickTab ? (
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 bg-white px-4 py-2.5 sm:px-6">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-t border-gray-100 bg-white px-4 py-2.5 sm:px-6">
                   <div
                     className="inline-flex min-w-0 flex-1 flex-wrap items-center gap-x-8 gap-y-2"
                     role="tablist"
@@ -11953,7 +12630,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   conceptCompactProductsTable
                     ? ''
                     : conceptAllProductsPickTab
-                      ? 'min-w-[2928px]'
+                      ? 'min-w-[3108px]'
                       : 'min-w-[2800px]'
                 }`}
                 style={productsTableMinWidthStyle}
@@ -11962,6 +12639,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <colgroup>
                     <col style={{ width: CONCEPT_NOT_PROMOTED_SELECT_WIDTH_PX }} />
                     <col style={{ width: CONCEPT_NOT_PROMOTED_PRODUCT_PIN_WIDTH_PX }} />
+                    {conceptNotPromotedShowAutobidderColumn ? (
+                      <col style={{ width: CONCEPT_NOT_PROMOTED_AUTOBIDDER_COL_WIDTH_PX }} />
+                    ) : null}
                     {conceptNotPromotedShowTagsColumn ? (
                       <col style={{ width: CONCEPT_NOT_PROMOTED_TAGS_COL_WIDTH_PX }} />
                     ) : null}
@@ -12029,24 +12709,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 : PRODUCTS_PINNED_TH_PRODUCT_CLASS,
                         )}
                       >
-                        {isProductPromotionConceptPage ? (
-                          <label className="flex min-w-0 items-center gap-2 text-left font-normal text-gray-500">
-                            <Search
-                              className="h-4 w-4 shrink-0 text-[#767386]"
-                              aria-hidden
-                            />
-                            <input
-                              type="search"
-                              value={searchQuery}
-                              onChange={(e) => setSearchQuery(e.target.value)}
-                              placeholder="Поиск"
-                              aria-label="Поиск по товару, артикулу или кампании"
-                              className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-normal text-gray-900 placeholder:text-[#767386] focus:outline-none focus:ring-0"
-                            />
-                          </label>
-                        ) : (
-                          <span className="block text-left">Товар</span>
-                        )}
+                        <span className="block text-left">Товар</span>
                       </th>
                     ) : null}
                     {conceptAllProductsPickTab && productsColVisible(MULTICARD_GLUE_LEADER_COLUMN_ID) ? (
@@ -12118,6 +12781,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       >
                         <span className="inline-flex items-center justify-start gap-1 whitespace-nowrap text-left">
                           Дневной лимит <HelpCircle className="w-4 h-4 shrink-0 text-gray-400" />
+                        </span>
+                      </th>
+                    ) : null}
+                    {productsColVisible('autobidder') ? (
+                      <th className="w-[180px] min-w-[180px] p-4 text-left font-normal">
+                        <span className="inline-flex items-center justify-start gap-1 whitespace-nowrap text-left">
+                          Автобиддер <HelpCircle className="h-4 w-4 shrink-0 text-gray-400" />
                         </span>
                       </th>
                     ) : null}
@@ -12589,6 +13259,31 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             )}
                           />
                         ) : null}
+                        {productsColVisible('autobidder') ? (
+                          <td
+                            className="w-[180px] min-w-[180px] p-4 align-middle"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {(() => {
+                              const state = resolveProductAutobidderState(product);
+                              if (!state.hasAnyCampaign && product.campaigns.length === 0) {
+                                return <span className="text-sm text-gray-400">—</span>;
+                              }
+                              return (
+                                <ListAutobidderCell
+                                  enabled={state.enabled}
+                                  detail={
+                                    state.enabled
+                                      ? formatAutobidderCampaignCountLabel(state.campaignCount)
+                                      : undefined
+                                  }
+                                  onEnable={() => openProductAutobidder(product)}
+                                  onOpen={() => openProductAutobidder(product)}
+                                />
+                              );
+                            })()}
+                          </td>
+                        ) : null}
                         {productsColVisible('tags') ? (
                         <td
                           className={
@@ -12824,177 +13519,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       {/* Вложенные строки кампаний — вид как на вкладке «Кампании» */}
                       {rowShowsPromotedProductUi && expandedProductIds.has(product.id) ? (
                       <>
-                      {productsPickTab === 'promoted' &&
-                      listRowIndex < 3 &&
-                      !dismissedNotPromotedBonusBannerIds.has(product.id) ? (
-                        <tr className="relative bg-gray-50/50 hover:bg-gray-50 transition-colors">
-                          {(() => {
-                            const pinned = productsTablePinnedCellProps(
-                              'select',
-                              'bodyNested',
-                              PRODUCTS_SELECT_TD_CLASS,
-                            );
-                            return (
-                          <td
-                            className={`${pinned.className} relative overflow-visible`}
-                            style={pinned.style}
-                          >
-                            <div className="pointer-events-none absolute inset-y-0 left-0 z-[13] flex w-[100cqw] max-w-[100cqw] items-center justify-end pr-3">
-                              <div className="pointer-events-auto flex items-center gap-2 rounded-xl bg-gray-50/95 py-1 pl-3">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setNotPromotedBonusModalProducts([product]);
-                                  }}
-                                  className="inline-flex items-center rounded-xl bg-[#2E3038] px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-[#23252c]"
-                                >
-                                  К кампании
-                                </button>
-                                <button
-                                  type="button"
-                                  aria-label="Скрыть бонусную кампанию"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setDismissedNotPromotedBonusBannerIds((prev) => {
-                                      const next = new Set(prev);
-                                      next.add(product.id);
-                                      return next;
-                                    });
-                                  }}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white text-gray-500 shadow-sm ring-1 ring-black/[0.04] transition-colors hover:bg-gray-50 hover:text-gray-800"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                            );
-                          })()}
-                          {productsColVisible('product') ? (
-                            <td
-                              {...productsTablePinnedCellProps(
-                                'product',
-                                'bodyNested',
-                                'px-4 py-3 pl-12 align-middle',
-                              )}
-                            >
-                              <div className="flex items-center gap-3">
-                                <span
-                                  onClick={(e) => e.stopPropagation()}
-                                  onKeyDown={(e) => e.stopPropagation()}
-                                >
-                                  <ToggleSwitch
-                                    checked={false}
-                                    onChange={() => setNotPromotedBonusModalProducts([product])}
-                                  />
-                                </span>
-                                <div className="min-w-0 flex-1">
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setNotPromotedBonusModalProducts([product]);
-                                    }}
-                                    className="block w-full min-w-0 truncate text-left text-sm font-medium text-gray-800 transition-colors hover:text-[#9A41FE]"
-                                    title="Кампания от 26.12.2024"
-                                  >
-                                    Кампания от 26.12.2024
-                                  </button>
-                                  <span className="mt-1.5 inline-flex rounded-md bg-[#F3E8FF] px-2 py-0.5 text-xs font-medium text-[#7C3AED]">
-                                    Бонусная кампания
-                                  </span>
-                                </div>
-                              </div>
-                            </td>
-                          ) : null}
-                          {showProductsCampaignTypeColumn ? (
-                            <td
-                              {...productsTablePinnedCellProps(
-                                'campaignType',
-                                'bodyNested',
-                                'p-4 align-top',
-                              )}
-                            >
-                              <ProductCampaignTypeCell type="CPC" />
-                            </td>
-                          ) : null}
-                          {showProductsBidColumn ? (
-                            <td
-                              {...productsTablePinnedCellProps('bid', 'bodyNested', 'px-2 py-3 align-top')}
-                            />
-                          ) : null}
-                          {productsColVisible('budgetRemainder') ? (
-                            <td
-                              {...productsTablePinnedCellProps(
-                                'budgetRemainder',
-                                'bodyNested',
-                                'p-4 align-middle',
-                              )}
-                            >
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setNotPromotedBonusModalProducts([product]);
-                                }}
-                                className="inline-flex items-center gap-1 text-sm font-semibold text-[#9A41FE] transition-colors hover:text-[#7C3AED]"
-                              >
-                                <Gift className="h-4 w-4 shrink-0" aria-hidden />
-                                3 000 B
-                              </button>
-                              <div className="mt-1 text-xs text-gray-400">До 14 сентября</div>
-                            </td>
-                          ) : null}
-                          {productsColVisible('dailyLimit') ? (
-                            <td
-                              {...productsTablePinnedCellProps(
-                                'dailyLimit',
-                                'bodyNested',
-                                'px-2 py-3 align-top',
-                              )}
-                            />
-                          ) : null}
-                          {productsColVisible('tags') ? <td className="p-4 w-[220px]" /> : null}
-                          {conceptBonusCampaignColumn ? (
-                            <td className={CONCEPT_NOT_PROMOTED_BONUS_CAMPAIGN_TD_CLASS} />
-                          ) : null}
-                          {conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
-                            <td className={PRODUCTS_STOCK_TD_CLASS} />
-                          ) : null}
-                          {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPC_SEARCH_COLUMN_ID) ? (
-                            <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
-                          ) : null}
-                          {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_SEARCH_COLUMN_ID) ? (
-                            <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
-                          ) : null}
-                          {productsColVisible(PRODUCTS_RECOMMENDED_BID_CPM_REC_COLUMN_ID) ? (
-                            <td className={CONCEPT_NOT_PROMOTED_AVERAGE_BID_TD_CLASS} />
-                          ) : null}
-                          {productsColVisible(PRODUCTS_STAT_SPACER_COLUMN_ID) ? (
-                            <td className={PRODUCTS_STAT_SPACER_CELL_CLASS} aria-hidden />
-                          ) : null}
-                          {PRODUCTS_STAT_COLUMN_LABELS.map((label) =>
-                            productsColVisible(productsStatColumnId(label)) ? (
-                              <td key={label} className={`${PRODUCTS_STAT_TD_CLASS} !align-middle`} />
-                            ) : null,
-                          )}
-                          {!conceptBonusCampaignColumn && productsColVisible(PRODUCTS_STOCK_COLUMN_ID) ? (
-                            <td className={PRODUCTS_STOCK_TD_CLASS} />
-                          ) : null}
-                        </tr>
-                      ) : null}
                       {product.campaigns.map((camp) => {
                         const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
                         const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
                         const listCampMatch = allCampaigns.find((c) => c.campaignId === camp.campaignId);
-                        const nestedBidChasingPosition =
-                          camp.bidChasingPosition ??
-                          (listCampMatch?.bidChasingPosition &&
-                          (!listCampMatch.bidChasingProductIds?.length ||
-                            listCampMatch.bidChasingProductIds.includes(product.id))
-                            ? listCampMatch.bidChasingPosition
-                            : undefined);
                         return (
                         <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
                             {conceptAllProductsPickTab && multicardRail === null ? (
@@ -13073,24 +13601,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-none text-gray-500">
                                   <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
                                   <span>ID {camp.campaignId}</span>
-                                  {nestedBidChasingPosition ? (
-                                    <AutobidderPositionBadge
-                                      variant="position"
-                                      position={
-                                        listCampMatch?.bidChasingByProduct?.[product.id] ??
-                                        nestedBidChasingPosition
-                                      }
-                                      products={[
-                                        {
-                                          name: product.name,
-                                          imageUrl: product.image,
-                                          position:
-                                            listCampMatch?.bidChasingByProduct?.[product.id] ??
-                                            nestedBidChasingPosition,
-                                        },
-                                      ]}
-                                    />
-                                  ) : null}
                                 </div>
                                 {!showProductsCampaignTypeColumn ? (
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
@@ -13165,8 +13675,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             >
                             <div className="font-semibold text-gray-900">{formatForDisplay(camp.remainingBudget)} ₽</div>
                             {camp.autoRefill && (
-                              <div className="flex items-center gap-1 text-xs text-green-600 mt-1">
-                                <CheckCircle className="w-3.5 h-3.5" /> Автопополнение
+                              <div className="mt-1 flex items-center gap-1 text-xs text-gray-500">
+                                <CheckCircle className="h-3.5 w-3.5 shrink-0 text-green-600" aria-hidden />
+                                Автопополнение
                               </div>
                             )}
                           </td>
@@ -13194,6 +13705,35 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               onClick={camp.type === 'CPC' ? () => openDailyLimitModalForCampaign(camp) : undefined}
                             />
                           </td>
+                            ) : null}
+                            {productsColVisible('autobidder') ? (
+                              <td
+                                className="w-[180px] min-w-[180px] p-4 align-middle"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {(() => {
+                                  const position = campaignAutobidderPositionForProduct(
+                                    listCampMatch,
+                                    product.id,
+                                    camp.bidChasingPosition,
+                                  );
+                                  if (!listCampMatch || listCampMatch.type !== 'CPC') {
+                                    return <span className="text-sm text-gray-400">—</span>;
+                                  }
+                                  return (
+                                    <ListAutobidderCell
+                                      enabled={Boolean(position)}
+                                      detail={
+                                        position
+                                          ? `${formatBidChasingPositionShortLabel(position)} позиции`
+                                          : undefined
+                                      }
+                                      onEnable={() => openCampaignAutobidderForCampaign(listCampMatch)}
+                                      onOpen={() => openCampaignAutobidderForCampaign(listCampMatch)}
+                                    />
+                                  );
+                                })()}
+                              </td>
                             ) : null}
                             {productsColVisible('tags') ? <td className="p-4 w-[220px]" /> : null}
                             {conceptBonusCampaignColumn ? (
@@ -13277,9 +13817,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           </div>
 
           {selectedProductIds.length > 0 && (
-            <div className="fixed bottom-6 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2 rounded-xl border border-gray-200 bg-white/90 p-2 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4 fade-in">
-              <span className="whitespace-nowrap px-3 text-sm font-medium text-gray-800">
-                Выбрано: {selectedProductIds.length}{' '}
+            <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
+              <span className="whitespace-nowrap px-1 text-sm font-medium text-gray-400">
+                Выбрано {selectedProductIds.length}{' '}
                 {getPlural(
                   selectedProductIds.length,
                   'товар',
@@ -13287,7 +13827,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   'товаров',
                 )}
               </span>
-              <div className="h-6 w-px bg-gray-200" />
+              <div className="h-6 w-px shrink-0 bg-gray-200" />
               <div
                 className="relative inline-flex"
                 onMouseEnter={() => {
@@ -13298,7 +13838,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 <button
                   type="button"
                   onClick={handleBulkCreateCampaignFromProducts}
-                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-gray-100 px-4 py-2 text-sm font-semibold text-gray-800 transition-colors hover:bg-gray-200"
+                  className={listSelectionBarBtnClass}
                   aria-describedby={
                     selectedIncludeZeroStockProducts && bulkCreateMenuOpen
                       ? 'zero-stock-bulk-create-dropdown'
@@ -13337,7 +13877,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                 <button
                   type="button"
                   onClick={() => setNotPromotedBonusModalProducts(selectedV3BonusProducts)}
-                  className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-[#9A41FE] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#8A35EE]"
+                  className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#9A41FE] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#8A35EE]"
                 >
                   <Gift className="h-4 w-4 shrink-0" aria-hidden />
                   За бонусы {selectedV3BonusProducts.length}{' '}
@@ -13351,12 +13891,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   <button
                     type="button"
                     disabled={selectedProductsCampaignCount === 0}
-                    className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors group-hover/product-bid:bg-gray-50 hover:bg-gray-50 disabled:cursor-not-allowed"
+                    className={`${listSelectionBarBtnClass} disabled:cursor-not-allowed`}
                     aria-haspopup="menu"
                   >
                     Работать со ставкой
                     <ChevronDown
-                      className="h-4 w-4 shrink-0 text-gray-500 transition-transform group-hover/product-bid:rotate-180 group-focus-within/product-bid:rotate-180"
+                      className="h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform group-hover/product-bid:rotate-180 group-focus-within/product-bid:rotate-180"
                       aria-hidden
                     />
                   </button>
@@ -13383,14 +13923,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                   )}
                 </div>
               )}
-              <button
-                type="button"
-                onClick={() => setSelectedProductIds([])}
-                className="ml-1 rounded-full p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
-                aria-label="Снять выделение"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="ml-1 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setSelectedProductIds([])}
+                  className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
+                  aria-label="Снять выделение"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           )}
         </>
@@ -13405,6 +13947,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           }}
           onSave={(amount) => {
             const targetIds = new Set(massBudgetRefillTargetIds);
+            const count = targetIds.size;
             setAllCampaigns((prev) =>
               prev.map((c) =>
                 targetIds.has(c.id)
@@ -13414,6 +13957,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             );
             setIsMassBudgetRefillModalOpen(false);
             setMassBudgetRefillTargetIds([]);
+            if (count > 0) {
+              setProductBulkNotice(
+                `Бюджет пополнен для ${count} ${getPlural(
+                  count,
+                  'кампании',
+                  'кампаний',
+                  'кампаний',
+                )}`,
+              );
+            }
           }}
           currentBudget={0}
           campaignCount={

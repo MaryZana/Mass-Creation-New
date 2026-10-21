@@ -20,7 +20,10 @@ import {
   type AdvancedDailyLimitSettings,
   type BidChasingModalProduct,
 } from './components/CpcCampaignPage';
-import { MassCreationIsland } from './components/CpcMassCreationIsland';
+import {
+  MassCreationIsland,
+  type MassCreationAutobidderSetup,
+} from './components/CpcMassCreationIsland';
 import { useCpmBidRoundedAlert } from './components/CpmBidRoundedAlert';
 import { CPM_BID_STEP_RUB, normalizeCpmBidRub } from './utils/cpmBidRounding';
 import { DAILY_LIMIT_ABSOLUTE_MIN } from './utils/cpcDailyLimitBid';
@@ -2641,60 +2644,6 @@ const UploadEditsModal = ({
   );
 };
 
-const BulkActionIsland = ({
-  count,
-  onConfigureAR,
-  onDownload,
-  onEdit,
-  onDailyLimit,
-  onBid,
-  onClear,
-}: {
-  count: number;
-  onConfigureAR: () => void;
-  onDownload: () => void;
-  onEdit?: () => void;
-  onDailyLimit?: () => void;
-  onBid?: () => void;
-  onClear: () => void;
-}) => {
-    return (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-white/80 backdrop-blur-md rounded-xl shadow-2xl z-[80] p-2 flex items-center gap-2 border border-gray-200 animate-in slide-in-from-bottom-4 fade-in">
-            <span className="text-sm font-medium text-gray-800 px-3 whitespace-nowrap">Выбрано: {count}</span>
-            <div className="h-6 w-px bg-gray-200"></div>
-            {onEdit && (
-                <button onClick={onEdit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
-                    <Edit2 className="w-4 h-4 text-gray-500" />
-                    <span>Редактировать</span>
-                </button>
-            )}
-            {onBid && (
-                <button onClick={onBid} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
-                    <Zap className="w-4 h-4 text-gray-500" />
-                    <span>Ставка</span>
-                </button>
-            )}
-            {onDailyLimit && (
-                <button onClick={onDailyLimit} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
-                    <Calendar className="w-4 h-4 text-gray-500" />
-                    <span>Дневной лимит</span>
-                </button>
-            )}
-            <button onClick={onConfigureAR} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
-                <RefreshCw className="w-4 h-4 text-gray-500" />
-                <span>Настроить АП</span>
-            </button>
-            <button onClick={onDownload} className="px-3 py-1.5 text-sm font-medium hover:bg-gray-100 rounded-lg transition-colors flex items-center gap-1.5 text-gray-700 whitespace-nowrap">
-                <Download className="w-4 h-4 text-gray-500" />
-                <span>Скачать Excel для правок</span>
-            </button>
-            <button onClick={onClear} className="ml-2 p-1.5 text-gray-500 hover:text-gray-800 hover:bg-gray-100 rounded-full">
-                <X className="w-5 h-5" />
-            </button>
-        </div>
-    )
-}
-
 const creationBarBtnClass =
   'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#F3F4F6] px-3.5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-200';
 
@@ -2706,7 +2655,6 @@ const CreationSelectionBar = ({
   onBid,
   onZones,
   onAutobidder,
-  autobidderModels,
   onDelete,
   onClear,
 }: {
@@ -2716,33 +2664,12 @@ const CreationSelectionBar = ({
   onAutoRefill: () => void;
   onBid: () => void;
   onZones: () => void;
-  onAutobidder: (paymentModel?: PaymentModel) => void;
-  /** Модели среди выбранных кампаний — шеврон, если есть и CPC, и CPM */
-  autobidderModels: PaymentModel[];
+  /** Автобиддер только для CPC */
+  onAutobidder: () => void;
   onDelete: () => void;
   onClear: () => void;
 }) => {
   const countLabel = `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
-  const [autobidderMenuOpen, setAutobidderMenuOpen] = useState(false);
-  const autobidderMenuRef = useRef<HTMLDivElement>(null);
-  const showAutobidderModelMenu = autobidderModels.length > 1;
-
-  useEffect(() => {
-    if (!autobidderMenuOpen) return;
-    const onDoc = (event: MouseEvent) => {
-      if (autobidderMenuRef.current?.contains(event.target as Node)) return;
-      setAutobidderMenuOpen(false);
-    };
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setAutobidderMenuOpen(false);
-    };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [autobidderMenuOpen]);
 
   return (
     <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
@@ -2759,6 +2686,10 @@ const CreationSelectionBar = ({
           <Calendar className="h-4 w-4 text-gray-700" />
           <span>Дневной лимит</span>
         </button>
+        <button type="button" onClick={onAutobidder} className={creationBarBtnClass}>
+          <TrendingUp className="h-4 w-4 text-gray-700" />
+          <span>Автобиддер</span>
+        </button>
         <button type="button" onClick={onAutoRefill} className={creationBarBtnClass}>
           <RefreshCw className="h-4 w-4 text-gray-700" />
           <span>Автопополнение</span>
@@ -2772,75 +2703,6 @@ const CreationSelectionBar = ({
           <Columns2 className="h-4 w-4 text-gray-700" />
           <span>Зоны показа</span>
         </button>
-        {showAutobidderModelMenu ? (
-          <div className="relative flex shrink-0" ref={autobidderMenuRef}>
-            <button
-              type="button"
-              onClick={() => setAutobidderMenuOpen((open) => !open)}
-              className={`${creationBarBtnClass} rounded-r-none pr-2.5`}
-            >
-              <TrendingUp className="h-4 w-4 text-gray-700" />
-              <span>Автобиддер</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Выбрать модель оплаты для автобиддера"
-              aria-expanded={autobidderMenuOpen}
-              aria-haspopup="menu"
-              onClick={() => setAutobidderMenuOpen((open) => !open)}
-              className="inline-flex h-[40px] items-center rounded-r-xl border-l border-white/70 bg-[#F3F4F6] px-2 text-gray-700 transition-colors hover:bg-gray-200"
-            >
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform ${autobidderMenuOpen ? 'rotate-180' : ''}`}
-              />
-            </button>
-            {autobidderMenuOpen ? (
-              <div
-                role="menu"
-                className="absolute bottom-full left-0 z-[90] mb-2 min-w-[220px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-              >
-                <p className="px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-gray-400">
-                  Настроить автобиддер
-                </p>
-                {autobidderModels.includes(PaymentModel.CPC) ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full px-3 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50"
-                    onClick={() => {
-                      setAutobidderMenuOpen(false);
-                      onAutobidder(PaymentModel.CPC);
-                    }}
-                  >
-                    Для CPC
-                  </button>
-                ) : null}
-                {autobidderModels.includes(PaymentModel.CPM) ? (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="flex w-full px-3 py-2.5 text-left text-sm text-gray-900 hover:bg-gray-50"
-                    onClick={() => {
-                      setAutobidderMenuOpen(false);
-                      onAutobidder(PaymentModel.CPM);
-                    }}
-                  >
-                    Для CPM
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => onAutobidder(autobidderModels[0])}
-            className={creationBarBtnClass}
-          >
-            <TrendingUp className="h-4 w-4 text-gray-700" />
-            <span>Автобиддер</span>
-          </button>
-        )}
       </div>
       <div className="ml-1 flex items-center gap-1">
         <button
@@ -3066,6 +2928,10 @@ export default function App() {
   /** Скоуп автобиддера из дропдауна CPC/CPM в массовых действиях */
   const [autobidderBulkPaymentModel, setAutobidderBulkPaymentModel] =
     useState<PaymentModel | null>(null);
+  /** Включённый автобиддер в таблице массового создания (по id кампании) */
+  const [creationAutobidderSetup, setCreationAutobidderSetup] = useState<
+    Record<string, MassCreationAutobidderSetup>
+  >({});
   const [campaignForBonusEdit, setCampaignForBonusEdit] = useState<CampaignRecord | null>(null);
   const [singleReplenishAction, setSingleReplenishAction] = useState<'budget' | 'autorefill'>('budget');
   const [isUploadEditsModalOpen, setIsUploadEditsModalOpen] = useState(false);
@@ -3122,6 +2988,11 @@ export default function App() {
   const updateCampaignDataRef = useRef<((campaignId: number, data: { name?: string; remainingBudget?: number | null; dailyLimit?: number | null; scheduledDailyLimit?: number | null; maxCpcBidRub?: number; autoRefill?: boolean; dynamicDailyLimit?: boolean; status?: 'active' | 'paused'; statusText?: string }) => void) | null>(null);
   const bulkDailyLimitOpenerRef = useRef<(() => void) | null>(null);
   const bulkSearchBidOpenerRef = useRef<(() => void) | null>(null);
+  /** Массовый бюджет/автопополнение из списка кампаний (SuccessPage) */
+  const [listBudgetTargetIds, setListBudgetTargetIds] = useState<string[] | null>(null);
+  const listBudgetApplierRef = useRef<
+    ((campaignIds: string[], value: Record<string, unknown>) => void) | null
+  >(null);
 
   type CampaignListDataPatch = {
     name?: string;
@@ -3848,67 +3719,31 @@ export default function App() {
       paymentModelFilter?: PaymentModel,
     ) => {
         setClearSelectionOnBulkClose(false);
+        setListBudgetTargetIds(null);
         if (action === 'delete') {
             setIsConfirmBulkDeleteOpen(true);
             return;
         }
         
         if (action === 'autobidder') {
-            // Нельзя смешивать разные типы внутри выбранной модели (например CPM ручная + единая).
+            // Автобиддер только для CPC
             const selectedIds = new Set(selectedCampaignIds);
-            const typeKeys = new Set<string>();
-            const typeLabels = new Set<string>();
             let scopedCount = 0;
 
             for (const g of templateGroups) {
-                if (
-                  paymentModelFilter != null &&
-                  g.config.paymentModel !== paymentModelFilter
-                ) {
-                  continue;
-                }
-                const key = `${g.config.paymentModel}-${g.config.bidType}`;
-                const label =
-                    g.config.paymentModel === PaymentModel.CPM
-                        ? `CPM (${g.config.bidType === BidType.MANUAL ? 'ручная ставка' : 'единая ставка'})`
-                        : `CPC`;
-
+                if (g.config.paymentModel !== PaymentModel.CPC) continue;
                 for (const c of g.campaigns) {
-                    if (selectedIds.has(c.id)) {
-                        scopedCount += 1;
-                        typeKeys.add(key);
-                        typeLabels.add(label);
-                        if (typeKeys.size > 1) break;
-                    }
+                    if (selectedIds.has(c.id)) scopedCount += 1;
                 }
-                if (typeKeys.size > 1) break;
             }
 
             if (scopedCount === 0) {
-                setToastMessage(
-                  paymentModelFilter
-                    ? `Среди выбранных нет кампаний ${paymentModelFilter}`
-                    : 'Среди выбранных нет кампаний для автобиддера',
-                );
+                setToastMessage('Автобиддер доступен только для CPC-кампаний');
                 setShowToast(true);
                 return;
             }
 
-            if (typeKeys.size > 1) {
-                setToastMessage(
-                    `Нельзя настроить автобиддер сразу для разных типов кампаний. Сейчас выбраны: ${Array.from(typeLabels).join(', ')}. Оставьте выбранным только один тип и попробуйте снова.`
-                );
-                setShowToast(true);
-                return;
-            }
-
-            const firstKey = [...typeKeys][0] ?? '';
-            setAutobidderBulkPaymentModel(
-              paymentModelFilter ??
-                (firstKey.startsWith(PaymentModel.CPM)
-                  ? PaymentModel.CPM
-                  : PaymentModel.CPC),
-            );
+            setAutobidderBulkPaymentModel(PaymentModel.CPC);
         } else {
             setAutobidderBulkPaymentModel(null);
         }
@@ -3944,6 +3779,7 @@ export default function App() {
     const closeBulkActionModal = () => {
     setIsBulkActionModalOpen(false);
     setAutobidderBulkPaymentModel(null);
+    setListBudgetTargetIds(null);
     if (clearSelectionOnBulkClose) {
       setSelectedCampaignIds([]);
       setClearSelectionOnBulkClose(false);
@@ -4020,23 +3856,78 @@ export default function App() {
                 ? 'autobidder'
                 : currentBulkAction;
 
+        if (listBudgetTargetIds && listBudgetTargetIds.length > 0) {
+          listBudgetApplierRef.current?.(listBudgetTargetIds, value as Record<string, unknown>);
+          const count = listBudgetTargetIds.length;
+          setToastMessage(
+            action === 'autorefill'
+              ? value?.enabled === false
+                ? `Автопополнение отключено для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`
+                : `Автопополнение настроено для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`
+              : `Бюджет обновлён для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`,
+          );
+          setShowToast(true);
+          closeBulkActionModal();
+          return;
+        }
+
         if (action === 'autobidder') {
             const position = (value?.position ?? DEFAULT_BID_CHASING_POSITION) as BidChasingPosition;
+            const maxBid = Number(value?.maxBid);
+            const maxBidsById = (value?.maxBidsById ?? {}) as Record<string, number>;
+            const positionsById = (value?.positionsById ?? {}) as Record<
+              string,
+              BidChasingPosition
+            >;
             const modelFilter = autobidderBulkPaymentModel;
-            const scopedCount =
+            const scopedIds = selectedCampaignIds.filter((id) =>
               modelFilter == null
-                ? selectedCampaignIds.length
-                : selectedCampaignIds.filter((id) =>
-                    templateGroups.some(
-                      (g) =>
-                        g.config.paymentModel === modelFilter &&
-                        g.campaigns.some((c) => c.id === id),
-                    ),
-                  ).length;
+                ? true
+                : templateGroups.some(
+                    (g) =>
+                      g.config.paymentModel === modelFilter &&
+                      g.campaigns.some((c) => c.id === id),
+                  ),
+            );
+            const scopedCampaigns = selectedCreationCampaigns.filter((c) =>
+              scopedIds.includes(c.id),
+            );
+            const fallbackMaxBid =
+              Number.isFinite(maxBid) && maxBid > 0
+                ? maxBid
+                : scopedCampaigns.length > 0
+                  ? Math.max(
+                      15,
+                      ...scopedCampaigns.map((c) =>
+                        Math.max(c.bid ?? 0, c.searchBid ?? 0, 15),
+                      ),
+                    )
+                  : 15;
+            const hasPerRowPositions = scopedIds.some((id) => positionsById[id] != null);
+            setCreationAutobidderSetup((prev) => {
+              const next = { ...prev };
+              for (const id of scopedIds) {
+                const rowMax =
+                  Number.isFinite(maxBidsById[id]) && maxBidsById[id] > 0
+                    ? maxBidsById[id]
+                    : fallbackMaxBid;
+                next[id] = {
+                  mode: 'positions',
+                  settings:
+                    prev[id]?.settings ?? createDefaultAdvancedDailyLimitSettings(),
+                  position: positionsById[id] ?? position,
+                  maxBid: rowMax,
+                };
+              }
+              return next;
+            });
             closeBulkActionModal();
             const modelLabel = modelFilter ? ` ${modelFilter}` : '';
+            const positionLabel = hasPerRowPositions
+              ? 'ручная настройка'
+              : formatBidChasingPositionLabel(position);
             setToastMessage(
-              `Автобиддер${modelLabel} (${formatBidChasingPositionLabel(position)}) настроен для ${scopedCount} ${getPlural(scopedCount, 'кампании', 'кампаний', 'кампаний')}`,
+              `Автобиддер${modelLabel} (${positionLabel}) настроен для ${scopedIds.length} ${getPlural(scopedIds.length, 'кампании', 'кампаний', 'кампаний')}`,
             );
             setShowToast(true);
             return;
@@ -4255,20 +4146,6 @@ export default function App() {
   const selectedCreationCampaigns = useMemo(() => {
     const ids = new Set(selectedCampaignIds);
     return templateGroups.flatMap((g) => g.campaigns.filter((c) => ids.has(c.id)));
-  }, [selectedCampaignIds, templateGroups]);
-
-  const selectedCreationAutobidderModels = useMemo(() => {
-    const ids = new Set(selectedCampaignIds);
-    const models = new Set<PaymentModel>();
-    for (const group of templateGroups) {
-      if (group.campaigns.some((c) => ids.has(c.id))) {
-        models.add(group.config.paymentModel);
-      }
-    }
-    const ordered: PaymentModel[] = [];
-    if (models.has(PaymentModel.CPC)) ordered.push(PaymentModel.CPC);
-    if (models.has(PaymentModel.CPM)) ordered.push(PaymentModel.CPM);
-    return ordered;
   }, [selectedCampaignIds, templateGroups]);
 
   const selectedCreationBulkBidItems = useMemo((): BulkSearchBidItem[] => {
@@ -4690,6 +4567,16 @@ export default function App() {
                     onRegisterBulkSearchBidOpener={(open) => {
                       bulkSearchBidOpenerRef.current = open;
                     }}
+                    onOpenListBudgetModal={(campaignIds) => {
+                      setListBudgetTargetIds(campaignIds);
+                      setBulkEditPrefillData(null);
+                      setCurrentBulkAction('budget');
+                      setIsBulkActionModalOpen(true);
+                    }}
+                    onRegisterListBudgetApplier={(apply) => {
+                      listBudgetApplierRef.current = apply;
+                    }}
+                    onBulkDownloadExcel={handleOpenEditDownloadModal}
                     campaignListPatches={campaignListPatches}
                     onPersistCampaignListPatch={persistCampaignListPatch}
                     onOpenSingleCampaign={openSingleCampaign}
@@ -4716,23 +4603,6 @@ export default function App() {
                     showToast={setShowToast}
                     setToastMessage={setToastMessage}
                 />
-                {selectedListedCampaignIds.length > 0 && (
-                  <BulkActionIsland 
-                    count={selectedListedCampaignIds.length}
-                    onClear={() => setSelectedListedCampaignIds([])}
-                    onEdit={() => {
-                      setIsFromExcelModal(false);
-                      handleNavigationAttempt(handleNavigateToEditing);
-                    }}
-                    onBid={() => bulkSearchBidOpenerRef.current?.()}
-                    onDailyLimit={() => bulkDailyLimitOpenerRef.current?.()}
-                    onConfigureAR={() => {
-                      setToastMessage("Функция 'Настроить АП' в разработке");
-                      setShowToast(true);
-                    }}
-                    onDownload={handleOpenEditDownloadModal}
-                  />
-                )}
 
                 {isEditDownloadModalOpen && (
                   <div
@@ -4926,6 +4796,36 @@ export default function App() {
             </Routes>
           </OverviewBridgeProvider>
         </CampaignsInsightFilterProvider>
+        {isBulkActionModalOpen &&
+        (currentBulkAction === 'budget' ||
+          currentBulkAction === 'autorefill' ||
+          (listBudgetTargetIds != null && listBudgetTargetIds.length > 0)) ? (
+          <BulkEditModal
+            isOpen={isBulkActionModalOpen}
+            onClose={closeBulkActionModal}
+            action={currentBulkAction ?? 'budget'}
+            onSave={handleBulkSave}
+            categories={[]}
+            selectedCampaignsCount={
+              listBudgetTargetIds && listBudgetTargetIds.length > 0
+                ? listBudgetTargetIds.length
+                : selectedCampaignIds.length
+            }
+            onOpenAutoRefill={() => {
+              setCampaignForAutoRefill(null);
+              setIsAutoRefillModalOpen(true);
+            }}
+            prefillData={bulkEditPrefillData}
+            editingGroupId={editingGroupId}
+            editedCampaigns={editedCampaigns}
+            allValidCampaigns={allValidCampaigns}
+            selectedCampaignIds={
+              listBudgetTargetIds && listBudgetTargetIds.length > 0
+                ? listBudgetTargetIds
+                : selectedCampaignIds
+            }
+          />
+        ) : null}
       </div>
     );
   }
@@ -5072,7 +4972,10 @@ export default function App() {
       bidChasing={{
         isOpen: true,
         onClose: closeBulkActionModal,
-        initialPosition: DEFAULT_BID_CHASING_POSITION,
+        initialPosition:
+          selectedCreationBulkAutobidderProducts
+            .map((p) => creationAutobidderSetup[p.id]?.position)
+            .find((p) => p != null) ?? DEFAULT_BID_CHASING_POSITION,
         initialMaxBid: Math.max(
           15,
           ...selectedCreationCampaigns
@@ -5084,16 +4987,62 @@ export default function App() {
                   g.campaigns.some((gc) => gc.id === c.id),
               );
             })
-            .map((c) => Math.max(c.bid ?? 0, c.searchBid ?? 0, 15)),
+            .map((c) =>
+              Math.max(
+                creationAutobidderSetup[c.id]?.maxBid ?? 0,
+                c.bid ?? 0,
+                c.searchBid ?? 0,
+                15,
+              ),
+            ),
         ),
         isDailyLimitEnabled: false,
         savedDailyLimitRub: 0,
         otherMaxProductBidRub: 0,
-        isBidChasingEnabled: false,
-        onDisable: closeBulkActionModal,
+        isBidChasingEnabled:
+          selectedCreationBulkAutobidderProducts.length > 0 &&
+          selectedCreationBulkAutobidderProducts.every(
+            (p) => creationAutobidderSetup[p.id]?.mode === 'positions',
+          ),
+        onDisable: () => {
+          const scopedIds = new Set(
+            selectedCreationBulkAutobidderProducts.map((p) => p.id),
+          );
+          setCreationAutobidderSetup((prev) => {
+            const next = { ...prev };
+            for (const id of scopedIds) delete next[id];
+            return next;
+          });
+          closeBulkActionModal();
+          setToastMessage(
+            `Автобиддер отключён для ${scopedIds.size} ${getPlural(
+              scopedIds.size,
+              'кампании',
+              'кампаний',
+              'кампаний',
+            )}`,
+          );
+          setShowToast(true);
+        },
         products: selectedCreationBulkAutobidderProducts,
-        onApply: ({ position, maxBid }) => {
-          handleBulkSave({ __mode: 'autobidder', position, maxBid });
+        initialPositionsById: Object.fromEntries(
+          selectedCreationBulkAutobidderProducts
+            .map((p) => {
+              const setup = creationAutobidderSetup[p.id];
+              return setup?.mode === 'positions' && setup.position
+                ? ([p.id, setup.position] as const)
+                : null;
+            })
+            .filter((entry): entry is readonly [string, BidChasingPosition] => entry != null),
+        ),
+        onApply: ({ position, maxBid, maxBidsById, positionsById }) => {
+          handleBulkSave({
+            __mode: 'autobidder',
+            position,
+            maxBid,
+            maxBidsById,
+            positionsById,
+          });
         },
       }}
     />
@@ -5104,7 +5053,11 @@ export default function App() {
       action={currentBulkAction}
       onSave={handleBulkSave}
       categories={uniqueCategoriesForSelection}
-      selectedCampaignsCount={selectedCampaignIds.length}
+      selectedCampaignsCount={
+        listBudgetTargetIds && listBudgetTargetIds.length > 0
+          ? listBudgetTargetIds.length
+          : selectedCampaignIds.length
+      }
       onOpenAutoRefill={() => {
         setCampaignForAutoRefill(null);
         setIsAutoRefillModalOpen(true);
@@ -5113,7 +5066,11 @@ export default function App() {
       editingGroupId={editingGroupId}
       editedCampaigns={editedCampaigns}
       allValidCampaigns={allValidCampaigns}
-      selectedCampaignIds={selectedCampaignIds}
+      selectedCampaignIds={
+        listBudgetTargetIds && listBudgetTargetIds.length > 0
+          ? listBudgetTargetIds
+          : selectedCampaignIds
+      }
     />
   )}
   <BulkEditModal 
@@ -5595,6 +5552,8 @@ export default function App() {
                   onOpenBudgetSettings={openSingleBudgetModal}
                   unifiedAccountTotal={totals.total - totals.bonus}
                   promoBonusesTotal={totals.bonus}
+                  autobidderSetup={creationAutobidderSetup}
+                  onAutobidderSetupChange={setCreationAutobidderSetup}
                 />
                 <Pagination
                   total={validCount}
@@ -5616,10 +5575,7 @@ export default function App() {
         onAutoRefill={() => openBulkActionModal('autorefill')}
         onBid={() => openBulkActionModal('bid')}
         onZones={openCreationZonesModal}
-        autobidderModels={selectedCreationAutobidderModels}
-        onAutobidder={(paymentModel) =>
-          openBulkActionModal('autobidder', paymentModel)
-        }
+        onAutobidder={() => openBulkActionModal('autobidder', PaymentModel.CPC)}
         onDelete={() => openBulkActionModal('delete')}
         onClear={() => setSelectedCampaignIds([])}
       />
