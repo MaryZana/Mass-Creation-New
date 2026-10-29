@@ -18,15 +18,52 @@ import {
   X,
 } from '../components/Icons';
 import { UnifiedAccountInstructionModal } from '../components/UnifiedAccountInstructionModal';
+import { FinanceBalanceModalVariant } from '../components/FinanceBalanceModalVariants';
+import {
+  FinanceMoneyIconRows,
+  financeUnifiedHasOwnHeader,
+  readFinanceUnifiedVariant,
+} from '../components/FinanceBalanceLabel';
 import { useDismissibleHoverTooltip, useFeatureVideoGuide } from '../components/FeatureVideoGuide';
 import { PROMOTION_ACCOUNT_BALANCE_BY_PROFILE } from '../components/AppHeader';
 import { useProfile } from '../components/ProfileContext';
 import { usePromoBonusDemo } from '../components/PromoBonusDemoContext';
 import {
+  FINANCE_BALANCE_CURRENT_CASES,
+  FINANCE_BALANCE_CURRENT_DAYS,
   FINANCE_BALANCE_DEMO_CASES,
+  FINANCE_BALANCE_SIM_SCENARIOS,
+  FINANCE_BALANCE_SIM_WEEKS,
+  FINANCE_BALANCE_WEEK_DAYS,
+  FINANCE_BALANCE_SIM_EVENT,
+  buildFinanceBalanceSimView,
+  financeBalancePayoutDates,
+  financeBalanceWeekChargeDate,
+  financeBalanceWeekDate,
+  financeBalanceWeekRangeLabel,
+  readFinanceBalanceCurrentCase,
+  readFinanceBalanceCurrentDay,
+  readFinanceBalanceSimDay,
+  readFinanceBalanceSimScenario,
+  readFinanceBalanceSimAdjust,
+  writeFinanceBalanceSimAdjust,
+  FINANCE_BALANCE_SIM_STEP_RUB,
+  type FinanceBalanceSimAdjust,
+  readFinanceBalanceSimWeek,
+  writeFinanceBalanceSimDay,
+  writeFinanceBalanceSimScenario,
+  writeFinanceBalanceSimWeek,
   readFinanceBalanceDemoCase,
+  writeFinanceBalanceCurrentCase,
+  writeFinanceBalanceCurrentDay,
+  writeFinanceBalanceAmountRub,
   writeFinanceBalanceDemoCase,
+  type FinanceBalanceCurrentCaseId,
+  type FinanceBalanceCurrentDayId,
   type FinanceBalanceDemoCaseId,
+  type FinanceBalanceSchemeLayoutId,
+  type FinanceBalanceSimScenarioId,
+  type FinanceBalanceSimWeekId,
 } from '../utils/financeBalanceDemo';
 import { financeTopUpPath } from '../utils/financeRoutes';
 
@@ -396,9 +433,72 @@ function balanceSchemeRow(balanceRub: number): BufferAccrualRow {
     tuesdayRub,
     thursdayRub,
     weeksAvgLabel: `(${fmtRub(balanceRub)} ₽ + ${fmtRub(balanceRub)} ₽ + ${fmtRub(balanceRub)} ₽) ÷ 3`,
+    weekProfitRub: [balanceRub, balanceRub, balanceRub],
     inCampaignsRub: 0,
     spentOnPromoRub: 0,
     bufferLeftRub: balanceRub,
+    grossWeekAccrualRub: balanceRub,
+    netWeekAccrualRub: balanceRub,
+  };
+}
+
+/** Резерв в кампаниях сначала «съедает» вторник, остаток — четверг */
+function accrualAfterCampaignReserve(
+  tuesdayRub: number,
+  thursdayRub: number,
+  inCampaignsRub: number,
+): { tuesdayRub: number; thursdayRub: number; netRub: number } {
+  const tuesdayNet = Math.max(0, tuesdayRub - inCampaignsRub);
+  const reserveLeft = Math.max(0, inCampaignsRub - tuesdayRub);
+  const thursdayNet = Math.max(0, thursdayRub - reserveLeft);
+  return { tuesdayRub: tuesdayNet, thursdayRub: thursdayNet, netRub: tuesdayNet + thursdayNet };
+}
+
+/** Кейсы «Текущей» модалки: начисление 75% / 25%, резерв в кампаниях вычитается из начисленного */
+function balanceCurrentCaseRow(
+  balanceRub: number,
+  caseId: FinanceBalanceCurrentCaseId,
+  day: FinanceBalanceCurrentDayId,
+): BufferAccrualRow {
+  if (caseId === 'base') return balanceSchemeRow(balanceRub);
+
+  const weekProfitRub: [number, number, number] =
+    caseId === 'zero_week'
+      ? [1_800, 1_200, 0]
+      : caseId === 'tuesday_below_reserve'
+        ? [12_000, 9_000, 9_000]
+        : [1_200, 900, 900];
+  const grossRub = weekProfitRub.includes(0)
+    ? 0
+    : Math.round((weekProfitRub[0] + weekProfitRub[1] + weekProfitRub[2]) / 3);
+  const tuesdayScheduledRub = Math.round(grossRub * 0.75);
+  const thursdayScheduledRub = grossRub - tuesdayScheduledRub;
+  const inCampaignsRub =
+    caseId === 'tuesday_below_reserve' ? 8_500 : caseId === 'reserve_covers' ? 1_500 : 0;
+  const payout = accrualAfterCampaignReserve(
+    tuesdayScheduledRub,
+    thursdayScheduledRub,
+    inCampaignsRub,
+  );
+
+  return {
+    id: `current-${caseId}`,
+    periodLabel: '',
+    periodStart: '',
+    periodEnd: '',
+    weekTotalRub: grossRub,
+    tuesdayRub: payout.tuesdayRub,
+    thursdayRub: payout.thursdayRub,
+    weeksAvgLabel: '',
+    weekProfitRub,
+    inCampaignsRub,
+    spentOnPromoRub: 0,
+    // «Доступно сейчас» = баланс на карточке, не сумма начисления за день
+    bufferLeftRub: balanceRub,
+    grossWeekAccrualRub: grossRub,
+    netWeekAccrualRub: payout.netRub,
+    todayDay: day,
+    showWeeks: caseId === 'zero_week',
   };
 }
 
@@ -910,9 +1010,20 @@ type BufferAccrualRow = {
   tuesdayRub: number;
   thursdayRub: number;
   weeksAvgLabel: string;
+  /** Прибыль по неделям для формулы средней */
+  weekProfitRub?: [number, number, number];
   inCampaignsRub: number;
   spentOnPromoRub: number;
   bufferLeftRub: number;
+  /** Расчётная сумма к начислению (средняя за 3 недели), до вычета резерва */
+  grossWeekAccrualRub?: number;
+  /** Сколько реально доначислим на этой неделе после резерва в кампаниях */
+  netWeekAccrualRub?: number;
+  sellerExplain?: string;
+  /** Для «Текущей»: какой сегодня день недели начислений */
+  todayDay?: FinanceBalanceCurrentDayId;
+  /** Для «Текущей»: показать прибыль по неделям вместо вторника/четверга */
+  showWeeks?: boolean;
 };
 
 type BufferAccrualDayRow = {
@@ -1230,11 +1341,38 @@ function BufferSchemeModal({
   row,
   onClose,
   kind = 'buffer',
+  layout = 'current',
+  currentCaseId = 'base',
+  onCurrentCaseChange,
+  currentDay = 'tuesday',
+  onCurrentDayChange,
+  simWeekId = 'week1',
+  onSimWeekChange,
+  simDay = 3,
+  onSimDayChange,
+  simAdjust = {},
+  onSimAdjustChange,
+  simScenarioId = 'base',
+  onSimScenarioChange,
 }: {
   row: BufferAccrualRow;
   onClose: () => void;
   kind?: 'buffer' | 'balance';
+  layout?: FinanceBalanceSchemeLayoutId;
+  currentCaseId?: FinanceBalanceCurrentCaseId;
+  onCurrentCaseChange?: (id: FinanceBalanceCurrentCaseId) => void;
+  currentDay?: FinanceBalanceCurrentDayId;
+  onCurrentDayChange?: (id: FinanceBalanceCurrentDayId) => void;
+  simWeekId?: FinanceBalanceSimWeekId;
+  onSimWeekChange?: (id: FinanceBalanceSimWeekId) => void;
+  simDay?: number;
+  onSimDayChange?: (index: number) => void;
+  simAdjust?: FinanceBalanceSimAdjust;
+  onSimAdjustChange?: (value: FinanceBalanceSimAdjust) => void;
+  simScenarioId?: FinanceBalanceSimScenarioId;
+  onSimScenarioChange?: (id: FinanceBalanceSimScenarioId) => void;
 }) {
+  const simView = buildFinanceBalanceSimView(simWeekId, simDay, simAdjust);
   const [formulaOpen, setFormulaOpen] = useState(false);
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1265,10 +1403,6 @@ function BufferSchemeModal({
             label: 'Зарезервировано на кампании',
           },
           {
-            value: `- ${fmtRub(row.spentOnPromoRub)} ₽`,
-            label: 'Сумма с баланса, использованная на продвижение',
-          },
-          {
             value: `= ${fmtRub(row.bufferLeftRub)} ₽`,
             label: 'Осталось на балансе',
             tone: 'good' as const,
@@ -1288,15 +1422,16 @@ function BufferSchemeModal({
             label: 'В бюджетах кампаний',
           },
           {
-            value: `− ${fmtRub(row.spentOnPromoRub)} ₽`,
-            label: 'Потрачено на продвижение',
-          },
-          {
             value: `= ${fmtRub(row.bufferLeftRub)} ₽`,
             label: 'Осталось на балансе',
             tone: 'good' as const,
           },
         ];
+
+  const grossWeek = row.grossWeekAccrualRub ?? row.weekTotalRub;
+  const netWeek = row.netWeekAccrualRub ?? Math.max(0, grossWeek - row.inCampaignsRub);
+  const showStatusLayout = kind === 'balance' && layout === 'status';
+  const payoutDates = financeBalancePayoutDates();
 
   return createPortal(
     <div className="fixed inset-0 z-[120] bg-black/50" onClick={onClose} role="presentation">
@@ -1322,8 +1457,15 @@ function BufferSchemeModal({
             aria-modal="true"
             aria-labelledby="buffer-scheme-title"
           >
-            <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-6 sm:p-8">
-              {kind === 'balance' ? (
+            <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-8 sm:p-10">
+              {showStatusLayout ? (
+                <FinanceBalanceModalVariant
+                  variant="feed"
+                  titleId="buffer-scheme-title"
+                  view={simView}
+                  weekdayIndex={simDay}
+                />
+              ) : kind === 'balance' ? (
                 <>
                   <h2 id="buffer-scheme-title" className="text-2xl font-bold tracking-tight text-gray-900">
                     Баланс
@@ -1335,57 +1477,109 @@ function BufferSchemeModal({
                     </span>
                   </div>
                   <div className="mt-5 border-t border-gray-100">
-                    <div className="-mx-2 flex items-baseline justify-between gap-4 rounded-lg border-b border-gray-100 px-2 py-3.5 transition-colors hover:bg-[#F3F5F8]">
-                      <span className="text-sm text-gray-500">Начислим во вторник</span>
-                      <span className="shrink-0 text-sm font-semibold tabular-nums text-gray-900">
-                        ≈ {fmtRub(row.tuesdayRub)} ₽
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="mt-6">
                     <button
                       type="button"
                       aria-expanded={formulaOpen}
                       onClick={() => setFormulaOpen((open) => !open)}
-                      className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900"
+                      className="-mx-2 flex w-[calc(100%+1rem)] items-center justify-between gap-4 rounded-lg border-b border-gray-100 px-2 py-3.5 text-left transition-colors hover:bg-[#F3F5F8]"
                     >
-                      Как считается
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform ${formulaOpen ? 'rotate-180' : ''}`}
-                        aria-hidden
-                      />
+                      <span className="text-sm text-gray-500">
+                        {row.todayDay
+                          ? row.inCampaignsRub > 0
+                            ? 'Придёт на этой неделе'
+                            : 'Начисление на этой неделе'
+                          : `Начислим ${payoutDates.tuesday}`}
+                      </span>
+                      <span className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold tabular-nums text-gray-900">
+                        {fmtRub(row.todayDay ? netWeek : row.tuesdayRub)} ₽
+                        <ChevronDown
+                          className={`h-4 w-4 text-gray-400 transition-transform ${formulaOpen ? 'rotate-180' : ''}`}
+                          aria-hidden
+                        />
+                      </span>
                     </button>
-                    {formulaOpen ? (
-                      <div className="mt-3 rounded-2xl bg-[#F7F7F9] p-5">
-                        <p className="text-sm leading-relaxed text-gray-500">
-                          Начисляем баланс 2 раза в неделю: 75% — во вторник, и 25 % — в четверг
-                        </p>
-                        <p className="mt-4 text-sm leading-relaxed text-gray-500">
-                          Баланс равен средней сумме в графе «Итого к оплате» в{' '}
-                          <button type="button" className="font-medium text-[#007AFF] hover:underline">
-                            финансовых отчётах
-                          </button>{' '}
-                          за последние 3 недели: {row.weeksAvgLabel}
-                        </p>
+                  </div>
 
-                        <div className="mt-5 border-t border-gray-200/80">
-                          {formulaRows.map((item) => (
+                  <div>
+                    {formulaOpen ? (
+                      <div className="text-sm">
+                        <div className="flex items-baseline justify-between gap-4 border-b border-gray-100 py-3">
+                          <span className="text-gray-900">Всего к начислению на этой неделе</span>
+                          <span className="shrink-0 font-semibold tabular-nums text-gray-900">
+                            {fmtRub(row.weekTotalRub)} ₽
+                          </span>
+                        </div>
+                        <div className="flex items-baseline justify-between gap-4 border-b border-gray-100 py-3">
+                          <span className="text-gray-900">Баланс на кампаниях сейчас</span>
+                          <span
+                            className={`shrink-0 font-semibold tabular-nums ${
+                              row.inCampaignsRub > 0 ? 'text-gray-900' : 'text-gray-400'
+                            }`}
+                          >
+                            {row.inCampaignsRub > 0 ? '− ' : ''}
+                            {fmtRub(row.inCampaignsRub)} ₽
+                          </span>
+                        </div>
+                        {row.inCampaignsRub > 0 ? (
+                          <div className="flex items-baseline justify-between gap-4 border-b border-gray-100 py-3">
+                            <span className="text-gray-900">Придёт на этой неделе</span>
+                            <span className="shrink-0 font-semibold tabular-nums text-gray-900">
+                              {fmtRub(netWeek)} ₽
+                            </span>
+                          </div>
+                        ) : null}
+                        {row.showWeeks && row.weekProfitRub ? (
+                          row.weekProfitRub.map((amount, index) => (
                             <div
-                              key={item.label}
-                              className="-mx-2 flex items-baseline justify-between gap-4 rounded-lg border-b border-gray-200/80 px-2 py-3 transition-colors last:border-b-0 hover:bg-[#E6E9EE]"
+                              key={`current-week-${index}`}
+                              className="flex items-baseline justify-between gap-4 border-b border-gray-100 py-3 pl-4"
                             >
-                              <p className="min-w-0 text-sm leading-snug text-gray-500">{item.label}</p>
-                              <p
-                                className={`shrink-0 text-sm font-bold tabular-nums ${
-                                  item.tone === 'good' ? 'text-emerald-600' : 'text-gray-900'
+                              <span className="text-gray-500">Неделя {index + 1}</span>
+                              <span
+                                className={`shrink-0 tabular-nums ${amount === 0 ? 'font-semibold text-red-600' : 'text-gray-900'}`}
+                              >
+                                {fmtRub(amount)} ₽
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <>
+                            <div className="flex items-baseline justify-between gap-4 border-b border-gray-100 py-3 pl-4">
+                              <span className="text-gray-500">
+                                {payoutDates.tuesday}
+                                {row.todayDay ? (
+                                  <span className="ml-2 text-xs text-gray-400">начислили</span>
+                                ) : null}
+                              </span>
+                              <span
+                                className={`shrink-0 tabular-nums ${
+                                  row.tuesdayRub > 0 ? 'text-gray-900' : 'text-gray-400'
                                 }`}
                               >
-                                {item.value}
-                              </p>
+                                {fmtRub(row.tuesdayRub)} ₽
+                              </span>
                             </div>
-                          ))}
-                        </div>
+                            <div className="flex items-baseline justify-between gap-4 border-b border-gray-100 py-3 pl-4">
+                              <span className="text-gray-500">
+                                {payoutDates.thursday}
+                                {row.todayDay ? (
+                                  <span className="ml-2 text-xs text-gray-400">
+                                    {row.todayDay === 'thursday' ? 'начислили' : 'начислим'}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <span
+                                className={`shrink-0 tabular-nums ${
+                                  row.todayDay === 'tuesday' || row.thursdayRub === 0
+                                    ? 'text-gray-400'
+                                    : 'text-gray-900'
+                                }`}
+                              >
+                                {fmtRub(row.thursdayRub)} ₽
+                              </span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     ) : null}
                   </div>
@@ -1444,6 +1638,150 @@ function BufferSchemeModal({
           </div>
         </div>
       </div>
+
+      {kind === 'balance' ? (
+        <div
+          className="fixed bottom-4 left-4 z-[130] flex max-w-[min(440px,calc(100vw-2rem))] flex-col gap-2 rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
+          onClick={(event) => event.stopPropagation()}
+          role="group"
+          aria-label="Демо: вариант модалки баланса"
+        >
+          {showStatusLayout && onSimWeekChange ? (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="px-1 text-xs text-gray-500">Неделя</span>
+                {FINANCE_BALANCE_SIM_WEEKS.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    title={item.explain}
+                    onClick={() => {
+                      onSimWeekChange(item.id);
+                      onSimDayChange?.(0);
+                    }}
+                    className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      simWeekId === item.id
+                        ? 'bg-black text-white'
+                        : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+                    }`}
+                  >
+                    {item.short}
+                  </button>
+                ))}
+              </div>
+              {onSimDayChange ? (
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="px-1 text-xs text-gray-500">День</span>
+                  {FINANCE_BALANCE_WEEK_DAYS.map((label, index) => (
+                    <button
+                      key={label}
+                      type="button"
+                      title={financeBalanceWeekDate(index, undefined, simView.weekOffset)}
+                      onClick={() => onSimDayChange(index)}
+                      className={`flex min-w-[2rem] flex-col items-center rounded-lg px-2 py-1 text-xs font-medium leading-tight transition-colors ${
+                        simDay === index
+                          ? 'bg-black text-white'
+                          : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+                      }`}
+                    >
+                      {label}
+                      <span
+                        className={`text-[10px] font-normal tabular-nums ${simDay === index ? 'text-white/60' : 'text-gray-500'}`}
+                      >
+                        {financeBalanceWeekDate(index, undefined, simView.weekOffset).split(' ')[0]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {onSimAdjustChange
+                ? (
+                    [
+                      { key: 'spent', label: 'Потрачено', value: simView.spentThisWeekRub },
+                      { key: 'reserve', label: 'Резерв в кампаниях', value: simView.reservedThisWeekRub },
+                    ] as const
+                  ).map((item) => {
+                    const step = Math.min(FINANCE_BALANCE_SIM_STEP_RUB, simView.availableNowRub);
+                    const actions = simAdjust[simView.weekId] ?? [];
+                    const add = () =>
+                      onSimAdjustChange({
+                        ...simAdjust,
+                        [simView.weekId]: [...actions, { day: simDay, kind: item.key, rub: step }],
+                      });
+                    const reset = () =>
+                      onSimAdjustChange({
+                        ...simAdjust,
+                        [simView.weekId]: actions.filter((action) => action.kind !== item.key),
+                      });
+                    return (
+                      <div key={item.key} className="flex flex-wrap items-center gap-1">
+                        <span className="px-1 text-xs text-gray-500">{item.label}</span>
+                        <span className="min-w-[4.5rem] px-1 text-xs font-semibold tabular-nums text-gray-900">
+                          {fmtRub(item.value)} ₽
+                        </span>
+                        <button
+                          type="button"
+                          disabled={step <= 0}
+                          title={step <= 0 ? 'На балансе больше нет денег' : undefined}
+                          onClick={add}
+                          className="rounded-lg bg-[rgba(74,74,89,0.08)] px-2.5 py-1.5 text-xs font-medium tabular-nums text-black transition-colors hover:bg-[rgba(74,74,89,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          +{fmtRub(FINANCE_BALANCE_SIM_STEP_RUB)} ₽
+                        </button>
+                        {item.value > 0 ? (
+                          <button
+                            type="button"
+                            onClick={reset}
+                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.08)]"
+                          >
+                            Сбросить
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })
+                : null}
+            </div>
+          ) : null}
+          {layout === 'current' && onCurrentCaseChange ? (
+            <div className="flex flex-wrap gap-1 border-t border-gray-100 pt-2">
+              {FINANCE_BALANCE_CURRENT_CASES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onCurrentCaseChange(item.id)}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    currentCaseId === item.id
+                      ? 'bg-black text-white'
+                      : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {layout === 'current' && currentCaseId !== 'base' && onCurrentDayChange ? (
+            <div className="flex items-center gap-1 border-t border-gray-100 pt-2">
+              <span className="px-1 text-xs text-gray-500">Сегодня</span>
+              {FINANCE_BALANCE_CURRENT_DAYS.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onCurrentDayChange(item.id)}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                    currentDay === item.id
+                      ? 'bg-black text-white'
+                      : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+                  }`}
+                >
+                  {payoutDates[item.id]}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>,
     document.body,
   );
@@ -1473,20 +1811,85 @@ function FinanceBalancesCard() {
   const { profileId } = useProfile();
   const { promoBonusTotal } = usePromoBonusDemo();
   const accountRub = PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId];
-  const [balanceCaseId, setBalanceCaseId] = useState<BalanceDemoCaseId>(readFinanceBalanceDemoCase);
-  const balanceRub = BALANCE_DEMO_CASES.find((item) => item.id === balanceCaseId)?.amount ?? 0;
-  const unifiedRub = accountRub + balanceRub;
+  const [balanceCaseId] = useState<BalanceDemoCaseId>(readFinanceBalanceDemoCase);
   const [instructionOpen, setInstructionOpen] = useState(false);
   const [balanceSchemeOpen, setBalanceSchemeOpen] = useState(false);
+  const schemeLayout: FinanceBalanceSchemeLayoutId = 'status';
+  const [currentCase, setCurrentCase] = useState<FinanceBalanceCurrentCaseId>(
+    readFinanceBalanceCurrentCase,
+  );
+  const [currentDay, setCurrentDay] = useState<FinanceBalanceCurrentDayId>(
+    readFinanceBalanceCurrentDay,
+  );
+  const [simWeekId, setSimWeekId] = useState<FinanceBalanceSimWeekId>(readFinanceBalanceSimWeek);
+  const [simDay, setSimDay] = useState<number>(readFinanceBalanceSimDay);
+  const [simAdjust, setSimAdjust] = useState<FinanceBalanceSimAdjust>(readFinanceBalanceSimAdjust);
+  const [simScenarioId, setSimScenarioId] = useState<FinanceBalanceSimScenarioId>(
+    readFinanceBalanceSimScenario,
+  );
+  const simView = buildFinanceBalanceSimView(simWeekId, simDay, simAdjust);
+  const caseBalanceRub = BALANCE_DEMO_CASES.find((item) => item.id === balanceCaseId)?.amount ?? 0;
+  /** В раскладке «Статус» карточка следует симуляции недель */
+  const balanceRub = schemeLayout === 'status' ? simView.availableNowRub : caseBalanceRub;
   const labelTip = useDismissibleHoverTooltip(instructionOpen);
-
+  const balanceSchemeData = balanceCurrentCaseRow(caseBalanceRub, currentCase, currentDay);
   const openInstruction = () => {
     labelTip.dismiss();
     setInstructionOpen(true);
   };
+  const unifiedVariant = readFinanceUnifiedVariant();
+  const ownHeader = financeUnifiedHasOwnHeader(unifiedVariant);
+  const unifiedLabel = (
+    <div
+      className="relative inline-flex w-fit cursor-help items-center gap-1.5"
+      onMouseEnter={labelTip.onMouseEnter}
+      onMouseLeave={labelTip.onMouseLeave}
+    >
+      <span className="text-sm font-medium text-gray-600">Единый счёт</span>
+      <button
+        type="button"
+        className="inline-flex items-center justify-center transition-opacity hover:opacity-80"
+        aria-label="Что такое счёт продвижения"
+      >
+        <HelpCircle className="h-4 w-4 text-gray-400" />
+      </button>
+      {labelTip.show ? (
+        <div className="absolute left-full top-1/2 z-40 -translate-y-[19px] pl-2.5">
+          <div className="relative w-[17rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
+            <span
+              className="absolute right-full top-3 border-y-[7px] border-r-[8px] border-y-transparent border-r-gray-900"
+              aria-hidden
+            />
+            <p>Сумма ваших денег и баланса</p>
+            <p className="mt-1.5">
+              Когда пополняете кампанию, деньги сначала списываются со счёта, а если суммы не хватит — с
+              баланса
+            </p>
+            <button
+              type="button"
+              onClick={openInstruction}
+              className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/15"
+            >
+              <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-400 text-black">
+                <svg viewBox="0 0 24 24" className="ml-px h-2 w-2" fill="currentColor" aria-hidden>
+                  <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+                </svg>
+              </span>
+              Видеоинструкция
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  useEffect(() => {
+    if (schemeLayout !== 'status') return;
+    writeFinanceBalanceAmountRub(simView.availableNowRub);
+  }, [schemeLayout, simView.availableNowRub]);
 
   return (
-    <div className="rounded-2xl bg-white p-4 sm:p-5">
+    <div className="relative z-20 rounded-2xl bg-white p-4 sm:p-5">
       {instructionOpen && (
         <UnifiedAccountInstructionModal
           videoSrc={UNIFIED_ACCOUNT_VIDEO_SRC}
@@ -1499,81 +1902,77 @@ function FinanceBalancesCard() {
       {balanceSchemeOpen ? (
         <BufferSchemeModal
           kind="balance"
-          row={balanceSchemeRow(balanceRub)}
+          layout={schemeLayout}
+          currentCaseId={currentCase}
+          onCurrentCaseChange={(next) => {
+            setCurrentCase(next);
+            writeFinanceBalanceCurrentCase(next);
+          }}
+          currentDay={currentDay}
+          onCurrentDayChange={(next) => {
+            setCurrentDay(next);
+            writeFinanceBalanceCurrentDay(next);
+          }}
+          simWeekId={simWeekId}
+          onSimWeekChange={(next) => {
+            const weekIds = FINANCE_BALANCE_SIM_WEEKS.map((week) => week.id);
+            const from = weekIds.indexOf(simWeekId);
+            const to = weekIds.indexOf(next);
+            /** Новая неделя начинается без трат и резерва; более поздние недели тоже сбрасываем */
+            const keepUntil = to > from ? to : to + 1;
+            const nextAdjust: FinanceBalanceSimAdjust = {};
+            weekIds.slice(0, keepUntil).forEach((id) => {
+              if (simAdjust[id]) nextAdjust[id] = simAdjust[id];
+            });
+            setSimAdjust(nextAdjust);
+            writeFinanceBalanceSimAdjust(nextAdjust);
+            setSimWeekId(next);
+            writeFinanceBalanceSimWeek(next);
+          }}
+          simDay={simDay}
+          onSimDayChange={(next) => {
+            setSimDay(next);
+            writeFinanceBalanceSimDay(next);
+          }}
+          simAdjust={simAdjust}
+          onSimAdjustChange={(next) => {
+            setSimAdjust(next);
+            writeFinanceBalanceSimAdjust(next);
+          }}
+          simScenarioId={simScenarioId}
+          onSimScenarioChange={(next) => {
+            setSimScenarioId(next);
+            writeFinanceBalanceSimScenario(next);
+          }}
+          row={balanceSchemeData}
           onClose={() => setBalanceSchemeOpen(false)}
         />
       ) : null}
       <div className="flex flex-col gap-5">
         <div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="text-sm font-medium text-gray-600">Единый счёт</span>
-              <div
-                className="relative inline-flex"
-                onMouseEnter={labelTip.onMouseEnter}
-                onMouseLeave={labelTip.onMouseLeave}
-              >
-                <button
-                  type="button"
-                  className="inline-flex cursor-help items-center justify-center transition-opacity hover:opacity-80"
-                  aria-label="Что такое счёт продвижения"
-                >
-                  <HelpCircle className="h-4 w-4 text-gray-400" />
-                </button>
-                {labelTip.show ? (
-                  <div className="absolute left-0 top-full z-40 pt-1.5">
-                    <div className="w-[17rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
-                      <p>Сумма ваших денег и баланса</p>
-                      <p className="mt-1.5">
-                        Когда пополняете кампанию, деньги сначала списываются со счёта, а если суммы не
-                        хватит — с баланса
-                      </p>
-                      <button
-                        type="button"
-                        onClick={openInstruction}
-                        className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/15"
-                      >
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-400 text-black">
-                          <svg viewBox="0 0 24 24" className="ml-px h-2 w-2" fill="currentColor" aria-hidden>
-                            <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
-                          </svg>
-                        </span>
-                        Видеоинструкция
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate(financeTopUpPath(pathname))}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#9A41FE] text-white transition-colors hover:bg-[#8a38e8]"
-              aria-label="Пополнить счёт продвижения"
-            >
-              <Plus className="h-5 w-5" aria-hidden />
-            </button>
-          </div>
-
-          <div className="mt-3">
-            <p className="cursor-default text-[28px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-              {fmtRub(unifiedRub)} ₽
-            </p>
-            <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-3 gap-y-1 text-sm">
-              <span className="text-gray-500">Ваши деньги</span>
-              <span className="text-right font-medium tabular-nums text-gray-900">
-                {fmtRub(accountRub)} ₽
-              </span>
-              <span className="text-gray-500">Баланс</span>
+          {ownHeader ? null : (
+            <div className="flex items-center justify-between gap-3">
+              {unifiedLabel}
               <button
                 type="button"
-                onClick={() => setBalanceSchemeOpen(true)}
-                className="text-right font-medium tabular-nums text-gray-900 underline decoration-dotted underline-offset-4 transition-colors hover:text-gray-700"
-                aria-label="Как начисляется баланс"
+                onClick={() => navigate(financeTopUpPath(pathname))}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#9A41FE] text-white transition-colors hover:bg-[#8a38e8]"
+                aria-label="Пополнить счёт продвижения"
               >
-                {fmtRub(balanceRub)} ₽
+                <Plus className="h-5 w-5" aria-hidden />
               </button>
             </div>
+          )}
+
+          <div className={ownHeader ? '' : 'mt-3'}>
+            <FinanceMoneyIconRows
+              variant={unifiedVariant}
+              label={ownHeader ? unifiedLabel : undefined}
+              accountRub={accountRub}
+              balanceRub={balanceRub}
+              onOpen={() => setBalanceSchemeOpen(true)}
+              onTopUp={() => navigate(financeTopUpPath(pathname))}
+            />
           </div>
         </div>
 
@@ -1609,33 +2008,6 @@ function FinanceBalancesCard() {
           </p>
         </div>
       </div>
-      {createPortal(
-        <div
-          className="fixed bottom-24 right-4 z-[90] inline-flex items-center gap-0.5 rounded-full border border-gray-200/80 bg-white/90 p-0.5 shadow-sm backdrop-blur-sm"
-          role="group"
-          aria-label="Кейс баланса"
-        >
-          {BALANCE_DEMO_CASES.map((item) => {
-            const active = item.id === balanceCaseId;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  setBalanceCaseId(item.id);
-                  writeFinanceBalanceDemoCase(item.id);
-                }}
-                className={`rounded-full px-2.5 py-1 text-[11px] font-medium tabular-nums transition-colors ${
-                  active ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
-                }`}
-              >
-                Баланс {item.label}
-              </button>
-            );
-          })}
-        </div>,
-        document.body,
-      )}
     </div>
   );
 }
@@ -1756,13 +2128,27 @@ function SpendScheduleModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-const SPEND_PERIOD_LABEL = 'За 17–24 октября';
-const SPEND_CHARGE_DATE = '24 октября';
-const SPEND_PERIOD_RUB = 450_000;
-
 function BalanceSpendCard() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [postponed, setPostponed] = useState(false);
+  const [simWeekId, setSimWeekId] = useState(readFinanceBalanceSimWeek);
+  const [simDay, setSimDay] = useState(readFinanceBalanceSimDay);
+  const [simAdjust, setSimAdjust] = useState(readFinanceBalanceSimAdjust);
+
+  useEffect(() => {
+    const refresh = () => {
+      setSimWeekId(readFinanceBalanceSimWeek());
+      setSimDay(readFinanceBalanceSimDay());
+      setSimAdjust(readFinanceBalanceSimAdjust());
+    };
+    window.addEventListener(FINANCE_BALANCE_SIM_EVENT, refresh);
+    return () => window.removeEventListener(FINANCE_BALANCE_SIM_EVENT, refresh);
+  }, []);
+
+  const simView = buildFinanceBalanceSimView(simWeekId, simDay, simAdjust);
+  const periodLabel = `За ${financeBalanceWeekRangeLabel(undefined, simView.weekOffset)}`;
+  const chargeDate = financeBalanceWeekChargeDate(undefined, simView.weekOffset);
+  const spentRub = simView.spentThisWeekRub;
 
   return (
     <div className="rounded-2xl bg-white p-4 sm:p-5">
@@ -1780,19 +2166,19 @@ function BalanceSpendCard() {
 
       <div className="mt-4 space-y-2.5 text-sm">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-gray-500">{SPEND_PERIOD_LABEL}</span>
-          <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(SPEND_PERIOD_RUB)} ₽</span>
+          <span className="text-gray-500">{periodLabel}</span>
+          <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(spentRub)} ₽</span>
         </div>
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-gray-500">Комиссия 0%</span>
           <span className="shrink-0 tabular-nums text-gray-500">0 ₽</span>
         </div>
         <div className="flex items-baseline justify-between gap-3">
-          <span className="whitespace-nowrap font-medium text-gray-900">Спишем {SPEND_CHARGE_DATE}</span>
+          <span className="whitespace-nowrap font-medium text-gray-900">Спишем {chargeDate}</span>
           <span className="tooltip shrink-0 whitespace-nowrap font-bold tabular-nums text-gray-900">
-            ~{fmtRub(SPEND_PERIOD_RUB)} ₽
+            {spentRub > 0 ? `~${fmtRub(spentRub)}` : fmtRub(spentRub)} ₽
             <span className="tooltip-text !left-auto !right-0 !translate-x-0 !w-[16rem] !max-w-[16rem] !whitespace-normal !px-3 !py-2 !text-left !font-normal !leading-snug">
-              Сумма меняется, когда вы тратите баланс. Итоговую сумму рассчитаем {SPEND_CHARGE_DATE}.
+              Сумма меняется, когда вы тратите баланс. Итоговую сумму рассчитаем {chargeDate}.
             </span>
           </span>
         </div>
@@ -2590,7 +2976,7 @@ const FinancePage: React.FC = () => {
   return (
     <main className="mx-auto w-full max-w-[1920px] px-6 py-8">
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
-        <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[280px]">
+        <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
           <FinanceBalancesCard />
           <BalanceSpendCard />
         </aside>

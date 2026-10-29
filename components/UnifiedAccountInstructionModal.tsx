@@ -43,36 +43,41 @@ export function UnifiedAccountInstructionModal({
   }, [handleClose]);
 
   return createPortal(
-    <aside
-      role="dialog"
-      aria-modal="false"
-      aria-labelledby="unified-account-instruction-title"
-      className="fixed inset-y-0 right-0 z-[120] flex w-full max-w-[480px] flex-col border-l border-gray-200 bg-white shadow-2xl"
-      onMouseEnter={(event) => event.stopPropagation()}
-      onMouseLeave={(event) => event.stopPropagation()}
-      onMouseOver={(event) => event.stopPropagation()}
-      onMouseOut={(event) => event.stopPropagation()}
-    >
-        <div className="relative shrink-0 border-b border-gray-100 px-5 py-4 pr-12">
-          <p className="text-sm font-semibold text-[#9A41FE]">Финансы</p>
+    <div className="fixed inset-0 z-[120] bg-black/50" onClick={handleClose} role="presentation">
+      <div className="flex h-full w-full justify-end" onClick={handleClose}>
+        <div
+          className="flex h-full max-h-full min-w-0 items-stretch gap-2"
+          onClick={(event) => event.stopPropagation()}
+          onMouseEnter={(event) => event.stopPropagation()}
+          onMouseLeave={(event) => event.stopPropagation()}
+          onMouseOver={(event) => event.stopPropagation()}
+          onMouseOut={(event) => event.stopPropagation()}
+        >
+          <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
+              aria-label="Закрыть"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div
+            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="unified-account-instruction-title"
+          >
+        <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-8 sm:p-10">
           <h2
             id="unified-account-instruction-title"
-            className="mt-1 text-lg font-bold leading-snug tracking-tight text-gray-900"
+            className="text-2xl font-bold tracking-tight text-gray-900"
           >
             Инструкция по единому счёту и промобонусам
           </h2>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
-            aria-label="Закрыть"
-          >
-            <X className="h-5 w-5" aria-hidden />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <div className="overflow-hidden rounded-2xl bg-black ring-1 ring-black/[0.06]">
+          <div className="mt-6 overflow-hidden rounded-2xl bg-black ring-1 ring-black/[0.06]">
             <div className="aspect-video w-full">
               <video
                 src={videoSrc}
@@ -142,7 +147,10 @@ export function UnifiedAccountInstructionModal({
             карты или по реквизитам.
           </p>
         </div>
-      </aside>,
+          </div>
+        </div>
+      </div>
+    </div>,
     document.body,
   );
 }

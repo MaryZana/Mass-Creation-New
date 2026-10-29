@@ -80,6 +80,7 @@ import {
     Wallet,
     Coins,
     TrendingUp,
+    Crosshair,
     FileIcon,
 } from './Icons';
 import { CampaignRecord } from '../types';
@@ -156,69 +157,66 @@ const PRODUCTS_PROMO_BANNER = {
 // --- Helpers ---
 const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
 
-const listSelectionBarBtnClass =
-  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#F3F4F6] px-3.5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-200';
+/** Общий стиль плавающей панели массовых действий (кампании / товары / создание) */
+const bulkSelectionBarShellClass =
+  'fixed bottom-6 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2.5 rounded-full bg-black py-2 pl-5 pr-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)] animate-in slide-in-from-bottom-4 fade-in';
+const bulkSelectionBarBtnClass =
+  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-[#2C2C2C] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#3A3A3A] disabled:cursor-not-allowed disabled:opacity-40';
+const bulkSelectionBarCloseClass =
+  'rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white';
+/** @deprecated alias — старые вызовы серой кнопки */
+const listSelectionBarBtnClass = bulkSelectionBarBtnClass;
 
 const CampaignListSelectionBar = ({
   count,
+  total,
   onDailyLimit,
   onBudget,
   onBid,
-  onAutobidder,
   onDownload,
   onClear,
 }: {
   count: number;
+  total: number;
   onDailyLimit: () => void;
   onBudget: () => void;
   onBid: () => void;
-  /** Автобиддер только для CPC */
-  onAutobidder: () => void;
   onDownload?: () => void;
   onClear: () => void;
 }) => {
-  const countLabel = `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
-
   return (
-    <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
-      <span className="whitespace-nowrap px-1 text-sm font-medium text-gray-400">
-        Выбрано {countLabel}
+    <div className={bulkSelectionBarShellClass}>
+      <span className="whitespace-nowrap text-sm font-medium text-white">
+        Выбрано {count} из {total}
       </span>
-      <div className="h-6 w-px shrink-0 bg-gray-200" />
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onBid} className={listSelectionBarBtnClass}>
-          <Zap className="h-4 w-4 text-gray-700" />
+        <button type="button" onClick={onBid} className={bulkSelectionBarBtnClass}>
+          <Zap className="h-4 w-4 text-white" />
           <span>Ставка</span>
         </button>
-        <button type="button" onClick={onDailyLimit} className={listSelectionBarBtnClass}>
-          <Calendar className="h-4 w-4 text-gray-700" />
+        <button type="button" onClick={onDailyLimit} className={bulkSelectionBarBtnClass}>
+          <Calendar className="h-4 w-4 text-white" />
           <span>Дневной лимит</span>
         </button>
-        <button type="button" onClick={onBudget} className={listSelectionBarBtnClass}>
-          <Coins className="h-4 w-4 text-gray-700" />
+        <button type="button" onClick={onBudget} className={bulkSelectionBarBtnClass}>
+          <Coins className="h-4 w-4 text-white" />
           <span>Бюджет</span>
         </button>
-        <button type="button" onClick={onAutobidder} className={listSelectionBarBtnClass}>
-          <TrendingUp className="h-4 w-4 text-gray-700" />
-          <span>Автобиддер</span>
-        </button>
         {onDownload ? (
-          <button type="button" onClick={onDownload} className={listSelectionBarBtnClass}>
-            <Download className="h-4 w-4 text-gray-700" />
+          <button type="button" onClick={onDownload} className={bulkSelectionBarBtnClass}>
+            <Download className="h-4 w-4 text-white" />
             <span>Скачать Excel для правок</span>
           </button>
         ) : null}
       </div>
-      <div className="ml-1 flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onClear}
-          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
-          aria-label="Снять выделение"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={onClear}
+        className={bulkSelectionBarCloseClass}
+        aria-label="Снять выделение"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 };
@@ -5019,30 +5017,55 @@ function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
           };
     if (c.id === CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID) {
       const primaryId = CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS[0];
-      const pos = presetBidChasingPosition('1-2');
+      const primaryPos = presetBidChasingPosition('1-2');
+      // Демо «Разные позиции»: на товарах разные диапазоны
+      const mixedByProduct = Object.fromEntries(
+        CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS.map((id, index) => [
+          id,
+          presetBidChasingPosition(index % 2 === 0 ? '1-2' : '3-10'),
+        ]),
+      ) as Record<string, BidChasingPosition>;
       base = {
         ...base,
         productId: primaryId,
         productIds: [...CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS],
         category: base.category ?? 'Платья',
         image: productTableThumbUrl(primaryId, base.category ?? 'Платья'),
-        // Мультитоварная: автобиддер на каждом из 5 товаров
-        bidChasingPosition: pos,
+        bidChasingPosition: primaryPos,
         bidChasingProductIds: [...CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS],
-        bidChasingByProduct: Object.fromEntries(
-          CAMPAIGN_STOCK_FIVE_PRODUCTS_IDS.map((id) => [id, pos]),
-        ),
+        bidChasingByProduct: mixedByProduct,
       };
     }
     if (profileId !== '2') return base;
     return { ...base, status: 'paused', statusText: 'приостановлена' };
   });
 
+  // Демо «Н/Д» в столбце автобиддера: одна CPC с ошибкой
+  let autobidderNaAssigned = false;
+  const mappedWithAutobidderNa = mapped.map((c) => {
+    if (autobidderNaAssigned) return c;
+    if (
+      c.type === 'CPC' &&
+      c.status === 'active' &&
+      !c.bidChasingPosition &&
+      !c.productIds?.length &&
+      c.id !== PREBUILT_SINGLE_PRODUCT_CPC_CAMPAIGN_ID &&
+      c.id !== CAMPAIGN_STOCK_FIVE_PRODUCTS_DEMO_ID
+    ) {
+      autobidderNaAssigned = true;
+      return { ...c, status: 'error' as const, statusText: 'ошибка' };
+    }
+    return c;
+  });
+
   // Profile 1: копия 2-й строки (бонусной) — отдельный id для будущего UI блока бюджета
-  if (profileId === '2') return mapped;
-  const bonusIdx = mapped.findIndex((c) => c.isBonusCampaign);
-  if (bonusIdx < 0) return mapped;
-  const source = mapped[bonusIdx];
+  if (profileId === '2') return mappedWithAutobidderNa;
+  const bonusIdx = mappedWithAutobidderNa.findIndex((c) => c.isBonusCampaign);
+  if (bonusIdx < 0) return mappedWithAutobidderNa;
+  const source = mappedWithAutobidderNa[bonusIdx];
+  // Демо «один автобиддер на несколько товаров» (одинаковые позиции)
+  const sameAutobidderPos = presetBidChasingPosition('1-2');
+  const sameAutobidderProductIds = ['pr1', 'pr8', 'pr9'] as const;
   const duplicate: DisplayCampaign = {
     ...source,
     id: BUDGET_CONCEPT_DEMO_CAMPAIGN_LIST_ID,
@@ -5056,8 +5079,14 @@ function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
     autoRefillStatus: 'error',
     dynamicDailyLimit: false,
     dailyLimit: null,
+    productIds: [...sameAutobidderProductIds],
+    bidChasingPosition: sameAutobidderPos,
+    bidChasingProductIds: [...sameAutobidderProductIds],
+    bidChasingByProduct: Object.fromEntries(
+      sameAutobidderProductIds.map((id) => [id, sameAutobidderPos]),
+    ),
   };
-  const afterConcept = mapped.slice(bonusIdx + 1).map((c, i) =>
+  const afterConcept = mappedWithAutobidderNa.slice(bonusIdx + 1).map((c, i) =>
     i === 0
       ? {
           ...c,
@@ -5073,7 +5102,7 @@ function buildAllCampaignsForProfile(profileId: ProfileId): DisplayCampaign[] {
       : c,
   );
   // Без 1-й (предсобранная) и 2-й (бонусная) строк — список начинается с концепта бюджета
-  return [...mapped.slice(0, bonusIdx + 1), duplicate, ...afterConcept].slice(2);
+  return [...mappedWithAutobidderNa.slice(0, bonusIdx + 1), duplicate, ...afterConcept].slice(2);
 }
 
 function findProductSourceForProfile(productId: string | undefined, profileId: ProfileId): ProductSource | undefined {
@@ -5880,9 +5909,9 @@ const DailyLimitCell: React.FC<{
     ? minDailyLimitForMaxBid(maxCpcBidRub)
     : 0;
 
-  // Для кампаний CPM всегда показываем прочерк
+  // Для кампаний CPM дневной лимит недоступен
   if (!isCpc) {
-    return <span className="text-gray-400">—</span>;
+    return <span className="text-sm leading-5 text-gray-400">Недоступно</span>;
   }
 
   const content =
@@ -6910,9 +6939,52 @@ function formatAutobidderCampaignCountLabel(count: number): string {
   return `на ${count} ${getPlural(count, 'кампанию', 'кампании', 'кампаний')}`;
 }
 
+function formatCampaignListAutobidderProductSubtitle(count: number): string {
+  return `${count} ${getPlural(count, 'товар', 'товара', 'товаров')}`;
+}
+
 function capitalizeAutobidderCountLabel(label: string): string {
   if (!label) return label;
   return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function bidChasingPositionEqualityKey(pos: BidChasingPosition): string {
+  if (pos.kind === 'preset') return `preset:${pos.id}`;
+  return `custom:${pos.from}-${pos.to}`;
+}
+
+function campaignAutobidderPositionsAreMixed(c: DisplayCampaign): boolean {
+  const byProduct = c.bidChasingByProduct;
+  if (!byProduct) return false;
+  const keys = Object.values(byProduct).map(bidChasingPositionEqualityKey);
+  if (keys.length <= 1) return false;
+  return keys.some((key) => key !== keys[0]);
+}
+
+type CampaignListAutobidderView =
+  | { kind: 'setup' }
+  | { kind: 'configured'; primary: string; secondary: string }
+  | { kind: 'unavailable' }
+  | { kind: 'na' };
+
+/** Состояния автобиддера в списке кампаний (макет). */
+function resolveCampaignListAutobidderView(c: DisplayCampaign): CampaignListAutobidderView {
+  if (c.type !== 'CPC') return { kind: 'unavailable' };
+  if (c.status === 'error') return { kind: 'na' };
+  if (!c.bidChasingPosition) return { kind: 'setup' };
+  const count = Math.max(1, campaignAutobidderProductCount(c));
+  if (campaignAutobidderPositionsAreMixed(c)) {
+    return {
+      kind: 'configured',
+      primary: 'Разные позиции',
+      secondary: formatAutobidderProductCountLabel(count),
+    };
+  }
+  return {
+    kind: 'configured',
+    primary: formatBidChasingPositionLabel(c.bidChasingPosition),
+    secondary: formatCampaignListAutobidderProductSubtitle(count),
+  };
 }
 
 /** Строки модалки автобиддера: по одному на каждый товар кампании. */
@@ -6946,7 +7018,60 @@ function campaignToAutobidderModalProducts(
   });
 }
 
-/** Ячейка столбца «Автобиддер» в списках кампаний и товаров */
+/** Ячейка автобиддера в списке кампаний — 6 состояний из макета */
+const CampaignListAutobidderCell = ({
+  campaign,
+  onEnable,
+  onOpen,
+}: {
+  campaign: DisplayCampaign;
+  onEnable: () => void;
+  onOpen: () => void;
+}) => {
+  const view = resolveCampaignListAutobidderView(campaign);
+
+  if (view.kind === 'setup') {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEnable();
+        }}
+        className="text-sm font-medium leading-5 text-blue-600 transition-colors hover:text-blue-800"
+      >
+        Настроить
+      </button>
+    );
+  }
+
+  if (view.kind === 'unavailable') {
+    return <span className="text-sm leading-5 text-gray-400">Недоступно</span>;
+  }
+
+  if (view.kind === 'na') {
+    return <span className="text-sm leading-5 text-gray-400">Н/Д</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen();
+      }}
+      className="group/ab flex flex-col items-start text-left transition-colors"
+      aria-label={`Автобиддер · ${view.primary} · ${view.secondary}`}
+    >
+      <span className="whitespace-nowrap text-sm font-medium leading-5 text-blue-600 group-hover/ab:text-blue-800">
+        {view.primary}
+      </span>
+      <span className="mt-0.5 whitespace-nowrap text-xs leading-4 text-gray-500">{view.secondary}</span>
+    </button>
+  );
+};
+
+/** Ячейка столбца «Автобиддер» во вкладке «Товары» */
 const ListAutobidderCell = ({
   enabled,
   detail,
@@ -6954,7 +7079,7 @@ const ListAutobidderCell = ({
   onOpen,
 }: {
   enabled: boolean;
-  /** Основной синий текст, напр. «На 2 товара» / «На 1 кампанию» */
+  /** Основной синий текст, напр. «На 1 кампанию» */
   detail?: string;
   onEnable: () => void;
   onOpen: () => void;
@@ -7008,24 +7133,173 @@ function campaignAutobidderPositionForProduct(
   return campaign?.bidChasingPosition ?? fallback;
 }
 
+/** Связка вложенной кампании товара со строкой списка (id может отличаться у демо-дублей). */
+function resolveListCampaignForProductCamp(
+  allCampaigns: DisplayCampaign[],
+  camp: ProductCampaign,
+  productId: string,
+): DisplayCampaign | undefined {
+  const byCampaignId = allCampaigns.find((c) => c.campaignId === camp.campaignId);
+  if (byCampaignId) return byCampaignId;
+  const byExactName = allCampaigns.find((c) => c.name === camp.name);
+  if (byExactName) return byExactName;
+  const byDemoSuffix = allCampaigns.find(
+    (c) =>
+      c.productId === productId &&
+      c.type === camp.type &&
+      (c.name.startsWith(`${camp.name} —`) || camp.name.startsWith(`${c.name} —`)),
+  );
+  if (byDemoSuffix) return byDemoSuffix;
+  return allCampaigns.find(
+    (c) =>
+      c.productId === productId &&
+      c.type === camp.type &&
+      c.typeDetails === camp.typeDetails,
+  );
+}
+
 const StatusBadge = ({
   status,
   text,
+  hint,
 }: {
-  status: DisplayCampaign['status'];
+  status: DisplayCampaign['status'] | 'not_showing';
   text: string;
+  /** Подсказка, напр. почему CPC «не в показе» */
+  hint?: string;
 }) => {
   // Цветные плашки статуса: закругления как у ярлыков (rounded-md)
   const baseClasses = 'px-2.5 py-0.5 text-xs font-medium rounded-md';
-  const styles: Record<DisplayCampaign['status'], string> = {
+  const styles: Record<DisplayCampaign['status'] | 'not_showing', string> = {
     active: 'bg-green-100 text-green-700',
     paused: 'bg-yellow-100 text-yellow-700',
     draft: 'bg-gray-200 text-gray-600',
     error: 'bg-red-100 text-red-700',
+    /** Включена, но показы у другой CPC с более высокой ставкой */
+    not_showing: 'bg-slate-100 text-slate-700',
   };
 
-  return <span className={`${baseClasses} ${styles[status]}`}>{text}</span>;
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const [hintOpen, setHintOpen] = useState(false);
+  const [hintPos, setHintPos] = useState<{
+    top: number;
+    left: number;
+    placeAbove: boolean;
+  } | null>(null);
+
+  const updateHintPos = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const width = 264;
+    const gap = 10;
+    const estimatedHeight = 96;
+    const placeAbove = rect.top >= estimatedHeight + gap;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    setHintPos({
+      top: placeAbove ? rect.top - gap : rect.bottom + gap,
+      left,
+      placeAbove,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!hintOpen) return;
+    updateHintPos();
+    const onScrollOrResize = () => updateHintPos();
+    window.addEventListener('scroll', onScrollOrResize, true);
+    window.addEventListener('resize', onScrollOrResize);
+    return () => {
+      window.removeEventListener('scroll', onScrollOrResize, true);
+      window.removeEventListener('resize', onScrollOrResize);
+    };
+  }, [hintOpen, updateHintPos]);
+
+  const badge = <span className={`${baseClasses} ${styles[status]}`}>{text}</span>;
+  if (!hint) return badge;
+
+  return (
+    <span
+      ref={triggerRef}
+      className="relative inline-flex items-center gap-1"
+      onMouseEnter={() => {
+        setHintOpen(true);
+        requestAnimationFrame(updateHintPos);
+      }}
+      onMouseLeave={() => {
+        setHintOpen(false);
+        setHintPos(null);
+      }}
+    >
+      {badge}
+      <HelpCircle className="h-3.5 w-3.5 cursor-help text-gray-400" aria-hidden />
+      {hintOpen &&
+      hintPos &&
+      typeof document !== 'undefined' &&
+      ReactDOM.createPortal(
+        <div
+          role="tooltip"
+          className="pointer-events-none fixed z-[300] w-[16.5rem] max-w-[16.5rem] rounded-md bg-gray-800 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg"
+          style={{
+            top: hintPos.top,
+            left: hintPos.left,
+            transform: hintPos.placeAbove ? 'translateY(-100%)' : undefined,
+          }}
+        >
+          {hint}
+        </div>,
+        document.body,
+      )}
+    </span>
+  );
 };
+
+/** Ставка CPC во вложенной строке товара (поиск / единая). */
+function resolveProductNestedCpcBidRub(
+  camp: ProductCampaign,
+  overrides: ProductCampaignBidOverride | undefined,
+  listCamp: DisplayCampaign | undefined,
+): number {
+  if (overrides?.unified != null && overrides.unified > 0) return overrides.unified;
+  if (listCamp?.maxCpcBidRub != null && listCamp.maxCpcBidRub > 0) return listCamp.maxCpcBidRub;
+  return defaultProductCampaignBid(camp);
+}
+
+/**
+ * Среди включённых CPC одного товара работает только кампания с макс. ставкой в поиске.
+ * Остальные включены, но «не в показе» — не пишем «приостановлена».
+ */
+function collectProductCpcNotShowingCampaignIds(
+  product: ProductRow,
+  productCampaignStatusOverride: Record<string, 'active' | 'paused'>,
+  productCampaignBidOverride: Record<string, ProductCampaignBidOverride>,
+  allCampaigns: DisplayCampaign[],
+): Set<string> {
+  const activeCpc: { id: string; bid: number }[] = [];
+  for (const camp of product.campaigns) {
+    if (camp.type !== 'CPC') continue;
+    const effectiveStatus =
+      camp.status === 'draft' || camp.status === 'error'
+        ? camp.status
+        : (productCampaignStatusOverride[camp.id] ?? camp.status);
+    if (effectiveStatus !== 'active') continue;
+    const listCamp = allCampaigns.find((c) => c.campaignId === camp.campaignId);
+    activeCpc.push({
+      id: camp.id,
+      bid: resolveProductNestedCpcBidRub(
+        camp,
+        productCampaignBidOverride[camp.id],
+        listCamp,
+      ),
+    });
+  }
+  if (activeCpc.length < 2) return new Set();
+  const maxBid = Math.max(...activeCpc.map((c) => c.bid));
+  return new Set(activeCpc.filter((c) => c.bid < maxBid).map((c) => c.id));
+}
+
+const CPC_NOT_SHOWING_HINT =
+  'Кампания включена, но показы идут в другой CPC этого товара с более высокой ставкой в поиске. Останавливать её не нужно — снова начнёт работать, если ставка станет выше.';
 
 const ResultBlock = ({ successCount, errorCount, onClear }: { successCount: number, errorCount: number, failedCampaigns: CampaignRecord[], onClear: () => void }) => {
     return (
@@ -9246,6 +9520,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const [autobidderScopeIds, setAutobidderScopeIds] = useState<string[] | null>(null);
   /** Со строки товара: в модалке только этот nm, даже если кампания мультитоварная */
   const [autobidderFocusProductId, setAutobidderFocusProductId] = useState<string | null>(null);
+  /** Нет CPC у товара — подсказка с CTA «Создать кампанию» */
+  const [autobidderCpcRequiredProduct, setAutobidderCpcRequiredProduct] =
+    useState<ProductRow | null>(null);
 
   const campaignBulkSearchBidItems = useMemo((): BulkSearchBidItem[] => {
     return allCampaigns
@@ -9283,12 +9560,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
   const campaignBulkAutobidderScopeCampaigns = useMemo(() => {
     const scopeIds = autobidderScopeIds ?? selectedCampaigns;
     const idSet = new Set(scopeIds);
-    return allCampaigns.filter((c) => {
-      if (!idSet.has(c.id)) return false;
-      // Автобиддер только для CPC
-      return c.type === 'CPC';
-    });
-  }, [allCampaigns, selectedCampaigns, autobidderScopeIds]);
+    const allowedType = campaignBulkAutobidderModel ?? 'CPC';
+    return allCampaigns.filter((c) => idSet.has(c.id) && c.type === allowedType);
+  }, [allCampaigns, selectedCampaigns, autobidderScopeIds, campaignBulkAutobidderModel]);
 
   const campaignBulkAutobidderProducts = useMemo((): BidChasingModalProduct[] => {
     const seen = new Set<string>();
@@ -9313,66 +9587,66 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     setAutobidderFocusProductId(null);
   }, []);
 
-  const openCampaignBulkAutobidder = useCallback(() => {
-    if (selectedCampaigns.length === 0) return;
-    const hasCpc = allCampaigns.some(
-      (c) => selectedCampaigns.includes(c.id) && c.type === 'CPC',
-    );
-    if (!hasCpc) {
-      setProductBulkNotice('Автобиддер доступен только для CPC-кампаний');
-      return;
-    }
-    setAutobidderScopeIds(null);
-    setAutobidderFocusProductId(null);
-    setCampaignBulkAutobidderModel('CPC');
-    setIsCampaignBulkAutobidderOpen(true);
-  }, [selectedCampaigns, allCampaigns]);
-
-  const openCampaignAutobidderForCampaign = useCallback((c: DisplayCampaign) => {
-    if (c.type !== 'CPC') return;
-    setAutobidderScopeIds([c.id]);
-    setAutobidderFocusProductId(null);
-    setCampaignBulkAutobidderModel('CPC');
-    setIsCampaignBulkAutobidderOpen(true);
-  }, []);
-
-  const resolveListCampaignsForProduct = useCallback(
+  /** Только CPC из вложенных кампаний товара — без мультитоварных «чужих» CPC. */
+  const resolveProductOwnCpcListCampaigns = useCallback(
     (product: ProductRow): DisplayCampaign[] => {
-      const byCampaignId = new Map<number, DisplayCampaign>();
+      const seen = new Set<string>();
+      const rows: DisplayCampaign[] = [];
       for (const camp of product.campaigns) {
-        const listCamp = allCampaigns.find((c) => c.campaignId === camp.campaignId);
-        if (listCamp) byCampaignId.set(listCamp.campaignId, listCamp);
+        if (camp.type !== 'CPC') continue;
+        const listCamp =
+          allCampaigns.find((c) => c.campaignId === camp.campaignId) ??
+          resolveListCampaignForProductCamp(allCampaigns, camp, product.id);
+        if (!listCamp || listCamp.type !== 'CPC' || seen.has(listCamp.id)) continue;
+        seen.add(listCamp.id);
+        rows.push(listCamp);
       }
-      for (const c of allCampaigns) {
-        if (byCampaignId.has(c.campaignId)) continue;
-        const inProductIds = c.productIds?.includes(product.id) || c.productId === product.id;
-        const inAutobidderIds = c.bidChasingProductIds?.includes(product.id);
-        if (inProductIds || inAutobidderIds) {
-          byCampaignId.set(c.campaignId, c);
-        }
-      }
-      return [...byCampaignId.values()];
+      return rows;
     },
     [allCampaigns],
   );
 
   const openProductAutobidder = useCallback(
-    (product: ProductRow) => {
-      const matches = resolveListCampaignsForProduct(product).filter((c) => c.type === 'CPC');
-      if (matches.length === 0) return;
-      setAutobidderScopeIds(matches.map((c) => c.id));
+    (product: ProductRow, _preferredType?: 'CPC' | 'CPM') => {
+      const cpcMatches = resolveProductOwnCpcListCampaigns(product);
+      if (cpcMatches.length === 0) {
+        setAutobidderCpcRequiredProduct(product);
+        return;
+      }
+      setAutobidderScopeIds(cpcMatches.map((c) => c.id));
       setAutobidderFocusProductId(product.id);
       setCampaignBulkAutobidderModel('CPC');
       setIsCampaignBulkAutobidderOpen(true);
     },
-    [resolveListCampaignsForProduct],
+    [resolveProductOwnCpcListCampaigns],
+  );
+
+  const openCampaignAutobidderForCampaign = useCallback(
+    (c: DisplayCampaign) => {
+      if (c.type === 'CPC') {
+        setAutobidderScopeIds([c.id]);
+        setAutobidderFocusProductId(null);
+        setCampaignBulkAutobidderModel('CPC');
+        setIsCampaignBulkAutobidderOpen(true);
+        return;
+      }
+      const product =
+        profileProductTree.find((p) => p.id === c.productId) ??
+        profileProductTree.find((p) =>
+          p.campaigns.some((pc) => pc.campaignId === c.campaignId),
+        );
+      if (product) {
+        openProductAutobidder(product);
+        return;
+      }
+      setProductBulkNotice('Автобиддер доступен только для CPC-кампаний');
+    },
+    [profileProductTree, openProductAutobidder],
   );
 
   const resolveProductAutobidderState = useCallback(
     (product: ProductRow) => {
-      const listCampaigns = resolveListCampaignsForProduct(product).filter(
-        (c) => c.type === 'CPC',
-      );
+      const listCampaigns = resolveProductOwnCpcListCampaigns(product);
       const nestedById = new Map(
         product.campaigns.map((camp) => [camp.campaignId, camp] as const),
       );
@@ -9395,7 +9669,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         hasAnyCampaign: listCampaigns.length > 0,
       };
     },
-    [resolveListCampaignsForProduct],
+    [resolveProductOwnCpcListCampaigns],
   );
 
   const handleBulkDailyLimitApply = useCallback(
@@ -10343,6 +10617,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
     [productsForTable, selectedProductIds],
   );
 
+  const openBulkProductsAutobidder = useCallback(() => {
+    if (selectedProductsForBulk.length === 0) return;
+    const scopeIds: string[] = [];
+    for (const product of selectedProductsForBulk) {
+      for (const camp of resolveProductOwnCpcListCampaigns(product)) {
+        scopeIds.push(camp.id);
+      }
+    }
+    if (scopeIds.length === 0) {
+      setAutobidderCpcRequiredProduct(selectedProductsForBulk[0]!);
+      return;
+    }
+    setAutobidderScopeIds([...new Set(scopeIds)]);
+    setAutobidderFocusProductId(null);
+    setCampaignBulkAutobidderModel('CPC');
+    setIsCampaignBulkAutobidderOpen(true);
+  }, [selectedProductsForBulk, resolveProductOwnCpcListCampaigns]);
+
   const selectedV3BonusProducts = useMemo(() => {
     if (productsPickTab !== 'not_promoted_v3' || selectedProductIds.length === 0) return [];
     const bonusIds = new Set(sortedProductsForTable.slice(0, 3).map((p) => p.id));
@@ -10817,6 +11109,146 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
         />
       )}
       {cpmBidRoundedAlertNode}
+
+      {autobidderCpcRequiredProduct ? (
+        <div
+          className="fixed inset-0 z-[300] bg-black/50"
+          onClick={() => setAutobidderCpcRequiredProduct(null)}
+          role="presentation"
+        >
+          <div className="flex h-full w-full justify-end" onClick={() => setAutobidderCpcRequiredProduct(null)}>
+            <div
+              className="flex h-full max-h-full min-w-0 items-stretch gap-2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
+                <button
+                  type="button"
+                  onClick={() => setAutobidderCpcRequiredProduct(null)}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
+                  aria-label="Закрыть"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div
+                className="flex h-full w-[640px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="autobidder-cpc-required-title"
+              >
+                <div className="shrink-0 px-6 pt-6 pb-4 sm:px-8">
+                  <h2
+                    id="autobidder-cpc-required-title"
+                    className="text-xl font-bold leading-snug text-gray-900"
+                  >
+                    Автобиддер
+                  </h2>
+                  <p className="mt-2 text-sm leading-relaxed text-gray-500">
+                    Алгоритм автоматически регулирует ставки, чтобы карточка занимала выбранные
+                    позиции в поиске
+                  </p>
+                </div>
+
+                <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-4 sm:px-8">
+                  <div className="rounded-2xl border border-gray-100 bg-gradient-to-br from-[#F7F1FF] via-white to-[#F3F5F8] p-5">
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#9A41FE]/10 text-[#9A41FE]">
+                        <TrendingUp className="h-5 w-5" aria-hidden />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold text-gray-950">
+                          Доступен только для CPC
+                        </p>
+                        <p className="mt-1 text-sm leading-relaxed text-gray-500">
+                          У этого товара пока нет кампании с оплатой за клики. Создайте CPC-кампанию —
+                          и сможете включить автобиддер.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-4">
+                    <p className="mb-3 text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                      Товар
+                    </p>
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={autobidderCpcRequiredProduct.image}
+                        alt=""
+                        className="h-14 w-14 shrink-0 rounded-xl bg-gray-50 object-cover"
+                      />
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-950">
+                          {autobidderCpcRequiredProduct.name}
+                        </p>
+                        <p className="mt-0.5 truncate text-xs text-gray-500">
+                          {[
+                            autobidderCpcRequiredProduct.brand,
+                            autobidderCpcRequiredProduct.articleWb ||
+                              autobidderCpcRequiredProduct.article,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-gray-100 bg-white p-5">
+                    <p className="text-sm font-semibold text-gray-900">Что даст автобиддер</p>
+                    <ul className="mt-3 space-y-2.5">
+                      {[
+                        'Удержит выбранные позиции в поисковой выдаче',
+                        'Сам подстроит ставку под конкуренцию',
+                        'Не выйдет за ваш лимит ставки',
+                      ].map((line) => (
+                        <li key={line} className="flex items-start gap-2.5 text-sm text-gray-600">
+                          <CheckCircle
+                            className="mt-0.5 h-4 w-4 shrink-0 text-green-600"
+                            aria-hidden
+                          />
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="flex shrink-0 flex-wrap items-center gap-3 border-t border-gray-100 bg-white px-6 py-4 sm:px-8">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#9A41FE] px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-[#8A35EE]"
+                    onClick={() => {
+                      const product = autobidderCpcRequiredProduct;
+                      setAutobidderCpcRequiredProduct(null);
+                      const item = productRowToCreationItem(product);
+                      if (onNavigateToCreationWithProducts) {
+                        onNavigateToCreationWithProducts([item]);
+                      } else if (onOpenSingleCampaign) {
+                        onOpenSingleCampaign();
+                      } else {
+                        onNavigateToCreation();
+                      }
+                    }}
+                  >
+                    <Plus className="h-4 w-4 shrink-0" aria-hidden />
+                    Создать CPC-кампанию
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#e8e8ed]"
+                    onClick={() => setAutobidderCpcRequiredProduct(null)}
+                  >
+                    Отменить
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isCampaignBulkSearchBidOpen ? (
         <BulkSearchBidModal
@@ -11987,12 +12419,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                               </div>
                             )}
                             </th>
-                          <th className="w-[180px] min-w-[180px] p-4 text-left font-medium">
-                            <div className="flex items-center gap-1">
-                              Автобиддер
-                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
-                            </div>
-                          </th>
                           <th className="p-4 text-left font-medium">
                             <div className="flex items-center gap-1">
                               Остаток бюджета
@@ -12002,6 +12428,12 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                           <th className="p-4 text-left font-medium">
                             <div className="flex items-center gap-1">
                               Дневной лимит
+                              {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
+                            </div>
+                          </th>
+                          <th className="w-[180px] min-w-[180px] p-4 text-left font-medium">
+                            <div className="flex items-center gap-1">
+                              Автобиддер
                               {!isProductPromotionConceptPage ? <HelpCircle className="w-4 h-4" /> : null}
                             </div>
                           </th>
@@ -12137,23 +12569,6 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       </div>
                                   </div>
                               </td>
-                              <td
-                                className="w-[180px] min-w-[180px] p-4 align-middle"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <ListAutobidderCell
-                                  enabled={Boolean(c.bidChasingPosition)}
-                                  detail={
-                                    c.bidChasingPosition
-                                      ? formatAutobidderProductCountLabel(
-                                          campaignAutobidderProductCount(c),
-                                        )
-                                      : undefined
-                                  }
-                                  onEnable={() => openCampaignAutobidderForCampaign(c)}
-                                  onOpen={() => openCampaignAutobidderForCampaign(c)}
-                                />
-                              </td>
                               <td className="p-4" onClick={(e) => e.stopPropagation()}>
                                   <div className="relative inline-flex items-center group" onClick={(e) => e.stopPropagation()}>
                                       <button
@@ -12210,6 +12625,16 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                       onClick={c.type === 'CPC' ? () => openDailyLimitModalForCampaign(c) : undefined}
                                   />
                               </td>
+                              <td
+                                className="w-[180px] min-w-[180px] p-4 align-middle"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <CampaignListAutobidderCell
+                                  campaign={c}
+                                  onEnable={() => openCampaignAutobidderForCampaign(c)}
+                                  onOpen={() => openCampaignAutobidderForCampaign(c)}
+                                />
+                              </td>
                               <td className="p-4 font-semibold text-gray-900">
                                 {formatCurrency(c.spend)}
                               </td>
@@ -12249,10 +12674,10 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
       {selectedCampaigns.length > 0 ? (
         <CampaignListSelectionBar
           count={selectedCampaigns.length}
+          total={campaigns.length}
           onDailyLimit={openBulkDailyLimitForSelection}
           onBudget={openBulkBudgetForSelection}
           onBid={openBulkSearchBidForSelection}
-          onAutobidder={openCampaignBulkAutobidder}
           onDownload={onBulkDownloadExcel}
           onClear={() => onSelectionChange([])}
         />
@@ -13514,12 +13939,39 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                       {/* Вложенные строки кампаний — вид как на вкладке «Кампании» */}
                       {rowShowsPromotedProductUi && expandedProductIds.has(product.id) ? (
                       <>
-                      {product.campaigns.map((camp) => {
+                      {(() => {
+                        const cpcNotShowingIds = collectProductCpcNotShowingCampaignIds(
+                          product,
+                          productCampaignStatusOverride,
+                          productCampaignBidOverride,
+                          allCampaigns,
+                        );
+                        return product.campaigns.map((camp) => {
                         const effectiveStatus = (camp.status === 'draft' || camp.status === 'error' ? camp.status : (productCampaignStatusOverride[camp.id] ?? camp.status)) as 'active' | 'paused' | 'draft' | 'error';
-                        const effectiveStatusText = effectiveStatus === 'active' ? 'активна' : effectiveStatus === 'paused' ? 'приостановлена' : camp.statusText;
-                        const listCampMatch = allCampaigns.find((c) => c.campaignId === camp.campaignId);
+                        const isCpcNotShowing =
+                          camp.type === 'CPC' &&
+                          effectiveStatus === 'active' &&
+                          cpcNotShowingIds.has(camp.id);
+                        const effectiveStatusText =
+                          effectiveStatus === 'active'
+                            ? 'активна'
+                            : effectiveStatus === 'paused'
+                              ? 'приостановлена'
+                              : camp.statusText;
+                        const listCampMatch =
+                          allCampaigns.find((c) => c.campaignId === camp.campaignId) ??
+                          resolveListCampaignForProductCamp(allCampaigns, camp, product.id);
+                        const nestedCampaignSelectId = listCampMatch?.id ?? camp.id;
+                        const isNestedCampaignSelected = selectedCampaigns.includes(
+                          nestedCampaignSelectId,
+                        );
                         return (
-                        <tr key={camp.id} className="bg-gray-50/50 hover:bg-gray-50 transition-colors">
+                        <tr
+                          key={camp.id}
+                          className={`bg-gray-50/50 transition-colors ${
+                            isNestedCampaignSelected ? 'bg-purple-50' : 'hover:bg-gray-50'
+                          }`}
+                        >
                             {conceptAllProductsPickTab && multicardRail === null ? (
                               <td
                                 className="sticky left-0 z-[22] w-5 min-w-[20px] max-w-[20px] border-0 bg-gray-50 p-0 align-top"
@@ -13548,7 +14000,23 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                   },
                                 };
                               })()}
-                            />
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="flex w-full items-center justify-end">
+                                <Checkbox
+                                  checked={isNestedCampaignSelected}
+                                  onChange={(e) =>
+                                    handleSelectSingle(nestedCampaignSelectId, e.target.checked)
+                                  }
+                                  className={
+                                    isProductPromotionConceptPage
+                                      ? CONCEPT_LIST_TABLE_CHECKBOX_CLASSNAME
+                                      : 'w-4 h-4 text-purple-600'
+                                  }
+                                  aria-label={`Выбрать кампанию ${camp.name}`}
+                                />
+                              </div>
+                            </td>
                             {/* Товар / кампания */}
                             {productsColVisible('product') ? (
                             <td
@@ -13595,6 +14063,13 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 )}
                                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs leading-none text-gray-500">
                                   <StatusBadge status={effectiveStatus} text={effectiveStatusText} />
+                                  {isCpcNotShowing ? (
+                                    <StatusBadge
+                                      status="not_showing"
+                                      text="Не показывает товар"
+                                      hint={CPC_NOT_SHOWING_HINT}
+                                    />
+                                  ) : null}
                                   <span>ID {camp.campaignId}</span>
                                 </div>
                                 {!showProductsCampaignTypeColumn ? (
@@ -13707,14 +14182,28 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {(() => {
+                                  if (camp.type !== 'CPC') {
+                                    return null;
+                                  }
+                                  const listCamp =
+                                    listCampMatch ??
+                                    resolveListCampaignForProductCamp(
+                                      allCampaigns,
+                                      camp,
+                                      product.id,
+                                    );
                                   const position = campaignAutobidderPositionForProduct(
-                                    listCampMatch,
+                                    listCamp,
                                     product.id,
                                     camp.bidChasingPosition,
                                   );
-                                  if (!listCampMatch || listCampMatch.type !== 'CPC') {
-                                    return <span className="text-sm text-gray-400">—</span>;
-                                  }
+                                  const openAutobidder = () => {
+                                    if (listCamp) {
+                                      openCampaignAutobidderForCampaign(listCamp);
+                                      return;
+                                    }
+                                    openProductAutobidder(product);
+                                  };
                                   return (
                                     <ListAutobidderCell
                                       enabled={Boolean(position)}
@@ -13723,8 +14212,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                                           ? `${formatBidChasingPositionShortLabel(position)} позиции`
                                           : undefined
                                       }
-                                      onEnable={() => openCampaignAutobidderForCampaign(listCampMatch)}
-                                      onOpen={() => openCampaignAutobidderForCampaign(listCampMatch)}
+                                      onEnable={openAutobidder}
+                                      onOpen={openAutobidder}
                                     />
                                   );
                                 })()}
@@ -13783,7 +14272,8 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
                             ) : null}
                         </tr>
                         );
-                      })}
+                      });
+                      })()}
                       </>
                       ) : null}
                       </>
@@ -13812,122 +14302,58 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
           </div>
 
           {selectedProductIds.length > 0 && (
-            <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
-              <span className="whitespace-nowrap px-1 text-sm font-medium text-gray-400">
-                Выбрано {selectedProductIds.length}{' '}
-                {getPlural(
-                  selectedProductIds.length,
-                  'товар',
-                  'товара',
-                  'товаров',
-                )}
+            <div className={bulkSelectionBarShellClass}>
+              <span className="whitespace-nowrap text-sm font-medium text-white">
+                Выбрано {selectedProductIds.length} из {productsForTable.length}
               </span>
-              <div className="h-6 w-px shrink-0 bg-gray-200" />
-              <div
-                className="relative inline-flex"
-                onMouseEnter={() => {
-                  if (selectedIncludeZeroStockProducts) setBulkCreateMenuOpen(true);
-                }}
-                onMouseLeave={() => setBulkCreateMenuOpen(false)}
-              >
-                <button
-                  type="button"
-                  onClick={handleBulkCreateCampaignFromProducts}
-                  className={listSelectionBarBtnClass}
-                  aria-describedby={
-                    selectedIncludeZeroStockProducts && bulkCreateMenuOpen
-                      ? 'zero-stock-bulk-create-dropdown'
-                      : undefined
-                  }
-                >
-                  <Plus className="h-4 w-4 shrink-0" aria-hidden />
-                  Создать кампании
-                  {selectedIncludeZeroStockProducts ? (
-                    <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" aria-hidden />
-                  ) : null}
-                </button>
-                {selectedIncludeZeroStockProducts && bulkCreateMenuOpen ? (
-                  <div className="absolute bottom-full left-1/2 z-[90] w-[18.5rem] -translate-x-1/2 pb-2">
-                    <div
-                      id="zero-stock-bulk-create-dropdown"
-                      role="dialog"
-                      className="rounded-xl border border-gray-200 bg-white p-3 text-left shadow-lg"
-                    >
-                      <p className="mb-0 text-xs leading-snug text-gray-700">
-                        {ZERO_STOCK_BULK_CREATE_WARNING}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={excludeZeroStockProductsFromSelection}
-                        className="mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg bg-gray-100 px-3 py-2 text-xs font-semibold text-gray-800 transition-colors hover:bg-gray-200"
-                      >
-                        <Minus className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                        Исключить товары без остатков
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              {selectedV3BonusProducts.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setNotPromotedBonusModalProducts(selectedV3BonusProducts)}
-                  className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#9A41FE] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#8A35EE]"
-                >
-                  <Gift className="h-4 w-4 shrink-0" aria-hidden />
-                  За бонусы {selectedV3BonusProducts.length}{' '}
-                  {getPlural(selectedV3BonusProducts.length, 'товар', 'товара', 'товаров')}
-                </button>
-              ) : null}
-              {isProductPromotionConceptPage && !conceptCompactProductsTable && (
-                <div
-                  className={`relative group/product-bid ${selectedProductsCampaignCount === 0 ? 'pointer-events-none opacity-50' : ''}`}
-                >
+              <div className="flex items-center gap-2">
+                <div className="relative group/product-bid">
                   <button
                     type="button"
-                    disabled={selectedProductsCampaignCount === 0}
-                    className={`${listSelectionBarBtnClass} disabled:cursor-not-allowed`}
+                    className={bulkSelectionBarBtnClass}
                     aria-haspopup="menu"
                   >
-                    Работать со ставкой
-                    <ChevronDown
-                      className="h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform group-hover/product-bid:rotate-180 group-focus-within/product-bid:rotate-180"
-                      aria-hidden
-                    />
+                    <Zap className="h-4 w-4 text-white" aria-hidden />
+                    <span>Ставка</span>
+                    <ChevronDown className="h-3.5 w-3.5 text-white/80" aria-hidden />
                   </button>
-                  {selectedProductsCampaignCount > 0 && (
-                    <div className="invisible absolute bottom-full left-0 z-[90] pt-2 opacity-0 transition-all group-hover/product-bid:visible group-hover/product-bid:opacity-100 group-focus-within/product-bid:visible group-focus-within/product-bid:opacity-100">
-                      <ul
-                        role="menu"
-                        className="min-w-[280px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
-                      >
-                        {PRODUCT_BID_BULK_ACTIONS.map((action) => (
-                          <li key={action.id} role="none">
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => openProductBidBulkModal(action.id)}
-                              className="block w-full px-3 py-2.5 text-left text-sm text-gray-800 transition-colors hover:bg-gray-50"
-                            >
-                              {action.label}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
+                  <div className="invisible absolute bottom-full left-0 z-[90] pb-2 opacity-0 transition-all group-hover/product-bid:visible group-hover/product-bid:opacity-100 group-focus-within/product-bid:visible group-focus-within/product-bid:opacity-100">
+                    <ul
+                      role="menu"
+                      className="min-w-[280px] overflow-hidden rounded-xl border border-gray-200 bg-white py-1 shadow-lg"
+                    >
+                      {PRODUCT_BID_BULK_ACTIONS.map((action) => (
+                        <li key={action.id} role="none">
+                          <button
+                            type="button"
+                            role="menuitem"
+                            onClick={() => openProductBidBulkModal(action.id)}
+                            className="block w-full px-3 py-2.5 text-left text-sm text-gray-800 transition-colors hover:bg-gray-50"
+                          >
+                            {action.label}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-              )}
-              <div className="ml-1 flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setSelectedProductIds([])}
-                  className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
-                  aria-label="Снять выделение"
+                  onClick={openBulkProductsAutobidder}
+                  className={bulkSelectionBarBtnClass}
                 >
-                  <X className="h-4 w-4" />
+                  <Crosshair className="h-4 w-4 text-white" aria-hidden />
+                  <span>Автобиддер</span>
                 </button>
               </div>
+              <button
+                type="button"
+                onClick={() => setSelectedProductIds([])}
+                className={bulkSelectionBarCloseClass}
+                aria-label="Снять выделение"
+              >
+                <X className="h-4 w-4" />
+              </button>
             </div>
           )}
         </>

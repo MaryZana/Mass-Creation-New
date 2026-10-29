@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, NavLink, useLocation, useNavigate } from 'reac
 import { Checkbox } from 'antd';
 import { CampaignConfig, PaymentModel, BidType, CampaignRecord, CampaignStatus } from './types';
 import { 
-  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar, Coins, Columns2, Rocket, TrendingUp, Lock
+  FileSpreadsheet, UploadCloud, Info, Download, Trash2, CheckCircle, Bell, HelpCircle, Wallet, ChevronDown, ChevronRight, X, FileIcon, Loader, Edit2, Plus, RefreshCw, DollarSign, Briefcase, Zap, Search, Wand, Settings, SingleAccountIcon, Clock, ThumbsUp, ClipboardCheck, Check, AlertTriangle, AlertCircle, ArrowUp, Calendar, Coins, Columns2, Rocket, TrendingUp, Crosshair, Lock
 } from './components/Icons';
 import { getMockProductsForCategory, validateUploadedFile } from './services/geminiService';
 import { MultiSelect } from './components/MultiSelect';
@@ -2645,11 +2645,16 @@ const UploadEditsModal = ({
   );
 };
 
+const creationBarShellClass =
+  'fixed bottom-6 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2.5 rounded-full bg-black py-2 pl-5 pr-3 shadow-[0_12px_40px_rgba(0,0,0,0.35)] animate-in slide-in-from-bottom-4 fade-in';
 const creationBarBtnClass =
-  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl bg-[#F3F4F6] px-3.5 py-2 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-200';
+  'inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-[#2C2C2C] px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-[#3A3A3A]';
+const creationBarCloseClass =
+  'rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white';
 
 const CreationSelectionBar = ({
   count,
+  total,
   onBudget,
   onDailyLimit,
   onAutoRefill,
@@ -2660,6 +2665,7 @@ const CreationSelectionBar = ({
   onClear,
 }: {
   count: number;
+  total: number;
   onBudget: () => void;
   onDailyLimit: () => void;
   onAutoRefill: () => void;
@@ -2670,59 +2676,50 @@ const CreationSelectionBar = ({
   onDelete: () => void;
   onClear: () => void;
 }) => {
-  const countLabel = `${count} ${getPlural(count, 'кампания', 'кампании', 'кампаний')}`;
-
   return (
-    <div className="fixed bottom-0 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-3 rounded-t-2xl border border-b-0 border-gray-200 bg-white px-4 py-3 shadow-[0_-8px_30px_rgba(15,23,42,0.12)] animate-in slide-in-from-bottom-4 fade-in">
-      <span className="whitespace-nowrap px-1 text-sm font-medium text-gray-400">
-        Выбрано {countLabel}
+    <div className={creationBarShellClass}>
+      <span className="whitespace-nowrap text-sm font-medium text-white">
+        Выбрано {count} из {total}
       </span>
-      <div className="h-6 w-px shrink-0 bg-gray-200" />
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onBudget} className={creationBarBtnClass}>
-          <Coins className="h-4 w-4 text-gray-700" />
-          <span>Бюджет</span>
-        </button>
-        <button type="button" onClick={onDailyLimit} className={creationBarBtnClass}>
-          <Calendar className="h-4 w-4 text-gray-700" />
-          <span>Дневной лимит</span>
+        <button type="button" onClick={onBid} className={creationBarBtnClass}>
+          <Zap className="h-4 w-4 text-white" />
+          <span>Ставка</span>
+          <ChevronDown className="h-3.5 w-3.5 text-white/80" />
         </button>
         <button type="button" onClick={onAutobidder} className={creationBarBtnClass}>
-          <TrendingUp className="h-4 w-4 text-gray-700" />
+          <Crosshair className="h-4 w-4 text-white" />
           <span>Автобиддер</span>
         </button>
+        <button type="button" onClick={onDailyLimit} className={creationBarBtnClass}>
+          <Calendar className="h-4 w-4 text-white" />
+          <span>Дневной лимит</span>
+        </button>
+        <button type="button" onClick={onBudget} className={creationBarBtnClass}>
+          <Coins className="h-4 w-4 text-white" />
+          <span>Бюджет</span>
+        </button>
         <button type="button" onClick={onAutoRefill} className={creationBarBtnClass}>
-          <RefreshCw className="h-4 w-4 text-gray-700" />
+          <RefreshCw className="h-4 w-4 text-white" />
           <span>Автопополнение</span>
         </button>
-        <button type="button" onClick={onBid} className={creationBarBtnClass}>
-          <Zap className="h-4 w-4 text-gray-700" />
-          <span>Ставка</span>
-          <ChevronDown className="h-3.5 w-3.5 text-gray-500" />
-        </button>
         <button type="button" onClick={onZones} className={creationBarBtnClass}>
-          <Columns2 className="h-4 w-4 text-gray-700" />
+          <Columns2 className="h-4 w-4 text-white" />
           <span>Зоны показа</span>
         </button>
-      </div>
-      <div className="ml-1 flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onDelete}
-          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
-          aria-label="Удалить"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onClear}
-          className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-800"
-          aria-label="Снять выделение"
-        >
-          <X className="h-4 w-4" />
+        <button type="button" onClick={onDelete} className={creationBarBtnClass} aria-label="Удалить">
+          <Trash2 className="h-4 w-4 text-white" />
+          <span>Удалить</span>
         </button>
       </div>
+      <button
+        type="button"
+        onClick={onClear}
+        className={creationBarCloseClass}
+        aria-label="Снять выделение"
+      >
+        <X className="h-4 w-4" />
+      </button>
     </div>
   );
 };
@@ -5557,6 +5554,7 @@ export default function App() {
     {selectedCampaignIds.length > 0 && (
       <CreationSelectionBar
         count={selectedCampaignIds.length}
+        total={allValidCampaigns.length}
         onBudget={() => openBulkActionModal('budget')}
         onDailyLimit={openCreationBulkDailyLimit}
         onAutoRefill={() => openBulkActionModal('autorefill')}

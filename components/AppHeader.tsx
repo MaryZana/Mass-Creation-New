@@ -9,7 +9,7 @@ import { Check, ChevronDown, MoreVertical, Plus, X } from './Icons';
 import { isNewSellerProfile, PROFILES, useProfile, type ProfileId } from './ProfileContext';
 import { usePromoBonusDemo } from './PromoBonusDemoContext';
 import { FINANCE_BALANCE_DEMO_EVENT, readFinanceBufferRub } from '../utils/financeBalanceDemo';
-import { financeHomePath, financeTopUpPath } from '../utils/financeRoutes';
+import { financeHomePath } from '../utils/financeRoutes';
 
 export const NEW_SELLER_CREATE_CAMPAIGN_PATH = '/create-campaign';
 
@@ -263,7 +263,6 @@ export function AppHeader({
   const helpNavActive = location.pathname === '/help' || location.pathname.startsWith('/help/');
   const productSpaceId = resolveProductSpace(location.pathname);
   const financeTo = financeHomePath(location.pathname);
-  const financeTopUpTo = financeTopUpPath(location.pathname);
   const activeProductSpace =
     PRODUCT_SPACES.find((space) => space.id === productSpaceId) ?? PRODUCT_SPACES[0];
   const isNewSeller = isNewSellerProfile(profileId);
@@ -760,10 +759,11 @@ export function AppHeader({
             </div>
             {!isResearchAccess ? (
               <NavLink
-                to={financeTopUpTo}
+                to={financeTo}
+                end
                 onClick={onNavigate}
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
-                aria-label="Пополнить счёт"
+                aria-label="Перейти в финансы"
               >
                 <Plus className="h-4 w-4" aria-hidden />
               </NavLink>
