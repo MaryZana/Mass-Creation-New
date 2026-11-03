@@ -21,6 +21,13 @@ export type BudgetWalletContext = {
   campaignCount: number;
 };
 
+export type BudgetRefillCampaignItem = {
+  id: string;
+  productName: string;
+  imageUrl?: string;
+  nmId?: number;
+};
+
 type BonusPackage = {
   id: string;
   amount: number;
@@ -28,6 +35,88 @@ type BonusPackage = {
   expiry: string;
   displayBurn: string;
 };
+
+type BonusPackageSlice = {
+  packageId: string;
+  amount: number;
+  maxPercent: number;
+  expiry: string;
+};
+
+type CampaignBonusAlloc = {
+  campaignId: string;
+  bonusAmount: number;
+  slices: BonusPackageSlice[];
+};
+
+function packageExpiryTs(expiry: string): number {
+  const [d, m, y] = expiry.split('.').map(Number);
+  return new Date(2000 + (y || 0), (m || 1) - 1, d || 1).getTime();
+}
+
+/**
+ * На каждую кампанию — ровно один пакет.
+ * Берём тот, с которого можно списать больше (при равенстве — с ближайшим expiry).
+ */
+function allocateBonusForBudgets(
+  packages: readonly BonusPackage[],
+  budgets: readonly number[],
+  promoCap: number | null = null,
+  campaignIds?: readonly string[],
+): CampaignBonusAlloc[] {
+  const pool = packages.map((pkg) => ({ ...pkg, left: pkg.amount }));
+  let promoLeft =
+    promoCap != null && Number.isFinite(promoCap)
+      ? Math.max(0, promoCap)
+      : Number.POSITIVE_INFINITY;
+
+  return budgets.map((budget, index) => {
+    const campaignId = campaignIds?.[index] ?? String(index);
+    if (!Number.isFinite(budget) || budget <= 0 || promoLeft <= 0) {
+      return { campaignId, bonusAmount: 0, slices: [] };
+    }
+
+    let best: {
+      pkg: (typeof pool)[number];
+      amount: number;
+    } | null = null;
+
+    for (const pkg of pool) {
+      if (pkg.left <= 0) continue;
+      const byPercent = Math.floor((budget * pkg.maxPercent) / 100);
+      const amount = Math.min(pkg.left, byPercent, budget, promoLeft);
+      if (amount <= 0) continue;
+      if (
+        !best ||
+        amount > best.amount ||
+        (amount === best.amount &&
+          packageExpiryTs(pkg.expiry) < packageExpiryTs(best.pkg.expiry))
+      ) {
+        best = { pkg, amount };
+      }
+    }
+
+    if (!best) {
+      return { campaignId, bonusAmount: 0, slices: [] };
+    }
+
+    best.pkg.left -= best.amount;
+    promoLeft -= best.amount;
+
+    return {
+      campaignId,
+      bonusAmount: Math.floor(best.amount),
+      slices: [
+        {
+          packageId: best.pkg.id,
+          amount: Math.floor(best.amount),
+          maxPercent: best.pkg.maxPercent,
+          expiry: best.pkg.expiry,
+        },
+      ],
+    };
+  });
+}
 
 const getPlural = (number: number, one: string, two: string, five: string) => {
   let n = Math.abs(number);
@@ -117,6 +206,7 @@ function RightSheetShell({
   children,
   footer,
   overlay,
+  aside,
 }: {
   titleId: string;
   title: string;
@@ -125,6 +215,7 @@ function RightSheetShell({
   children: React.ReactNode;
   footer: React.ReactNode;
   overlay?: React.ReactNode;
+  aside?: React.ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-[100] bg-black/50" onClick={onClose} role="presentation">
@@ -133,7 +224,7 @@ function RightSheetShell({
           className="flex h-full max-h-full min-w-0 items-stretch gap-2"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
+          <div className="flex shrink-0 flex-col items-end justify-start gap-3 pt-5 pl-3">
             <button
               type="button"
               onClick={onClose}
@@ -142,6 +233,7 @@ function RightSheetShell({
             >
               <X className="h-5 w-5" />
             </button>
+            {aside}
           </div>
 
           <div
@@ -211,12 +303,36 @@ type RefillLogic = {
   handleAutoFieldChange: (
     setter: (v: string) => void,
   ) => (e: React.ChangeEvent<HTMLInputElement>) => void;
+  bonusPickMode: 'auto' | 'manual';
+  setBonusPickMode: (mode: 'auto' | 'manual') => void;
   canSubmit: boolean;
+};
+
+export type BudgetRefillInitialValues = {
+  amount?: number;
+  useBonuses?: boolean;
+  bonusAmount?: number;
+  packageId?: string;
+  /** mass: 'auto' = все пакеты вместе; иначе ручной пакет */
+  bonusPickMode?: 'auto' | 'manual';
+  autoRefillEnabled?: boolean;
+  autoThreshold?: number;
+  autoAmount?: number;
+  autoUseBonuses?: boolean;
+  autoTimesPerDay?: number;
+  autoExpiryDate?: string | null;
+  /** Открыть блок автопополнения (например клик по чипу) */
+  preferAutoRefill?: boolean;
 };
 
 function useRefillLogic(
   isOpen: boolean,
-  options?: { availablePromoCap?: number | null; availableElsCap?: number | null },
+  options?: {
+    availablePromoCap?: number | null;
+    availableElsCap?: number | null;
+    shareCount?: number;
+    initialValues?: BudgetRefillInitialValues | null;
+  },
 ): RefillLogic {
   const { promoBonusTotal } = usePromoBonusDemo();
   const availablePromoCap =
@@ -227,6 +343,12 @@ function useRefillLogic(
     options?.availableElsCap != null && Number.isFinite(options.availableElsCap)
       ? Math.max(0, options.availableElsCap)
       : UNIFIED_BALANCE;
+  const shareCount = Math.max(1, options?.shareCount ?? 1);
+  const initialValues = options?.initialValues ?? null;
+  const perCampaignPromoCap =
+    availablePromoCap != null
+      ? Math.floor(availablePromoCap / shareCount)
+      : null;
   const packages = useMemo(
     () => buildDemoBonusPackages(promoBonusTotal).filter((pkg) => pkg.amount > 0),
     [promoBonusTotal],
@@ -243,6 +365,7 @@ function useRefillLogic(
   const [useBonuses, setUseBonuses] = useState(false);
   const [selectedPkgId, setSelectedPkgId] = useState(fallbackPkg.id);
   const [bonusValue, setBonusValue] = useState<number | string>(3000);
+  const [bonusPickMode, setBonusPickModeState] = useState<'auto' | 'manual'>('auto');
   const [budgetError, setBudgetError] = useState('');
   const [budgetNotice, setBudgetNotice] = useState('');
   const [bonusError] = useState('');
@@ -256,23 +379,73 @@ function useRefillLogic(
   const [autoExpiryDate, setAutoExpiryDate] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setRefillAmount('3000');
-      setUseBonuses(false);
-      setSelectedPkgId(fallbackPkg.id);
-      setBonusValue(3000);
-      setBudgetError('');
-      setBudgetNotice('');
-      setBonusNotice('');
-      setAutoRefillEnabled(false);
-      setAutoThreshold('1000');
-      setAutoAmount('3000');
-      setAutoUseBonuses(false);
-      setAutoFrequencyMode('1');
-      setAutoFrequencyTimes('4');
-      setAutoExpiryDate(null);
-    }
-  }, [isOpen, fallbackPkg.id]);
+    if (!isOpen) return;
+    const init = initialValues;
+    const amount =
+      init?.amount != null && Number.isFinite(init.amount) && init.amount > 0
+        ? Math.floor(init.amount)
+        : 3000;
+    const pkgId =
+      init?.packageId && packages.some((p) => p.id === init.packageId)
+        ? init.packageId
+        : fallbackPkg.id;
+    const useBonus = Boolean(init?.useBonuses);
+    const isMass = shareCount > 1 && packages.length > 1;
+    const pickMode: 'auto' | 'manual' =
+      init?.bonusPickMode === 'auto' || init?.bonusPickMode === 'manual'
+        ? init.bonusPickMode
+        : isMass && useBonus && !init?.packageId
+          ? 'auto'
+          : useBonus
+            ? 'manual'
+            : isMass
+              ? 'auto'
+              : 'manual';
+    const times = init?.autoTimesPerDay;
+    const freqMode: '1' | '2' | '3' | 'custom' =
+      times === 1 || times === 2 || times === 3
+        ? (String(times) as '1' | '2' | '3')
+        : times != null && times > 3
+          ? 'custom'
+          : '1';
+    const pkgForInit = packages.find((p) => p.id === pkgId) || fallbackPkg;
+    const maxForPkg = Math.min(
+      pkgForInit.amount,
+      Math.floor((amount * pkgForInit.maxPercent) / 100),
+      Math.max(0, amount),
+      perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
+    );
+    const maxForAuto =
+      pickMode === 'auto' && isMass
+        ? allocateBonusForBudgets(
+            packages,
+            Array.from({ length: shareCount }, () => amount),
+            availablePromoCap,
+          )[0]?.bonusAmount ?? maxForPkg
+        : maxForPkg;
+
+    setRefillAmount(String(amount));
+    setUseBonuses(useBonus);
+    setSelectedPkgId(pkgId);
+    setBonusValue(Math.max(0, Math.floor(maxForAuto)));
+    setBonusPickModeState(pickMode);
+    setBudgetError('');
+    setBudgetNotice('');
+    setBonusNotice('');
+    setAutoRefillEnabled(
+      Boolean(init?.autoRefillEnabled) || Boolean(init?.preferAutoRefill),
+    );
+    setAutoThreshold(String(init?.autoThreshold ?? 1000));
+    setAutoAmount(String(init?.autoAmount ?? 3000));
+    setAutoUseBonuses(Boolean(init?.autoUseBonuses ?? useBonus));
+    setAutoFrequencyMode(freqMode);
+    setAutoFrequencyTimes(
+      freqMode === 'custom' ? String(Math.max(1, Math.floor(times || 4))) : '4',
+    );
+    setAutoExpiryDate(init?.autoExpiryDate ?? null);
+    // initialValues сравниваем по содержимому — объект с родителя часто новый на каждый рендер
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, fallbackPkg.id, JSON.stringify(initialValues ?? null), packages, shareCount]);
 
   const selectedPkg = useMemo(
     () => packages.find((p) => p.id === selectedPkgId) || fallbackPkg,
@@ -280,16 +453,52 @@ function useRefillLogic(
   );
   const currentBudgetValue = parseDisplayValue(refillAmount);
   const numericBonusValue = parseDisplayValue(String(bonusValue));
-  const maxBonusAllowed = Math.min(
-    selectedPkg.amount,
-    Math.floor((currentBudgetValue * selectedPkg.maxPercent) / 100),
-    Math.max(0, currentBudgetValue),
-    availablePromoCap ?? Number.POSITIVE_INFINITY,
-  );
+  const autoMode = bonusPickMode === 'auto' && packages.length > 1 && shareCount > 1;
+  const maxBonusFromAll = useMemo(() => {
+    const budgets = Array.from({ length: shareCount }, () => currentBudgetValue);
+    const allocs = allocateBonusForBudgets(packages, budgets, availablePromoCap);
+    return allocs[0]?.bonusAmount ?? 0;
+  }, [packages, shareCount, currentBudgetValue, availablePromoCap]);
+  const maxBonusAllowed = autoMode
+    ? maxBonusFromAll
+    : Math.min(
+        selectedPkg.amount,
+        Math.floor((currentBudgetValue * selectedPkg.maxPercent) / 100),
+        Math.max(0, currentBudgetValue),
+        perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
+      );
   const cashToPay = Math.max(
     0,
     currentBudgetValue - (useBonuses ? Math.min(numericBonusValue, currentBudgetValue) : 0),
   );
+
+  const setBonusPickMode = (mode: 'auto' | 'manual') => {
+    setBonusPickModeState(mode);
+    if (mode === 'auto') {
+      const budgets = Array.from({ length: shareCount }, () => currentBudgetValue);
+      const allocs = allocateBonusForBudgets(packages, budgets, availablePromoCap);
+      setBonusValue(allocs[0]?.bonusAmount ?? 0);
+      setBonusNotice('');
+      return;
+    }
+    const maxByPercent = Math.floor(
+      (currentBudgetValue * selectedPkg.maxPercent) / 100,
+    );
+    const next = Math.min(
+      currentBudgetValue,
+      maxByPercent,
+      selectedPkg.amount,
+      perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
+    );
+    setBonusValue(next);
+    setBonusNotice('');
+  };
+
+  useEffect(() => {
+    if (!autoMode || !useBonuses) return;
+    setBonusValue(maxBonusFromAll);
+    setBonusNotice('');
+  }, [autoMode, useBonuses, maxBonusFromAll]);
 
   const handleAutoFieldChange =
     (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -302,7 +511,15 @@ function useRefillLogic(
     refillAmount,
     setRefillAmount,
     useBonuses,
-    setUseBonuses,
+    setUseBonuses: (v: boolean) => {
+      setUseBonuses(v);
+      if (!v) {
+        setBonusPickModeState(shareCount > 1 ? 'auto' : 'manual');
+        return;
+      }
+      setBonusValue(maxBonusAllowed);
+      setBonusNotice('');
+    },
     selectedPkgId,
     setSelectedPkgId,
     bonusValue,
@@ -329,16 +546,32 @@ function useRefillLogic(
     handleBudgetBlur: () => {
       const parsed = parseDisplayValue(refillAmount);
       const maxAmount = Math.max(1000, availableElsCap);
+      let nextBudget = parsed;
       if (Number.isNaN(parsed) || parsed < 1000) {
+        nextBudget = 1000;
         setRefillAmount('1000');
         setBudgetNotice('Скорректировали до минимума — 1 000 ₽');
-        return;
-      }
-      if (parsed > maxAmount) {
+      } else if (parsed > maxAmount) {
+        nextBudget = maxAmount;
         setRefillAmount(String(maxAmount));
         setBudgetNotice(
           `Скорректировали до максимума — ${formatForDisplay(maxAmount)} ₽`,
         );
+      }
+      if (useBonuses) {
+        const nextMax = autoMode
+          ? allocateBonusForBudgets(
+              packages,
+              Array.from({ length: shareCount }, () => nextBudget),
+              availablePromoCap,
+            )[0]?.bonusAmount ?? 0
+          : Math.min(
+              selectedPkg.amount,
+              Math.floor((nextBudget * selectedPkg.maxPercent) / 100),
+              Math.max(0, nextBudget),
+              perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
+            );
+        setBonusValue(nextMax);
       }
     },
     handleBonusChange: (e) => {
@@ -376,6 +609,8 @@ function useRefillLogic(
     autoExpiryDate,
     setAutoExpiryDate,
     handleAutoFieldChange,
+    bonusPickMode,
+    setBonusPickMode,
     canSubmit: currentBudgetValue >= 1000,
   };
 }
@@ -673,30 +908,34 @@ function AutoExpiryDateField({
         )
       : null;
 
+  const clearDate = () => {
+    onChange(null);
+    setOpen(false);
+  };
+
   return (
     <div ref={rootRef}>
-      <div className="flex items-center gap-1">
+      <div className="inline-flex h-8 items-center rounded-lg bg-[#F2F2F7] text-[13px] font-semibold text-gray-800">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`inline-flex h-8 items-center gap-1.5 rounded-lg pl-2.5 transition-colors hover:bg-[#EBEBF0] ${
+            value ? 'pr-1' : 'pr-2.5'
+          }`}
+        >
+          <Calendar className="h-3.5 w-3.5 text-gray-500" />
+          {value ? `до ${formatIsoDisplay(value)}` : 'Добавить'}
+        </button>
         {value ? (
           <button
             type="button"
-            onClick={() => {
-              onChange(null);
-              setOpen(false);
-            }}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            onClick={clearDate}
+            className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded-full text-gray-400 hover:bg-black/[0.06] hover:text-gray-700"
             aria-label="Убрать срок действия"
           >
             <X className="h-3.5 w-3.5" />
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#F2F2F7] px-2.5 text-[13px] font-semibold text-gray-800 transition-colors hover:bg-[#EBEBF0]"
-        >
-          <Calendar className="h-3.5 w-3.5 text-gray-500" />
-          {value ? `до ${formatIsoDisplay(value)}` : 'Добавить'}
-        </button>
       </div>
       {popover}
     </div>
@@ -827,7 +1066,13 @@ function bonusLimitReason(logic: RefillLogic): string {
   return `Часть бонусов уже занята на кампаниях в создании, поэтому можно ещё ${formatForDisplay(max)} B.`;
 }
 
-function HoverCap({ label, text }: { label: string; text: string }) {
+function HoverCap({
+  label,
+  text,
+}: {
+  label: React.ReactNode;
+  text: string;
+}) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -843,7 +1088,7 @@ function HoverCap({ label, text }: { label: string; text: string }) {
   return (
     <span
       ref={anchorRef}
-      className="cursor-help border-b border-dashed border-gray-300"
+      className="cursor-help"
       onMouseEnter={show}
       onMouseLeave={() => setPos(null)}
       onFocus={show}
@@ -867,78 +1112,178 @@ function HoverCap({ label, text }: { label: string; text: string }) {
   );
 }
 
-function BonusPackagePicker({ logic }: { logic: RefillLogic }) {
-  return (
-    <div className="space-y-2">
-      {logic.packages.map((pkg) => {
-        const active = logic.selectedPkgId === pkg.id;
-        return (
-          <div
-            key={pkg.id}
-            className={`overflow-hidden rounded-[12px] transition-colors ${
-              active
-                ? 'bg-[#F2F2F7] shadow-[0_0_0_2px_#111827]'
-                : 'bg-[#F2F2F7]/70 hover:bg-[#F2F2F7]'
-            }`}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                logic.setSelectedPkgId(pkg.id);
-                const maxByPercent = Math.floor(
-                  (logic.currentBudgetValue * pkg.maxPercent) / 100,
-                );
-                logic.setBonusValue(
-                  Math.min(logic.currentBudgetValue, maxByPercent, pkg.amount),
-                );
-                logic.clearBonusNotice();
-              }}
-              className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left"
-            >
-              <div className="min-w-0">
-                <div className="text-[14px] font-bold tabular-nums text-gray-900">
-                  {formatForDisplay(pkg.amount)} B
-                </div>
-                <div className="mt-0.5 text-[12px] leading-4 text-gray-500">
-                  До {pkg.maxPercent}% от пополнения с единого счёта
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-3">
-                <span className="text-[12px] text-gray-500 tabular-nums">
-                  {formatExpiryShort(pkg.expiry)}
-                </span>
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                    active ? 'border-gray-900' : 'border-gray-300'
-                  }`}
-                >
-                  {active ? <span className="h-2.5 w-2.5 rounded-full bg-gray-900" /> : null}
-                </span>
-              </div>
-            </button>
+function chooseBonusPackage(logic: RefillLogic, pkg: BonusPackage) {
+  logic.setSelectedPkgId(pkg.id);
+  const maxByPercent = Math.floor((logic.currentBudgetValue * pkg.maxPercent) / 100);
+  logic.setBonusValue(Math.min(logic.currentBudgetValue, maxByPercent, pkg.amount));
+  logic.clearBonusNotice();
+}
 
-            {active ? (
-              <div className="px-2.5 pb-2.5 pt-1">
-                <RitFormFieldText
-                  value={formatForDisplay(logic.bonusValue)}
-                  onChange={logic.handleBonusChange}
-                  onBlur={logic.handleBonusBlur}
-                  suffix="B"
-                  surface="white"
-                  ariaLabel="Списать с этого пакета"
-                />
-                <p className="mt-1.5 text-[12px] leading-4 text-gray-400 tabular-nums">
-                  от 0{' '}
-                  <HoverCap
-                    label={`до ${formatForDisplay(logic.maxBonusAllowed)} B`}
-                    text={bonusLimitReason(logic)}
-                  />
-                </p>
-              </div>
-            ) : null}
+function BonusPackagePercentTag({
+  percent,
+  active,
+}: {
+  percent: number;
+  active: boolean;
+}) {
+  return (
+    <span className="group/tag relative inline-flex">
+      <span
+        className={`inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium tabular-nums ${
+          active ? 'bg-white/15 text-white' : 'bg-white text-gray-600'
+        }`}
+      >
+        Пакет до {percent}%
+      </span>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-[220px] rounded-xl bg-gray-900 px-3 py-2 text-left text-[12px] font-normal normal-case leading-4 text-white shadow-lg group-hover/tag:block"
+      >
+        Пакет промобонусов: с него можно списать до {percent}% от пополнения с единого счёта.
+      </span>
+    </span>
+  );
+}
+
+function BonusPackageTile({
+  pkg,
+  active,
+  onSelect,
+}: {
+  pkg: BonusPackage;
+  active: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full self-start rounded-2xl px-3 py-3 text-left ${
+        active ? 'bg-gray-950 text-white' : 'bg-[#F2F2F7] text-gray-900 hover:bg-[#EBEBF0]'
+      }`}
+    >
+      <BonusPackagePercentTag percent={pkg.maxPercent} active={active} />
+      <div className="mt-2 text-[16px] font-semibold leading-5 tabular-nums">
+        {formatForDisplay(pkg.amount)}B
+      </div>
+      <div className={`mt-2 text-[12px] tabular-nums ${active ? 'text-white/45' : 'text-gray-400'}`}>
+        {formatExpiryShort(pkg.expiry)}
+      </div>
+    </button>
+  );
+}
+
+function BonusSpendField({ logic }: { logic: RefillLogic }) {
+  return (
+    <div>
+      <RitFormFieldText
+        value={formatForDisplay(logic.bonusValue)}
+        onChange={logic.handleBonusChange}
+        onBlur={logic.handleBonusBlur}
+        suffix="B"
+        ariaLabel="Списать с этого пакета"
+      />
+      <p className="mt-1.5 text-[12px] leading-4 text-gray-400 tabular-nums">
+        от 0{' '}
+        <HoverCap
+          label={`до ${formatForDisplay(logic.maxBonusAllowed)} B`}
+          text={bonusLimitReason(logic)}
+        />
+      </p>
+    </div>
+  );
+}
+
+/** Массовый режим: первый тайл — все бонусы (авто), дальше отдельные пакеты. */
+function BonusUnitedPackageGrid({ logic }: { logic: RefillLogic }) {
+  const unitedTotal = logic.packages.reduce((sum, pkg) => sum + pkg.amount, 0);
+  const autoOn = logic.bonusPickMode === 'auto';
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 items-start gap-2 sm:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => logic.setBonusPickMode('auto')}
+          className={`w-full self-start rounded-2xl px-3 py-3 text-left ${
+            autoOn ? 'bg-gray-950 text-white' : 'bg-[#F2F2F7] text-gray-900 hover:bg-[#EBEBF0]'
+          }`}
+        >
+          <span className="group/tag relative inline-flex">
+            <span
+              className={`inline-flex h-5 items-center rounded-md px-1.5 text-[11px] font-medium ${
+                autoOn ? 'bg-white/15 text-white' : 'bg-white text-gray-600'
+              }`}
+            >
+              Все пакеты вместе
+            </span>
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-[220px] rounded-xl bg-gray-900 px-3 py-2 text-left text-[12px] font-normal normal-case leading-4 text-white shadow-lg group-hover/tag:block"
+            >
+              Все бонусы распределяются на кампании автоматически: один пакет на кампанию, без
+              выбора суммы.
+            </span>
+          </span>
+          <div className="mt-2 text-[16px] font-semibold leading-5 tabular-nums">
+            {formatForDisplay(unitedTotal)}B
           </div>
-        );
-      })}
+          <div
+            className={`mt-2 text-[12px] ${autoOn ? 'text-white/45' : 'text-gray-400'}`}
+          >
+            Без выбора суммы
+          </div>
+        </button>
+        {logic.packages.map((pkg) => {
+          const active = !autoOn && logic.selectedPkgId === pkg.id;
+          return (
+            <BonusPackageTile
+              key={pkg.id}
+              pkg={pkg}
+              active={active}
+              onSelect={() => {
+                logic.setBonusPickMode('manual');
+                chooseBonusPackage(logic, pkg);
+              }}
+            />
+          );
+        })}
+      </div>
+      {!autoOn ? (
+        <div className="mt-3">
+          <BonusSpendField logic={logic} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function BonusPackagesAccounts({
+  logic,
+  isMassRefill = false,
+}: {
+  logic: RefillLogic;
+  isMassRefill?: boolean;
+}) {
+  if (isMassRefill && logic.packages.length > 1) {
+    return <BonusUnitedPackageGrid logic={logic} />;
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-3 gap-2">
+        {logic.packages.map((pkg) => (
+          <BonusPackageTile
+            key={pkg.id}
+            pkg={pkg}
+            active={logic.selectedPkgId === pkg.id}
+            onSelect={() => chooseBonusPackage(logic, pkg)}
+          />
+        ))}
+      </div>
+      <div className="mt-3">
+        <BonusSpendField logic={logic} />
+      </div>
     </div>
   );
 }
@@ -961,57 +1306,145 @@ function DailyLimitHint({
   );
 }
 
-function BonusExpanded({ logic }: { logic: RefillLogic }) {
+function BonusExpanded({
+  logic,
+  isMassRefill = false,
+}: {
+  logic: RefillLogic;
+  isMassRefill?: boolean;
+}) {
   return (
     <div className="pt-3.5">
-      <BonusPackagePicker logic={logic} />
+      <BonusPackagesAccounts logic={logic} isMassRefill={isMassRefill} />
     </div>
   );
 }
 
-function SummaryPinned({
+function SummaryRow({
   logic,
-  isMassRefill,
-  massCount,
+  shareCount = 1,
+  bonusTotal,
 }: {
   logic: RefillLogic;
-  isMassRefill: boolean;
-  massCount: number;
+  shareCount?: number;
+  /** Сумма промобонусов по всем кампаниям; иначе bonus × shareCount */
+  bonusTotal?: number;
 }) {
-  const bonusPart = logic.useBonuses
-    ? Math.min(logic.numericBonusValue, logic.currentBudgetValue)
-    : 0;
+  const shares = Math.max(1, shareCount);
+  const total = Math.max(0, logic.currentBudgetValue) * shares;
+  const bonusPart =
+    bonusTotal != null
+      ? Math.max(0, bonusTotal)
+      : (logic.useBonuses ? Math.min(logic.numericBonusValue, logic.currentBudgetValue) : 0) *
+        shares;
+  const cash = logic.cashToPay * shares;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white">
-      <div className="px-4 pt-3.5 pb-2">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-[13px] text-gray-500">Итого бюджет</span>
-          <span className="text-[17px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-            {formatForDisplay(logic.currentBudgetValue)} ₽
-          </span>
+    <div className="flex min-w-0 flex-1 items-end gap-8">
+      <div>
+        <div className="text-[13px] leading-4 text-gray-500">Промобонусы</div>
+        <div className="mt-1 text-[17px] font-bold leading-6 tabular-nums text-gray-900">
+          {formatForDisplay(bonusPart)} B
         </div>
       </div>
-      <div className="mx-4 border-t border-dashed border-gray-200" />
-      <div className="space-y-1.5 px-4 py-3 text-[13px]">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-gray-500">Единый счёт</span>
-          <span className="font-semibold tabular-nums text-gray-900">
-            −{formatForDisplay(logic.cashToPay)} ₽
-          </span>
+      <div>
+        <div className="text-[13px] leading-4 text-gray-500">С единого счёта</div>
+        <div className="mt-1 flex items-baseline gap-2 text-[17px] font-bold leading-6 tabular-nums">
+          {bonusPart > 0 ? (
+            <span className="text-[#63616C] line-through">{formatForDisplay(total)} ₽</span>
+          ) : null}
+          <span className="text-gray-900">{formatForDisplay(cash)} ₽</span>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-gray-500">Промобонусы</span>
-          <span className="font-semibold tabular-nums text-gray-900">
-            {bonusPart > 0 ? `−${formatForDisplay(bonusPart)} B` : '—'}
-          </span>
-        </div>
-        {isMassRefill ? (
-          <p className="pt-0.5 text-[11px] text-gray-400">
-            ×{massCount} {getPlural(massCount, 'кампания', 'кампании', 'кампаний')}
-          </p>
-        ) : null}
       </div>
+    </div>
+  );
+}
+
+function FooterTotals({
+  logic,
+  shareCount = 1,
+  bonusTotal,
+  label,
+  disabled,
+  onApply,
+}: {
+  logic: RefillLogic;
+  shareCount?: number;
+  bonusTotal?: number;
+  label: string;
+  disabled: boolean;
+  onApply: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-4">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onApply}
+        className="inline-flex h-12 shrink-0 items-center justify-center rounded-2xl bg-[#9A41FE] px-5 text-[15px] font-semibold text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
+      >
+        {label}
+      </button>
+      <SummaryRow logic={logic} shareCount={shareCount} bonusTotal={bonusTotal} />
+    </div>
+  );
+}
+
+function MassCampaignShareList({
+  campaigns,
+  perCampaign,
+  bonusPart,
+  allocations,
+}: {
+  campaigns: readonly BudgetRefillCampaignItem[];
+  perCampaign: number;
+  bonusPart: number;
+  allocations?: readonly CampaignBonusAlloc[] | null;
+}) {
+  if (campaigns.length < 2) return null;
+  const allocById = new Map((allocations ?? []).map((row) => [row.campaignId, row]));
+
+  return (
+    <div className="rounded-[24px] bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+      <div className="text-[17px] font-semibold text-gray-900">Распределение</div>
+      <ul className="mt-3 divide-y divide-gray-100">
+        {campaigns.map((item) => {
+          const alloc = allocById.get(item.id);
+          const rowBonus = alloc ? alloc.bonusAmount : bonusPart;
+          const cashPart = Math.max(0, perCampaign - rowBonus);
+          return (
+            <li key={item.id} className="flex items-center gap-3 py-2.5">
+              {item.imageUrl ? (
+                <img
+                  src={item.imageUrl}
+                  alt=""
+                  className="h-10 w-10 shrink-0 rounded-lg bg-[#F2F2F7] object-cover"
+                />
+              ) : (
+                <div className="h-10 w-10 shrink-0 rounded-lg bg-[#F2F2F7]" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[14px] font-medium leading-5 text-gray-900">
+                  {item.productName}
+                </div>
+                {item.nmId != null ? (
+                  <div className="mt-0.5 text-[12px] tabular-nums text-gray-400">Арт. {item.nmId}</div>
+                ) : null}
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-[14px] font-semibold tabular-nums text-gray-900">
+                  {formatForDisplay(perCampaign)} ₽
+                </div>
+                {rowBonus > 0 ? (
+                  <div className="mt-0.5 text-[12px] leading-4 tabular-nums text-gray-400">
+                    {formatForDisplay(cashPart)} ₽ + {formatForDisplay(rowBonus)} B
+                  </div>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -1019,24 +1452,46 @@ function SummaryPinned({
 function SummaryBody({
   logic,
   isMassRefill,
-  massCount,
   neededAmount,
   showDailyLimitInfo,
   dailyLimit,
   wallet,
+  shareCount = 1,
+  campaigns = [],
 }: {
   logic: RefillLogic;
   isMassRefill: boolean;
-  massCount: number;
   neededAmount: number;
   showDailyLimitInfo: boolean;
   dailyLimit: number;
   wallet?: BudgetWalletContext | null;
+  /** >1 — одна и та же сумма на каждую кампанию, лимит счёта делится поровну */
+  shareCount?: number;
+  campaigns?: readonly BudgetRefillCampaignItem[];
 }) {
   const elsBalance = wallet?.elsBalance ?? UNIFIED_BALANCE;
   const elsReserved = wallet?.elsReserved ?? 0;
-  const elsAvailable = Math.max(0, elsBalance - elsReserved);
+  const elsPool = Math.max(0, elsBalance - elsReserved);
+  const shares = Math.max(1, shareCount ?? 1);
+  const elsAvailable = Math.floor(elsPool / shares);
   const promoTotal = wallet?.promoTotal ?? logic.promoBonusTotal;
+  const promoAvailable =
+    wallet != null
+      ? Math.max(0, wallet.promoTotal - wallet.promoAllocated)
+      : logic.promoBonusTotal;
+  const perCampaign = Math.max(0, logic.currentBudgetValue);
+  const bonusPart = logic.useBonuses
+    ? Math.min(logic.numericBonusValue, perCampaign)
+    : 0;
+  const autoAllocations =
+    logic.useBonuses && logic.bonusPickMode === 'auto' && campaigns.length > 0
+      ? allocateBonusForBudgets(
+          logic.packages,
+          campaigns.map(() => perCampaign),
+          promoAvailable,
+          campaigns.map((c) => c.id),
+        )
+      : null;
 
   return (
     <div className="space-y-5">
@@ -1058,26 +1513,21 @@ function SummaryBody({
           suffix="₽"
           autoFocus
           ariaLabel={isMassRefill ? 'Сумма на 1 кампанию' : 'Сумма пополнения'}
-          hint={
-            isMassRefill
-              ? `На каждую из ${massCount} ${getPlural(massCount, 'кампании', 'кампаний', 'кампаний')}`
-              : undefined
-          }
         />
 
         <p className="mt-1.5 text-[12px] leading-4 text-gray-400 tabular-nums">
           от 1 000{' '}
           <span className="group relative inline-flex cursor-help">
-            <span className="border-b border-dashed border-gray-300">
-              до {formatForDisplay(elsAvailable)} ₽
-            </span>
+            до {formatForDisplay(elsAvailable)} ₽
             <span
               role="tooltip"
               className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-[260px] rounded-xl bg-gray-900 px-3 py-2 text-left text-[12px] font-normal normal-case leading-4 text-white shadow-lg group-hover:block"
             >
-              {elsReserved > 0
-                ? `На счёте ${formatForDisplay(elsBalance)} ₽. На кампаниях в создании уже занято ${formatForDisplay(elsReserved)} ₽, поэтому можно ещё ${formatForDisplay(elsAvailable)} ₽.`
-                : `Это весь остаток единого счёта — ${formatForDisplay(elsAvailable)} ₽.`}
+              {shares > 1
+                ? `На счёте ${formatForDisplay(elsPool)} ₽. Поровну на ${shares} ${getPlural(shares, 'кампанию', 'кампании', 'кампаний')} — до ${formatForDisplay(elsAvailable)} ₽ на каждую.`
+                : elsReserved > 0
+                  ? `На счёте ${formatForDisplay(elsBalance)} ₽. На кампаниях в создании уже занято ${formatForDisplay(elsReserved)} ₽, поэтому можно ещё ${formatForDisplay(elsAvailable)} ₽.`
+                  : `Это весь остаток единого счёта — ${formatForDisplay(elsAvailable)} ₽.`}
             </span>
           </span>
         </p>
@@ -1094,11 +1544,22 @@ function SummaryBody({
             </div>
             <ToggleSwitch on={logic.useBonuses} />
           </button>
-          {logic.useBonuses ? <BonusExpanded logic={logic} /> : null}
+          {logic.useBonuses ? (
+            <BonusExpanded logic={logic} isMassRefill={isMassRefill} />
+          ) : null}
         </div>
       </div>
 
       <AutoRefillBlock logic={logic} />
+
+      {isMassRefill ? (
+        <MassCampaignShareList
+          campaigns={campaigns}
+          perCampaign={perCampaign}
+          bonusPart={bonusPart}
+          allocations={autoAllocations}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1158,6 +1619,10 @@ export const BudgetRefillModal: React.FC<{
   submitLabel?: string;
   /** Уже распределённые бонусы / ЕЛС по кампаниям создания */
   walletContext?: BudgetWalletContext | null;
+  /** Товары/кампании для списка распределения при массовом пополнении */
+  campaigns?: readonly BudgetRefillCampaignItem[];
+  /** Текущие настройки кампании/выбора — подставляются при открытии */
+  initialValues?: BudgetRefillInitialValues | null;
 }> = ({
   isOpen,
   onClose,
@@ -1168,6 +1633,8 @@ export const BudgetRefillModal: React.FC<{
   showDailyLimitInfo = false,
   submitLabel,
   walletContext = null,
+  campaigns = [],
+  initialValues = null,
 }) => {
   const availablePromoCap = walletContext
     ? Math.max(0, walletContext.promoTotal - walletContext.promoAllocated)
@@ -1175,27 +1642,57 @@ export const BudgetRefillModal: React.FC<{
   const availableElsCap = walletContext
     ? Math.max(0, walletContext.elsBalance - walletContext.elsReserved)
     : UNIFIED_BALANCE;
-  const logic = useRefillLogic(isOpen, { availablePromoCap, availableElsCap });
+  const shareCount = campaignCount != null && campaignCount > 1 ? campaignCount : 1;
+  const perCampaignElsCap = Math.floor(availableElsCap / shareCount);
+  const logic = useRefillLogic(isOpen, {
+    availablePromoCap,
+    availableElsCap: perCampaignElsCap,
+    shareCount,
+    initialValues: {
+      amount: initialValues?.amount ?? (currentBudget > 0 ? currentBudget : undefined),
+      useBonuses: initialValues?.useBonuses,
+      bonusAmount: initialValues?.bonusAmount,
+      packageId: initialValues?.packageId,
+      bonusPickMode: initialValues?.bonusPickMode,
+      autoRefillEnabled: initialValues?.autoRefillEnabled,
+      autoThreshold: initialValues?.autoThreshold,
+      autoAmount: initialValues?.autoAmount,
+      autoUseBonuses: initialValues?.autoUseBonuses,
+      autoTimesPerDay: initialValues?.autoTimesPerDay,
+      autoExpiryDate: initialValues?.autoExpiryDate,
+      preferAutoRefill: initialValues?.preferAutoRefill,
+    },
+  });
 
   if (!isOpen) return null;
 
-  const massCount = campaignCount != null && campaignCount > 1 ? campaignCount : 0;
-  const isMassRefill = massCount > 1;
+  const isMassRefill = campaignCount != null && campaignCount > 1;
+  const tagCount = campaignCount != null && campaignCount > 0 ? campaignCount : 1;
   const neededAmount = dailyLimit > currentBudget ? dailyLimit - currentBudget : 0;
   const ctaLabel = submitLabel ?? (isMassRefill ? 'Применить' : 'Пополнить');
+  const footerBonusTotal =
+    logic.useBonuses && logic.bonusPickMode === 'auto' && shareCount > 1
+      ? allocateBonusForBudgets(
+          logic.packages,
+          Array.from({ length: shareCount }, () => logic.currentBudgetValue),
+          availablePromoCap,
+        ).reduce((sum, row) => sum + row.bonusAmount, 0)
+      : undefined;
 
   const footerCta = (
-    <div className="space-y-3">
-      <SummaryPinned logic={logic} isMassRefill={isMassRefill} massCount={massCount} />
-      <button
-        type="button"
-        disabled={!logic.canSubmit}
-        onClick={() => onSave(parseDisplayValue(logic.refillAmount), buildSaveExtras(logic))}
-        className="inline-flex h-12 items-center justify-center rounded-2xl bg-gray-900 px-5 text-[15px] font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-      >
-        {ctaLabel}
-      </button>
-    </div>
+    <FooterTotals
+      logic={logic}
+      shareCount={shareCount}
+      bonusTotal={footerBonusTotal}
+      label={ctaLabel}
+      disabled={!logic.canSubmit}
+      onApply={() => {
+        const raw = parseDisplayValue(logic.refillAmount);
+        const maxPer = Math.max(0, perCampaignElsCap);
+        const amount = Math.min(Number.isNaN(raw) ? 0 : Math.max(0, raw), maxPer);
+        onSave(amount, buildSaveExtras(logic));
+      }}
+    />
   );
 
   const correctionMessage = logic.budgetNotice || logic.bonusNotice;
@@ -1204,6 +1701,13 @@ export const BudgetRefillModal: React.FC<{
     <RightSheetShell
       titleId="budget-refill-title"
       title="Настройка бюджета"
+      subtitle={
+        tagCount > 1 ? (
+          <span className="inline-flex h-6 items-center rounded-lg bg-white px-2 text-[13px] font-medium leading-4 text-gray-900">
+            Для {tagCount} {getPlural(tagCount, 'кампании', 'кампаний', 'кампаний')}
+          </span>
+        ) : undefined
+      }
       onClose={onClose}
       footer={footerCta}
       overlay={
@@ -1219,11 +1723,12 @@ export const BudgetRefillModal: React.FC<{
       <SummaryBody
         logic={logic}
         isMassRefill={isMassRefill}
-        massCount={massCount}
         neededAmount={neededAmount}
         showDailyLimitInfo={showDailyLimitInfo}
         dailyLimit={dailyLimit}
         wallet={walletContext}
+        shareCount={shareCount}
+        campaigns={campaigns}
       />
     </RightSheetShell>
   );

@@ -189,7 +189,7 @@ function isNewSellerSecondaryShellPath(pathname: string): boolean {
 
 const BONUS_PACKAGES: BonusPackage[] = [
   { id: 'p1', amount: 170000, maxPercent: 50, expiry: '20.03.26', displayBurn: '170 000' },
-  { id: 'p2', amount: 79820, maxPercent: 99, expiry: '27.03.26', displayBurn: '79 820' },
+  { id: 'p2', amount: 79820, maxPercent: 90, expiry: '27.03.26', displayBurn: '79 820' },
   { id: 'p3', amount: 180, maxPercent: 100, expiry: '15.04.26', displayBurn: '180' },
 ];
 
@@ -3973,15 +3973,13 @@ export default function App() {
 
       if (listBudgetTargetIds && listBudgetTargetIds.length > 0) {
         listBudgetApplierRef.current?.(ids, budgetValue as unknown as Record<string, unknown>);
-        if (extras?.autoRefill?.enabled) {
-          listBudgetApplierRef.current?.(ids, {
-            __mode: 'autorefill',
-            enabled: true,
-            threshold: extras.autoRefill.threshold,
-            amount: extras.autoRefill.amount,
-            useBonuses: Boolean(extras.useBonuses),
-          });
-        }
+        listBudgetApplierRef.current?.(ids, {
+          __mode: 'autorefill',
+          enabled: Boolean(extras?.autoRefill?.enabled),
+          threshold: extras?.autoRefill?.threshold ?? 1000,
+          amount: extras?.autoRefill?.amount ?? 3000,
+          useBonuses: Boolean(extras?.useBonuses),
+        });
         const count = ids.length;
         setToastMessage(
           extras?.autoRefill?.enabled
@@ -3993,30 +3991,34 @@ export default function App() {
         return;
       }
 
-      const withAuto = Boolean(extras?.autoRefill?.enabled);
       applyBulkChanges(budgetValue, ids, 'budget', {
-        skipClose: withAuto,
+        skipClose: true,
       });
-      if (withAuto && extras?.autoRefill) {
-        applyBulkChanges(
-          {
-            enabled: true,
-            threshold: extras.autoRefill.threshold,
-            amount: extras.autoRefill.amount,
-            useBonuses: Boolean(extras.useBonuses),
-          },
-          ids,
-          'autorefill',
-          {
-            toastMessage: `Бюджет и автопополнение обновлены для ${ids.length} ${getPlural(
-              ids.length,
-              'кампании',
-              'кампаний',
-              'кампаний',
-            )}`,
-          },
-        );
-      }
+      applyBulkChanges(
+        {
+          enabled: Boolean(extras?.autoRefill?.enabled),
+          threshold: extras?.autoRefill?.threshold ?? 1000,
+          amount: extras?.autoRefill?.amount ?? 3000,
+          useBonuses: Boolean(extras?.useBonuses),
+        },
+        ids,
+        'autorefill',
+        {
+          toastMessage: extras?.autoRefill?.enabled
+            ? `Бюджет и автопополнение обновлены для ${ids.length} ${getPlural(
+                ids.length,
+                'кампании',
+                'кампаний',
+                'кампаний',
+              )}`
+            : `Бюджет обновлён для ${ids.length} ${getPlural(
+                ids.length,
+                'кампании',
+                'кампаний',
+                'кампаний',
+              )}`,
+        },
+      );
     };
 
     const handleBulkSave = (value: any) => {
@@ -4266,7 +4268,7 @@ export default function App() {
                   autoRefillThreshold: auto.threshold,
                   autoRefillAmount: auto.amount,
                 }
-              : null),
+              : { autoReplenishment: false }),
         };
 
         const group = templateGroups.find((g) =>
@@ -4334,6 +4336,72 @@ export default function App() {
     const ids = new Set(selectedCampaignIds);
     return templateGroups.flatMap((g) => g.campaigns.filter((c) => ids.has(c.id)));
   }, [selectedCampaignIds, templateGroups]);
+
+  const budgetRefillTargetCampaigns = useMemo(() => {
+    const ids =
+      listBudgetTargetIds && listBudgetTargetIds.length > 0
+        ? listBudgetTargetIds
+        : selectedCampaignIds;
+    const idSet = new Set(ids);
+    const source = editingGroupId ? editedCampaigns : allValidCampaigns;
+    return source.filter((c) => idSet.has(c.id));
+  }, [
+    listBudgetTargetIds,
+    selectedCampaignIds,
+    editingGroupId,
+    editedCampaigns,
+    allValidCampaigns,
+  ]);
+
+  const budgetRefillCampaignItems = useMemo(
+    () =>
+      budgetRefillTargetCampaigns.map((c) => ({
+        id: c.id,
+        productName: c.productName,
+        imageUrl: c.imageUrl,
+        nmId: c.nmId,
+      })),
+    [budgetRefillTargetCampaigns],
+  );
+
+  const budgetRefillInitialValues = useMemo(() => {
+    if (bulkEditPrefillData) {
+      return {
+        amount: bulkEditPrefillData.budget,
+        useBonuses: bulkEditPrefillData.useBonuses,
+        bonusAmount: bulkEditPrefillData.bonusAmount,
+        bonusPickMode: 'manual' as const,
+      };
+    }
+    const first = budgetRefillTargetCampaigns[0];
+    if (!first) return null;
+    const sameBudget = budgetRefillTargetCampaigns.every((c) => c.budget === first.budget);
+    const sameBonus = budgetRefillTargetCampaigns.every(
+      (c) =>
+        c.usePromoBonuses === first.usePromoBonuses &&
+        (c.bonusAmount ?? 0) === (first.bonusAmount ?? 0) &&
+        (c.bonusPackageId ?? 'p1') === (first.bonusPackageId ?? 'p1'),
+    );
+    const sameAuto = budgetRefillTargetCampaigns.every(
+      (c) =>
+        c.autoReplenishment === first.autoReplenishment &&
+        (c.autoRefillThreshold ?? 1000) === (first.autoRefillThreshold ?? 1000) &&
+        (c.autoRefillAmount ?? 3000) === (first.autoRefillAmount ?? 3000),
+    );
+    return {
+      amount: sameBudget ? first.budget : first.budget,
+      useBonuses: sameBonus
+        ? Boolean(first.usePromoBonuses && (first.bonusAmount ?? 0) > 0)
+        : Boolean(first.usePromoBonuses && (first.bonusAmount ?? 0) > 0),
+      bonusAmount: first.bonusAmount ?? 0,
+      packageId: first.bonusPackageId ?? 'p1',
+      bonusPickMode: 'manual' as const,
+      autoRefillEnabled: sameAuto ? Boolean(first.autoReplenishment) : Boolean(first.autoReplenishment),
+      autoThreshold: first.autoRefillThreshold ?? 1000,
+      autoAmount: first.autoRefillAmount ?? 3000,
+      autoUseBonuses: Boolean(first.usePromoBonuses),
+    };
+  }, [bulkEditPrefillData, budgetRefillTargetCampaigns]);
 
   const creationBulkBidTargetsAvailable = useMemo((): CreationBulkBidTarget[] => {
     const ids = new Set(selectedCampaignIds);
@@ -5084,12 +5152,16 @@ export default function App() {
           <BudgetRefillModal
             isOpen={isBulkActionModalOpen}
             onClose={closeBulkActionModal}
-            currentBudget={bulkEditPrefillData?.budget ?? 0}
+            currentBudget={
+              budgetRefillInitialValues?.amount ?? bulkEditPrefillData?.budget ?? 0
+            }
             campaignCount={
               listBudgetTargetIds && listBudgetTargetIds.length > 0
                 ? listBudgetTargetIds.length
                 : selectedCampaignIds.length
             }
+            campaigns={budgetRefillCampaignItems}
+            initialValues={budgetRefillInitialValues}
             submitLabel="Применить"
             walletContext={{
               promoTotal: promoBonusTotal,
@@ -5362,12 +5434,16 @@ export default function App() {
     <BudgetRefillModal
       isOpen
       onClose={closeBulkActionModal}
-      currentBudget={bulkEditPrefillData?.budget ?? 0}
+      currentBudget={
+        budgetRefillInitialValues?.amount ?? bulkEditPrefillData?.budget ?? 0
+      }
       campaignCount={
         listBudgetTargetIds && listBudgetTargetIds.length > 0
           ? listBudgetTargetIds.length
           : selectedCampaignIds.length
       }
+      campaigns={budgetRefillCampaignItems}
+      initialValues={budgetRefillInitialValues}
       submitLabel="Применить"
       walletContext={{
         promoTotal: promoBonusTotal,
@@ -5435,6 +5511,22 @@ export default function App() {
       isOpen
       currentBudget={campaignForBonusEdit.budget}
       submitLabel="Применить"
+      campaignCount={1}
+      initialValues={{
+        amount: campaignForBonusEdit.budget,
+        useBonuses: Boolean(
+          campaignForBonusEdit.usePromoBonuses &&
+            (campaignForBonusEdit.bonusAmount ?? 0) > 0,
+        ),
+        bonusAmount: campaignForBonusEdit.bonusAmount ?? 0,
+        packageId: campaignForBonusEdit.bonusPackageId ?? 'p1',
+        bonusPickMode: 'manual',
+        autoRefillEnabled: Boolean(campaignForBonusEdit.autoReplenishment),
+        autoThreshold: campaignForBonusEdit.autoRefillThreshold ?? 1000,
+        autoAmount: campaignForBonusEdit.autoRefillAmount ?? 3000,
+        autoUseBonuses: Boolean(campaignForBonusEdit.usePromoBonuses),
+        preferAutoRefill: singleReplenishAction === 'autorefill',
+      }}
       walletContext={{
         promoTotal: promoBonusTotal,
         promoAllocated: Math.max(
@@ -5458,7 +5550,7 @@ export default function App() {
           isBonusActive: Boolean(extras?.useBonuses && (extras.bonusAmount ?? 0) > 0),
           bonus: extras?.bonusAmount ?? 0,
           selectedPkg: pkg,
-          autoRefill: extras?.autoRefill,
+          autoRefill: extras?.autoRefill ?? { enabled: false, threshold: 0, amount: 0 },
         });
       }}
     />
@@ -5856,7 +5948,11 @@ export default function App() {
         ) : null}
     </main> 
 
-    {selectedCampaignIds.length > 0 && (
+    {selectedCampaignIds.length > 0 &&
+      !isBulkActionModalOpen &&
+      !campaignForBonusEdit &&
+      !isCreationBulkDailyLimitOpen &&
+      !isCreationZonesModalOpen && (
       <CreationSelectionBar
         count={selectedCampaignIds.length}
         total={allValidCampaigns.length}

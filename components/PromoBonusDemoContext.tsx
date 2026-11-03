@@ -110,7 +110,7 @@ export function buildDemoBonusPackages(total: number): Array<{
   if (total <= 0) {
     return [
       { id: 'p1', amount: 0, maxPercent: 50, expiry: '20.03.26', displayBurn: '0' },
-      { id: 'p2', amount: 0, maxPercent: 99, expiry: '27.03.26', displayBurn: '0' },
+      { id: 'p2', amount: 0, maxPercent: 90, expiry: '27.03.26', displayBurn: '0' },
       { id: 'p3', amount: 0, maxPercent: 100, expiry: '15.04.26', displayBurn: '0' },
     ];
   }
@@ -131,7 +131,7 @@ export function buildDemoBonusPackages(total: number): Array<{
     {
       id: 'p2',
       amount: midAmount,
-      maxPercent: 99,
+      maxPercent: 90,
       expiry: '27.03.26',
       displayBurn: fmt(midAmount),
     },

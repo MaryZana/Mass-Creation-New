@@ -6389,8 +6389,9 @@ function conditionMetricLabel(metric: DailyLimitConditionMetric) {
       return 'ДРР';
     case 'cr':
     case 'crCart':
+      return 'CR (конверсия в корзину)';
     case 'crOrder':
-      return 'CR';
+      return 'CR (конверсия в заказ)';
     case 'ctr':
       return 'CTR';
     case 'cpo':
@@ -6833,7 +6834,7 @@ const DAILY_LIMIT_STRATEGY_PRESETS: {
     title: 'Оптимизация кликов',
     description: 'Увеличиваем лимит, когда CR стабильно выше среднего по сильным игрокам категории',
     metric: 'cr',
-    metricLabel: 'CR',
+    metricLabel: 'CR (конверсия в корзину)',
     metricHint: 'Высокий CR говорит о востребованности карточки — можно наращивать показы.',
     thresholdPercent: 2.8,
     thresholdHint: 'Порог CR основан на средних показателях лидеров в категории',

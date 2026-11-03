@@ -13,6 +13,9 @@ import {
   type BidChasingRange,
 } from '../utils/cpcBidChasingPositionTiers';
 import { effectivePromoBonusAmount } from '../utils/promoBonus';
+import { PROMOTION_ACCOUNT_BALANCE_BY_PROFILE } from './AppHeader';
+import { useProfile } from './ProfileContext';
+import { FINANCE_BALANCE_DEMO_EVENT, readFinanceBufferRub } from '../utils/financeBalanceDemo';
 import {
   AdvancedDailyLimitModal,
   AutoStrategiesModal,
@@ -645,6 +648,20 @@ export function MassCreationIsland({
   const totalBudget = campaigns.reduce((sum, row) => sum + row.budget, 0);
   const totalPromoSpend = campaigns.reduce((sum, row) => sum + effectivePromoBonusAmount(row), 0);
   const unifiedCharge = Math.max(0, totalBudget - totalPromoSpend);
+  const { profileId } = useProfile();
+  const [financeBufferRub, setFinanceBufferRub] = useState(readFinanceBufferRub);
+  useEffect(() => {
+    const syncBuffer = () => setFinanceBufferRub(readFinanceBufferRub());
+    window.addEventListener(FINANCE_BALANCE_DEMO_EVENT, syncBuffer);
+    return () => window.removeEventListener(FINANCE_BALANCE_DEMO_EVENT, syncBuffer);
+  }, []);
+  const accountBalance = PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId] + financeBufferRub;
+  const cashFromAccount = Math.min(
+    totalPromoSpend > 0
+      ? unifiedCharge || Math.max(0, unifiedAccountTotal - promoBonusesTotal)
+      : unifiedCharge || unifiedAccountTotal,
+    Math.max(0, accountBalance),
+  );
 
   const maxBidForLimit = dailyLimitCampaign
     ? Math.max(
@@ -1160,15 +1177,12 @@ export function MassCreationIsland({
                   {formatRub(totalBudget || unifiedAccountTotal)} ₽
                 </span>
                 <span className="tabular-nums text-gray-900">
-                  {formatRub(
-                    unifiedCharge || Math.max(0, unifiedAccountTotal - promoBonusesTotal),
-                  )}{' '}
-                  ₽
+                  {formatRub(cashFromAccount)} ₽
                 </span>
               </div>
             ) : (
               <div className="mt-1 text-[17px] font-bold leading-6 tracking-[0.4px] tabular-nums text-gray-900">
-                {formatRub(unifiedCharge || unifiedAccountTotal)} ₽
+                {formatRub(cashFromAccount)} ₽
               </div>
             )}
           </div>
