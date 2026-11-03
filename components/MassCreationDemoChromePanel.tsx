@@ -6,21 +6,13 @@ import {
   useMassCreationDemoChromeVisible,
   usePromoBonusDemo,
 } from './PromoBonusDemoContext';
-import {
-  PROMO_MISSED_BONUS_UX_CASES,
-  usePromoMissedBonusUx,
-} from './PromoMissedBonusUxContext';
 
-/** Все демо-пилюли массового создания — под одной кнопкой. */
+/** Демо-настройки массового создания — баланс промобонусов. */
 export function MassCreationDemoChromePanel() {
   const visible = useMassCreationDemoChromeVisible();
   const { caseId, setCaseId } = usePromoBonusDemo();
-  const { uxId, setUxId } = usePromoMissedBonusUx();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
-
-  const baseCases = PROMO_MISSED_BONUS_UX_CASES.filter((item) => item.group === 'base');
-  const ctaCases = PROMO_MISSED_BONUS_UX_CASES.filter((item) => item.group === 'cta');
 
   useEffect(() => {
     if (!visible) setOpen(false);
@@ -81,62 +73,6 @@ export function MassCreationDemoChromePanel() {
                     className={`rounded-full px-2 py-1 text-[11px] font-medium tabular-nums transition-colors ${
                       active
                         ? 'bg-gray-900 text-white'
-                        : 'text-gray-400 hover:bg-white hover:text-gray-600'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-1 text-[11px] font-medium text-gray-500">Упущенная выгода — база</p>
-            <div
-              className="inline-flex items-center gap-0.5 rounded-full border border-gray-200 bg-gray-50 p-0.5"
-              role="group"
-              aria-label="Демо: упущенная выгода — база"
-            >
-              {baseCases.map((item) => {
-                const active = item.id === uxId;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setUxId(item.id)}
-                    title={item.title}
-                    className={`rounded-full px-2 py-1 text-[11px] font-medium transition-colors ${
-                      active
-                        ? 'bg-gray-900 text-white'
-                        : 'text-gray-400 hover:bg-white hover:text-gray-600'
-                    }`}
-                  >
-                    {item.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-1 text-[11px] font-medium text-gray-500">Упущенная выгода — CTA UI</p>
-            <div
-              className="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-gray-200 bg-gray-50 p-0.5"
-              role="group"
-              aria-label="Демо: упущенная выгода — CTA UI"
-            >
-              {ctaCases.map((item) => {
-                const active = item.id === uxId;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setUxId(item.id)}
-                    title={item.title}
-                    className={`rounded-full px-1.5 py-1 text-[10px] font-semibold tabular-nums transition-colors ${
-                      active
-                        ? 'bg-[#9A41FE] text-white'
                         : 'text-gray-400 hover:bg-white hover:text-gray-600'
                     }`}
                   >

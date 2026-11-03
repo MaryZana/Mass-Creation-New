@@ -11133,7 +11133,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
               </div>
 
               <div
-                className="flex h-full w-[640px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+                className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="autobidder-cpc-required-title"
@@ -14366,26 +14366,42 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             setIsMassBudgetRefillModalOpen(false);
             setMassBudgetRefillTargetIds([]);
           }}
-          onSave={(amount) => {
+          onSave={(amount, extras) => {
             const targetIds = new Set(massBudgetRefillTargetIds);
             const count = targetIds.size;
+            const auto = extras?.autoRefill;
             setAllCampaigns((prev) =>
-              prev.map((c) =>
-                targetIds.has(c.id)
-                  ? { ...c, remainingBudget: (c.remainingBudget || 0) + amount }
-                  : c,
-              ),
+              prev.map((c) => {
+                if (!targetIds.has(c.id)) return c;
+                return {
+                  ...c,
+                  remainingBudget: (c.remainingBudget || 0) + amount,
+                  ...(auto?.enabled
+                    ? {
+                        autoRefill: true,
+                        autoRefillStatus: 'ok' as const,
+                      }
+                    : null),
+                };
+              }),
             );
             setIsMassBudgetRefillModalOpen(false);
             setMassBudgetRefillTargetIds([]);
             if (count > 0) {
               setProductBulkNotice(
-                `Бюджет пополнен для ${count} ${getPlural(
-                  count,
-                  'кампании',
-                  'кампаний',
-                  'кампаний',
-                )}`,
+                auto?.enabled
+                  ? `Бюджет и автопополнение обновлены для ${count} ${getPlural(
+                      count,
+                      'кампании',
+                      'кампаний',
+                      'кампаний',
+                    )}`
+                  : `Бюджет пополнен для ${count} ${getPlural(
+                      count,
+                      'кампании',
+                      'кампаний',
+                      'кампаний',
+                    )}`,
               );
             }
           }}
@@ -14404,12 +14420,24 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             setIsBudgetRefillModalOpen(false);
             setSelectedCampaignForRefill(null);
           }}
-          onSave={(amount) => {
-            setAllCampaigns(prev => prev.map(c => 
-              c.id === selectedCampaignForRefill.id 
-                ? { ...c, remainingBudget: (c.remainingBudget || 0) + amount }
-                : c
-            ));
+          onSave={(amount, extras) => {
+            const auto = extras?.autoRefill;
+            setAllCampaigns((prev) =>
+              prev.map((c) =>
+                c.id === selectedCampaignForRefill.id
+                  ? {
+                      ...c,
+                      remainingBudget: (c.remainingBudget || 0) + amount,
+                      ...(auto?.enabled
+                        ? {
+                            autoRefill: true,
+                            autoRefillStatus: 'ok' as const,
+                          }
+                        : null),
+                    }
+                  : c,
+              ),
+            );
             setIsBudgetRefillModalOpen(false);
             setSelectedCampaignForRefill(null);
           }}

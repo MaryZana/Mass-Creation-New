@@ -194,7 +194,7 @@ function useDerived(view: FinanceBalanceSimView, day: number) {
   };
 }
 
-/** Из чего сложился лимит недели: прибыль 3 недель → среднее → минус уже в кампаниях */
+/** Из чего сложился лимит недели: прибыль 3 недель → среднее */
 function LimitCalculation({ view }: { view: FinanceBalanceSimView }) {
   const weeks = view.weekProfitRub;
   const hasZero = weeks.includes(0);
@@ -221,18 +221,6 @@ function LimitCalculation({ view }: { view: FinanceBalanceSimView }) {
         <span>Лимит недели</span>
         <span className="tabular-nums">{fmtRub(view.grossRub)} ₽</span>
       </div>
-      {view.inCampaignsRub > 0 && view.grossRub > 0 ? (
-        <>
-          <div className={`${row} mt-1 border-t border-white/10 pt-2.5`}>
-            <span>Резерв на кампаниях</span>
-            <span className="tabular-nums text-white/80">−{fmtRub(view.reservePendingRub)} ₽</span>
-          </div>
-          <div className={`${row} font-semibold text-white`}>
-            <span>Придёт на баланс</span>
-            <span className="tabular-nums">{fmtRub(view.netRub)} ₽</span>
-          </div>
-        </>
-      ) : null}
     </div>
   );
 }

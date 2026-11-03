@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Gift, TrendingUp } from './Icons';
+import { TrendingUp } from './Icons';
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
   productTableThumbUrl,
@@ -19,11 +19,9 @@ const PRODUCT_THUMB_CLASS =
   'h-[38px] w-[30px] shrink-0 rounded-md border border-gray-100 bg-gray-50 object-cover';
 
 const PROMISING_PICK_COUNT = 5;
-const WB_DISCOUNT_PICK_COUNT_PER_CATEGORY = 5;
-const WB_DISCOUNT_CATEGORIES = ['Косметика', 'Платья', 'Сумки'] as const;
 
 type CuratedPickBundle = {
-  id: 'promising' | 'wb_discount';
+  id: 'promising';
   title: string;
   description: string;
   products: CuratedPickProduct[];
@@ -127,26 +125,6 @@ export function computeCuratedProductPicks(
     });
   }
 
-  const wbDiscount = WB_DISCOUNT_CATEGORIES.flatMap((category) =>
-    notAdded
-      .filter((p) => p.category === category)
-      .slice()
-      .sort(byConv)
-      .slice(0, WB_DISCOUNT_PICK_COUNT_PER_CATEGORY),
-  );
-  if (wbDiscount.length > 0) {
-    picks.push({
-      id: 'wb_discount',
-      title: 'До +10% к скидке WB за продвижение этих товаров',
-      description:
-        'Продвигайте товары из категорий, которые добавлены в подборку и получайте до +10% дополнительной скидки к скидке WB',
-      products: wbDiscount,
-      totalCount: 10,
-      Icon: Gift,
-      iconClassName: 'text-[#7C3AED]',
-    });
-  }
-
   return picks;
 }
 
@@ -162,10 +140,7 @@ function CuratedPickCard({
   const { Icon } = pick;
 
   return (
-    <article
-      id={pick.id === 'wb_discount' ? 'curated-pick-wb-discount' : undefined}
-      className="flex w-[426px] max-w-full flex-col justify-between rounded-2xl bg-[#F3F5F8] p-5"
-    >
+    <article className="flex w-[426px] max-w-full flex-col justify-between rounded-2xl bg-[#F3F5F8] p-5">
       <div>
         <div className="flex items-center gap-3">
           <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white shadow-sm">

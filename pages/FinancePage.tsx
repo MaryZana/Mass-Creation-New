@@ -82,41 +82,6 @@ type FinanceDropdownOption = {
   infoTooltip?: string;
 };
 
-type FinanceActiveFilterTag = {
-  id: string;
-  label: string;
-  onClear: () => void;
-};
-
-function FinanceActiveFilterTags({ tags }: { tags: FinanceActiveFilterTag[] }) {
-  if (tags.length === 0) return null;
-  return (
-    <div
-      className="mt-3 flex min-w-0 flex-wrap items-center gap-2"
-      role="list"
-      aria-label="Активные фильтры"
-    >
-      {tags.map((tag) => (
-        <span
-          key={tag.id}
-          role="listitem"
-          className="inline-flex h-8 max-w-full items-center gap-1.5 rounded-lg bg-[#F3F5F8] pl-3 pr-1.5 text-sm text-gray-800"
-        >
-          <span className="truncate">{tag.label}</span>
-          <button
-            type="button"
-            aria-label={`Сбросить фильтр: ${tag.label}`}
-            onClick={tag.onClear}
-            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-[#E6E9EE] hover:text-gray-800"
-          >
-            <X className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function FinanceDropdown({
   value,
   onChange,
@@ -188,13 +153,13 @@ function FinanceDropdown({
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex w-max items-center justify-between whitespace-nowrap text-sm font-medium transition-colors hover:bg-[#E6E9EE] ${
           chip
-            ? 'h-9 gap-1.5 rounded-full bg-[#F3F5F8] px-3.5 text-gray-800'
-            : 'h-10 gap-2 rounded-xl border border-transparent bg-[#F3F5F8] px-3 text-gray-900'
+            ? 'h-8 gap-1.5 rounded-full bg-[#F3F5F8] px-3 text-gray-800'
+            : 'h-8 gap-1.5 rounded-xl border border-transparent bg-[#F3F5F8] px-2.5 text-gray-900'
         } ${open ? 'bg-[#E6E9EE]' : ''}`}
       >
         <span>{selected?.label}</span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
           aria-hidden
         />
       </button>
@@ -316,13 +281,13 @@ function TopupStatusFilter({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex h-10 w-max items-center justify-between gap-2 whitespace-nowrap rounded-xl border border-transparent bg-[#F3F5F8] px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE] ${
+        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-[#F3F5F8] px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE] ${
           open ? 'bg-[#E6E9EE]' : ''
         }`}
       >
         <span>{selected.label}</span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
           aria-hidden
         />
       </button>
@@ -547,9 +512,67 @@ type ExpenseRow = {
 const EXPENSE_PAGE_SIZE = 10;
 
 const FINANCE_TABLE_HEAD_ROW_CLASS =
-  'border-b border-gray-100 text-base font-medium text-black';
+  'text-sm font-medium text-black [&>th]:border-b [&>th]:border-gray-100';
 
-const FINANCE_TABLE_BODY_CLASS = '[&>tr]:transition-colors [&>tr:hover]:bg-[#F3F5F8]';
+const FINANCE_TABLE_BODY_CLASS = [
+  '[&>tr>td]:border-b [&>tr>td]:border-gray-100',
+  '[&>tr:last-child>td]:border-b-0',
+  '[&>tr:not([data-month-heading])>td]:transition-colors',
+  '[&>tr:not([data-month-heading]):hover>td]:bg-[#F3F5F8]',
+  '[&>tr:not([data-month-heading]):hover>td:first-child]:rounded-l-xl',
+  '[&>tr:not([data-month-heading]):hover>td:last-child]:rounded-r-xl',
+].join(' ');
+
+function CopyDocumentNo({ value }: { value: number | null }) {
+  const [copied, setCopied] = useState(false);
+  if (value == null) return <>В обработке</>;
+
+  const copy = () => {
+    const text = String(value);
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand('copy');
+    document.body.removeChild(area);
+    void navigator.clipboard?.writeText(text);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="inline-flex items-center gap-1.5 tabular-nums text-gray-900"
+      aria-label={copied ? 'Скопировано' : `Скопировать номер документа ${value}`}
+      title={copied ? 'Скопировано' : 'Скопировать'}
+    >
+      {value}
+      {copied ? (
+        <Check className="h-3.5 w-3.5" aria-hidden />
+      ) : (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-3.5 w-3.5 text-gray-400"
+          aria-hidden
+        >
+          <rect x="9" y="9" width="13" height="13" rx="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  );
+}
 
 const EXPENSE_CAMPAIGNS: Pick<
   ExpenseRow,
@@ -776,6 +799,63 @@ function buildDemoExpenses(): ExpenseRow[] {
 }
 
 const DEMO_EXPENSES: ExpenseRow[] = buildDemoExpenses();
+
+type CampaignTopupRow = {
+  id: string;
+  campaignId: number;
+  campaignName: string;
+  campaignType: string;
+  channel: FinanceChannel;
+  date: string;
+  source: (typeof EXPENSE_SOURCES)[number];
+  amountRub: number;
+};
+
+const CAMPAIGN_TOPUP_WIBES: Pick<
+  CampaignTopupRow,
+  'campaignId' | 'campaignName' | 'campaignType' | 'channel'
+>[] = [
+  {
+    campaignId: 6_735_628,
+    campaignName: 'Весна 2023',
+    campaignType: 'Аукцион · CPM',
+    channel: 'wibes',
+  },
+  {
+    campaignId: 6_735_629,
+    campaignName: 'Новая коллекция 2023',
+    campaignType: 'Автоматическая · CPM',
+    channel: 'wibes',
+  },
+];
+
+function buildDemoCampaignTopups(): CampaignTopupRow[] {
+  const start = new Date(2026, 7, 10);
+  return Array.from({ length: 24 }, (_, index) => {
+    const campaign =
+      index % 8 === 7
+        ? CAMPAIGN_TOPUP_WIBES[index % CAMPAIGN_TOPUP_WIBES.length]
+        : EXPENSE_CAMPAIGNS[index % EXPENSE_CAMPAIGNS.length];
+    const date = new Date(start);
+    date.setDate(start.getDate() - index * 2);
+    return {
+      id: `ct${index}`,
+      campaignId: campaign.campaignId,
+      campaignName: campaign.campaignName,
+      campaignType: campaign.campaignType,
+      channel: campaign.channel,
+      date: date.toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+      }),
+      source: EXPENSE_SOURCES[index % EXPENSE_SOURCES.length],
+      amountRub: 1_000 * (1 + (index % 12)),
+    };
+  });
+}
+
+const DEMO_CAMPAIGN_TOPUPS: CampaignTopupRow[] = buildDemoCampaignTopups();
 
 type PendingRefundStatus = 'sent' | 'not_sent';
 type PendingRefundFunds = 'balance' | 'bonuses';
@@ -1452,7 +1532,7 @@ function BufferSchemeModal({
           </div>
 
           <div
-            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-modal="true"
             aria-labelledby="buffer-scheme-title"
@@ -2458,16 +2538,16 @@ function FinancePeriodPicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={openPicker}
-        className={`inline-flex h-10 w-max items-center justify-between gap-2 whitespace-nowrap rounded-xl border border-transparent bg-[#F3F5F8] px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE] ${
+        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-[#F3F5F8] px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE] ${
           open ? 'bg-[#E6E9EE]' : ''
         }`}
       >
-        <span className="inline-flex min-w-0 items-center gap-2">
-          <Calendar className="h-4 w-4 shrink-0 text-gray-500" aria-hidden />
+        <span className="inline-flex min-w-0 items-center gap-1.5">
+          <Calendar className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden />
           <span className="truncate">{formatFinancePeriodLabel(value)}</span>
         </span>
         <ChevronDown
-          className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
           aria-hidden
         />
       </button>
@@ -2687,14 +2767,15 @@ function FinanceMonthGroups<T>({
       {rows.map((row) => {
         const key = financeMonthKey(getDate(row));
         const showMonth = key !== previousKey;
+        const separateFromPrevious = showMonth && previousKey !== null;
         previousKey = key;
         const title = titles.get(key) ?? 'Без даты';
         const total = totals.get(key) ?? 0;
         return (
           <React.Fragment key={rowKey(row)}>
             {showMonth ? (
-              <tr className="border-b border-gray-100">
-                <td colSpan={colSpan} className="px-4 py-4">
+              <tr data-month-heading className="border-b border-gray-100">
+                <td colSpan={colSpan} className={separateFromPrevious ? 'px-4 pb-2 pt-6' : 'px-4 py-2'}>
                   {renderMonthHeader ? (
                     renderMonthHeader({ key, title, total })
                   ) : (
@@ -2738,97 +2819,14 @@ const FinancePage: React.FC = () => {
   const isTopups = historyFilter === 'topups';
   const isBufferHistory = historyFilter === 'buffer';
   const isExpenses = historyFilter === 'expenses';
+  const isCampaignTopups = historyFilter === 'campaign_topups';
   const isExpiredBonuses = historyFilter === 'expired_bonuses';
-  const financeToday = startOfDay(new Date());
 
   const setFinancePeriod = (next: FinancePeriod) => {
     setPeriod(next);
     setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
     setVisibleTopupCount(EXPENSE_PAGE_SIZE);
   };
-
-  const activeFilterTags: FinanceActiveFilterTag[] = [];
-  if (period.kind === 'range') {
-    const preset = activeFinancePreset(period, financeToday);
-    const presetLabel =
-      preset && preset !== 'all'
-        ? FINANCE_PERIOD_PRESETS.find((item) => item.id === preset)?.label
-        : null;
-    activeFilterTags.push({
-      id: 'period',
-      label: presetLabel ?? formatFinancePeriodLabel(period),
-      onClear: () => setFinancePeriod({ kind: 'all' }),
-    });
-  }
-  if (searchQuery.trim()) {
-    activeFilterTags.push({
-      id: 'search',
-      label: `Поиск: ${searchQuery.trim()}`,
-      onClear: () => {
-        setSearchQuery('');
-        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-        setVisibleTopupCount(EXPENSE_PAGE_SIZE);
-      },
-    });
-  }
-  if (isExpenses && channel !== 'all') {
-    activeFilterTags.push({
-      id: 'channel',
-      label: FINANCE_CHANNEL_LABEL[channel],
-      onClear: () => {
-        setChannel('all');
-        setMediaExpenseFilter('all');
-        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-      },
-    });
-  }
-  if (isExpenses && channel === 'media' && mediaExpenseFilter !== 'all') {
-    activeFilterTags.push({
-      id: 'mediaExpense',
-      label: MEDIA_EXPENSE_TAG_LABEL[mediaExpenseFilter],
-      onClear: () => {
-        setMediaExpenseFilter('all');
-        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-      },
-    });
-  }
-  if (isExpenses && sourceFilter !== 'all') {
-    activeFilterTags.push({
-      id: 'source',
-      label: sourceFilter,
-      onClear: () => {
-        setSourceFilter('all');
-        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-      },
-    });
-  }
-  if (isTopups && topupStatus !== 'all') {
-    activeFilterTags.push({
-      id: 'topupStatus',
-      label: TOPUP_STATUS_OPTIONS.find((opt) => opt.value === topupStatus)?.label ?? topupStatus,
-      onClear: () => {
-        setTopupStatus('all');
-        setVisibleTopupCount(EXPENSE_PAGE_SIZE);
-      },
-    });
-  }
-  if (isTopups && topupMethodFilter !== 'all') {
-    activeFilterTags.push({
-      id: 'topupMethod',
-      label: topupMethodFilter,
-      onClear: () => {
-        setTopupMethodFilter('all');
-        setVisibleTopupCount(EXPENSE_PAGE_SIZE);
-      },
-    });
-  }
-  if (isPendingRefunds && refundFundsFilter !== 'all') {
-    activeFilterTags.push({
-      id: 'refundFunds',
-      label: PENDING_REFUND_FUNDS_LABEL[refundFundsFilter],
-      onClear: () => setRefundFundsFilter('all'),
-    });
-  }
 
   const filteredRows = DEMO_EXPENSES.filter((row) => {
     if (channel !== 'all' && row.channel !== channel) return false;
@@ -2858,7 +2856,7 @@ const FinancePage: React.FC = () => {
 
   useEffect(() => {
     const node = expenseSentinelRef.current;
-    if (!node || !hasMoreExpenses || isPendingRefunds || isTopups || isExpiredBonuses) return;
+    if (!node || !hasMoreExpenses || isPendingRefunds || isTopups || isExpiredBonuses || isCampaignTopups) return;
 
     const loadIfNear = () => {
       const rect = node.getBoundingClientRect();
@@ -2874,8 +2872,48 @@ const FinancePage: React.FC = () => {
       window.removeEventListener('scroll', loadIfNear);
       window.removeEventListener('resize', loadIfNear);
     };
-  }, [filteredRows.length, hasMoreExpenses, isPendingRefunds, isTopups, isExpiredBonuses, visibleExpenseCount]);
+  }, [filteredRows.length, hasMoreExpenses, isPendingRefunds, isTopups, isExpiredBonuses, isCampaignTopups, visibleExpenseCount]);
   const periodTotal = filteredRows.reduce((sum, row) => sum + row.amountRub, 0);
+
+  const filteredCampaignTopups = DEMO_CAMPAIGN_TOPUPS.filter((row) => {
+    if (channel !== 'all' && row.channel !== channel) return false;
+    if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
+    if (!dateInPeriod(row.date, period)) return false;
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.trim().toLowerCase();
+    return (
+      String(row.campaignId).includes(q) ||
+      row.campaignName.toLowerCase().includes(q) ||
+      row.campaignType.toLowerCase().includes(q) ||
+      row.source.toLowerCase().includes(q) ||
+      FINANCE_CHANNEL_LABEL[row.channel].toLowerCase().includes(q)
+    );
+  });
+  const campaignTopupTotal = filteredCampaignTopups.reduce((sum, row) => sum + row.amountRub, 0);
+  const visibleCampaignTopups = filteredCampaignTopups.slice(0, visibleExpenseCount);
+  const hasMoreCampaignTopups = visibleExpenseCount < filteredCampaignTopups.length;
+
+  useEffect(() => {
+    const node = expenseSentinelRef.current;
+    if (!node || !hasMoreCampaignTopups || !isCampaignTopups) return;
+
+    const loadIfNear = () => {
+      const rect = node.getBoundingClientRect();
+      if (rect.top <= window.innerHeight + 240) {
+        setVisibleExpenseCount((count) =>
+          Math.min(count + EXPENSE_PAGE_SIZE, filteredCampaignTopups.length),
+        );
+      }
+    };
+
+    loadIfNear();
+    window.addEventListener('scroll', loadIfNear, { passive: true });
+    window.addEventListener('resize', loadIfNear);
+    return () => {
+      window.removeEventListener('scroll', loadIfNear);
+      window.removeEventListener('resize', loadIfNear);
+    };
+  }, [filteredCampaignTopups.length, hasMoreCampaignTopups, isCampaignTopups, visibleExpenseCount]);
 
   const filteredTopups = DEMO_TOPUPS.filter((row) => {
     if (!dateInPeriod(row.date, period)) return false;
@@ -2969,7 +3007,7 @@ const FinancePage: React.FC = () => {
   });
 
   const bufferSubTabClass = (active: boolean) =>
-    `rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+    `h-7 rounded-lg px-2.5 text-sm font-medium transition-colors ${
       active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
     }`;
 
@@ -2983,122 +3021,51 @@ const FinancePage: React.FC = () => {
 
         <section className="min-w-0 flex-1 rounded-2xl bg-white px-5 py-6 sm:px-8 sm:py-8">
           <div className="flex min-w-0 items-center gap-2">
-            <h1 className="text-[28px] font-bold leading-tight tracking-tight text-gray-900">История операций</h1>
+            <h1 className="mb-0 text-[28px] font-bold leading-tight tracking-tight text-gray-900">История операций</h1>
             <FinanceTitleHelp />
           </div>
 
           {mainTab === 'my_money' ? (
             <>
-              <div className="mt-5 flex min-w-0 flex-wrap items-center gap-3">
-                <div className="relative w-[300px] shrink-0">
-                  <Search
-                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                    aria-hidden
-                  />
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(e) => {
-                      setSearchQuery(e.target.value);
-                      setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                      setVisibleTopupCount(EXPENSE_PAGE_SIZE);
-                    }}
-                    placeholder="Поиск"
-                    className="h-10 w-full rounded-xl border border-transparent bg-[#F3F5F8] py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 hover:bg-[#E6E9EE] focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
-                  />
-                </div>
+              <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
                 <div className="shrink-0">
                   <FinancePeriodPicker value={period} onChange={setFinancePeriod} />
                 </div>
                 <FinanceDropdown
                   aria-label="Тип истории"
                   value={historyFilter}
-                  onChange={setHistoryFilter}
+                  onChange={(value) => {
+                    setHistoryFilter(value);
+                    setSourceFilter('all');
+                    setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                  }}
                   className="shrink-0"
                   options={[
                     { value: 'expenses', label: 'Списания по кампаниям' },
+                    { value: 'campaign_topups', label: 'Пополнения кампаний' },
                     { value: 'topups', label: 'Пополнения счёта' },
                     { value: 'buffer', label: 'История баланса' },
                     { value: 'expired_bonuses', label: 'Истёкшие бонусы' },
                     { value: 'pending_refunds', label: 'Возвраты с кампаний' },
                   ]}
                 />
-                {isExpenses ? (
-                  <>
-                    <div
-                      className="inline-flex h-10 shrink-0 items-center gap-1 rounded-xl bg-[#F3F5F8] p-1"
-                      role="tablist"
-                      aria-label="Канал"
-                    >
-                      {FINANCE_CHANNELS.map((item) => {
-                        const active = channel === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            className={`h-8 rounded-lg px-3 text-sm font-medium transition-colors ${
-                              active
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-600 hover:bg-[#E6E9EE] hover:text-gray-900'
-                            }`}
-                            onClick={() => {
-                              setChannel(item.id);
-                              if (item.id !== 'media') setMediaExpenseFilter('all');
-                              setSourceFilter('all');
-                              setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                            }}
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {channel === 'media' ? (
-                      <FinanceDropdown
-                        aria-label="Тип списания медиа"
-                        value={mediaExpenseFilter}
-                        onChange={(value) => {
-                          setMediaExpenseFilter(value as 'all' | MediaExpenseTag);
-                          setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                        }}
-                        className="shrink-0"
-                        options={[
-                          { value: 'all', label: 'Тип списания' },
-                          { value: 'pause', label: MEDIA_EXPENSE_TAG_LABEL.pause },
-                          { value: 'fraud', label: MEDIA_EXPENSE_TAG_LABEL.fraud },
-                        ]}
-                      />
-                    ) : null}
-                  </>
+                {isExpenses && channel === 'media' ? (
+                  <FinanceDropdown
+                    aria-label="Тип списания медиа"
+                    value={mediaExpenseFilter}
+                    onChange={(value) => {
+                      setMediaExpenseFilter(value as 'all' | MediaExpenseTag);
+                      setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                    }}
+                    className="shrink-0"
+                    options={[
+                      { value: 'all', label: 'Тип списания' },
+                      { value: 'pause', label: MEDIA_EXPENSE_TAG_LABEL.pause },
+                      { value: 'fraud', label: MEDIA_EXPENSE_TAG_LABEL.fraud },
+                    ]}
+                  />
                 ) : null}
-                {isBufferHistory ? (
-                  <div
-                    className="inline-flex w-fit shrink-0 gap-1 rounded-xl bg-[#F2F2F7] p-1"
-                    role="tablist"
-                    aria-label="Операции баланса"
-                  >
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={bufferSubTab === 'accrued'}
-                      className={bufferSubTabClass(bufferSubTab === 'accrued')}
-                      onClick={() => setBufferSubTab('accrued')}
-                    >
-                      Начисления
-                    </button>
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={bufferSubTab === 'spent'}
-                      className={bufferSubTabClass(bufferSubTab === 'spent')}
-                      onClick={() => setBufferSubTab('spent')}
-                    >
-                      Списания
-                    </button>
-                  </div>
-                ) : isPendingRefunds ? (
+                {isPendingRefunds ? (
                   <FinanceDropdown
                     aria-label="Тип возврата"
                     value={refundFundsFilter}
@@ -3135,42 +3102,131 @@ const FinancePage: React.FC = () => {
                       ]}
                     />
                   </>
-                ) : isExpenses ? (
-                  <FinanceDropdown
-                    aria-label="Источник списания"
-                    value={sourceFilter}
-                    onChange={(value) => {
-                      setSourceFilter(value);
-                      setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                    }}
-                    className="shrink-0"
-                    options={[
-                      { value: 'all', label: 'Источник списания' },
-                      ...expenseSourceOptions.map((source) => ({ value: source, label: source })),
-                    ]}
-                  />
+                ) : null}
+                {isExpenses || isCampaignTopups ? (
+                  <>
+                    <div
+                      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg bg-[#F3F5F8] p-0.5"
+                      role="tablist"
+                      aria-label="Канал"
+                    >
+                      {FINANCE_CHANNELS.map((item) => {
+                        const active = channel === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            className={`h-7 rounded-md px-2.5 text-sm font-medium transition-colors ${
+                              active
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-600 hover:bg-[#E6E9EE] hover:text-gray-900'
+                            }`}
+                            onClick={() => {
+                              setChannel(item.id);
+                              if (item.id !== 'media') setMediaExpenseFilter('all');
+                              setSourceFilter('all');
+                              setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div
+                      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg bg-[#F3F5F8] p-0.5"
+                      role="tablist"
+                      aria-label={isCampaignTopups ? 'Источник' : 'Источник списания'}
+                    >
+                      {['all', ...(isCampaignTopups ? EXPENSE_SOURCES : expenseSourceOptions)].map((source) => {
+                        const active = sourceFilter === source;
+                        return (
+                          <button
+                            key={source}
+                            type="button"
+                            role="tab"
+                            aria-selected={active}
+                            className={`h-7 rounded-md px-2.5 text-sm font-medium transition-colors ${
+                              active
+                                ? 'bg-white text-gray-900 shadow-sm'
+                                : 'text-gray-600 hover:bg-[#E6E9EE] hover:text-gray-900'
+                            }`}
+                            onClick={() => {
+                              setSourceFilter(source);
+                              setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                            }}
+                          >
+                            {source === 'all' ? 'Все' : source}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : isBufferHistory ? (
+                  <div
+                    className="inline-flex h-8 w-fit shrink-0 items-center gap-0.5 rounded-lg bg-[#F2F2F7] p-0.5"
+                    role="tablist"
+                    aria-label="Операции баланса"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={bufferSubTab === 'accrued'}
+                      className={bufferSubTabClass(bufferSubTab === 'accrued')}
+                      onClick={() => setBufferSubTab('accrued')}
+                    >
+                      Начисления
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={bufferSubTab === 'spent'}
+                      className={bufferSubTabClass(bufferSubTab === 'spent')}
+                      onClick={() => setBufferSubTab('spent')}
+                    >
+                      Списания
+                    </button>
+                  </div>
                 ) : null}
                 <button
                   type="button"
-                  className="tooltip ml-auto inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-transparent bg-[#F3F5F8] px-4 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE]"
+                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-[#F3F5F8] px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE]"
                 >
-                  <Download className="h-4 w-4 text-gray-500" aria-hidden />
+                  <Download className="h-3.5 w-3.5 text-gray-500" aria-hidden />
                   Excel
                   <span className="tooltip-text">Скачать</span>
                 </button>
               </div>
-              <FinanceActiveFilterTags tags={activeFilterTags} />
+              <div className="relative mt-3 w-full">
+                <Search
+                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                  aria-hidden
+                />
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                    setVisibleTopupCount(EXPENSE_PAGE_SIZE);
+                  }}
+                  placeholder="Поиск"
+                  className="h-10 w-full rounded-xl border border-transparent bg-[#F3F5F8] py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 hover:bg-[#E6E9EE] focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+                />
+              </div>
 
               {isBufferHistory ? (
                 <>
-              <div className="mt-5 overflow-x-auto rounded-xl border border-gray-100">
+              <div className="mt-5 overflow-x-auto">
                 {bufferSubTab === 'accrued' ? (
-                  <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[520px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Дата начисления</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Сумма</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">За период</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Дата начисления</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">За период</th>
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3194,13 +3250,13 @@ const FinancePage: React.FC = () => {
                         rowKey={(row) => row.id}
                         renderRow={(row) => (
                         <tr className="border-b border-gray-50 last:border-0">
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.date}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 font-semibold tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 font-semibold tabular-nums text-gray-900">
                             {fmtRub(row.amountRub)} ₽
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-gray-500">
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-500">
                             {row.periodLabel}
                           </td>
                         </tr>
@@ -3209,13 +3265,13 @@ const FinancePage: React.FC = () => {
                     </tbody>
                   </table>
                 ) : (
-                  <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[520px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Дата списания</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Сумма</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Комиссия</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">За период</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Дата списания</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Комиссия</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">За период</th>
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3239,16 +3295,16 @@ const FinancePage: React.FC = () => {
                         rowKey={(row) => row.id}
                         renderRow={(row) => (
                         <tr className="border-b border-gray-50 last:border-0">
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.date}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 font-semibold tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 font-semibold tabular-nums text-gray-900">
                             {fmtRub(row.amountRub)} ₽
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.commissionPercent}%
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-gray-500">
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-500">
                             {row.periodLabel}
                           </td>
                         </tr>
@@ -3277,6 +3333,13 @@ const FinancePage: React.FC = () => {
                         {fmtRub(topupTotal)} ₽
                       </span>
                     </>
+                  ) : isCampaignTopups ? (
+                    <>
+                      Пополнено кампаний за период:{' '}
+                      <span className="font-semibold tabular-nums text-gray-900">
+                        {fmtRub(campaignTopupTotal)} ₽
+                      </span>
+                    </>
                   ) : (
                     <>
                       {formatFinanceDay(period.from)}
@@ -3292,16 +3355,16 @@ const FinancePage: React.FC = () => {
                 </p>
               ) : null}
 
-              <div className={`${period.kind === 'range' ? 'mt-4' : 'mt-5'} overflow-x-auto rounded-xl border border-gray-100`}>
+              <div className={`${period.kind === 'range' ? 'mt-4' : 'mt-5'} overflow-x-auto`}>
                 {isPendingRefunds ? (
-                  <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">ID кампании</th>
-                        <th className="min-w-[200px] px-4 py-4 font-medium">Кампания, Тип</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Дата завершения</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Сумма к возврату, ₽</th>
-                        <th className="min-w-[160px] px-4 py-4 font-medium">
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">ID кампании</th>
+                        <th className="min-w-[200px] px-3 py-2 text-sm font-medium">Кампания, Тип</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Дата завершения</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма к возврату, ₽</th>
+                        <th className="min-w-[160px] px-3 py-2 text-sm font-medium">
                           <span className="block">Статус</span>
                           <span className="mt-0.5 block text-[11px] font-normal leading-snug text-gray-400">
                             Возврат ≈ 5–7 дней
@@ -3321,28 +3384,28 @@ const FinancePage: React.FC = () => {
                         rowKey={(row) => String(row.campaignId)}
                         renderRow={(row) => (
                         <tr className="border-b border-gray-50 last:border-0">
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.campaignId}
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-2">
                             <button
                               type="button"
-                              className="text-left text-sm font-medium text-[#007AFF] hover:underline"
+                              className="text-left text-sm font-medium text-gray-900 hover:underline"
                             >
                               {row.campaignName}
                             </button>
-                            <p className="mt-1 text-xs leading-snug text-gray-500">{row.campaignType}</p>
+                            <p className="mb-0 mt-0.5 text-xs leading-snug text-gray-500">{row.campaignType}</p>
                             <span className="mt-1.5 inline-flex rounded-md bg-[#F3F5F8] px-2 py-0.5 text-xs font-medium text-gray-600">
                               {PENDING_REFUND_FUNDS_LABEL[row.funds]}
                             </span>
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.finishedAt}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 font-medium tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 font-medium tabular-nums text-gray-900">
                             {fmtRub(row.amountRub)}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4">
+                          <td className="whitespace-nowrap px-4 py-2">
                             <RefundStatusBadge status={row.status} />
                           </td>
                         </tr>
@@ -3351,14 +3414,14 @@ const FinancePage: React.FC = () => {
                     </tbody>
                   </table>
                 ) : isTopups ? (
-                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                        <th className="px-4 py-4 font-medium">Дата оплаты</th>
-                        <th className="px-4 py-4 font-medium">Сумма, ₽</th>
-                        <th className="px-4 py-4 font-medium">ИНН плательщика</th>
-                        <th className="px-4 py-4 font-medium">Способ оплаты</th>
-                        <th className="px-4 py-4 font-medium">Статус</th>
+                        <th className="px-3 py-2 text-sm font-medium">Дата оплаты</th>
+                        <th className="px-3 py-2 text-sm font-medium">Сумма, ₽</th>
+                        <th className="px-3 py-2 text-sm font-medium">ИНН плательщика</th>
+                        <th className="px-3 py-2 text-sm font-medium">Способ оплаты</th>
+                        <th className="px-3 py-2 text-sm font-medium">Статус</th>
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3380,19 +3443,19 @@ const FinancePage: React.FC = () => {
                           rowKey={(row) => row.id}
                           renderRow={(row) => (
                           <tr className="border-b border-gray-50 last:border-0">
-                            <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {row.date}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {fmtRub(row.amountRub)}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {row.inn}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-4 text-gray-900">
+                            <td className="whitespace-nowrap px-4 py-2 text-gray-900">
                               <TopupMethodLabel method={row.method} />
                             </td>
-                            <td className="whitespace-nowrap px-4 py-4">
+                            <td className="whitespace-nowrap px-4 py-2">
                               <TopupStatusBadge status={row.status} />
                             </td>
                           </tr>
@@ -3402,13 +3465,13 @@ const FinancePage: React.FC = () => {
                     </tbody>
                   </table>
                 ) : isExpiredBonuses ? (
-                  <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[760px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Конец действия</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Сумма, B</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">ID кампании</th>
-                        <th className="min-w-[220px] px-4 py-4 font-medium">Кампания, тип</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Конец действия</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма, B</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">ID кампании</th>
+                        <th className="min-w-[220px] px-3 py-2 text-sm font-medium">Кампания, тип</th>
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3421,20 +3484,20 @@ const FinancePage: React.FC = () => {
                       ) : (
                         filteredExpiredBonuses.map((row) => (
                           <tr key={row.id} className="border-b border-gray-50 last:border-0">
-                            <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {row.endsAt}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {fmtRub(row.amountB)}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {fmtRub(row.campaignId)}
                             </td>
-                            <td className="px-4 py-4">
+                            <td className="px-4 py-2">
                               {row.campaignName ? (
                                 <button
                                   type="button"
-                                  className="text-left text-sm font-medium text-[#007AFF] hover:underline"
+                                  className="text-left text-sm font-medium text-gray-900 hover:underline"
                                 >
                                   {row.campaignName}
                                 </button>
@@ -3450,13 +3513,70 @@ const FinancePage: React.FC = () => {
                       )}
                     </tbody>
                   </table>
-                ) : channel === 'wibes' ? (
-                  <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+                ) : isCampaignTopups ? (
+                  <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">ID кампании</th>
-                        <th className="min-w-[220px] px-4 py-4 font-medium">Кампания, Тип</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">
+                        <th className="min-w-[200px] px-3 py-2 text-sm font-medium">Кампания</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Дата пополнения</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Источник</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма</th>
+                      </tr>
+                    </thead>
+                    <tbody className={FINANCE_TABLE_BODY_CLASS}>
+                      {visibleCampaignTopups.length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">
+                            Ничего не найдено
+                          </td>
+                        </tr>
+                      ) : (
+                        <FinanceMonthGroups
+                          rows={visibleCampaignTopups}
+                          sourceRows={filteredCampaignTopups}
+                          period={period}
+                          colSpan={4}
+                          amountSuffix="₽"
+                          getDate={(row) => row.date}
+                          getAmount={(row) => row.amountRub}
+                          rowKey={(row) => row.id}
+                          renderRow={(row) => (
+                            <tr className="border-b border-gray-50 last:border-0">
+                              <td className="px-4 py-2">
+                                <button
+                                  type="button"
+                                  className="text-left text-sm font-medium text-gray-900 hover:underline"
+                                >
+                                  {row.campaignName}
+                                </button>
+                                <p className="mb-0 mt-0.5 text-xs leading-snug text-gray-500">
+                                  <span className="tabular-nums">{row.campaignId}</span>
+                                  {' · '}
+                                  {FINANCE_CHANNEL_LABEL[row.channel]}
+                                </p>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
+                                {row.date}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-2 text-gray-900">
+                                <ExpenseSourceLabel source={row.source} />
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
+                                {fmtRub(row.amountRub)} ₽
+                              </td>
+                            </tr>
+                          )}
+                        />
+                      )}
+                    </tbody>
+                  </table>
+                ) : channel === 'wibes' ? (
+                  <table className="w-full min-w-[860px] border-separate border-spacing-0 text-left text-sm">
+                    <thead>
+                      <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">ID кампании</th>
+                        <th className="min-w-[220px] px-3 py-2 text-sm font-medium">Кампания, Тип</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">
                           <span className="inline-flex items-center gap-1">
                             Дата списания
                             <span className="tooltip inline-flex">
@@ -3467,9 +3587,9 @@ const FinancePage: React.FC = () => {
                             </span>
                           </span>
                         </th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Источник списания</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Сумма, ₽</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">№ документа</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Источник списания</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма, ₽</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">№ документа</th>
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3494,24 +3614,24 @@ const FinancePage: React.FC = () => {
                           rowKey={(row) => row.id ?? `${row.campaignId}-${row.debitDate}-${row.source}-${row.amountRub}`}
                           renderRow={(row) => (
                         <tr className="border-b border-gray-50 last:border-0">
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.campaignId}
                           </td>
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-2">
                             <button
                               type="button"
-                              className="max-w-[280px] truncate text-left text-sm font-medium text-[#007AFF] hover:underline"
+                              className="max-w-[280px] truncate text-left text-sm font-medium text-gray-900 hover:underline"
                               title={row.campaignName}
                             >
                               {row.campaignName}
                             </button>
-                            <p className="mt-1 text-xs leading-snug text-gray-500">{row.campaignType}</p>
+                            <p className="mb-0 mt-0.5 text-xs leading-snug text-gray-500">{row.campaignType}</p>
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.debitDate}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-gray-900">{row.source}</td>
-                          <td className="whitespace-nowrap px-4 py-4 text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-900">{row.source}</td>
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-900">
                             <span className="tabular-nums">{fmtRub(row.amountRub)}</span>
                             {row.isCorrection ? (
                               <span className="mt-1 flex items-center gap-1 text-xs text-gray-400">
@@ -3525,8 +3645,8 @@ const FinancePage: React.FC = () => {
                               </span>
                             ) : null}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
-                            {row.documentNo == null ? 'В обработке' : row.documentNo}
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
+                            <CopyDocumentNo value={row.documentNo} />
                           </td>
                         </tr>
                           )}
@@ -3535,21 +3655,21 @@ const FinancePage: React.FC = () => {
                     </tbody>
                   </table>
                 ) : (
-                  <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                  <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                        <th className="min-w-[200px] px-4 py-4 font-medium">Кампания</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">
-                          <span className="tooltip text-base font-medium text-black">
+                        <th className="min-w-[200px] px-3 py-2 text-sm font-medium">Кампания</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">
+                          <span className="tooltip text-sm font-medium text-black">
                             Дата списания
                             <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-1.5 !w-max !max-w-[16rem] !translate-x-0 !whitespace-normal !px-2.5 !py-2 !text-left !font-normal !leading-snug">
                               Дата фактического выставления платежа
                             </span>
                           </span>
                         </th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Источник списания</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Сумма</th>
-                        <th className="whitespace-nowrap px-4 py-4 font-medium">Номер документа</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Источник списания</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Номер документа</th>
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3574,14 +3694,14 @@ const FinancePage: React.FC = () => {
                           rowKey={(row) => row.id ?? `${row.campaignId}-${row.documentNo}`}
                           renderRow={(row) => (
                         <tr className="border-b border-gray-50 last:border-0">
-                          <td className="px-4 py-4">
+                          <td className="px-4 py-2">
                             <button
                               type="button"
-                              className="text-left text-sm font-medium text-[#007AFF] hover:underline"
+                              className="text-left text-sm font-medium text-gray-900 hover:underline"
                             >
                               {row.campaignName}
                             </button>
-                            <p className="mt-1 text-xs leading-snug text-gray-500">
+                            <p className="mb-0 mt-0.5 text-xs leading-snug text-gray-500">
                               <span className="tabular-nums">{row.campaignId}</span>
                               {' · '}
                               {FINANCE_CHANNEL_LABEL[row.channel]}
@@ -3594,17 +3714,17 @@ const FinancePage: React.FC = () => {
                               </span>
                             ) : null}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.debitDate}
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-900">
                             <ExpenseSourceLabel source={row.source} />
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {fmtRub(row.amountRub)} ₽
                           </td>
-                          <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
-                            {row.documentNo == null ? 'В обработке' : row.documentNo}
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
+                            <CopyDocumentNo value={row.documentNo} />
                           </td>
                         </tr>
                           )}
@@ -3614,7 +3734,7 @@ const FinancePage: React.FC = () => {
                   </table>
                 )}
               </div>
-              {!isPendingRefunds && !isTopups && !isExpiredBonuses && hasMoreExpenses ? (
+              {!isPendingRefunds && !isTopups && !isExpiredBonuses && (isCampaignTopups ? hasMoreCampaignTopups : hasMoreExpenses) ? (
                 <div ref={expenseSentinelRef} className="h-px" aria-hidden />
               ) : null}
               {isTopups && hasMoreTopups ? (
@@ -3631,23 +3751,23 @@ const FinancePage: React.FC = () => {
                 </div>
                 <button
                   type="button"
-                  className="tooltip ml-auto inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-xl border border-transparent bg-[#F3F5F8] px-4 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE]"
+                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-[#F3F5F8] px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE]"
                 >
-                  <Download className="h-4 w-4 text-gray-500" aria-hidden />
+                  <Download className="h-3.5 w-3.5 text-gray-500" aria-hidden />
                   Excel
                   <span className="tooltip-text">Скачать</span>
                 </button>
               </div>
 
-              <div className="mt-4 overflow-x-auto rounded-xl border border-gray-100">
-                <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full min-w-[640px] border-separate border-spacing-0 text-left text-sm">
                   <thead>
                     <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                      <th className="whitespace-nowrap px-4 py-4 font-medium">Дата начисления</th>
-                      <th className="min-w-[220px] px-4 py-4 font-medium">Источник</th>
-                      <th className="whitespace-nowrap px-4 py-4 font-medium">Сумма, B</th>
-                      <th className="whitespace-nowrap px-4 py-4 font-medium">Тип</th>
-                      <th className="whitespace-nowrap px-4 py-4 font-medium">Сгорают до</th>
+                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Дата начисления</th>
+                      <th className="min-w-[220px] px-3 py-2 text-sm font-medium">Источник</th>
+                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма, B</th>
+                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Тип</th>
+                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сгорают до</th>
                     </tr>
                   </thead>
                   <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3662,17 +3782,17 @@ const FinancePage: React.FC = () => {
                       rowKey={(row) => row.id}
                       renderRow={(row) => (
                       <tr className="border-b border-gray-50 last:border-0">
-                        <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-900">
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                           {row.date}
                         </td>
-                        <td className="px-4 py-4 text-gray-900">{row.source}</td>
-                        <td className="whitespace-nowrap px-4 py-4 font-semibold tabular-nums text-gray-900">
+                        <td className="px-4 py-2 text-gray-900">{row.source}</td>
+                        <td className="whitespace-nowrap px-4 py-2 font-semibold tabular-nums text-gray-900">
                           {fmtRub(row.amountB)}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-4 text-gray-900">
+                        <td className="whitespace-nowrap px-4 py-2 text-gray-900">
                           {row.kind === 'permanent' ? 'Несгораемые' : 'Сгораемые'}
                         </td>
-                        <td className="whitespace-nowrap px-4 py-4 tabular-nums text-gray-500">
+                        <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-500">
                           {row.expiresAt ?? '—'}
                         </td>
                       </tr>

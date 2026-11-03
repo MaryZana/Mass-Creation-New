@@ -129,7 +129,7 @@ export function RankingFactorsSidePanel({
         role="dialog"
         aria-modal="true"
         aria-labelledby="ranking-factors-title"
-        className="ranking-factors-panel fixed inset-y-0 right-0 z-[120] flex w-full max-w-[480px] flex-col bg-white shadow-2xl"
+        className="ranking-factors-panel fixed inset-y-0 right-0 z-[120] flex h-full w-[720px] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl"
       >
         <div className="relative border-b border-gray-100 px-5 py-4 pr-12">
           <div className="flex items-center gap-1.5">

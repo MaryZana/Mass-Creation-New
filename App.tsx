@@ -17,6 +17,7 @@ import {
   AutoStrategiesModal,
   CpcCampaignPage,
   createDefaultAdvancedDailyLimitSettings,
+  isDynamicDailyLimitConfigured,
   type AdvancedDailyLimitSettings,
   type BidChasingModalProduct,
 } from './components/CpcCampaignPage';
@@ -39,6 +40,10 @@ import {
   type BulkSearchBidItem,
 } from './components/BulkSearchBidModal';
 import {
+  CPC_DEFAULT_SEARCH_BID_RUB,
+  CPM_DEFAULT_COMPETITIVE_BID_RUB,
+} from './components/SearchBidForecastField';
+import {
   clampCampaignsToPromoPackageBalances,
   effectivePromoBonusAmount,
   packageBalanceAfterCampaigns,
@@ -60,24 +65,11 @@ import {
   usePromoBonusDemo,
   useSetMassCreationDemoChrome,
 } from './components/PromoBonusDemoContext';
-import { usePromoMissedBonusUx } from './components/PromoMissedBonusUxContext';
 import {
-  MissedBonusAccountLink,
-  MissedBonusAlertRow,
-  MissedBonusBesideLaunch,
-  MissedBonusCompareCard,
-  MissedBonusFloatingCard,
-  MissedBonusFooterBanner,
-  MissedBonusFooterInfo,
-  MissedBonusInlineOffer,
-  MissedBonusIslandBanner,
-  MissedBonusProgressBar,
-  MissedBonusPromoColumn,
-  MissedBonusSnackbar,
-  MissedBonusToggleOffer,
-  shouldReplacePromoColumn,
-  shouldShowAccountLink,
+  MissedBonusPromoPill,
+  type BonusDistributionRow,
 } from './components/PromoMissedBonusOffer';
+import { BudgetRefillModal } from './components/BudgetRefillModal';
 import {
   isNewSellerProfile,
   useProfile,
@@ -263,6 +255,25 @@ function suggestPromoBonusAllocation(
   }
 
   return { totalBonus, perCampaign };
+}
+
+/** Равномерно делит `target` между кампаниями, не превышая лимит списания каждой (`caps`). */
+function evenBonusShares(caps: readonly number[], target: number): number[] {
+  const shares = caps.map(() => 0);
+  const order = caps.map((_, i) => i).sort((a, b) => caps[a] - caps[b]);
+  let remaining = Math.floor(target);
+  order.forEach((index, position) => {
+    const share = Math.floor(remaining / (order.length - position));
+    shares[index] = Math.min(caps[index], share);
+    remaining -= shares[index];
+  });
+  for (let i = order.length - 1; i >= 0 && remaining > 0; i -= 1) {
+    const index = order[i];
+    const extra = Math.min(caps[index] - shares[index], remaining);
+    shares[index] += extra;
+    remaining -= extra;
+  }
+  return shares;
 }
 
 function computeLaunchAffordability(
@@ -827,27 +838,41 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
     
             if (tempConfig.paymentModel === PaymentModel.CPM) {
                 if (tempConfig.bidType === BidType.MANUAL) {
-                    // распределяем ставки по зонам в зависимости от выбранных тоглов
-                    const withSearch = manualZones.search ? { searchBid: 300 } : {};
-                    const withRecs = manualZones.recommendations ? { recommendationsBid: 300 } : {};
+                    // дефолт CPM — конкурентная ставка
+                    const withSearch = manualZones.search
+                      ? { searchBid: CPM_DEFAULT_COMPETITIVE_BID_RUB }
+                      : {};
+                    const withRecs = manualZones.recommendations
+                      ? { recommendationsBid: CPM_DEFAULT_COMPETITIVE_BID_RUB }
+                      : {};
 
                     // если обе зоны выключены, по умолчанию включаем поиск
                     if (!manualZones.search && !manualZones.recommendations) {
-                        return { ...campaignBase, searchBid: 300 } as CampaignRecord;
+                        return {
+                          ...campaignBase,
+                          searchBid: CPM_DEFAULT_COMPETITIVE_BID_RUB,
+                        } as CampaignRecord;
                     }
 
                     return { ...campaignBase, ...withSearch, ...withRecs } as CampaignRecord;
                 }
-                return { ...campaignBase, bid: 300 } as CampaignRecord;
+                return {
+                  ...campaignBase,
+                  bid: CPM_DEFAULT_COMPETITIVE_BID_RUB,
+                } as CampaignRecord;
             } else {
-                // CPC: зоны Поиск и Рекомендации по выбору в модалке (manualZones)
-                const withSearch = manualZones.search ? { searchBid: 30 } : {};
-                const withRecs = manualZones.recommendations ? { recommendationsBid: 200 } : {};
+                // CPC: дефолт — ставка за 11–34
+                const withSearch = manualZones.search
+                  ? { searchBid: CPC_DEFAULT_SEARCH_BID_RUB }
+                  : {};
+                const withRecs = manualZones.recommendations
+                  ? { recommendationsBid: CPC_DEFAULT_SEARCH_BID_RUB }
+                  : {};
                 if (!manualZones.search && !manualZones.recommendations) {
                     return {
                       ...campaignBase,
-                      searchBid: 30,
-                      recommendationsBid: 200,
+                      searchBid: CPC_DEFAULT_SEARCH_BID_RUB,
+                      recommendationsBid: CPC_DEFAULT_SEARCH_BID_RUB,
                       dailyLimit: 1000,
                       autoReplenishment: true,
                     } as CampaignRecord;
@@ -909,10 +934,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
             > 
                 <div className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6"> 
                     <div className="min-w-0 flex-1">
-                        <h2 id="add-item-modal-title" className="text-xl font-bold text-gray-900">Добавление товаров</h2> 
-                        <p className="mt-2 mb-0 text-sm font-normal leading-snug text-gray-500">
-                          товары автоматически объединяются в группы по типу кампании (например, CPM: ручная / единая ставка). Один товар = 1 кампания
-                        </p>
+                        <h2 id="add-item-modal-title" className="text-xl font-bold text-gray-900">Добавление товаров</h2>
                     </div>
                     <button
                       type="button"
@@ -2652,13 +2674,41 @@ const creationBarBtnClass =
 const creationBarCloseClass =
   'rounded-full p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white';
 
+type CreationBulkBidTarget =
+  | 'cpc-search'
+  | 'cpc-recs'
+  | 'cpm-search'
+  | 'cpm-recs'
+  | 'cpm-unified';
+
+const CREATION_BULK_BID_OPTIONS: {
+  id: CreationBulkBidTarget;
+  label: string;
+}[] = [
+  { id: 'cpc-search', label: 'CPC Поиск' },
+  { id: 'cpc-recs', label: 'CPC Рекомендации' },
+  { id: 'cpm-search', label: 'CPM Поиск' },
+  { id: 'cpm-recs', label: 'CPM Рекомендации' },
+  { id: 'cpm-unified', label: 'CPM Единая' },
+];
+
+const CREATION_BULK_BID_TITLES: Record<CreationBulkBidTarget, string> = {
+  'cpc-search': 'Настройте CPC в поиске',
+  'cpc-recs': 'Настройте CPC в рекомендациях',
+  'cpm-search': 'Настройте CPM в поиске',
+  'cpm-recs': 'Настройте CPM в рекомендациях',
+  'cpm-unified': 'Настройте единую ставку CPM',
+};
+
 const CreationSelectionBar = ({
   count,
   total,
+  showAutobidder = false,
+  showDailyLimit = false,
+  bidTargets,
   onBudget,
   onDailyLimit,
-  onAutoRefill,
-  onBid,
+  onBidTarget,
   onZones,
   onAutobidder,
   onDelete,
@@ -2666,50 +2716,118 @@ const CreationSelectionBar = ({
 }: {
   count: number;
   total: number;
+  showAutobidder?: boolean;
+  showDailyLimit?: boolean;
+  bidTargets: CreationBulkBidTarget[];
   onBudget: () => void;
   onDailyLimit: () => void;
-  onAutoRefill: () => void;
-  onBid: () => void;
+  onBidTarget: (target: CreationBulkBidTarget) => void;
   onZones: () => void;
   /** Автобиддер только для CPC */
   onAutobidder: () => void;
   onDelete: () => void;
   onClear: () => void;
 }) => {
+  const [bidMenuOpen, setBidMenuOpen] = useState(false);
+  const bidMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!bidMenuOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (bidMenuRef.current?.contains(event.target as Node)) return;
+      setBidMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setBidMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [bidMenuOpen]);
+
+  const visibleBidOptions = CREATION_BULK_BID_OPTIONS.filter((opt) =>
+    bidTargets.includes(opt.id),
+  );
+
   return (
     <div className={creationBarShellClass}>
       <span className="whitespace-nowrap text-sm font-medium text-white">
         Выбрано {count} из {total}
       </span>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={onBid} className={creationBarBtnClass}>
-          <Zap className="h-4 w-4 text-white" />
-          <span>Ставка</span>
-          <ChevronDown className="h-3.5 w-3.5 text-white/80" />
-        </button>
-        <button type="button" onClick={onAutobidder} className={creationBarBtnClass}>
-          <Crosshair className="h-4 w-4 text-white" />
-          <span>Автобиддер</span>
-        </button>
-        <button type="button" onClick={onDailyLimit} className={creationBarBtnClass}>
-          <Calendar className="h-4 w-4 text-white" />
-          <span>Дневной лимит</span>
-        </button>
         <button type="button" onClick={onBudget} className={creationBarBtnClass}>
           <Coins className="h-4 w-4 text-white" />
           <span>Бюджет</span>
         </button>
-        <button type="button" onClick={onAutoRefill} className={creationBarBtnClass}>
-          <RefreshCw className="h-4 w-4 text-white" />
-          <span>Автопополнение</span>
-        </button>
+        {showDailyLimit ? (
+          <button type="button" onClick={onDailyLimit} className={creationBarBtnClass}>
+            <Calendar className="h-4 w-4 text-white" />
+            <span>Дневной лимит</span>
+          </button>
+        ) : null}
+        {showAutobidder ? (
+          <button type="button" onClick={onAutobidder} className={creationBarBtnClass}>
+            <Crosshair className="h-4 w-4 text-white" />
+            <span>Автобиддер</span>
+          </button>
+        ) : null}
+        <div className="relative" ref={bidMenuRef}>
+          <button
+            type="button"
+            onClick={() => setBidMenuOpen((open) => !open)}
+            className={creationBarBtnClass}
+            aria-haspopup="menu"
+            aria-expanded={bidMenuOpen}
+          >
+            <Zap className="h-4 w-4 text-white" />
+            <span>Ставка</span>
+            <ChevronDown
+              className={`h-3.5 w-3.5 text-white/80 transition-transform ${
+                bidMenuOpen ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+          {bidMenuOpen && visibleBidOptions.length > 0 ? (
+            <div
+              role="menu"
+              className="absolute bottom-[calc(100%+10px)] left-1/2 z-[90] w-[240px] -translate-x-1/2 overflow-hidden rounded-2xl bg-white py-3 shadow-[0_12px_40px_rgba(0,0,0,0.18)] animate-in fade-in zoom-in-95 duration-150"
+            >
+              <p className="px-4 pb-2 text-[12px] leading-4 text-gray-500">
+                Ставки изменятся только в активных кампаниях
+              </p>
+              <div className="flex flex-col">
+                {visibleBidOptions.map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setBidMenuOpen(false);
+                      onBidTarget(opt.id);
+                    }}
+                    className="px-4 py-2.5 text-left text-[15px] font-semibold text-gray-950 transition-colors hover:bg-gray-50"
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
         <button type="button" onClick={onZones} className={creationBarBtnClass}>
           <Columns2 className="h-4 w-4 text-white" />
           <span>Зоны показа</span>
         </button>
-        <button type="button" onClick={onDelete} className={creationBarBtnClass} aria-label="Удалить">
-          <Trash2 className="h-4 w-4 text-white" />
-          <span>Удалить</span>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#2C2C2C] text-[#FF5A5A] transition-colors hover:bg-[#3A3A3A] hover:text-[#FF7A7A]"
+          aria-label="Удалить"
+        >
+          <Trash2 className="h-4 w-4" />
         </button>
       </div>
       <button
@@ -2745,7 +2863,6 @@ export default function App() {
   } = useProfile();
   const { promoBonusTotal } = usePromoBonusDemo();
   const setMassCreationDemoChrome = useSetMassCreationDemoChrome();
-  const { uxId: promoMissedBonusUx } = usePromoMissedBonusUx();
   const demoBonusPackages = useMemo(
     () => buildDemoBonusPackages(promoBonusTotal) as BonusPackage[],
     [promoBonusTotal],
@@ -2895,6 +3012,8 @@ export default function App() {
   const [isBulkActionModalOpen, setIsBulkActionModalOpen] = useState(false);
   const [clearSelectionOnBulkClose, setClearSelectionOnBulkClose] = useState(false);
   const [currentBulkAction, setCurrentBulkAction] = useState<BulkActionType>(null);
+  const [creationBulkBidTarget, setCreationBulkBidTarget] =
+    useState<CreationBulkBidTarget>('cpc-search');
   const [bulkEditPrefillData, setBulkEditPrefillData] = useState<{ budget: number; bonusAmount: number; useBonuses: boolean; } | null>(null);
   
   const [isConfirmDeleteGroupOpen, setIsConfirmDeleteGroupOpen] = useState(false);
@@ -2909,8 +3028,6 @@ export default function App() {
   // Removed: hasShownFirstListCpcTooltip (tooltip UI removed)
   const [isLaunchSummaryModalOpen, setIsLaunchSummaryModalOpen] = useState(false);
   /** В окне подтверждения: тратить ли промобонусы, если в таблице они ещё не назначены. */
-  const [launchPayWithBonuses, setLaunchPayWithBonuses] = useState(false);
-  const pendingLaunchBonusRef = useRef<SuggestedBonusAllocation | null>(null);
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
   const [campaignForAutoRefill, setCampaignForAutoRefill] = useState<CampaignRecord | null>(null);
   const [isCreationBulkDailyLimitOpen, setIsCreationBulkDailyLimitOpen] = useState(false);
@@ -3076,12 +3193,24 @@ export default function App() {
       .slice(0, 5)
       .map((p, index) => {
       const nmId = Number(p.id);
-      const searchPresets = [undefined, 30, 50, undefined, 50] as const;
-      const recsPresets = [200, 200, undefined, 200, 50] as const;
+      const searchPresets = [
+        undefined,
+        CPC_DEFAULT_SEARCH_BID_RUB,
+        CPC_DEFAULT_SEARCH_BID_RUB,
+        undefined,
+        CPC_DEFAULT_SEARCH_BID_RUB,
+      ] as const;
+      const recsPresets = [
+        CPC_DEFAULT_SEARCH_BID_RUB,
+        CPC_DEFAULT_SEARCH_BID_RUB,
+        undefined,
+        CPC_DEFAULT_SEARCH_BID_RUB,
+        CPC_DEFAULT_SEARCH_BID_RUB,
+      ] as const;
       const dailyPresets = [1000, 1000, 1000, 1000, null] as const;
       const apPresets = [true, true, false, true, false] as const;
       return {
-        id: `growing-demand-v5-${p.id}-${index}`,
+        id: `growing-demand-v6-${p.id}-${index}`,
         nmId,
         productName: p.name,
         campaignName: `${p.name} CPC ${currentDate}`,
@@ -3209,7 +3338,21 @@ export default function App() {
   );
   
   const uniqueSources = useMemo(() => Array.from(new Set(allValidCampaigns.map(c => c.source))), [allValidCampaigns]);
+  /** Фильтр «Источник» — только если товары загружены из файла (.xlsx / .csv). */
+  const uniqueFileSources = useMemo(
+    () =>
+      uniqueSources.filter((source) =>
+        /(^|,\s*)[^,]+?\.(xlsx|xls|csv)(\s*,|$)/i.test(source),
+      ),
+    [uniqueSources],
+  );
+  const canFilterBySource = uniqueFileSources.length > 0;
   const uniqueCategories = useMemo(() => Array.from(new Set(allValidCampaigns.map(c => c.category))), [allValidCampaigns]);
+
+  useEffect(() => {
+    if (canFilterBySource) return;
+    setSelectedSources((prev) => (prev.length === 0 ? prev : []));
+  }, [canFilterBySource]);
   
   const areFiltersActive = useMemo(() => {
     return searchTags.length > 0 || currentSearchInput.trim() !== '' || selectedSources.length > 0 || selectedCategories.length > 0;
@@ -3258,6 +3401,13 @@ export default function App() {
   );
 
   const globalDeficit = Math.max(0, globalTotals.real - UNIFIED_BALANCE);
+  const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
+
+  const refreshUnifiedBalance = () => {
+    if (isRefreshingBalance) return;
+    setIsRefreshingBalance(true);
+    window.setTimeout(() => setIsRefreshingBalance(false), 700);
+  };
 
   const handleTemplateDownload = (finalConfig: CampaignConfig) => { setGlobalConfig(finalConfig); setToastMessage("Шаблон успешно сформирован и скачан"); setShowToast(true); };
 
@@ -3343,8 +3493,8 @@ export default function App() {
         prospectCtrChange: Math.max(0, (p.nmId % 21) - 10) * 2,
         cpcCompatible: true,
         bonusAmount: 0,
-        searchBid: 30,
-        recommendationsBid: 200,
+        searchBid: CPC_DEFAULT_SEARCH_BID_RUB,
+        recommendationsBid: CPC_DEFAULT_SEARCH_BID_RUB,
       }));
 
       handleAddItemSubmit(
@@ -3375,36 +3525,10 @@ export default function App() {
     BulkPaymentModelProduct[] | null
   >(null);
 
-  const mapCuratedPickToWbDiscountModalProducts = (
-    items: CuratedPickProduct[],
-  ): BulkPaymentModelProduct[] =>
-    items.map((p) => ({
-      id: `wb-discount-${p.nmId}`,
-      name: p.productName,
-      nmId: p.nmId,
-      imageUrl: p.imageUrl,
-      category: p.category,
-      cpcCompatible: true,
-      zeroStock: false,
-    }));
-
-  const openWbDiscountPromoteModal = useCallback(
-    (items: CuratedPickProduct[]) => {
-      if (items.length === 0) return;
-      setWbDiscountPromoteProducts(mapCuratedPickToWbDiscountModalProducts(items));
-    },
-    [],
-  );
-
   const handleAddCuratedBundle = (
     items: CuratedPickProduct[],
-    pickId: 'promising' | 'wb_discount',
+    _pickId: 'promising',
   ) => {
-    if (pickId === 'wb_discount') {
-      openWbDiscountPromoteModal(items);
-      return;
-    }
-
     const currentDate = new Date().toLocaleDateString('ru-RU');
     const campaigns: CampaignRecord[] = items.map((p, index) => ({
       id: `curated-pick-${p.nmId}-${index}-${Date.now()}`,
@@ -3424,8 +3548,8 @@ export default function App() {
       prospectCtrChange: Math.max(0, (p.nmId % 21) - 10) * 2,
       cpcCompatible: true,
       bonusAmount: 0,
-      searchBid: 30,
-      recommendationsBid: 30,
+      searchBid: CPC_DEFAULT_SEARCH_BID_RUB,
+      recommendationsBid: CPC_DEFAULT_SEARCH_BID_RUB,
     }));
     handleAddItemSubmit(
       { paymentModel: PaymentModel.CPC, bidType: BidType.UNIFIED },
@@ -3440,7 +3564,9 @@ export default function App() {
   }) => {
     const currentDate = new Date().toLocaleDateString('ru-RU');
     const isCpc = payload.paymentModel === 'CPC';
-    const defaultBid = isCpc ? 30 : 300;
+    const defaultBid = isCpc
+      ? CPC_DEFAULT_SEARCH_BID_RUB
+      : CPM_DEFAULT_COMPETITIVE_BID_RUB;
     const campaigns: CampaignRecord[] = payload.products.map((p, index) => ({
       id: `wb-discount-pick-${p.nmId}-${index}-${Date.now()}`,
       nmId: p.nmId,
@@ -3633,44 +3759,10 @@ export default function App() {
   };
   
   const launchCampaigns = () => {
-    setLaunchPayWithBonuses(false);
     setIsLaunchSummaryModalOpen(true);
   };
 
-  const applyLaunchBonusAllocation = (allocation: SuggestedBonusAllocation) => {
-    if (allocation.totalBonus <= 0) return;
-    const patchCampaign = (campaign: CampaignRecord): CampaignRecord => {
-      const assigned = allocation.perCampaign.get(campaign.id);
-      if (!assigned) return campaign;
-      return {
-        ...campaign,
-        usePromoBonuses: true,
-        bonusAmount: assigned.bonusAmount,
-        bonusPackageId: assigned.packageId,
-      };
-    };
-    setTemplateGroups((prev) =>
-      prev.map((group) => ({
-        ...group,
-        campaigns: group.campaigns.map(patchCampaign),
-      })),
-    );
-    if (editingGroupId) {
-      setEditedCampaigns((prev) => prev.map(patchCampaign));
-    }
-  };
-
   const handleProceedToLaunch = () => {
-    if (
-      launchPreview.canOfferBonuses &&
-      launchPayWithBonuses &&
-      launchPreview.suggestedAllocation.totalBonus > 0
-    ) {
-      pendingLaunchBonusRef.current = launchPreview.suggestedAllocation;
-      applyLaunchBonusAllocation(launchPreview.suggestedAllocation);
-    } else {
-      pendingLaunchBonusRef.current = null;
-    }
     setIsLaunchSummaryModalOpen(false);
     if (areFiltersActive) {
       setIsConfirmLaunchWithFiltersOpen(true);
@@ -3791,7 +3883,12 @@ export default function App() {
       setShowToast(true);
   };
 
-    const applyBulkChanges = (value: any, idsToUpdate: string[], actionOverride?: BulkActionType) => {
+    const applyBulkChanges = (
+      value: any,
+      idsToUpdate: string[],
+      actionOverride?: BulkActionType,
+      options?: { skipClose?: boolean; toastMessage?: string },
+    ) => {
         const action = actionOverride ?? currentBulkAction;
         const updateLogic = (campaign: CampaignRecord): CampaignRecord => {
             if (!idsToUpdate.includes(campaign.id)) return campaign;
@@ -3838,9 +3935,84 @@ export default function App() {
         // Always update the base groups so changes persist after editing
         setTemplateGroups(prev => prev.map(group => ({ ...group, campaigns: group.campaigns.map(updateLogic) })));
 
-        setToastMessage(`Обновлено ${idsToUpdate.length} ${getPlural(idsToUpdate.length, 'кампания', 'кампании', 'кампаний')}`);
+        if (!options?.skipClose) {
+          setToastMessage(
+            options?.toastMessage ??
+              `Обновлено ${idsToUpdate.length} ${getPlural(idsToUpdate.length, 'кампания', 'кампании', 'кампаний')}`,
+          );
+          setShowToast(true);
+          closeBulkActionModal();
+        }
+    };
+
+    const applyBudgetRefillFromModal = (
+      amount: number,
+      extras:
+        | {
+            useBonuses?: boolean;
+            bonusAmount?: number;
+            packageId?: string;
+            autoRefill?: { enabled: boolean; threshold: number; amount: number };
+          }
+        | undefined,
+      ids: string[],
+    ) => {
+      const pkg =
+        BONUS_PACKAGES.find((item) => item.id === extras?.packageId) ?? BONUS_PACKAGES[0];
+      const budgetValue = {
+        __mode: 'budget' as const,
+        total: amount,
+        isBonusActive: Boolean(extras?.useBonuses && (extras.bonusAmount ?? 0) > 0),
+        bonus: extras?.bonusAmount ?? 0,
+        selectedPkg: pkg,
+      };
+
+      if (listBudgetTargetIds && listBudgetTargetIds.length > 0) {
+        listBudgetApplierRef.current?.(ids, budgetValue as unknown as Record<string, unknown>);
+        if (extras?.autoRefill?.enabled) {
+          listBudgetApplierRef.current?.(ids, {
+            __mode: 'autorefill',
+            enabled: true,
+            threshold: extras.autoRefill.threshold,
+            amount: extras.autoRefill.amount,
+            useBonuses: Boolean(extras.useBonuses),
+          });
+        }
+        const count = ids.length;
+        setToastMessage(
+          extras?.autoRefill?.enabled
+            ? `Бюджет и автопополнение обновлены для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`
+            : `Бюджет обновлён для ${count} ${getPlural(count, 'кампании', 'кампаний', 'кампаний')}`,
+        );
         setShowToast(true);
         closeBulkActionModal();
+        return;
+      }
+
+      const withAuto = Boolean(extras?.autoRefill?.enabled);
+      applyBulkChanges(budgetValue, ids, 'budget', {
+        skipClose: withAuto,
+      });
+      if (withAuto && extras?.autoRefill) {
+        applyBulkChanges(
+          {
+            enabled: true,
+            threshold: extras.autoRefill.threshold,
+            amount: extras.autoRefill.amount,
+            useBonuses: Boolean(extras.useBonuses),
+          },
+          ids,
+          'autorefill',
+          {
+            toastMessage: `Бюджет и автопополнение обновлены для ${ids.length} ${getPlural(
+              ids.length,
+              'кампании',
+              'кампаний',
+              'кампаний',
+            )}`,
+          },
+        );
+      }
     };
 
     const handleBulkSave = (value: any) => {
@@ -4030,7 +4202,7 @@ export default function App() {
     const handleSaveBonusForCampaign = (value: any) => {
         if (!campaignForBonusEdit) return;
 
-        if (value?.__mode === 'autorefill') {
+        if (value?.__mode === 'autorefill' && value.total == null) {
           const patch: Partial<CampaignRecord> = {
             autoReplenishment: Boolean(value.enabled),
             ...(typeof value.useBonuses === 'boolean'
@@ -4075,12 +4247,22 @@ export default function App() {
           ? Math.min(Math.max(0, requested), cap)
           : 0;
         const bonusClamped = Boolean(value.isBonusActive) && Number.isFinite(requested) && requested > appliedBonus;
+        const auto = value.autoRefill as
+          | { enabled: boolean; threshold: number; amount: number }
+          | undefined;
 
         const patch: Partial<CampaignRecord> = {
             budget: Number(value.total),
             bonusAmount: appliedBonus,
             usePromoBonuses: appliedBonus > 0,
             ...(selectedPkg.id ? { bonusPackageId: selectedPkg.id } : null),
+            ...(auto?.enabled
+              ? {
+                  autoReplenishment: true,
+                  autoRefillThreshold: auto.threshold,
+                  autoRefillAmount: auto.amount,
+                }
+              : null),
         };
 
         const group = templateGroups.find((g) =>
@@ -4098,6 +4280,9 @@ export default function App() {
         setCampaignForBonusEdit(null);
         if (bonusClamped) {
           setToastMessage('Пополнили промобонусами только на доступное количество');
+          setShowToast(true);
+        } else if (auto?.enabled) {
+          setToastMessage('Бюджет и автопополнение сохранены');
           setShowToast(true);
         }
     };
@@ -4146,17 +4331,72 @@ export default function App() {
     return templateGroups.flatMap((g) => g.campaigns.filter((c) => ids.has(c.id)));
   }, [selectedCampaignIds, templateGroups]);
 
+  const creationBulkBidTargetsAvailable = useMemo((): CreationBulkBidTarget[] => {
+    const ids = new Set(selectedCampaignIds);
+    const targets = new Set<CreationBulkBidTarget>();
+    for (const group of templateGroups) {
+      const selectedInGroup = group.campaigns.some((c) => ids.has(c.id));
+      if (!selectedInGroup) continue;
+      if (group.config.paymentModel === PaymentModel.CPC) {
+        targets.add('cpc-search');
+        targets.add('cpc-recs');
+      } else if (group.config.bidType === BidType.MANUAL) {
+        targets.add('cpm-search');
+        targets.add('cpm-recs');
+      } else {
+        targets.add('cpm-unified');
+      }
+    }
+    return CREATION_BULK_BID_OPTIONS.map((o) => o.id).filter((id) => targets.has(id));
+  }, [selectedCampaignIds, templateGroups]);
+
   const selectedCreationBulkBidItems = useMemo((): BulkSearchBidItem[] => {
     const source = editingGroupId ? editedCampaigns : allValidCampaigns;
     const ids = new Set(selectedCampaignIds);
+    const defaultBid =
+      creationBulkBidTarget.startsWith('cpm')
+        ? CPM_DEFAULT_COMPETITIVE_BID_RUB
+        : CPC_DEFAULT_SEARCH_BID_RUB;
+
     return source
-      .filter((c) => ids.has(c.id))
+      .filter((c) => {
+        if (!ids.has(c.id)) return false;
+        const group = templateGroups.find((g) => g.campaigns.some((gc) => gc.id === c.id));
+        if (!group) return false;
+        if (creationBulkBidTarget === 'cpc-search') {
+          return group.config.paymentModel === PaymentModel.CPC && c.searchBid != null;
+        }
+        if (creationBulkBidTarget === 'cpc-recs') {
+          return (
+            group.config.paymentModel === PaymentModel.CPC && c.recommendationsBid != null
+          );
+        }
+        if (creationBulkBidTarget === 'cpm-search') {
+          return (
+            group.config.paymentModel === PaymentModel.CPM &&
+            group.config.bidType === BidType.MANUAL &&
+            c.searchBid != null
+          );
+        }
+        if (creationBulkBidTarget === 'cpm-recs') {
+          return (
+            group.config.paymentModel === PaymentModel.CPM &&
+            group.config.bidType === BidType.MANUAL &&
+            c.recommendationsBid != null
+          );
+        }
+        return (
+          group.config.paymentModel === PaymentModel.CPM &&
+          group.config.bidType !== BidType.MANUAL
+        );
+      })
       .map((c) => {
         const bid =
-          c.searchBid ??
-          c.bid ??
-          c.recommendationsBid ??
-          150;
+          creationBulkBidTarget === 'cpc-search' || creationBulkBidTarget === 'cpm-search'
+            ? c.searchBid ?? defaultBid
+            : creationBulkBidTarget === 'cpc-recs' || creationBulkBidTarget === 'cpm-recs'
+              ? c.recommendationsBid ?? defaultBid
+              : c.bid ?? c.searchBid ?? defaultBid;
         return {
           id: c.id,
           name: c.productName,
@@ -4167,7 +4407,14 @@ export default function App() {
           recommendedByTier: buildBulkSearchRecommendedTiers(c.nmId || c.id.length),
         };
       });
-  }, [editingGroupId, editedCampaigns, allValidCampaigns, selectedCampaignIds]);
+  }, [
+    editingGroupId,
+    editedCampaigns,
+    allValidCampaigns,
+    selectedCampaignIds,
+    templateGroups,
+    creationBulkBidTarget,
+  ]);
 
   const selectedCreationBulkAutobidderProducts = useMemo((): BidChasingModalProduct[] => {
     const source = editingGroupId ? editedCampaigns : allValidCampaigns;
@@ -4235,15 +4482,15 @@ export default function App() {
 
   const openCreationBulkDailyLimit = () => {
     const withLimit = selectedCreationCampaigns.find((c) => c.dailyLimit != null && c.dailyLimit > 0);
-    const limitStr =
-      withLimit?.dailyLimit != null && withLimit.dailyLimit > 0
-        ? String(withLimit.dailyLimit)
-        : '';
-    setCreationBulkDailyLimitEnabled(Boolean(limitStr));
+    const hasExisting = withLimit?.dailyLimit != null && withLimit.dailyLimit > 0;
+    const limitStr = hasExisting
+      ? String(withLimit!.dailyLimit)
+      : String(DAILY_LIMIT_ABSOLUTE_MIN);
+    setCreationBulkDailyLimitEnabled(hasExisting);
     setCreationBulkDailyLimitValue(limitStr);
     setCreationBulkSavedDailyLimit(limitStr);
     setCreationBulkDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
-    setCreationBulkCarryover(false);
+    setCreationBulkCarryover(true);
     setCreationBulkAutoRefillOnRules(true);
     setIsCreationBulkDailyLimitOpen(true);
   };
@@ -4268,35 +4515,82 @@ export default function App() {
   const launchPreview = useMemo(() => {
     const configured = computeLaunchAffordability(allValidCampaigns);
     const hasConfiguredBonuses = configured.bonusToDebit > 0;
-    const suggestedAllocation = suggestPromoBonusAllocation(
-      allValidCampaigns,
-      demoBonusPackages,
-    );
+    const alreadyDistributed = configured.bonusToDebit;
+    const zeroedCampaigns = allValidCampaigns.map((campaign) => ({
+      ...campaign,
+      usePromoBonuses: false,
+      bonusAmount: 0,
+      bonusPackageId: undefined,
+    }));
+    const potentialAllocation = suggestPromoBonusAllocation(zeroedCampaigns, demoBonusPackages);
+    const suggestedAllocation = hasConfiguredBonuses
+      ? potentialAllocation
+      : suggestPromoBonusAllocation(allValidCampaigns, demoBonusPackages);
+    const maxDistributable = potentialAllocation.totalBonus;
+    const maxAdditional = Math.max(0, maxDistributable - alreadyDistributed);
     const canOfferBonuses = !hasConfiguredBonuses && suggestedAllocation.totalBonus > 0;
+    const canOfferMoreBonuses = maxAdditional > 0;
     const bonusById = new Map(
-      [...suggestedAllocation.perCampaign.entries()].map(([id, value]) => [
+      [...potentialAllocation.perCampaign.entries()].map(([id, value]) => [
         id,
         value.bonusAmount,
       ]),
     );
     const withSuggestedBonuses = computeLaunchAffordability(allValidCampaigns, bonusById);
+    const distribution: BonusDistributionRow[] = allValidCampaigns
+      .filter((c) => bonusById.has(c.id))
+      .map((c) => ({
+        id: c.id,
+        name: c.campaignName || c.productName,
+        budget: c.budget,
+        bonus: bonusById.get(c.id) ?? 0,
+      }));
+
+    const promoAccountBalance = demoBonusPackages.reduce(
+      (sum, pkg) => sum + remainingDemoPackageBalance(pkg, allValidCampaigns),
+      0,
+    );
 
     return {
       ...configured,
       hasConfiguredBonuses,
+      alreadyDistributed,
       canOfferBonuses,
+      canOfferMoreBonuses,
+      maxDistributable,
+      maxAdditional,
       suggestedAllocation,
+      potentialAllocation,
       withSuggestedBonuses,
+      distribution,
+      promoAccountBalance,
     };
   }, [allValidCampaigns, demoBonusPackages]);
 
-  const applySuggestedPromoBonuses = useCallback(() => {
-    const allocation = launchPreview.suggestedAllocation;
-    if (!allocation || allocation.totalBonus <= 0) return;
+  /** `amount` — итоговая сумма бонусов по всем кампаниям (абсолют), не «добавка». */
+  const applyPromoBonusesAmount = useCallback((amount: number) => {
+    const allocation = launchPreview.potentialAllocation;
+    if (!allocation || allocation.totalBonus <= 0 || amount <= 0) return;
+
+    const entries = [...allocation.perCampaign.entries()];
+    const shares = evenBonusShares(
+      entries.map(([, value]) => value.bonusAmount),
+      Math.min(amount, allocation.totalBonus),
+    );
+    const assignedById = new Map(
+      entries.map(([id, value], i) => [id, { ...value, bonusAmount: shares[i] }]),
+    );
 
     const applyToCampaign = (campaign: CampaignRecord): CampaignRecord => {
-      const assigned = allocation.perCampaign.get(campaign.id);
-      if (!assigned) return campaign;
+      const assigned = assignedById.get(campaign.id);
+      if (!assigned || assigned.bonusAmount <= 0) {
+        return {
+          ...campaign,
+          usePromoBonuses: false,
+          bonusAmount: 0,
+          bonusPackageId: undefined,
+        };
+      }
       return {
         ...campaign,
         usePromoBonuses: true,
@@ -4316,7 +4610,7 @@ export default function App() {
     }
     setToastMessage('Промобонусы распределены');
     setShowToast(true);
-  }, [launchPreview.suggestedAllocation, editingGroupId]);
+  }, [launchPreview.potentialAllocation, editingGroupId]);
 
   useEffect(() => {
     if (isLaunching) {
@@ -4324,27 +4618,13 @@ export default function App() {
         let currentBalance = UNIFIED_BALANCE;
         const successful = [];
         const failed = [];
-        const pendingBonuses = pendingLaunchBonusRef.current;
 
         for (const campaign of allValidCampaigns) {
-          const pendingBonus = pendingBonuses?.perCampaign.get(campaign.id)?.bonusAmount;
-          const bonus =
-            pendingBonus != null ? pendingBonus : effectivePromoBonusAmount(campaign);
+          const bonus = effectivePromoBonusAmount(campaign);
           const realCost = campaign.budget - bonus;
           if (currentBalance >= realCost) {
             currentBalance -= realCost;
-            successful.push(
-              pendingBonus != null
-                ? {
-                    ...campaign,
-                    usePromoBonuses: true,
-                    bonusAmount: pendingBonus,
-                    bonusPackageId:
-                      pendingBonuses?.perCampaign.get(campaign.id)?.packageId ??
-                      campaign.bonusPackageId,
-                  }
-                : campaign,
-            );
+            successful.push(campaign);
           } else {
             failed.push({
               ...campaign,
@@ -4353,7 +4633,6 @@ export default function App() {
           }
         }
 
-        pendingLaunchBonusRef.current = null;
         setCreationResult({ success: successful.length, error: failed.length });
         setFailedCampaigns(failed);
         setIsLaunching(false);
@@ -4796,32 +5075,26 @@ export default function App() {
         </CampaignsInsightFilterProvider>
         {isBulkActionModalOpen &&
         (currentBulkAction === 'budget' ||
-          currentBulkAction === 'autorefill' ||
           (listBudgetTargetIds != null && listBudgetTargetIds.length > 0)) ? (
-          <BulkEditModal
+          <BudgetRefillModal
             isOpen={isBulkActionModalOpen}
             onClose={closeBulkActionModal}
-            action={currentBulkAction ?? 'budget'}
-            onSave={handleBulkSave}
-            categories={[]}
-            selectedCampaignsCount={
+            currentBudget={bulkEditPrefillData?.budget ?? 0}
+            campaignCount={
               listBudgetTargetIds && listBudgetTargetIds.length > 0
                 ? listBudgetTargetIds.length
                 : selectedCampaignIds.length
             }
-            onOpenAutoRefill={() => {
-              setCampaignForAutoRefill(null);
-              setIsAutoRefillModalOpen(true);
+            submitLabel="Применить"
+            onSave={(amount, extras) => {
+              applyBudgetRefillFromModal(
+                amount,
+                extras,
+                listBudgetTargetIds && listBudgetTargetIds.length > 0
+                  ? listBudgetTargetIds
+                  : selectedCampaignIds,
+              );
             }}
-            prefillData={bulkEditPrefillData}
-            editingGroupId={editingGroupId}
-            editedCampaigns={editedCampaigns}
-            allValidCampaigns={allValidCampaigns}
-            selectedCampaignIds={
-              listBudgetTargetIds && listBudgetTargetIds.length > 0
-                ? listBudgetTargetIds
-                : selectedCampaignIds
-            }
           />
         ) : null}
       </div>
@@ -4933,7 +5206,16 @@ export default function App() {
     />
   {isBulkActionModalOpen && currentBulkAction === 'bid' ? (
     <BulkSearchBidModal
+      key={`bulk-bid-${creationBulkBidTarget}`}
       isOpen
+      title={CREATION_BULK_BID_TITLES[creationBulkBidTarget]}
+      controls={
+        creationBulkBidTarget === 'cpc-recs' || creationBulkBidTarget === 'cpm-recs'
+          ? 'simple'
+          : creationBulkBidTarget.startsWith('cpm')
+            ? 'cpm'
+            : 'cpc-positions'
+      }
       items={selectedCreationBulkBidItems}
       onClose={closeBulkActionModal}
       onApply={(bidsById) => {
@@ -4941,11 +5223,19 @@ export default function App() {
         const updateLogic = (campaign: CampaignRecord): CampaignRecord => {
           if (!(campaign.id in bidsById)) return campaign;
           const nextBid = bidsById[campaign.id]!;
-          return {
-            ...campaign,
-            bid: nextBid,
-            searchBid: nextBid,
-          };
+          if (
+            creationBulkBidTarget === 'cpc-search' ||
+            creationBulkBidTarget === 'cpm-search'
+          ) {
+            return { ...campaign, searchBid: nextBid };
+          }
+          if (
+            creationBulkBidTarget === 'cpc-recs' ||
+            creationBulkBidTarget === 'cpm-recs'
+          ) {
+            return { ...campaign, recommendationsBid: nextBid };
+          }
+          return { ...campaign, bid: nextBid, searchBid: nextBid };
         };
         if (editingGroupId) {
           setEditedCampaigns((prev) => prev.map(updateLogic));
@@ -5030,6 +5320,27 @@ export default function App() {
         },
       }}
     />
+  ) : isBulkActionModalOpen && currentBulkAction === 'budget' ? (
+    <BudgetRefillModal
+      isOpen
+      onClose={closeBulkActionModal}
+      currentBudget={bulkEditPrefillData?.budget ?? 0}
+      campaignCount={
+        listBudgetTargetIds && listBudgetTargetIds.length > 0
+          ? listBudgetTargetIds.length
+          : selectedCampaignIds.length
+      }
+      submitLabel="Применить"
+      onSave={(amount, extras) => {
+        applyBudgetRefillFromModal(
+          amount,
+          extras,
+          listBudgetTargetIds && listBudgetTargetIds.length > 0
+            ? listBudgetTargetIds
+            : selectedCampaignIds,
+        );
+      }}
+    />
   ) : (
     <BulkEditModal
       isOpen={isBulkActionModalOpen}
@@ -5037,57 +5348,36 @@ export default function App() {
       action={currentBulkAction}
       onSave={handleBulkSave}
       categories={uniqueCategoriesForSelection}
-      selectedCampaignsCount={
-        listBudgetTargetIds && listBudgetTargetIds.length > 0
-          ? listBudgetTargetIds.length
-          : selectedCampaignIds.length
-      }
+      selectedCampaignsCount={selectedCampaignIds.length}
       onOpenAutoRefill={() => {
-        setCampaignForAutoRefill(null);
-        setIsAutoRefillModalOpen(true);
+        openBulkActionModal('budget');
       }}
       prefillData={bulkEditPrefillData}
       editingGroupId={editingGroupId}
       editedCampaigns={editedCampaigns}
       allValidCampaigns={allValidCampaigns}
-      selectedCampaignIds={
-        listBudgetTargetIds && listBudgetTargetIds.length > 0
-          ? listBudgetTargetIds
-          : selectedCampaignIds
-      }
+      selectedCampaignIds={selectedCampaignIds}
     />
   )}
-  <BulkEditModal 
-      isOpen={!!campaignForBonusEdit} 
-      onClose={() => setCampaignForBonusEdit(null)} 
-      action={singleReplenishAction} 
-      onSave={handleSaveBonusForCampaign} 
-      isSingleCampaignMode={false}
-      campaignData={campaignForBonusEdit}
-      selectedCampaignsCount={1} 
-      prefillData={
-        campaignForBonusEdit
-          ? {
-              budget: campaignForBonusEdit.budget,
-              bonusAmount:
-                campaignForBonusEdit.bonusAmount != null && campaignForBonusEdit.bonusAmount > 0
-                  ? campaignForBonusEdit.bonusAmount
-                  : Math.min(
-                      campaignForBonusEdit.budget,
-                      BONUS_PACKAGES[0]?.amount ?? campaignForBonusEdit.budget,
-                    ),
-              useBonuses: true,
-            }
-          : null
-      }
-      onOpenAutoRefill={() => {}}
-      editingGroupId={editingGroupId}
-      editedCampaigns={editedCampaigns}
-      allValidCampaigns={allValidCampaigns}
-      selectedCampaignIds={
-        campaignForBonusEdit ? [campaignForBonusEdit.id] : selectedCampaignIds
-      }
-  />
+  {campaignForBonusEdit ? (
+    <BudgetRefillModal
+      isOpen
+      currentBudget={campaignForBonusEdit.budget}
+      submitLabel="Применить"
+      onClose={() => setCampaignForBonusEdit(null)}
+      onSave={(amount, extras) => {
+        const pkg =
+          BONUS_PACKAGES.find((item) => item.id === extras?.packageId) ?? BONUS_PACKAGES[0];
+        handleSaveBonusForCampaign({
+          total: amount,
+          isBonusActive: Boolean(extras?.useBonuses && (extras.bonusAmount ?? 0) > 0),
+          bonus: extras?.bonusAmount ?? 0,
+          selectedPkg: pkg,
+          autoRefill: extras?.autoRefill,
+        });
+      }}
+    />
+  ) : null}
   
   {bonusAppContext && (
     <ConfirmationModal
@@ -5123,13 +5413,7 @@ export default function App() {
   <ConfirmationModal isOpen={isConfirmLaunchOpen} onClose={() => setIsConfirmLaunchOpen(false)} onConfirm={() => { handleSaveEditing(); performLaunch(); }} title="Сохранить изменения?" confirmText="Сохранить и запустить" confirmColor="purple" cancelText="Отмена" children={<p>У вас есть несохраненные изменения в одной из групп. Сохранить их и продолжить запуск?</p>} />
   <ConfirmationModal isOpen={isConfirmLaunchWithFiltersOpen} onClose={() => setIsConfirmLaunchWithFiltersOpen(false)} onConfirm={() => { setIsConfirmLaunchWithFiltersOpen(false); if (editingGroupId) setIsConfirmLaunchOpen(true); else performLaunch(); }} title="Запуск кампаний с активным фильтром" confirmText={`Запустить все ${totalAllValidCount}`} confirmColor="purple" cancelText="Отмена" children={ <p> Применены фильтры для просмотра, но будут запущены <b>все {totalAllValidCount} {getPlural(totalAllValidCount, 'готовая кампания', 'готовые кампании', 'готовых кампаний')}</b>. Вы уверены, что хотите продолжить? </p> } />
   {isLaunchSummaryModalOpen ? (() => {
-    const preview =
-      launchPreview.canOfferBonuses && launchPayWithBonuses
-        ? launchPreview.withSuggestedBonuses
-        : launchPreview;
-    const withoutBonusesAmount = launchPreview.amountToDebit;
-    const withBonusesAmount = launchPreview.withSuggestedBonuses.amountToDebit;
-    const suggestedBonus = launchPreview.withSuggestedBonuses.bonusToDebit;
+    const preview = launchPreview;
 
     return (
     <div
@@ -5137,9 +5421,7 @@ export default function App() {
       onClick={() => setIsLaunchSummaryModalOpen(false)}
     >
       <div
-        className={`relative w-full rounded-2xl bg-white p-5 shadow-xl sm:p-6 ${
-          launchPreview.canOfferBonuses ? 'max-w-[480px]' : 'max-w-md'
-        }`}
+        className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl sm:p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3">
@@ -5198,113 +5480,38 @@ export default function App() {
             </div>
           ) : null}
 
-          {launchPreview.canOfferBonuses ? (
-            <div className="pt-4">
-              <div className="mb-3 flex items-center gap-2.5">
-                <Wallet className="h-5 w-5 shrink-0 text-gray-400" />
-                <p className="text-sm leading-5 text-gray-500">Итого с единого счёта</p>
-              </div>
-              <div className="grid grid-cols-2 items-stretch gap-2.5 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setLaunchPayWithBonuses(false)}
-                  className={`rounded-2xl px-3 py-3 text-left transition-colors ${
-                    !launchPayWithBonuses
-                      ? 'bg-white ring-2 ring-[#9A41FE]'
-                      : 'bg-[#F5F5F7] hover:bg-[#EFEFF2]'
-                  }`}
-                >
-                  <div className="flex items-start gap-2.5">
-                    <span
-                      className={`mt-0.5 h-4 w-4 shrink-0 rounded-full ${
-                        !launchPayWithBonuses
-                          ? 'bg-[#9A41FE]'
-                          : 'border-2 border-gray-300 bg-white'
-                      }`}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="text-[15px] font-bold leading-5 tabular-nums text-gray-900">
-                        {withoutBonusesAmount.toLocaleString('ru-RU')} ₽
-                      </p>
-                      <p className="text-xs leading-4 text-gray-500">
-                        Не тратим промобонусы
-                      </p>
-                    </div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setLaunchPayWithBonuses(true)}
-                  className={`relative rounded-2xl px-3 pb-3 pt-4 text-left transition-colors ${
-                    launchPayWithBonuses
-                      ? 'bg-white ring-2 ring-[#9A41FE]'
-                      : 'bg-[#F5F5F7] hover:bg-[#EFEFF2]'
-                  }`}
-                >
-                  <span className="absolute left-3 top-0 -translate-y-1/2 whitespace-nowrap rounded-full bg-[#34C759] px-2 py-0.5 text-[10px] font-semibold leading-4 text-white">
-                    С промобонусами
+          <div className="flex items-start gap-3 border-y border-gray-100 py-4">
+            <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" />
+            <div className="min-w-0 space-y-0.5">
+              <p className="text-sm leading-5 text-gray-500">Спишем с единого счёта</p>
+              {preview.bonusToDebit > 0 ? (
+                <p className="flex items-baseline gap-1.5 text-base leading-6 tabular-nums">
+                  <span className="text-gray-400 line-through">
+                    {(preview.amountToDebit + preview.bonusToDebit).toLocaleString('ru-RU')} ₽
                   </span>
-                  <div className="flex items-start gap-2.5">
-                    <span
-                      className={`mt-0.5 h-4 w-4 shrink-0 rounded-full ${
-                        launchPayWithBonuses
-                          ? 'bg-[#9A41FE]'
-                          : 'border-2 border-gray-300 bg-white'
-                      }`}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="text-[15px] font-bold leading-5 tabular-nums text-gray-900">
-                        {withBonusesAmount.toLocaleString('ru-RU')} ₽
-                      </p>
-                      <p className="text-xs leading-4 text-gray-500">
-                        с использованием{' '}
-                        <span className="inline-flex items-center gap-1 tabular-nums">
-                          {suggestedBonus.toLocaleString('ru-RU')} B
-                          <span className="tooltip relative inline-flex shrink-0">
-                            <HelpCircle className="h-3.5 w-3.5 text-gray-400" />
-                            <span className="tooltip-text !bottom-auto !left-auto !right-0 !top-full !mt-2 !w-[15.5rem] !max-w-[15.5rem] !translate-x-0 !whitespace-normal !px-3 !py-2.5 !text-left !text-xs !font-normal !leading-snug z-[120]">
-                              Бонусы распределим по кампаниям автоматически в пределах
-                              лимитов пакетов (до 50% или 99% от бюджета). Если остатка не
-                              хватит на все — сначала покроем кампании с меньшим бюджетом.
-                            </span>
-                          </span>
-                        </span>
-                      </p>
-                    </div>
-                  </div>
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-3 border-y border-gray-100 py-4">
-              <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" />
-              <div className="min-w-0 space-y-0.5">
-                <p className="text-sm leading-5 text-gray-500">Спишем с единого счёта</p>
-                {preview.bonusToDebit > 0 ? (
-                  <>
-                    <p className="flex items-baseline gap-1.5 text-base leading-6 tabular-nums">
-                      <span className="text-gray-400 line-through">
-                        {(preview.amountToDebit + preview.bonusToDebit).toLocaleString('ru-RU')} ₽
-                      </span>
-                      <span className="font-bold text-gray-900">
-                        {preview.amountToDebit.toLocaleString('ru-RU')} ₽
-                      </span>
-                    </p>
-                    <p className="text-xs leading-4 text-gray-500">
-                      с использованием {preview.bonusToDebit.toLocaleString('ru-RU')} промобонусов
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-base font-bold leading-6 tabular-nums text-gray-900">
+                  <span className="font-bold text-gray-900">
                     {preview.amountToDebit.toLocaleString('ru-RU')} ₽
-                  </p>
-                )}
+                  </span>
+                </p>
+              ) : (
+                <p className="text-base font-bold leading-6 tabular-nums text-gray-900">
+                  {preview.amountToDebit.toLocaleString('ru-RU')} ₽
+                </p>
+              )}
+            </div>
+          </div>
+
+          {preview.bonusToDebit > 0 ? (
+            <div className="flex items-start gap-3 border-b border-gray-100 py-4">
+              <Coins className="mt-0.5 h-5 w-5 shrink-0 text-gray-400" />
+              <div className="min-w-0 space-y-0.5">
+                <p className="text-sm leading-5 text-gray-500">Спишем промобонусов</p>
+                <p className="text-base font-bold leading-6 tabular-nums text-gray-900">
+                  {preview.bonusToDebit.toLocaleString('ru-RU')} B
+                </p>
               </div>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="mt-5 flex items-center gap-2.5">
@@ -5338,30 +5545,30 @@ export default function App() {
           </div>
         )}
         <section className="mb-6">
-            <div className="mx-auto flex w-full min-w-[1392px] max-w-[1920px] flex-wrap items-center gap-3">
+            <div className="mx-auto flex w-full min-w-[1392px] max-w-[1920px] flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setIsAddItemModalOpen(true)}
-                  className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-[10px] bg-[#4A4B57] px-4 text-sm font-medium text-white transition-colors hover:bg-[#3F404A]"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-[10px] bg-black px-2.5 text-sm font-medium tracking-[0.3px] text-white transition-colors hover:bg-[#1A1A1A] active:bg-black"
                 >
                   <Plus className="h-4 w-4" />
-                  <span>Добавить товары</span>
+                  <span className="px-1.5">Добавить товары</span>
                 </button>
 
                 {templateGroups.length > 0 ? (
                   <>
-                    <div className="relative flex min-h-11 min-w-[220px] flex-1 items-center gap-2 rounded-[10px] border border-gray-200 bg-white px-3 shadow-sm focus-within:border-purple-500 focus-within:ring-1 focus-within:ring-purple-500">
-                      <Search className="h-4 w-4 shrink-0 text-gray-400" />
+                    <div className="relative flex h-9 min-w-[220px] flex-1 items-center gap-1 rounded-[10px] bg-white px-1">
+                      <Search className="ml-2 h-4 w-4 shrink-0 text-gray-900" />
                       {searchTags.map((tag) => (
                         <div
                           key={tag}
-                          className="flex items-center gap-1 rounded-md bg-gray-100 py-0.5 pl-2 pr-1 text-sm text-gray-700"
+                          className="flex items-center gap-1 rounded-lg bg-[#F2F2F7] py-0.5 pl-2 pr-1 text-sm text-gray-700"
                         >
                           <span>{tag}</span>
                           <button
                             type="button"
                             onClick={() => removeSearchTag(tag)}
-                            className="rounded-full text-gray-400 hover:bg-gray-300 hover:text-gray-700"
+                            className="rounded-full text-gray-400 hover:bg-gray-200 hover:text-gray-700"
                           >
                             <X className="h-3 w-3" />
                           </button>
@@ -5373,7 +5580,7 @@ export default function App() {
                         onChange={(e) => setCurrentSearchInput(e.target.value)}
                         onKeyDown={handleSearchKeyDown}
                         placeholder="Поиск"
-                        className="min-w-[120px] flex-1 bg-transparent py-2 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                        className="min-w-[120px] flex-1 bg-transparent py-2 text-sm font-medium text-gray-900 outline-none placeholder:text-gray-400"
                       />
                       {(searchTags.length > 0 || currentSearchInput) && (
                         <button
@@ -5389,15 +5596,17 @@ export default function App() {
                       )}
                     </div>
 
-                    <MultiSelect
-                      options={uniqueSources}
-                      selected={selectedSources}
-                      onChange={setSelectedSources}
-                      placeholder="Источник"
-                      className="w-full sm:w-[180px] shrink-0"
-                      autoApply
-                      muted
-                    />
+                    {canFilterBySource ? (
+                      <MultiSelect
+                        options={uniqueFileSources}
+                        selected={selectedSources}
+                        onChange={setSelectedSources}
+                        placeholder="Источник"
+                        className="w-full sm:w-[180px] shrink-0"
+                        autoApply
+                        variant="chipsAction"
+                      />
+                    ) : null}
                     <MultiSelect
                       options={uniqueCategories}
                       selected={selectedCategories}
@@ -5405,7 +5614,7 @@ export default function App() {
                       placeholder="Категория"
                       className="w-full sm:w-[180px] shrink-0"
                       autoApply
-                      muted
+                      variant="chipsAction"
                     />
                   </>
                 ) : null}
@@ -5471,14 +5680,6 @@ export default function App() {
 
         {templateGroups.length > 0 ? (
             <div className="space-y-8">
-            {promoMissedBonusUx === 'cta-island' && launchPreview.canOfferBonuses ? (
-              <MissedBonusIslandBanner
-                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-                totalBudget={globalTotals.total}
-                onApply={applySuggestedPromoBonuses}
-              />
-            ) : null}
             {templateGroups.map((group) => { 
             const campaignsForReview = editingGroupId === group.id ? editedCampaigns : group.campaigns.filter(c => c.status !== CampaignStatus.ERROR);
             const filteredGroupCampaigns = campaignsForReview.filter(c => filteredCampaigns.some(fc => fc.id === c.id));
@@ -5492,7 +5693,9 @@ export default function App() {
             const showZoneColumns = isCpmManual || isCpc;
             const hasSearchBids = showZoneColumns;
             const hasRecommendationsBids = showZoneColumns;
-            const defaultZoneBid = isCpc ? 30 : 300;
+            const defaultZoneBid = isCpc
+              ? CPC_DEFAULT_SEARCH_BID_RUB
+              : CPM_DEFAULT_COMPETITIVE_BID_RUB;
             const zonesLabel = (() => {
               const isCpm = group.config.paymentModel === PaymentModel.CPM;
               if (isCpm && group.config.bidType !== BidType.MANUAL) {
@@ -5518,16 +5721,33 @@ export default function App() {
             const islandTitle = isCpc
               ? 'CPC'
               : `CPM ${group.config.bidType === BidType.MANUAL ? 'Ручная ставка' : 'Единая ставка'}`;
+            const zonesPill = (() => {
+              if (isCpc || isCpmManual) {
+                const anySearch = campaignsForReview.some((c) => c.searchBid != null);
+                const anyRecs = campaignsForReview.some((c) => c.recommendationsBid != null);
+                if (anySearch && anyRecs) return 'Покажем в поиске и рекомендациях';
+                if (anySearch) return 'Покажем в поиске';
+                if (anyRecs) return 'Покажем в рекомендациях';
+                return 'Зоны показов';
+              }
+              return 'Покажем в поиске';
+            })();
 
             return (
-              <div key={group.id} className="space-y-3">
+              <div key={group.id} className="space-y-2">
                 <MassCreationIsland
                   title={islandTitle}
-                  zonesPill="Покажем в поиске и рекомендациях"
+                  zonesPill={zonesPill}
                   showDailyLimit={isCpc}
+                  showAutobidder={isCpc}
+                  showAlgorithmTag={isCpc}
                   bidMode={showZoneColumns ? 'zones' : 'unified'}
-                  defaultZoneBid={isCpc ? 30 : 300}
-                  defaultRecsBid={isCpc ? 200 : 300}
+                  defaultZoneBid={
+                    isCpc ? CPC_DEFAULT_SEARCH_BID_RUB : CPM_DEFAULT_COMPETITIVE_BID_RUB
+                  }
+                  defaultRecsBid={
+                    isCpc ? CPC_DEFAULT_SEARCH_BID_RUB : CPM_DEFAULT_COMPETITIVE_BID_RUB
+                  }
                   campaigns={paginatedCampaigns}
                   selectedIds={selectedCampaignIds}
                   onToggleSelect={handleSelectCampaign}
@@ -5555,10 +5775,23 @@ export default function App() {
       <CreationSelectionBar
         count={selectedCampaignIds.length}
         total={allValidCampaigns.length}
+        showAutobidder={templateGroups.some(
+          (g) =>
+            g.config.paymentModel === PaymentModel.CPC &&
+            g.campaigns.some((c) => selectedCampaignIds.includes(c.id)),
+        )}
+        showDailyLimit={templateGroups.some(
+          (g) =>
+            g.config.paymentModel === PaymentModel.CPC &&
+            g.campaigns.some((c) => selectedCampaignIds.includes(c.id)),
+        )}
+        bidTargets={creationBulkBidTargetsAvailable}
         onBudget={() => openBulkActionModal('budget')}
         onDailyLimit={openCreationBulkDailyLimit}
-        onAutoRefill={() => openBulkActionModal('autorefill')}
-        onBid={() => openBulkActionModal('bid')}
+        onBidTarget={(target) => {
+          setCreationBulkBidTarget(target);
+          openBulkActionModal('bid');
+        }}
         onZones={openCreationZonesModal}
         onAutobidder={() => openBulkActionModal('autobidder', PaymentModel.CPC)}
         onDelete={() => openBulkActionModal('delete')}
@@ -5586,6 +5819,13 @@ export default function App() {
           setCreationBulkSavedDailyLimit('');
           setCreationBulkDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
           applyPatchToSelectedCreationCampaigns({ dailyLimit: null });
+          setCreationAutobidderSetup((prev) => {
+            const next = { ...prev };
+            for (const id of selectedCampaignIds) {
+              if (next[id]?.mode === 'profit') delete next[id];
+            }
+            return next;
+          });
           setIsCreationBulkDailyLimitOpen(false);
           setToastMessage('Дневной лимит отключен');
           setShowToast(true);
@@ -5633,6 +5873,28 @@ export default function App() {
             dailyLimit:
               limitFromSettings != null && limitFromSettings > 0 ? limitFromSettings : null,
           });
+          if (isDynamicDailyLimitConfigured(settings)) {
+            setCreationAutobidderSetup((prev) => {
+              const next = { ...prev };
+              for (const id of selectedCampaignIds) {
+                next[id] = {
+                  mode: 'profit',
+                  settings,
+                  position: prev[id]?.position ?? DEFAULT_BID_CHASING_POSITION,
+                  maxBid: prev[id]?.maxBid ?? creationBulkMaxBid,
+                };
+              }
+              return next;
+            });
+          } else {
+            setCreationAutobidderSetup((prev) => {
+              const next = { ...prev };
+              for (const id of selectedCampaignIds) {
+                if (next[id]?.mode === 'profit') delete next[id];
+              }
+              return next;
+            });
+          }
           setIsCreationBulkDailyLimitOpen(false);
           setToastMessage(
             `Дневной лимит обновлён для ${selectedCampaignIds.length} ${getPlural(selectedCampaignIds.length, 'кампании', 'кампаний', 'кампаний')}`,
@@ -5735,198 +5997,84 @@ export default function App() {
       </div>
     ) : null}
 
-    {totalAllValidCount > 0 &&
-    selectedCampaignIds.length === 0 &&
-    promoMissedBonusUx === 'cta-snackbar' &&
-    launchPreview.canOfferBonuses ? (
-      <MissedBonusSnackbar
-        suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-        amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-        totalBudget={globalTotals.total}
-        onApply={applySuggestedPromoBonuses}
-      />
-    ) : null}
-
-    {totalAllValidCount > 0 &&
-    selectedCampaignIds.length === 0 &&
-    promoMissedBonusUx === 'cta-float' &&
-    launchPreview.canOfferBonuses ? (
-      <MissedBonusFloatingCard
-        suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-        amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-        totalBudget={globalTotals.total}
-        onApply={applySuggestedPromoBonuses}
-      />
-    ) : null}
-
-    {totalAllValidCount > 0 &&
-    selectedCampaignIds.length === 0 &&
-    promoMissedBonusUx === 'cta-progress' &&
-    launchPreview.canOfferBonuses ? (
-      <MissedBonusProgressBar
-        suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-        amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-        totalBudget={globalTotals.total}
-        onApply={applySuggestedPromoBonuses}
-      />
-    ) : null}
-
     {totalAllValidCount > 0 && selectedCampaignIds.length === 0 ? (
-      <footer className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-200 bg-white">
-        <div className="mx-auto flex w-full max-w-[1968px] flex-col gap-3 px-6 py-4">
-          {promoMissedBonusUx === 'cta-banner' && launchPreview.canOfferBonuses ? (
-            <MissedBonusFooterBanner
-              suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-              amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-              totalBudget={globalTotals.total}
-              onApply={applySuggestedPromoBonuses}
-            />
-          ) : null}
-          {promoMissedBonusUx === 'cta-alert-row' && launchPreview.canOfferBonuses ? (
-            <MissedBonusAlertRow
-              suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-              amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-              totalBudget={globalTotals.total}
-              onApply={applySuggestedPromoBonuses}
-            />
-          ) : null}
-          <div className="flex w-full items-center justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-end gap-x-8 gap-y-2">
-              <div>
-                <div className="text-xs font-medium text-gray-500">
-                  За {totalAllValidCount}{' '}
-                  {getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}
-                </div>
-                <div className="mt-0.5 text-sm font-bold tabular-nums text-gray-900">
-                  {globalTotals.total.toLocaleString('ru-RU')} ₽
-                </div>
-              </div>
-              {shouldReplacePromoColumn(promoMissedBonusUx) && launchPreview.canOfferBonuses ? (
-                <MissedBonusPromoColumn
-                  suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                  onApply={applySuggestedPromoBonuses}
+      <footer className="fixed bottom-0 left-0 right-0 z-40 bg-white">
+        <div className="mx-auto flex w-full max-w-[1968px] flex-col gap-3 px-6 py-3">
+          <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-end gap-x-6 gap-y-2">
+                <MissedBonusPromoPill
+                  alreadyDistributed={launchPreview.alreadyDistributed}
+                  maxDistributable={launchPreview.maxDistributable}
+                  maxAdditional={launchPreview.maxAdditional}
+                  balance={launchPreview.promoAccountBalance}
+                  onApply={applyPromoBonusesAmount}
                 />
-              ) : (
-              <div>
-                <div className="text-xs font-medium text-gray-500">Промобонусы</div>
-                {globalTotals.bonus > 0 ? (
-                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-[#2E7D32]">
-                    –{globalTotals.bonus.toLocaleString('ru-RU')} B
+                <div className="min-w-0">
+                  <div className="text-[11px] font-bold leading-4 text-[#63616C]">С единого счёта</div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                    {globalTotals.bonus > 0 ? (
+                      <div className="flex items-center gap-2 text-[17px] font-bold leading-6">
+                        <span className="tabular-nums text-[#63616C] line-through">
+                          {globalTotals.total.toLocaleString('ru-RU')} ₽
+                        </span>
+                        <span className="tabular-nums text-gray-900">
+                          {globalTotals.real.toLocaleString('ru-RU')} ₽
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-[17px] font-bold leading-6 tabular-nums text-gray-900">
+                        {globalTotals.real.toLocaleString('ru-RU')} ₽
+                      </div>
+                    )}
+                    {globalDeficit > 0 ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={refreshUnifiedBalance}
+                          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600"
+                          aria-label="Обновить баланс"
+                        >
+                          <RefreshCw
+                            className={`h-3.5 w-3.5 ${isRefreshingBalance ? 'animate-spin' : ''}`}
+                          />
+                        </button>
+                        <span className="text-sm font-medium tabular-nums text-[#F5A623]">
+                          Не хватает {globalDeficit.toLocaleString('ru-RU')} ₽
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => navigate('/finance/top-up')}
+                          className="text-sm font-medium text-[#3B82F6] underline underline-offset-2 hover:text-[#2563EB]"
+                        >
+                          Пополнить счет
+                        </button>
+                      </>
+                    ) : null}
                   </div>
-                ) : (
-                  <div className="mt-0.5 text-sm font-semibold tabular-nums text-gray-400">
-                    0 B
-                  </div>
-                )}
-              </div>
-              )}
-              <div>
-                <div className="text-xs font-medium text-gray-500">С единого счета</div>
-                {globalTotals.bonus > 0 ? (
-                  <div className="mt-0.5 flex items-baseline gap-1.5 text-sm">
-                    <span className="tabular-nums text-gray-400 line-through">
-                      {globalTotals.total.toLocaleString('ru-RU')} ₽
-                    </span>
-                    <span
-                      className={`font-bold tabular-nums ${
-                        globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'
-                      }`}
-                    >
-                      {globalTotals.real.toLocaleString('ru-RU')} ₽
-                    </span>
-                  </div>
-                ) : (
-                  <div
-                    className={`mt-0.5 text-sm font-bold tabular-nums ${
-                      globalDeficit > 0 ? 'text-red-600' : 'text-gray-900'
-                    }`}
-                  >
-                    {globalTotals.real.toLocaleString('ru-RU')} ₽
-                  </div>
-                )}
-                {shouldShowAccountLink(promoMissedBonusUx) && launchPreview.canOfferBonuses ? (
-                  <MissedBonusAccountLink
-                    suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                    onApply={applySuggestedPromoBonuses}
-                  />
-                ) : null}
+                </div>
               </div>
             </div>
-            {globalDeficit > 0 ? (
-              <p className="mb-0 mt-2 text-xs font-medium text-red-500">
-                Не хватает {globalDeficit.toLocaleString('ru-RU')} ₽{' '}
-                <a
-                  href="#"
-                  onClick={(e) => e.preventDefault()}
-                  className="font-medium text-blue-600 hover:underline"
-                >
-                  пополнить
-                </a>
-              </p>
-            ) : null}
-            {promoMissedBonusUx === 'footer-info' && launchPreview.canOfferBonuses ? (
-              <MissedBonusFooterInfo
-                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-              />
-            ) : null}
-            {promoMissedBonusUx === 'cta-inline' && launchPreview.canOfferBonuses ? (
-              <MissedBonusInlineOffer
-                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-                totalBudget={globalTotals.total}
-                onApply={applySuggestedPromoBonuses}
-              />
-            ) : null}
-            {promoMissedBonusUx === 'cta-compare' && launchPreview.canOfferBonuses ? (
-              <MissedBonusCompareCard
-                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                amountWithBonuses={launchPreview.withSuggestedBonuses.amountToDebit}
-                totalBudget={globalTotals.total}
-                onApply={applySuggestedPromoBonuses}
-              />
-            ) : null}
-            {promoMissedBonusUx === 'cta-toggle' && launchPreview.canOfferBonuses ? (
-              <MissedBonusToggleOffer
-                suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                onApply={applySuggestedPromoBonuses}
-              />
-            ) : null}
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
-            {globalDeficit > 0 && launchPreview.readyToLaunchCount > 0 ? (
-              <div className="flex max-w-sm items-start gap-2 text-right text-xs leading-tight text-gray-800">
-                <Bell className="mt-0.5 h-4 w-4 shrink-0 text-orange-500" />
-                <div>
-                  Не хватает средств для {launchPreview.readyToLaunchCount}{' '}
-                  {getPlural(
-                    launchPreview.readyToLaunchCount,
-                    'кампании',
-                    'кампаний',
-                    'кампаний',
-                  )}
-                  . Они будут созданы в статусе «Готово к запуску».
+
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
+              {globalDeficit > 0 ? (
+                <div className="flex max-w-[320px] items-start gap-2 rounded-xl bg-[#F2F2F7] px-3 py-2 text-xs leading-snug text-gray-700">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#F5A623]" />
+                  <span>
+                    Кампании, на которые не хватает денег, создадим со статусом «Готова к
+                    запуску»
+                  </span>
                 </div>
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {promoMissedBonusUx === 'cta-beside' && launchPreview.canOfferBonuses ? (
-                <MissedBonusBesideLaunch
-                  suggestedBonus={launchPreview.suggestedAllocation.totalBonus}
-                  onApply={applySuggestedPromoBonuses}
-                />
               ) : null}
               <button
                 type="button"
                 onClick={launchCampaigns}
                 disabled={isLaunching}
-                className="shrink-0 rounded-xl bg-[#9A41FE] px-6 py-3 text-base font-medium text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
+                className="inline-flex h-11 shrink-0 items-center justify-center rounded-[10px] bg-[#9C45FD] px-3 text-[17px] font-medium leading-5 tracking-[0.4px] text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
               >
-                {`Создать ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`}
+                <span className="px-2">{`Создать ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`}</span>
               </button>
             </div>
-          </div>
           </div>
         </div>
       </footer>

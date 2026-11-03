@@ -74,23 +74,41 @@ export function SearchBidPositionPicker({
     const updatePosition = () => {
       const rect = anchor.getBoundingClientRect();
       const width = Math.min(448, window.innerWidth - 16);
-      let left = rect.right - width;
-      left = Math.max(8, Math.min(left, window.innerWidth - width - 8));
-
-      const panel = popoverRef.current;
-      const panelHeight = panel?.offsetHeight ?? 420;
       const gap = 8;
-      let top = rect.bottom + gap;
-      if (top + panelHeight > window.innerHeight - 8) {
-        top = rect.top - panelHeight - gap;
+      const viewportPad = 8;
+
+      const spaceBelow = window.innerHeight - rect.bottom - gap - viewportPad;
+      const spaceAbove = rect.top - gap - viewportPad;
+      const placeBelow = spaceBelow >= spaceAbove;
+
+      // Не перекрываем иконку: панель только строго под или над якорем + max-height со скроллом
+      const maxHeight = Math.max(240, placeBelow ? spaceBelow : spaceAbove);
+      const panel = popoverRef.current;
+      const naturalHeight = panel?.scrollHeight ?? 420;
+      const height = Math.min(naturalHeight, maxHeight);
+
+      let top = placeBelow ? rect.bottom + gap : rect.top - gap - height;
+      top = Math.max(viewportPad, Math.min(top, window.innerHeight - height - viewportPad));
+
+      // Если после клампа всё ещё пересекаемся с якорем по вертикали — уводим влево от иконки
+      const overlapsAnchorVertically =
+        top < rect.bottom && top + height > rect.top;
+      let left = rect.right - width;
+      if (overlapsAnchorVertically) {
+        left = rect.left - width - gap;
+        if (left < viewportPad) {
+          left = Math.min(rect.right + gap, window.innerWidth - width - viewportPad);
+        }
       }
-      top = Math.max(8, Math.min(top, window.innerHeight - panelHeight - 8));
+      left = Math.max(viewportPad, Math.min(left, window.innerWidth - width - viewportPad));
 
       setPanelStyle({
         position: 'fixed',
         top,
         left,
         width,
+        maxHeight,
+        overflowY: 'auto',
         zIndex: 200,
         visibility: 'visible',
       });

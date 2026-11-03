@@ -1,9 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X } from './Icons';
-import { SEARCH_BID_FORECAST } from './SearchBidForecastField';
-import { BidHistogramButton, SearchBidPositionPicker } from './SearchBidPositionPicker';
+import {
+  SearchBidForecastField,
+  bidForCpcBarSegment,
+  bidForCpmBarSegment,
+  CPM_DEFAULT_COMPETITIVE_BID_RUB,
+  parseSearchBidRubInput,
+  resolveCpcSearchBidStatus,
+  resolveCpmBidStatus,
+  type RichBidSegmentIndex,
+} from './SearchBidForecastField';
+import { SearchBidPositionPicker } from './SearchBidPositionPicker';
 import {
   BID_CHASING_POSITION_OPTIONS,
+  bidChasingPositionOption,
+  formatBidChasingPositionShortLabel,
+  presetBidChasingPosition,
   type BidChasingRange,
 } from '../utils/cpcBidChasingPositionTiers';
 
@@ -30,23 +42,28 @@ export type BulkSearchBidItem = {
 
 export type BulkSearchBidMode = 'manual' | BidChasingRange;
 
+/** Как в списке массового создания: CPC-позиции / CPM-бары / простой инпут */
+export type BulkSearchBidControls = 'cpc-positions' | 'cpm' | 'simple';
+
 type BulkSearchBidModalProps = {
   isOpen: boolean;
   items: BulkSearchBidItem[];
   onClose: () => void;
   onApply: (bidsById: Record<string, number>) => void;
   title?: string;
+  controls?: BulkSearchBidControls;
 };
 
-const MODE_OPTIONS: {
-  id: BulkSearchBidMode;
-  label: string;
-  dotClass?: string;
-}[] = [
-  { id: 'manual', label: 'Ручная' },
-  { id: '11-34', label: 'за 11-34 позиции', dotClass: 'bg-[#A7E8B5]' },
-  { id: '3-10', label: 'за 3-10 позиции', dotClass: 'bg-emerald-400' },
-  { id: '1-2', label: 'за 1-2 позиции', dotClass: 'bg-[#9A41FE]' },
+const MODE_CHIP_BASE =
+  'inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all sm:text-sm';
+const MODE_CHIP_SELECTED = 'bg-black text-white';
+const MODE_CHIP_IDLE =
+  'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]';
+
+const CPM_PRESET_CHIPS: { id: 0 | 1 | 2; label: string; toneClass: string }[] = [
+  { id: 0, label: 'Конкурентная', toneClass: 'bg-[#60A876]' },
+  { id: 1, label: 'Лидерская', toneClass: 'bg-[#2EC4B6]' },
+  { id: 2, label: 'Топ-позиция', toneClass: 'bg-[#9A41FE]' },
 ];
 
 function formatBidInput(value: number): string {
@@ -59,25 +76,6 @@ function parseBidInput(raw: string): number | null {
   if (cleaned === '') return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
-}
-
-function resolveStatus(
-  bid: number,
-  recommendedByTier: Record<BidChasingRange, number>,
-):
-  | { kind: 'below' }
-  | { kind: 'tier'; tier: BidChasingRange; filled: number; label: string } {
-  const minRecommended = recommendedByTier['11-34'];
-  if (!Number.isFinite(bid) || bid < minRecommended) {
-    return { kind: 'below' };
-  }
-  if (bid >= recommendedByTier['1-2']) {
-    return { kind: 'tier', tier: '1-2', ...SEARCH_BID_FORECAST['1-2'] };
-  }
-  if (bid >= recommendedByTier['3-10']) {
-    return { kind: 'tier', tier: '3-10', ...SEARCH_BID_FORECAST['3-10'] };
-  }
-  return { kind: 'tier', tier: '11-34', ...SEARCH_BID_FORECAST['11-34'] };
 }
 
 /** Демо-рекомендации по позициям для товара (seed от id/артикула). */
@@ -120,6 +118,17 @@ function CopyArticleButton({ article }: { article: string }) {
   );
 }
 
+type ProductBidRowProps = {
+  key?: React.Key;
+  item: BulkSearchBidItem;
+  bid: number;
+  onBidChange: (next: number) => void;
+  pickerOpen: boolean;
+  onTogglePicker: () => void;
+  anchorRef: React.Ref<HTMLDivElement>;
+  controls: BulkSearchBidControls;
+};
+
 function ProductBidRow({
   item,
   bid,
@@ -127,31 +136,13 @@ function ProductBidRow({
   pickerOpen,
   onTogglePicker,
   anchorRef,
-}: {
-  item: BulkSearchBidItem;
-  bid: number;
-  onBidChange: (next: number) => void;
-  pickerOpen: boolean;
-  onTogglePicker: () => void;
-  anchorRef: (node: HTMLDivElement | null) => void;
-}) {
-  const [draft, setDraft] = useState(formatBidInput(bid));
-  useEffect(() => {
-    setDraft(formatBidInput(bid));
-  }, [bid]);
-
-  const status = resolveStatus(bid, item.recommendedByTier);
+  controls,
+}: ProductBidRowProps): React.ReactElement {
   const brandLine = [item.brand, item.article].filter(Boolean).join(' • ');
-
-  const commit = () => {
-    const parsed = parseBidInput(draft);
-    if (parsed == null) {
-      setDraft(formatBidInput(bid));
-      return;
-    }
-    onBidChange(parsed);
-    setDraft(formatBidInput(parsed));
-  };
+  const bidStatus =
+    controls === 'cpm'
+      ? resolveCpmBidStatus(bid, CPM_DEFAULT_COMPETITIVE_BID_RUB)
+      : resolveCpcSearchBidStatus(bid);
 
   return (
     <div className="flex items-start justify-between gap-4 border-b border-gray-100 py-3.5 last:border-b-0">
@@ -170,62 +161,50 @@ function ProductBidRow({
         </div>
       </div>
 
-      <div className="shrink-0">
-        <div className="flex items-start gap-2">
-          <div className="w-[140px]">
-            <div className="overflow-hidden rounded-[10px] border border-[#D8D8D8] bg-white">
-              <input
-                type="text"
-                inputMode="decimal"
-                value={draft ? `${draft} ₽` : ''}
-                onChange={(e) => {
-                  const raw = e.target.value.replace(/[^\d.,]/g, '');
-                  setDraft(raw);
-                }}
-                onBlur={commit}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.currentTarget.blur();
-                  }
-                }}
-                className="box-border h-[36px] w-full bg-transparent px-2 text-center text-sm font-medium tabular-nums text-gray-900 outline-none"
-              />
-              {status.kind === 'tier' ? (
-                <div className="flex h-[5px] gap-px">
-                  {[0, 1, 2].map((index) => {
-                    const active =
-                      index < status.filled
-                        ? status.tier === '1-2'
-                          ? 'bg-[#9A41FE]'
-                          : 'bg-[#60A876]'
-                        : 'bg-[#E2E3E9]';
-                    return <div key={index} className={`min-w-0 flex-1 ${active}`} />;
-                  })}
-                </div>
-              ) : (
-                <div className="h-[5px] bg-[#E2E3E9]" />
-              )}
-            </div>
-            {status.kind === 'below' ? (
-              <p className="mt-1 whitespace-nowrap text-center text-[11px] leading-4 text-[#76757C]">
-                Ниже рекомендованной
-              </p>
-            ) : (
-              <p className="mt-1 whitespace-nowrap text-center text-[11px] leading-4 text-[#76757C]">
-                Ставка за {status.label}
-              </p>
-            )}
-          </div>
-          <div className="mt-0.5" ref={anchorRef}>
-            <BidHistogramButton
-              isActive={pickerOpen}
-              onClick={(e) => {
-                e.stopPropagation();
-                onTogglePicker();
+      <div className="shrink-0" ref={anchorRef}>
+        {controls === 'simple' ? (
+          <div className="relative w-[140px] overflow-hidden rounded-[10px] border border-transparent bg-[#F2F2F7] transition-colors hover:bg-[#EBEBF0] focus-within:border-black focus-within:bg-white">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={String(bid)}
+              onChange={(e) => {
+                const parsed = parseSearchBidRubInput(e.target.value);
+                if (parsed != null) onBidChange(parsed);
               }}
+              className="box-border h-9 w-full bg-transparent px-2.5 pr-7 text-sm font-medium tabular-nums text-gray-900 outline-none"
+              aria-label={`Ставка для ${item.name}`}
             />
+            <span
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm font-medium text-[#A0A0AB]"
+              aria-hidden
+            >
+              ₽
+            </span>
           </div>
-        </div>
+        ) : (
+          <SearchBidForecastField
+            value={String(bid)}
+            disabled={false}
+            readOnly={false}
+            status={bidStatus}
+            segmentMode={controls === 'cpm' ? 'cpm' : 'cpc'}
+            showBarsButton={controls === 'cpc-positions'}
+            barsActive={pickerOpen}
+            onBarsClick={controls === 'cpc-positions' ? onTogglePicker : undefined}
+            onSegmentSelect={(segment: RichBidSegmentIndex) => {
+              if (controls === 'cpm') {
+                onBidChange(bidForCpmBarSegment(segment).bid);
+                return;
+              }
+              onBidChange(bidForCpcBarSegment(segment).bid);
+            }}
+            onChange={(raw) => {
+              const parsed = parseSearchBidRubInput(raw);
+              if (parsed != null) onBidChange(parsed);
+            }}
+          />
+        )}
       </div>
     </div>
   );
@@ -237,14 +216,19 @@ export function BulkSearchBidModal({
   onClose,
   onApply,
   title = 'Настройте CPC в поиске',
+  controls = 'cpc-positions',
 }: BulkSearchBidModalProps) {
+  const showCpcPositionChips = controls === 'cpc-positions';
+  const showCpmPresetChips = controls === 'cpm';
   const [mode, setMode] = useState<BulkSearchBidMode>('manual');
+  const [cpmPreset, setCpmPreset] = useState<0 | 1 | 2 | 'manual'>('manual');
   const [globalDraft, setGlobalDraft] = useState('');
   const [bidsById, setBidsById] = useState<Record<string, number>>({});
   const [pickerItemId, setPickerItemId] = useState<string | null>(null);
   const searchBidPickerRef = useRef<HTMLDivElement | null>(null);
   const searchBidPickerPopoverRef = useRef<HTMLDivElement | null>(null);
 
+  // Подтягиваем актуальное состояние из списка при открытии
   useEffect(() => {
     if (!isOpen) return;
     const next: Record<string, number> = {};
@@ -253,9 +237,17 @@ export function BulkSearchBidModal({
     }
     setBidsById(next);
     setMode('manual');
-    setGlobalDraft('');
+    setCpmPreset('manual');
+    const firstBid = items[0]?.bid;
+    const allSame =
+      items.length > 0 &&
+      firstBid != null &&
+      items.every((item) => item.bid === firstBid);
+    setGlobalDraft(allSame ? formatBidInput(firstBid) : '');
     setPickerItemId(null);
-  }, [isOpen, items]);
+    // items — снимок на открытие
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, controls, title]);
 
   useEffect(() => {
     if (!pickerItemId) return;
@@ -294,22 +286,38 @@ export function BulkSearchBidModal({
 
   const applyModeToAll = (nextMode: BulkSearchBidMode) => {
     setMode(nextMode);
+    setCpmPreset('manual');
     if (nextMode === 'manual') return;
+    const demoBid = bidChasingPositionOption(nextMode).demoBidRub;
     setBidsById((prev) => {
       const next = { ...prev };
       for (const item of items) {
-        next[item.id] = item.recommendedByTier[nextMode];
+        next[item.id] = demoBid;
       }
       return next;
     });
-    const sample = items[0]?.recommendedByTier[nextMode];
-    setGlobalDraft(sample != null ? formatBidInput(sample) : '');
+    setGlobalDraft(formatBidInput(demoBid));
+  };
+
+  const applyCpmPresetToAll = (segment: 0 | 1 | 2) => {
+    setCpmPreset(segment);
+    setMode('manual');
+    const demoBid = bidForCpmBarSegment(segment).bid;
+    setBidsById((prev) => {
+      const next = { ...prev };
+      for (const item of items) {
+        next[item.id] = demoBid;
+      }
+      return next;
+    });
+    setGlobalDraft(formatBidInput(demoBid));
   };
 
   const commitGlobal = () => {
     const parsed = parseBidInput(globalDraft);
     if (parsed == null) return;
     setMode('manual');
+    setCpmPreset('manual');
     applyGlobalValue(parsed);
     setGlobalDraft(formatBidInput(parsed));
   };
@@ -321,8 +329,7 @@ export function BulkSearchBidModal({
 
   const modeHint = useMemo(() => {
     if (mode === 'manual') return null;
-    const opt = BID_CHASING_POSITION_OPTIONS.find((o) => o.id === mode);
-    return opt?.label ?? null;
+    return formatBidChasingPositionShortLabel(presetBidChasingPosition(mode));
   }, [mode]);
 
   if (!isOpen) return null;
@@ -346,7 +353,7 @@ export function BulkSearchBidModal({
           </div>
 
           <div
-            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-modal="true"
             aria-labelledby="bulk-search-bid-modal-title"
@@ -363,47 +370,103 @@ export function BulkSearchBidModal({
                 {getPlural(count, 'товар', 'товара', 'товаров')}
               </p>
 
-              <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-5">
+              <div className="mt-6 rounded-2xl border border-gray-100 bg-white p-5">
                 <h3 className="text-base font-semibold text-gray-900">Общая ставка</h3>
                 <p className="mt-1 text-sm leading-relaxed text-gray-500">
-                  {modeHint
+                  {showCpcPositionChips && modeHint
                     ? `Для всех товаров подставлена рекомендуемая ставка за ${modeHint}`
                     : 'Значение применится ко всем выбранным товарам'}
                 </p>
 
-                <div
-                  className="mt-4 flex flex-wrap gap-1 rounded-[10px] bg-white p-1"
-                  role="radiogroup"
-                  aria-label="Режим общей ставки"
-                >
-                  {MODE_OPTIONS.map((opt) => {
-                    const selected = mode === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={selected}
-                        onClick={() => applyModeToAll(opt.id)}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all sm:text-sm ${
-                          selected
-                            ? 'bg-[rgba(74,74,89,0.08)] text-gray-900'
-                            : 'text-[#767386] hover:bg-gray-50 hover:text-gray-900'
-                        }`}
-                      >
-                        {opt.dotClass ? (
+                {showCpcPositionChips ? (
+                  <div
+                    className="mt-4 flex flex-wrap gap-1 rounded-[10px] bg-white p-1"
+                    role="tablist"
+                    aria-label="Позиции в поиске"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === 'manual'}
+                      onClick={() => applyModeToAll('manual')}
+                      className={`${MODE_CHIP_BASE} ${
+                        mode === 'manual' ? MODE_CHIP_SELECTED : MODE_CHIP_IDLE
+                      }`}
+                    >
+                      Ручная
+                    </button>
+                    {BID_CHASING_POSITION_OPTIONS.map((opt) => {
+                      const selected = mode === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={selected}
+                          onClick={() => applyModeToAll(opt.id)}
+                          className={`${MODE_CHIP_BASE} ${
+                            selected ? MODE_CHIP_SELECTED : MODE_CHIP_IDLE
+                          }`}
+                        >
                           <span
-                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${opt.dotClass}`}
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${opt.segmentActiveClass}`}
                             aria-hidden
                           />
-                        ) : null}
-                        {opt.label}
-                      </button>
-                    );
-                  })}
-                </div>
+                          {formatBidChasingPositionShortLabel(
+                            presetBidChasingPosition(opt.id),
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
 
-                <div className="relative mt-4">
+                {showCpmPresetChips ? (
+                  <div
+                    className="mt-4 flex flex-wrap gap-1 rounded-[10px] bg-white p-1"
+                    role="tablist"
+                    aria-label="Уровень ставки CPM"
+                  >
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={cpmPreset === 'manual'}
+                      onClick={() => setCpmPreset('manual')}
+                      className={`${MODE_CHIP_BASE} ${
+                        cpmPreset === 'manual' ? MODE_CHIP_SELECTED : MODE_CHIP_IDLE
+                      }`}
+                    >
+                      Ручная
+                    </button>
+                    {CPM_PRESET_CHIPS.map((opt) => {
+                      const selected = cpmPreset === opt.id;
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={selected}
+                          onClick={() => applyCpmPresetToAll(opt.id)}
+                          className={`${MODE_CHIP_BASE} ${
+                            selected ? MODE_CHIP_SELECTED : MODE_CHIP_IDLE
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 shrink-0 rounded-full ${opt.toneClass}`}
+                            aria-hidden
+                          />
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                <div
+                  className={`relative ${
+                    showCpcPositionChips || showCpmPresetChips ? 'mt-5' : 'mt-4'
+                  }`}
+                >
                   <input
                     type="text"
                     inputMode="decimal"
@@ -413,52 +476,81 @@ export function BulkSearchBidModal({
                       const raw = e.target.value.replace(/[^\d.,]/g, '');
                       setGlobalDraft(raw);
                       setMode('manual');
+                      setCpmPreset('manual');
                     }}
                     onBlur={commitGlobal}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') commitGlobal();
                     }}
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-10 text-base font-medium text-gray-900 outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                    className="w-full rounded-full bg-[#F3F4F6] px-4 py-3 pr-[4.25rem] text-base tabular-nums text-gray-900 outline-none placeholder:text-gray-400 focus:ring-2 focus:ring-purple-500/30"
                     aria-label="Общая ставка"
                   />
-                  <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-400">
-                    ₽
-                  </span>
+                  <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
+                    <span className="pointer-events-none text-gray-400" aria-hidden>
+                      ₽
+                    </span>
+                    {globalDraft !== '' ? (
+                      <button
+                        type="button"
+                        aria-label="Очистить"
+                        onClick={() => {
+                          setGlobalDraft('');
+                          setMode('manual');
+                          setCpmPreset('manual');
+                        }}
+                        className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80"
+                      >
+                        <X className="h-3 w-3" aria-hidden />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               </div>
 
               <div className="mt-6">
-                {items.map((item) => (
-                  <ProductBidRow
-                    key={item.id}
-                    item={item}
-                    bid={bidsById[item.id] ?? item.bid}
-                    onBidChange={(next) => {
-                      setMode('manual');
-                      setBidsById((prev) => ({ ...prev, [item.id]: next }));
-                    }}
-                    pickerOpen={pickerItemId === item.id}
-                    onTogglePicker={() =>
-                      setPickerItemId((current) =>
-                        current === item.id ? null : item.id,
-                      )
-                    }
-                    anchorRef={(node) => {
-                      if (pickerItemId === item.id) {
-                        searchBidPickerRef.current = node;
-                      }
-                    }}
-                  />
-                ))}
+                {items.map((item) => {
+                  const rowBid = bidsById[item.id] ?? item.bid;
+                  return (
+                    <ProductBidRow
+                      key={item.id}
+                      item={item}
+                      bid={rowBid}
+                      controls={controls}
+                      onBidChange={(next) => {
+                        setMode('manual');
+                        setCpmPreset('manual');
+                        setBidsById((prev) => ({ ...prev, [item.id]: next }));
+                      }}
+                      pickerOpen={showCpcPositionChips && pickerItemId === item.id}
+                      onTogglePicker={() => {
+                        if (!showCpcPositionChips) return;
+                        setPickerItemId((current) =>
+                          current === item.id ? null : item.id,
+                        );
+                      }}
+                      anchorRef={(node: HTMLDivElement | null) => {
+                        if (pickerItemId === item.id) {
+                          searchBidPickerRef.current = node;
+                        }
+                      }}
+                    />
+                  );
+                })}
               </div>
-              {pickerItemId
+              {showCpcPositionChips && pickerItemId
                 ? (() => {
                     const pickerItem = items.find((i) => i.id === pickerItemId);
                     if (!pickerItem) return null;
                     const bid = bidsById[pickerItem.id] ?? pickerItem.bid;
-                    const status = resolveStatus(bid, pickerItem.recommendedByTier);
+                    const visual = resolveCpcSearchBidStatus(bid);
                     const selectedPosition: BidChasingRange =
-                      status.kind === 'tier' ? status.tier : '3-10';
+                      visual.kind === 'tier'
+                        ? visual.filled === 3
+                          ? '1-2'
+                          : visual.filled === 2
+                            ? '3-10'
+                            : '11-34'
+                        : '11-34';
                     return (
                       <SearchBidPositionPicker
                         anchorRef={searchBidPickerRef}
@@ -469,7 +561,7 @@ export function BulkSearchBidModal({
                           setBidsById((prev) => ({
                             ...prev,
                             [pickerItem.id]:
-                              pickerItem.recommendedByTier[position],
+                              bidChasingPositionOption(position).demoBidRub,
                           }));
                           setPickerItemId(null);
                         }}

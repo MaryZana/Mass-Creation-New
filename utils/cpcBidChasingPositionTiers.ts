@@ -274,6 +274,10 @@ export function isBidChasingHoldOfferedForApproxPosition(position: number): bool
   return Math.max(1, Math.round(position)) <= MAX_BID_CHASING_SEARCH_POSITION;
 }
 
-export function bidChasingPositionOption(id: BidChasingRange) {
-  return BID_CHASING_POSITION_OPTIONS.find((o) => o.id === id) ?? BID_CHASING_POSITION_OPTIONS[0];
+export function bidChasingPositionOption(id: BidChasingRange | BidChasingPosition) {
+  const rangeId: BidChasingRange =
+    typeof id === 'string' ? id : id.kind === 'preset' ? id.id : '11-34';
+  return (
+    BID_CHASING_POSITION_OPTIONS.find((o) => o.id === rangeId) ?? BID_CHASING_POSITION_OPTIONS[0]
+  );
 }

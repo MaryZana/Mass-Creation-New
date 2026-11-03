@@ -6,7 +6,6 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import { ProfileProvider } from './components/ProfileContext';
 import { PromoBonusDemoProvider } from './components/PromoBonusDemoContext';
-import { PromoMissedBonusUxProvider } from './components/PromoMissedBonusUxContext';
 import { MassCreationDemoChromePanel } from './components/MassCreationDemoChromePanel';
 
 class RootErrorBoundary extends React.Component<
@@ -69,10 +68,8 @@ window.__MASS_CREATION_ROOT__.render(
       <BrowserRouter basename={routerBasename}>
         <ProfileProvider>
           <PromoBonusDemoProvider>
-            <PromoMissedBonusUxProvider>
-              <App />
-              <MassCreationDemoChromePanel />
-            </PromoMissedBonusUxProvider>
+            <App />
+            <MassCreationDemoChromePanel />
           </PromoBonusDemoProvider>
         </ProfileProvider>
       </BrowserRouter>

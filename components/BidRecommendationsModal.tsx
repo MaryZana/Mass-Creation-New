@@ -205,7 +205,7 @@ export function BidRecommendationsModal({
           </div>
 
           <div
-            className="flex h-full w-[min(720px,calc(100vw-3.5rem))] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-modal="true"
             aria-labelledby="bid-recommendations-title"

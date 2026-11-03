@@ -45,6 +45,7 @@ import { DailyLimitInfoTooltip } from './DailyLimitInfoTooltip';
 import { DynamicDailyLimitMark } from './DynamicDailyLimitMark';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
 import { BudgetRangeConceptBlock, SpendHistoryModal, BUDGET_CLICKS_SERIES } from './BudgetRangeConceptBlock';
+import { BudgetRefillModal } from './BudgetRefillModal';
 import { SearchBidPositionPicker } from './SearchBidPositionPicker';
 import { SearchBidForecastField } from './SearchBidForecastField';
 import {
@@ -122,8 +123,19 @@ const formatCurrency = (num: number | null | undefined): string => {
   return `${num.toLocaleString('ru-RU')} ₽`;
 };
 
-const BUDGET_REMAINDER_BONUS_RUB = 400_000;
+const BUDGET_REMAINDER_BONUS_REFUNDABLE_RUB = 250_000;
+const BUDGET_REMAINDER_BONUS_NON_REFUNDABLE_RUB = 150_000;
+const BUDGET_REMAINDER_BONUS_RUB =
+  BUDGET_REMAINDER_BONUS_REFUNDABLE_RUB + BUDGET_REMAINDER_BONUS_NON_REFUNDABLE_RUB;
 const BUDGET_REMAINDER_BUFFER_RUB = 120_000;
+
+function splitRemainderBonus(bonus: number) {
+  if (bonus <= 0) return { refundable: 0, nonRefundable: 0 };
+  const refundable = Math.round(
+    (bonus * BUDGET_REMAINDER_BONUS_REFUNDABLE_RUB) / BUDGET_REMAINDER_BONUS_RUB,
+  );
+  return { refundable, nonRefundable: bonus - refundable };
+}
 
 function budgetRemainderSources(total: number) {
   const safe = Math.max(0, total);
@@ -132,13 +144,24 @@ function budgetRemainderSources(total: number) {
     return {
       account: safe - bonusAndBuffer,
       bonus: BUDGET_REMAINDER_BONUS_RUB,
+      bonusRefundable: BUDGET_REMAINDER_BONUS_REFUNDABLE_RUB,
+      bonusNonRefundable: BUDGET_REMAINDER_BONUS_NON_REFUNDABLE_RUB,
       buffer: BUDGET_REMAINDER_BUFFER_RUB,
     };
   }
-  if (safe === 0) return { account: 0, bonus: 0, buffer: 0 };
+  if (safe === 0) {
+    return { account: 0, bonus: 0, bonusRefundable: 0, bonusNonRefundable: 0, buffer: 0 };
+  }
   const bonus = Math.round((safe * BUDGET_REMAINDER_BONUS_RUB) / bonusAndBuffer);
   const buffer = Math.min(safe - bonus, Math.round((safe * BUDGET_REMAINDER_BUFFER_RUB) / bonusAndBuffer));
-  return { account: Math.max(0, safe - bonus - buffer), bonus, buffer };
+  const { refundable, nonRefundable } = splitRemainderBonus(bonus);
+  return {
+    account: Math.max(0, safe - bonus - buffer),
+    bonus,
+    bonusRefundable: refundable,
+    bonusNonRefundable: nonRefundable,
+    buffer,
+  };
 }
 
 const parseDisplayValue = (str: string): number => {
@@ -3582,13 +3605,13 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
               className="tooltip px-4 py-2 text-sm font-medium bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300"
             >
               Завершить
-              <span className="tooltip-text !bottom-auto !left-auto !right-0 !top-full !mt-2 !flex !w-[15.5rem] !max-w-[15.5rem] !translate-x-0 !flex-col !gap-1.5 !whitespace-normal !px-3 !py-2.5 !text-left !font-normal !leading-snug">
+              <span className="tooltip-text !bottom-auto !left-auto !right-0 !top-full !mt-2 !flex !w-[19rem] !max-w-[19rem] !translate-x-0 !flex-col !gap-1.5 !whitespace-normal !px-3 !py-2.5 !text-left !font-normal !leading-snug">
                 <span className="text-white/90">При завершении вернём</span>
                 {(
                   [
                     ['на счёт', budgetRemainderSources(campaignBudget).account],
-                    ['на буфер', budgetRemainderSources(campaignBudget).buffer],
-                    ['промобонусы', budgetRemainderSources(campaignBudget).bonus],
+                    ['на баланс', budgetRemainderSources(campaignBudget).buffer],
+                    ['возвратные промобонусы', budgetRemainderSources(campaignBudget).bonusRefundable],
                   ] as const
                 ).map(([label, amount]) => (
                   <span key={label} className="flex items-baseline justify-between gap-3">
@@ -3596,6 +3619,17 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                     <span className="shrink-0 tabular-nums">{formatCurrency(amount)}</span>
                   </span>
                 ))}
+                {budgetRemainderSources(campaignBudget).bonusNonRefundable > 0 ? (
+                  <>
+                    <span className="mt-1 border-t border-white/15 pt-1.5 text-white/90">Исчезнут</span>
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="text-white/80">невозвратные промобонусы</span>
+                      <span className="shrink-0 tabular-nums">
+                        {formatCurrency(budgetRemainderSources(campaignBudget).bonusNonRefundable)}
+                      </span>
+                    </span>
+                  </>
+                ) : null}
               </span>
             </button>
             <div className="h-6 w-px shrink-0 bg-gray-200" aria-hidden />
@@ -3659,7 +3693,7 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
                       [
                         ['Счёт', budgetRemainderSources(campaignBudget).account],
                         ['Промобонусы', budgetRemainderSources(campaignBudget).bonus],
-                        ['Буфер', budgetRemainderSources(campaignBudget).buffer],
+                        ['Баланс', budgetRemainderSources(campaignBudget).buffer],
                       ] as const
                     ).map(([label, amount]) => (
                       <span key={label} className="flex items-baseline justify-between gap-3">
@@ -4804,14 +4838,27 @@ export const CpcCampaignPage: React.FC<CpcCampaignPageProps> = ({
         <BudgetRefillModal
           isOpen={isBudgetRefillModalOpen}
           onClose={() => setIsBudgetRefillModalOpen(false)}
-          onSave={(amount) => {
+          onSave={(amount, extras) => {
             const newBudget = campaignBudget + amount;
             setCampaignBudget((prev) => prev + amount);
             setIsBudgetRefillModalOpen(false);
             if (onUpdateData) {
-              onUpdateData({ remainingBudget: newBudget });
+              onUpdateData({
+                remainingBudget: newBudget,
+                ...(extras?.autoRefill?.enabled
+                  ? {
+                      autoRefill: true,
+                      autoRefillThreshold: extras.autoRefill.threshold,
+                      autoRefillAmount: extras.autoRefill.amount,
+                    }
+                  : null),
+              });
             }
-            setToastMessage('Бюджет пополнен');
+            setToastMessage(
+              extras?.autoRefill?.enabled
+                ? 'Бюджет и автопополнение сохранены'
+                : 'Бюджет пополнен',
+            );
             setShowToast(true);
           }}
           dailyLimit={parseDisplayValue(dailyLimitValue)}
@@ -5226,206 +5273,6 @@ export const AutoRefillModal: React.FC<{
   );
 };
 
-// Budget Refill Modal Component
-const BudgetRefillModal: React.FC<{
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (amount: number) => void;
-  dailyLimit: number;
-  currentBudget: number;
-  showDailyLimitInfo?: boolean;
-}> = ({ isOpen, onClose, onSave, dailyLimit, currentBudget, showDailyLimitInfo = false }) => {
-  const [refillAmount, setRefillAmount] = useState('3000');
-  const [useBonuses, setUseBonuses] = useState(false);
-  const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
-  const [bonusValue, setBonusValue] = useState<number | string>(3000);
-  const [budgetError, setBudgetError] = useState('');
-  const [bonusError, setBonusError] = useState('');
-  const neededAmount = dailyLimit > currentBudget ? dailyLimit - currentBudget : 0;
-
-  useEffect(() => {
-    if (isOpen) {
-      setRefillAmount('3000');
-      setUseBonuses(false);
-      setBonusValue(3000);
-      setBudgetError('');
-      setBonusError('');
-    }
-  }, [isOpen]);
-
-  const selectedPkg = useMemo(() => BONUS_PACKAGES.find(p => p.id === selectedPkgId) || BONUS_PACKAGES[0], [selectedPkgId]);
-  const currentBudgetValue = parseDisplayValue(refillAmount);
-  const numericBonusValue = parseDisplayValue(String(bonusValue));
-
-  useEffect(() => {
-    setBudgetError('');
-    setBonusError('');
-
-    if (currentBudgetValue < 1000 && refillAmount !== '') {
-      setBudgetError('Минимальный бюджет 1000 ₽');
-    }
-
-    if (useBonuses) {
-      if (numericBonusValue > currentBudgetValue) {
-        setBonusError('Сумма бонусов не может превышать общий бюджет');
-        return;
-      }
-
-      const maxBonusFromPackage = selectedPkg.amount;
-      if (numericBonusValue > maxBonusFromPackage) {
-        setBonusError(`В пакете доступно только ${formatForDisplay(maxBonusFromPackage)} B`);
-        return;
-      }
-
-      const maxPercent = selectedPkg.maxPercent / 100;
-      const maxBonusAllowedByPercent = currentBudgetValue * maxPercent;
-
-      if (numericBonusValue > maxBonusAllowedByPercent) {
-        setBonusError(`Можно списать максимум ${formatForDisplay(Math.floor(maxBonusAllowedByPercent))} B (${selectedPkg.maxPercent}% от суммы)`);
-        return;
-      }
-    }
-  }, [refillAmount, useBonuses, bonusValue, selectedPkg, currentBudgetValue, numericBonusValue]);
-
-  const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const parsed = parseDisplayValue(e.target.value);
-    if (!isNaN(parsed)) {
-      setRefillAmount(String(parsed));
-    } else if (e.target.value === '') {
-      setRefillAmount('');
-    }
-  };
-
-  const handleBudgetBlur = () => {
-    const parsed = parseDisplayValue(refillAmount);
-    if (isNaN(parsed) || parsed < 1000) {
-      setRefillAmount('1000');
-    }
-  };
-
-  const handleBonusBlur = () => {
-    const numericValue = parseDisplayValue(String(bonusValue));
-    if (isNaN(numericValue) || numericValue < 0) {
-      setBonusValue(0);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="relative bg-white rounded-xl shadow-xl w-full max-w-xl p-6 overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="font-bold text-lg text-gray-900">Пополнение бюджета</h3>
-          <button onClick={onClose}><X className="w-5 h-5 text-gray-400 hover:text-gray-600" /></button>
-        </div>
-
-        <div className="mb-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-2">
-          <div className="space-y-6">
-            {showDailyLimitInfo && dailyLimit > currentBudget && neededAmount > 0 && (
-              <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-4">
-                <p className="text-sm text-gray-900 font-medium">
-                  Чтобы задать дневной лимит {formatForDisplay(dailyLimit)} ₽, пополните бюджет еще на {formatForDisplay(neededAmount)} ₽
-                </p>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Сумма пополнения</label>
-              <div className="relative">
-                <input
-                  type="text"
-                  autoFocus
-                  className={`w-full border rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500 pr-8 ${budgetError ? 'border-red-500' : 'border-gray-300'}`}
-                  placeholder="3000"
-                  value={formatForDisplay(refillAmount)}
-                  onChange={handleBudgetChange}
-                  onBlur={handleBudgetBlur}
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">₽</span>
-              </div>
-              {budgetError && <p className="text-red-500 text-xs mt-1.5">{budgetError}</p>}
-            </div>
-
-            <div className="pt-4 border-t border-gray-100">
-              <div className="flex items-center gap-2 mb-4">
-              <ToggleSwitch
-                id="bonus-toggle"
-                checked={useBonuses}
-                onChange={setUseBonuses}
-              />
-              <label htmlFor="bonus-toggle" className="text-sm font-semibold text-gray-900 cursor-pointer">
-                Списать промо-бонусы <span className="text-gray-400 font-normal ml-1">({formatForDisplay(TOTAL_PROMO_BONUS)} B)</span>
-              </label>
-            </div>
-
-              {useBonuses && (
-                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                  <div className="flex gap-4 overflow-x-auto pb-4 custom-scrollbar snap-x">
-                    {BONUS_PACKAGES.map(pkg => (
-                      <div
-                        key={pkg.id}
-                        onClick={() => setSelectedPkgId(pkg.id)}
-                        className={`min-w-[200px] p-4 rounded-xl border-2 transition-all cursor-pointer snap-start relative ${selectedPkgId === pkg.id ? 'border-purple-600 bg-purple-50/30' : 'border-gray-100 hover:border-gray-200 bg-white'}`}
-                      >
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-xl font-bold text-gray-900">{formatForDisplay(pkg.amount)}</span>
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedPkgId === pkg.id ? 'border-purple-600' : 'border-gray-300'}`}>
-                            {selectedPkgId === pkg.id && <div className="w-2.5 h-2.5 bg-purple-600 rounded-full"></div>}
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-500 mb-3 font-medium leading-tight">Оплата до {pkg.maxPercent}% от суммы</p>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-auto pt-1">
-                          <span className="text-orange-500">🔥</span>
-                          <span>{pkg.displayBurn} сгорят {pkg.expiry}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-6 flex flex-col md:flex-row md:items-center gap-6">
-                    <div className="relative w-full md:w-48">
-                      <input
-                        type="text"
-                        value={formatForDisplay(bonusValue)}
-                        onChange={e => setBonusValue(e.target.value)}
-                        onBlur={handleBonusBlur}
-                        className={`w-full border rounded-xl px-4 py-3 text-lg font-bold outline-none focus:ring-2 focus:ring-purple-500 ${bonusError ? 'border-red-500' : 'border-gray-300'}`}
-                      />
-                      <p className="text-xs text-gray-500 mt-1.5">до {formatForDisplay(numericBonusValue)} B (1B = 1P)</p>
-                    </div>
-                    <div className="text-sm text-gray-500 leading-snug">
-                      {bonusError ? (
-                        <p className="text-red-500">{bonusError}</p>
-                      ) : (
-                        <p>Списать можно максимум {selectedPkg.maxPercent}% от суммы пополнения</p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg">Отмена</button>
-          <button
-            onClick={() => {
-              const amount = parseDisplayValue(refillAmount);
-              onSave(amount);
-            }}
-            disabled={!!budgetError || !!bonusError}
-            className="px-4 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            Пополнить
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const BID_CHASING_MIN_BID_RUB = 1.88;
 
 export type AutoStrategiesTab = 'positions' | 'profit';
@@ -5465,7 +5312,7 @@ export const AutoStrategiesModal: React.FC<{
           </div>
 
           <div
-            className="flex h-full w-[640px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-modal="true"
             aria-labelledby="auto-strategies-title"
@@ -6188,6 +6035,23 @@ export const BidChasingClustersModal: React.FC<{
                   );
                 })}
               </div>
+
+              <div className="mt-4 flex items-start gap-3 rounded-2xl bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] ring-1 ring-black/[0.04]">
+                <span
+                  className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black text-[11px] font-bold leading-none text-white"
+                  aria-hidden
+                >
+                  i
+                </span>
+                <div className="min-w-0">
+                  <p className="mb-0 text-sm font-semibold leading-5 text-gray-950">
+                    Если не получится удержать позиции, применим рекомендованную ставку
+                  </p>
+                  <p className="mt-1 mb-0 text-sm leading-5 text-gray-600">
+                    При слишком высокой ставке применим лимит
+                  </p>
+                </div>
+              </div>
             </div>
           ) : null}
             </div>
@@ -6255,7 +6119,7 @@ export const BidChasingClustersModal: React.FC<{
           </div>
 
           <div
-            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-modal="true"
             aria-labelledby="bid-chasing-modal-title"
@@ -6339,7 +6203,7 @@ export type AdvancedDailyLimitSettings = {
   maxSpendPeriod?: MaxSpendPeriod;
 };
 
-type DailyLimitConditionMetric = 'drr' | 'crCart' | 'crOrder' | 'cpo';
+type DailyLimitConditionMetric = 'drr' | 'cr' | 'ctr' | 'crCart' | 'crOrder' | 'cpo';
 
 type DailyLimitConditionCompare = 'below' | 'above';
 
@@ -6375,12 +6239,7 @@ type DailyLimitIncreaseRule = {
 
 const DAILY_LIMIT_RULE_MAX_CONDITIONS = 3;
 
-const DAILY_LIMIT_CONDITION_METRICS: DailyLimitConditionMetric[] = [
-  'drr',
-  'crCart',
-  'crOrder',
-  'cpo',
-];
+const DAILY_LIMIT_CONDITION_METRICS: DailyLimitConditionMetric[] = ['cr', 'ctr'];
 
 function newDailyLimitIncreaseRuleId() {
   return `rule-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -6444,7 +6303,7 @@ export function createDefaultAdvancedDailyLimitSettings(): AdvancedDailyLimitSet
   };
 }
 
-function isDynamicDailyLimitConfigured(settings: AdvancedDailyLimitSettings): boolean {
+export function isDynamicDailyLimitConfigured(settings: AdvancedDailyLimitSettings): boolean {
   if (!settings.autoIncreaseEnabled) return false;
   if (settings.strategyId === 'maxSpend') return true;
   if (settings.increaseRules?.length) {
@@ -6452,6 +6311,61 @@ function isDynamicDailyLimitConfigured(settings: AdvancedDailyLimitSettings): bo
   }
   const metrics = resolveAutoIncreaseMetricEnabled(settings);
   return metrics.drr || metrics.cr;
+}
+
+/** Короткая метка для бейджа: «Меняется от CR» / «ДРР» / «CPO». */
+export function formatDynamicDailyLimitBadgeLabel(
+  settings: AdvancedDailyLimitSettings,
+): string | null {
+  if (!isDynamicDailyLimitConfigured(settings)) return null;
+  const activeRule = (settings.increaseRules ?? []).find(
+    (rule) => rule.enabled && isDailyLimitIncreaseRuleValid(rule),
+  );
+  const metric = activeRule?.metric;
+  if (metric === 'drr') return 'Меняется от ДРР';
+  if (metric === 'cpo') return 'Меняется от CPO';
+  if (metric === 'ctr') return 'Меняется от CTR';
+  if (
+    metric === 'cr' ||
+    metric === 'crCart' ||
+    metric === 'crOrder' ||
+    settings.metric === 'cr' ||
+    settings.crMetricEnabled
+  ) {
+    return 'Меняется от CR';
+  }
+  return 'Меняется от ДРР';
+}
+
+/** Строки тултипа: «Если CR выше 1%, повышается до 2 000 ₽.» */
+export function formatDynamicDailyLimitTooltipLines(
+  settings: AdvancedDailyLimitSettings,
+): string[] {
+  if (!isDynamicDailyLimitConfigured(settings)) return [];
+  const activeRule = (settings.increaseRules ?? []).find(
+    (rule) => rule.enabled && isDailyLimitIncreaseRuleValid(rule),
+  );
+  if (!activeRule?.metric) return [];
+  const shortMetric =
+    activeRule.metric === 'drr'
+      ? 'ДРР'
+      : activeRule.metric === 'cpo'
+        ? 'CPO'
+        : activeRule.metric === 'ctr'
+          ? 'CTR'
+          : 'CR';
+  return (activeRule.conditions ?? [])
+    .filter((c) => c.threshold > 0 && isConditionBudgetChangeConfigured(c))
+    .map((c) => {
+      const compare = resolveConditionCompare(c, activeRule.metric);
+      const compareWord = compare === 'above' ? 'выше' : 'ниже';
+      const unit = conditionMetricUnit(activeRule.metric!);
+      const thresholdText =
+        unit === '₽'
+          ? `${formatForDisplay(c.threshold)} ₽`
+          : `${String(c.threshold).replace('.', ',')}%`;
+      return `Если ${shortMetric} ${compareWord} ${thresholdText}, повышается до ${formatConditionBudgetChangeLabel(c)}.`;
+    });
 }
 
 function isAutoIncreaseThresholdValid(parsed: number) {
@@ -6462,8 +6376,8 @@ function normalizeConditionMetric(
   metric: string | null | undefined,
 ): DailyLimitConditionMetric | null {
   if (metric == null) return null;
-  if (metric === 'cr' || metric === 'crOrder') return 'crOrder';
-  if (metric === 'crCart') return 'crCart';
+  if (metric === 'cr' || metric === 'crOrder' || metric === 'crCart') return 'cr';
+  if (metric === 'ctr') return 'ctr';
   if (metric === 'cpo') return 'cpo';
   if (metric === 'drr') return 'drr';
   return null;
@@ -6473,10 +6387,12 @@ function conditionMetricLabel(metric: DailyLimitConditionMetric) {
   switch (metric) {
     case 'drr':
       return 'ДРР';
+    case 'cr':
     case 'crCart':
-      return 'CR в корзину';
     case 'crOrder':
-      return 'CR в заказ';
+      return 'CR';
+    case 'ctr':
+      return 'CTR';
     case 'cpo':
       return 'CPO';
   }
@@ -7498,152 +7414,154 @@ function DailyLimitConditionRulesBuilder({
                   ? formatForDisplay(condition.budgetChangeRub)
                   : '';
             const thresholdInvalid =
-              (condition.threshold > 0 && !isConditionThresholdValid(metric, condition.threshold)) ||
-              (condition.budgetChangeRub > 0 && condition.threshold <= 0);
-            const amountInvalid =
-              (condition.budgetChangeRub > 0 &&
-                !isConditionBudgetChangeValid(condition.budgetChangeRub)) ||
-              (condition.threshold > 0 && condition.budgetChangeRub <= 0) ||
-              (!allowLimitAboveBudget &&
-                typeof campaignBudget === 'number' &&
-                condition.budgetChangeRub > campaignBudget);
+              condition.threshold > 0 &&
+              !isConditionThresholdValid(metric, condition.threshold);
             const isDuplicateThreshold =
               condition.threshold > 0 &&
               conditions.some(
                 (other) =>
                   other.id !== condition.id && other.threshold === condition.threshold,
               );
+            const thresholdInputId = `daily-limit-threshold-${condition.id}`;
+            const amountInputId = `daily-limit-amount-${condition.id}`;
             return (
               <div key={condition.id} className="flex min-w-0 items-center gap-2">
-                <div
-                  className={`flex min-h-[48px] min-w-0 flex-1 items-center gap-2 rounded-xl border bg-white px-3 ${
+                <label
+                  htmlFor={thresholdInputId}
+                  className={`flex h-12 min-w-0 flex-1 cursor-text items-center gap-2 rounded-xl border bg-white px-3 ${
                     thresholdInvalid || isDuplicateThreshold
                       ? 'border-red-300'
                       : 'border-gray-200'
                   }`}
                 >
-                  <p className="min-w-0 shrink text-[13px] leading-snug text-gray-600">
-                    Если {conditionMetricLabel(metric)} {conditionCompareLabel(compare).toLowerCase()}
-                  </p>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={thresholdDisplay}
-                    placeholder={String(minConditionThreshold(metric))}
-                    onChange={(e) => {
-                      const v = e.target.value.replace(',', '.');
-                      if (v === '' || /^\d*\.?\d*$/.test(v)) {
-                        const parsed = parseDisplayValue(v);
-                        setFieldDrafts((prev) => ({
-                          ...prev,
-                          [condition.id]: { ...prev[condition.id], threshold: v },
-                        }));
-                        if (v === '' || !Number.isNaN(parsed)) {
+                  <span className="shrink-0 whitespace-nowrap text-[13px] leading-none text-gray-600">
+                    Если {conditionMetricLabel(metric)}{' '}
+                    {conditionCompareLabel(compare).toLowerCase()}
+                  </span>
+                  <div className="ml-auto flex min-w-0 items-center gap-1">
+                    <input
+                      id={thresholdInputId}
+                      type="text"
+                      inputMode="decimal"
+                      value={thresholdDisplay}
+                      placeholder={String(minConditionThreshold(metric))}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(',', '.');
+                        if (v === '' || /^\d*\.?\d*$/.test(v)) {
+                          const parsed = parseDisplayValue(v);
+                          setFieldDrafts((prev) => ({
+                            ...prev,
+                            [condition.id]: { ...prev[condition.id], threshold: v },
+                          }));
+                          if (v === '' || !Number.isNaN(parsed)) {
+                            updateCondition(condition.id, {
+                              compare,
+                              threshold: v === '' ? 0 : parsed,
+                            });
+                          }
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const raw = e.currentTarget.value.trim().replace(',', '.');
+                        setFieldDrafts((prev) => {
+                          const next = { ...prev };
+                          if (next[condition.id]) {
+                            delete next[condition.id].threshold;
+                            if (
+                              next[condition.id].threshold === undefined &&
+                              next[condition.id].amount === undefined
+                            ) {
+                              delete next[condition.id];
+                            }
+                          }
+                          return next;
+                        });
+                        if (raw === '') return;
+                        const parsed = parseDisplayValue(raw);
+                        updateCondition(condition.id, {
+                          compare,
+                          threshold: clampConditionThreshold(metric, parsed),
+                        });
+                      }}
+                      className="w-14 shrink-0 border-0 bg-transparent p-0 text-right text-sm font-medium leading-none tabular-nums text-gray-900 outline-none placeholder:text-gray-300"
+                      aria-label={`Порог, условие ${conditionIndex + 1}`}
+                    />
+                    <span className="shrink-0 text-sm leading-none text-gray-400">{unit}</span>
+                  </div>
+                </label>
+
+                <label
+                  htmlFor={amountInputId}
+                  className="flex h-12 min-w-0 flex-1 cursor-text items-center gap-2 rounded-xl border border-gray-200 bg-white px-3"
+                >
+                  <span className="shrink-0 whitespace-nowrap text-[13px] leading-none text-gray-600">
+                    Повысить до
+                  </span>
+                  <div className="ml-auto flex min-w-0 items-center gap-1">
+                    <input
+                      id={amountInputId}
+                      type="text"
+                      inputMode="numeric"
+                      value={amountDisplay}
+                      placeholder={formatForDisplay(CONDITION_INCREASE_RUB_MIN)}
+                      onChange={(e) => {
+                        const parsed = parseDisplayValue(e.target.value);
+                        if (e.target.value === '') {
+                          setFieldDrafts((prev) => ({
+                            ...prev,
+                            [condition.id]: { ...prev[condition.id], amount: '' },
+                          }));
+                          updateCondition(condition.id, {
+                            budgetChangeRub: 0,
+                            budgetChangeUnit: 'rub',
+                            compare,
+                          });
+                          return;
+                        }
+                        if (!Number.isNaN(parsed)) {
+                          setFieldDrafts((prev) => ({
+                            ...prev,
+                            [condition.id]: {
+                              ...prev[condition.id],
+                              amount: e.target.value,
+                            },
+                          }));
                           updateCondition(condition.id, {
                             compare,
-                            threshold: v === '' ? 0 : parsed,
+                            budgetChangeRub: Math.max(0, Math.round(parsed)),
+                            budgetChangeUnit: 'rub',
                           });
                         }
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const raw = e.currentTarget.value.trim().replace(',', '.');
-                      setFieldDrafts((prev) => {
-                        const next = { ...prev };
-                        if (next[condition.id]) {
-                          delete next[condition.id].threshold;
-                          if (
-                            next[condition.id].threshold === undefined &&
-                            next[condition.id].amount === undefined
-                          ) {
-                            delete next[condition.id];
+                      }}
+                      onBlur={(e) => {
+                        const raw = e.currentTarget.value.trim();
+                        setFieldDrafts((prev) => {
+                          const next = { ...prev };
+                          if (next[condition.id]) {
+                            delete next[condition.id].amount;
+                            if (
+                              next[condition.id].threshold === undefined &&
+                              next[condition.id].amount === undefined
+                            ) {
+                              delete next[condition.id];
+                            }
                           }
-                        }
-                        return next;
-                      });
-                      if (raw === '') return;
-                      const parsed = parseDisplayValue(raw);
-                      updateCondition(condition.id, {
-                        compare,
-                        threshold: clampConditionThreshold(metric, parsed),
-                      });
-                    }}
-                    className="w-12 shrink-0 border-0 bg-transparent py-2 text-right text-sm font-medium tabular-nums text-gray-900 outline-none placeholder:text-gray-300"
-                    aria-label={`Порог, условие ${conditionIndex + 1}`}
-                  />
-                  <span className="shrink-0 text-sm text-gray-400">{unit}</span>
-                </div>
-
-                <div
-                  className={`flex min-h-[48px] min-w-0 flex-1 items-center gap-2 rounded-xl border bg-white px-3 ${
-                    amountInvalid ? 'border-red-300' : 'border-gray-200'
-                  }`}
-                >
-                  <p className="min-w-0 shrink text-[13px] leading-snug text-gray-600">
-                    Повысить до
-                  </p>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={amountDisplay}
-                    placeholder={formatForDisplay(CONDITION_INCREASE_RUB_MIN)}
-                    onChange={(e) => {
-                      const parsed = parseDisplayValue(e.target.value);
-                      if (e.target.value === '') {
-                        setFieldDrafts((prev) => ({
-                          ...prev,
-                          [condition.id]: { ...prev[condition.id], amount: '' },
-                        }));
-                        updateCondition(condition.id, {
-                          budgetChangeRub: 0,
-                          budgetChangeUnit: 'rub',
-                          compare,
+                          return next;
                         });
-                        return;
-                      }
-                      if (!Number.isNaN(parsed)) {
-                        setFieldDrafts((prev) => ({
-                          ...prev,
-                          [condition.id]: {
-                            ...prev[condition.id],
-                            amount: e.target.value,
-                          },
-                        }));
+                        if (raw === '') return;
+                        const parsed = parseDisplayValue(raw);
                         updateCondition(condition.id, {
                           compare,
-                          budgetChangeRub: Math.max(0, Math.round(parsed)),
+                          budgetChangeRub: clampConditionIncreaseRub(parsed),
                           budgetChangeUnit: 'rub',
                         });
-                      }
-                    }}
-                    onBlur={(e) => {
-                      const raw = e.currentTarget.value.trim();
-                      setFieldDrafts((prev) => {
-                        const next = { ...prev };
-                        if (next[condition.id]) {
-                          delete next[condition.id].amount;
-                          if (
-                            next[condition.id].threshold === undefined &&
-                            next[condition.id].amount === undefined
-                          ) {
-                            delete next[condition.id];
-                          }
-                        }
-                        return next;
-                      });
-                      if (raw === '') return;
-                      const parsed = parseDisplayValue(raw);
-                      updateCondition(condition.id, {
-                        compare,
-                        budgetChangeRub: clampConditionIncreaseRub(parsed),
-                        budgetChangeUnit: 'rub',
-                      });
-                    }}
-                    className="min-w-0 flex-1 border-0 bg-transparent py-2 text-right text-sm font-medium tabular-nums text-gray-900 outline-none placeholder:text-gray-300"
-                    aria-label={`Сумма, условие ${conditionIndex + 1}`}
-                  />
-                  <span className="shrink-0 text-sm text-gray-400">₽</span>
-                </div>
+                      }}
+                      className="w-[4.5rem] shrink-0 border-0 bg-transparent p-0 text-right text-sm font-medium leading-none tabular-nums text-gray-900 outline-none placeholder:text-gray-300"
+                      aria-label={`Сумма, условие ${conditionIndex + 1}`}
+                    />
+                    <span className="shrink-0 text-sm leading-none text-gray-400">₽</span>
+                  </div>
+                </label>
 
                 {conditions.length > 1 ? (
                   <button
@@ -7661,11 +7579,12 @@ function DailyLimitConditionRulesBuilder({
             );
           })}
 
-          {canAddCondition ? (
+          {conditions.length < DAILY_LIMIT_RULE_MAX_CONDITIONS ? (
             <button
               type="button"
               onClick={addCondition}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-[#F2F2F7] px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-[#e8e8ed]"
+              disabled={!canAddCondition}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-[#F2F2F7] px-3 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-[#e8e8ed] disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus className="h-4 w-4 shrink-0" />
               Условие
@@ -7717,6 +7636,7 @@ export const AdvancedDailyLimitModal: React.FC<{
   budgetStrategyTabs = false,
   isOpen,
   onClose,
+  isDailyLimitEnabled,
   onDisableDailyLimit,
   dailyLimitValue,
   onDailyLimitValueChange,
@@ -7940,9 +7860,9 @@ export const AdvancedDailyLimitModal: React.FC<{
         ? true
         : conditionRuleBuilder
           ? options?.enableSpendRulesOnlyWhenValid
-            ? autoIncreaseEnabled && hasValidSpendRules
+            ? hasValidSpendRules
             : dailyLimitOnly
-              ? autoIncreaseEnabled
+              ? autoIncreaseEnabled || hasValidSpendRules
               : true
           : autoIncreaseEnabled;
       const effectiveStrategyId: DailyLimitStrategyId | null = isMaxSpendStrategy
@@ -7998,7 +7918,9 @@ export const AdvancedDailyLimitModal: React.FC<{
           ? firstActiveRule?.metric === 'drr'
           : metricEnabled.drr,
         crMetricEnabled: conditionRuleBuilder
-          ? firstActiveRule?.metric === 'crCart' ||
+          ? firstActiveRule?.metric === 'cr' ||
+            firstActiveRule?.metric === 'ctr' ||
+            firstActiveRule?.metric === 'crCart' ||
             firstActiveRule?.metric === 'crOrder' ||
             firstActiveRule?.metric === 'cpo'
           : metricEnabled.cr,
@@ -8033,7 +7955,10 @@ export const AdvancedDailyLimitModal: React.FC<{
                       drrBelowPercent:
                         rule.metric === 'drr' ? primary?.threshold ?? 0 : 0,
                       crAbovePercent:
-                        rule.metric === 'crOrder' || rule.metric === 'crCart'
+                        rule.metric === 'cr' ||
+                        rule.metric === 'ctr' ||
+                        rule.metric === 'crOrder' ||
+                        rule.metric === 'crCart'
                           ? primary?.threshold ?? 0
                           : 0,
                     };
@@ -8133,10 +8058,32 @@ export const AdvancedDailyLimitModal: React.FC<{
       active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
     }`;
 
+  const isMassDailyLimitSetup = dailyLimitOnly && conditionRuleBuilder;
+
   const body = (
     <>
-      <div className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto ${embedded ? 'px-6 pb-4 sm:px-8' : 'p-6 sm:p-8'}`}>
-        {!embedded && dailyLimitOnly ? (
+      <div
+        className={`min-w-0 flex-1 overflow-x-hidden overflow-y-auto ${
+          embedded
+            ? 'px-6 pb-4 sm:px-8'
+            : isMassDailyLimitSetup
+              ? 'bg-[#F6F6F9] p-5 sm:p-6'
+              : 'p-6 sm:p-8'
+        }`}
+      >
+        {!embedded && isMassDailyLimitSetup ? (
+          <div className="mb-5">
+            <h2
+              id="daily-limit-setup-title"
+              className="text-[22px] font-bold leading-7 tracking-[0.4px] text-gray-900"
+            >
+              Установите дневной лимит
+            </h2>
+            <p className="mt-1.5 text-sm leading-5 text-[#63616C]">
+              Максимальная сумма, которую спишем за 24 часа — с 00:00 до 23:59 мск
+            </p>
+          </div>
+        ) : !embedded && dailyLimitOnly ? (
           <h2 id="daily-limit-setup-title" className="text-xl font-bold leading-snug text-gray-900">
             Дневной лимит
           </h2>
@@ -8191,19 +8138,17 @@ export const AdvancedDailyLimitModal: React.FC<{
               {!advancedSettingsOnly ? (
                 <div
                   className={
-                    dailyLimitOnly && conditionRuleBuilder
-                      ? 'mt-6 rounded-2xl border border-gray-200 bg-white p-5'
+                    isMassDailyLimitSetup
+                      ? 'rounded-2xl bg-white p-5'
                       : 'rounded-2xl border border-gray-100 bg-white p-5'
                   }
                 >
                   <h3 className="text-base font-semibold text-gray-900">
-                    {dailyLimitOnly && conditionRuleBuilder
-                      ? 'Установите дневной лимит'
-                      : 'Лимит на день'}
+                    {isMassDailyLimitSetup ? 'Сумма лимита' : 'Лимит на день'}
                   </h3>
-                  <p className="mt-1 text-sm leading-relaxed text-gray-500">
-                    {dailyLimitOnly && conditionRuleBuilder
-                      ? 'Равномерно распределим сумму в течение суток'
+                  <p className="mt-1 text-sm leading-relaxed text-[#63616C]">
+                    {isMassDailyLimitSetup
+                      ? 'Равномерно распределим её в течение суток'
                       : 'Распределяем сумму равномерно в течение дня'}
                   </p>
                   <div className="relative mt-4">
@@ -8230,7 +8175,7 @@ export const AdvancedDailyLimitModal: React.FC<{
                     <span className="text-sm text-gray-700">
                       Переносить неистраченные деньги
                     </span>
-                    {dailyLimitOnly && conditionRuleBuilder ? (
+                    {isMassDailyLimitSetup ? (
                       <div className="group/carryover-tip relative inline-flex">
                         <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
                         <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-72 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg group-hover/carryover-tip:block">
@@ -8298,8 +8243,8 @@ export const AdvancedDailyLimitModal: React.FC<{
               <div
                 className={
                   conditionRuleBuilder
-                    ? dailyLimitOnly
-                      ? 'mt-6 rounded-2xl border border-gray-200 bg-white p-5'
+                    ? isMassDailyLimitSetup
+                      ? 'mt-4 rounded-2xl bg-white p-5'
                       : 'mt-4'
                     : 'mt-4 rounded-2xl border border-gray-100 bg-white p-5'
                 }
@@ -8331,13 +8276,22 @@ export const AdvancedDailyLimitModal: React.FC<{
                     </div>
                   </div>
                 ) : null}
-                {dailyLimitOnly && conditionRuleBuilder ? (
+                {isMassDailyLimitSetup ? (
                   <div className="mb-4">
-                    <h3 className="text-base font-semibold text-gray-900">
-                      Установить правила увеличения
-                    </h3>
-                    <p className="mt-1 text-sm leading-relaxed text-gray-500">
-                      Настройте увеличение лимита в зависимости от эффективности кампании
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="text-base font-semibold text-gray-900">
+                        Дополнительные условия
+                      </h3>
+                      <div className="group/extra-tip relative inline-flex">
+                        <HelpCircle className="h-4 w-4 cursor-help text-gray-400" />
+                        <div className="pointer-events-none absolute left-1/2 top-full z-50 mt-2 hidden w-72 -translate-x-1/2 rounded-lg bg-gray-900 p-3 text-left text-xs text-white shadow-lg group-hover/extra-tip:block">
+                          Если выбранный показатель вырастет выше порога, дневной лимит
+                          автоматически повысится до указанной суммы.
+                        </div>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-sm leading-relaxed text-[#63616C]">
+                      Повысим лимит, если показатели кампании изменятся
                     </p>
                   </div>
                 ) : null}
@@ -8459,45 +8413,80 @@ export const AdvancedDailyLimitModal: React.FC<{
               ) : null}
             </div>
 
-            <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">
-              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
-                {conditionRuleBuilder && !showMaxSpendPanel ? (
+            <div
+              className={`flex shrink-0 flex-col gap-3 px-5 py-4 sm:px-6 ${
+                isMassDailyLimitSetup
+                  ? 'bg-[#F6F6F9]'
+                  : 'border-t border-gray-100 bg-gray-50/60'
+              }`}
+            >
+              {isMassDailyLimitSetup ? (
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
-                    onClick={handleDisableSpendRules}
-                    className="rounded-xl px-2 py-2.5 text-left text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:-ml-2"
+                    disabled={!canSave}
+                    onClick={handleSave}
+                    className="inline-flex h-11 items-center justify-center rounded-[10px] bg-[#9C45FD] px-4 text-[17px] font-medium leading-5 tracking-[0.4px] text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
                   >
-                    Отключить
+                    Установить
                   </button>
-                ) : !dailyLimitOnly && !showMaxSpendPanel ? (
                   <button
                     type="button"
-                    onClick={handleResetAdvancedSettings}
-                    className="rounded-xl px-2 py-2.5 text-left text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:-ml-2"
+                    onClick={onClose}
+                    className="inline-flex h-11 items-center justify-center rounded-[10px] bg-[#F0F0F2] px-4 text-[17px] font-medium leading-5 tracking-[0.4px] text-gray-900 transition-colors hover:bg-[#E4E4EA]"
                   >
-                    Сбросить настройки
+                    Отмена
                   </button>
-                ) : (
-                  <span className="hidden sm:block" aria-hidden />
-                )}
-                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
-                >
-                  Отмена
-                </button>
-                <button
-                  type="button"
-                  disabled={!canSave}
-                  onClick={handleSave}
-                  className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-                >
-                  Сохранить
-                </button>
+                  {isDailyLimitEnabled ? (
+                    <button
+                      type="button"
+                      onClick={handleDisableSpendRules}
+                      className="ml-auto rounded-[10px] px-3 py-2.5 text-sm font-medium text-[#63616C] transition-colors hover:bg-black/[0.04] hover:text-gray-900"
+                    >
+                      Отключить
+                    </button>
+                  ) : null}
                 </div>
-              </div>
+              ) : (
+                <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  {conditionRuleBuilder && !showMaxSpendPanel ? (
+                    <button
+                      type="button"
+                      onClick={handleDisableSpendRules}
+                      className="rounded-xl px-2 py-2.5 text-left text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:-ml-2"
+                    >
+                      Отключить
+                    </button>
+                  ) : !dailyLimitOnly && !showMaxSpendPanel ? (
+                    <button
+                      type="button"
+                      onClick={handleResetAdvancedSettings}
+                      className="rounded-xl px-2 py-2.5 text-left text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 sm:-ml-2"
+                    >
+                      Сбросить настройки
+                    </button>
+                  ) : (
+                    <span className="hidden sm:block" aria-hidden />
+                  )}
+                  <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
+                    >
+                      Отмена
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!canSave}
+                      onClick={handleSave}
+                      className="rounded-xl bg-purple-600 px-6 py-2.5 text-sm font-bold text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    >
+                      Сохранить
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
     </>
   );
@@ -8540,7 +8529,9 @@ export const AdvancedDailyLimitModal: React.FC<{
           </div>
 
           <div
-            className="flex h-full w-[560px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            className={`flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] shadow-2xl animate-in slide-in-from-right duration-300 ${
+              isMassDailyLimitSetup ? 'bg-[#F6F6F9]' : 'bg-white'
+            }`}
             role="dialog"
             aria-modal="true"
             aria-labelledby={
@@ -8553,9 +8544,11 @@ export const AdvancedDailyLimitModal: React.FC<{
                 ? 'Бюджет'
                 : advancedSettingsOnly
                   ? 'Расширенные настройки'
-                  : dailyLimitOnly
-                    ? 'Дневной лимит'
-                    : undefined
+                  : isMassDailyLimitSetup
+                    ? 'Установите дневной лимит'
+                    : dailyLimitOnly
+                      ? 'Дневной лимит'
+                      : undefined
             }
           >
             {body}
