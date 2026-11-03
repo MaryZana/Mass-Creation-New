@@ -680,7 +680,12 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
 
     useEffect(() => {
         if (isOpen) {
-            setTempConfig(initialConfig);
+            setTempConfig({
+              ...initialConfig,
+              paymentModel: PaymentModel.CPC,
+              bidType: BidType.UNIFIED,
+              categories: [],
+            });
             setSelectedProducts([]);
             setUploadedFiles([]);
             setIsProcessingExcel(false);
@@ -934,7 +939,8 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
             > 
                 <div className="flex shrink-0 items-start justify-between gap-4 px-6 pt-6"> 
                     <div className="min-w-0 flex-1">
-                        <h2 id="add-item-modal-title" className="text-xl font-bold text-gray-900">Добавление товаров</h2>
+                        <h2 id="add-item-modal-title" className="text-xl font-bold text-gray-900">Добавьте товары</h2>
+                        <p className="mt-1 text-sm text-gray-500">1 товар = 1 кампания</p>
                     </div>
                     <button
                       type="button"
@@ -947,21 +953,33 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                 </div> 
                 <div className="flex min-h-0 flex-grow flex-col space-y-5 overflow-y-auto px-6 pb-6 pt-4 custom-scrollbar">
                     <section className="relative z-20 shrink-0 overflow-visible">
-                        <div className="inline-flex items-center space-x-1 rounded-lg bg-gray-100 p-1">
-                            <button
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="inline-flex items-center space-x-1 rounded-lg bg-gray-100 p-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('select')}
+                                    className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${activeTab === 'select' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
+                                >
+                                    Выбрать
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTab('upload')}
+                                    className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
+                                >
+                                    Загрузить
+                                </button>
+                            </div>
+                            {activeTab === 'upload' ? (
+                              <button
                                 type="button"
-                                onClick={() => setActiveTab('select')}
-                                className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${activeTab === 'select' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
-                            >
-                                Выбрать из списка
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => setActiveTab('upload')}
-                                className={`rounded-md px-5 py-1.5 text-sm font-semibold transition-colors ${activeTab === 'upload' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:bg-gray-200'}`}
-                            >
-                                Загрузить из файла
-                            </button>
+                                onClick={() => handleDownloadTemplateFile('xlsx')}
+                                className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-gray-900 hover:text-gray-700"
+                              >
+                                <Download className="h-4 w-4 shrink-0" />
+                                Шаблон
+                              </button>
+                            ) : null}
                         </div>
 
                         {activeTab === 'upload' && (
@@ -983,17 +1001,6 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                   accept=".xlsx,.csv"
                                   multiple
                                 />
-                                {activeTab === 'upload' && (
-                                    <p className="text-sm text-gray-500 mb-4">
-                                        Загрузите Excel-файл со списком ID товаров.{' '}
-                                        <button
-                                            onClick={() => handleDownloadTemplateFile('xlsx')}
-                                            className="text-gray-500 underline hover:text-purple-600 focus:outline-none"
-                                        >
-                                            Шаблон скачать
-                                        </button>
-                                    </p>
-                                )}
                                 {isProcessingExcel && (
                                     <div className="my-3 p-4 bg-gray-50 rounded-lg flex items-center gap-3 text-sm text-gray-600">
                                     <Loader className="w-4 h-4 animate-spin" />
@@ -1056,10 +1063,15 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                   <div>
                                     <button 
                                         onClick={() => excelFileInputRef.current?.click()}
-                                        className="w-full justify-center text-sm font-medium text-purple-600 hover:text-purple-800 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center gap-1.5 p-4 border-2 border-dashed border-gray-300 hover:border-purple-400 rounded-xl transition-colors"
+                                        className="flex w-full flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-gray-300 p-4 text-center transition-colors hover:border-purple-400 disabled:cursor-not-allowed disabled:text-gray-400"
                                     >
-                                        <UploadCloud className="w-4 h-4" />
-                                        <span>Перетащите файлы сюда или нажмите, чтобы выбрать Excel с ID товаров</span>
+                                        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-purple-600 hover:text-purple-800">
+                                          <UploadCloud className="h-4 w-4 shrink-0" />
+                                          Выберите или перетащите сюда файл Excel
+                                        </span>
+                                        <span className="text-xs font-normal text-gray-500">
+                                          Можно добавить товары из разных категорий
+                                        </span>
                                     </button>
                                   </div>
                                 )}
@@ -1072,14 +1084,15 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                     <div>
                                         <MultiSelect options={CATEGORIES} selected={tempConfig.categories} onChange={(c) => { setTempConfig(p => ({...p, categories: c})); setSelectedProducts([]); }} placeholder="Выберите категории" disabled={uploadedFiles.length > 0}/>
                                     </div>
+                                    {tempConfig.categories.length > 0 ? (
                                     <div>
                                         <ProductMultiSelect
                                             options={mockProducts}
                                             selected={selectedProducts}
                                             onChange={setSelectedProducts}
                                             isCpcMode={tempConfig.paymentModel === PaymentModel.CPC}
-                                            disabled={uploadedFiles.length > 0 || tempConfig.categories.length === 0 || isProcessingExcel}
-                                            submitLabel="Применить товары"
+                                            disabled={uploadedFiles.length > 0 || isProcessingExcel}
+                                            submitLabel="Применить"
                                         />
                                         {cpcIncompatibleInSelection.length > 0 && (
                                             <div className="mt-3 text-sm text-red-700 bg-red-50 p-3 rounded-lg border border-red-200">
@@ -1097,6 +1110,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                             </div>
                                         )}
                                     </div>
+                                    ) : null}
                                 </div>
                             </div>
                         )}
@@ -2971,7 +2985,7 @@ export default function App() {
     location.pathname,
     profileId,
   ]);
-  const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPM, bidType: BidType.UNIFIED, categories: [] });
+  const [globalConfig, setGlobalConfig] = useState<CampaignConfig>({ paymentModel: PaymentModel.CPC, bidType: BidType.UNIFIED, categories: [] });
   const [showToast, setShowToast] = useState(false);
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const [toastMessage, setToastMessage] = useState('');

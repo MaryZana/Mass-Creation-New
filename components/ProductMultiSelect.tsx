@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Checkbox } from 'antd';
-import { ChevronDown, ChevronRight, Search } from './Icons';
+import { ChevronDown, ChevronRight } from './Icons';
 import { CampaignRecord } from '../types';
 
 type SelectableProduct = Pick<CampaignRecord, 'nmId' | 'productName' | 'imageUrl' | 'category' | 'cpcCompatible'>;
+
+const MAX_PRODUCTS = 100;
 
 const getPlural = (number: number, one: string, two: string, five: string) => { let n = Math.abs(number); n %= 100; if (n >= 5 && n <= 20) { return five; } n %= 10; if (n === 1) { return one; } if (n >= 2 && n <= 4) { return two; } return five; };
 
@@ -33,19 +35,41 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [pickTab, setPickTab] = useState<'all' | 'promising'>('all');
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   
   const [tempSelected, setTempSelected] = useState<SelectableProduct[]>([]);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [menuPos, setMenuPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+    maxHeight: number;
+  } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const placeCursorAtEnd = () => {
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      const len = el.value.length;
+      el.focus();
+      el.setSelectionRange(len, len);
+    });
+  };
 
   useEffect(() => {
     if (isOpen) {
       setTempSelected([...selected]);
-      setSearchTerm('');
+      setPickTab('all');
       setCollapsedCategories(new Set());
+      placeCursorAtEnd();
+    } else {
+      setSearchTerm('');
+      setIsSearching(false);
     }
   }, [isOpen, selected]);
 
@@ -57,7 +81,16 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
     const update = () => {
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setMenuPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+      const gap = 4;
+      const viewportPad = 12;
+      const spaceBelow = window.innerHeight - rect.bottom - gap - viewportPad;
+      const spaceAbove = rect.top - gap - viewportPad;
+      const preferBelow = spaceBelow >= 280 || spaceBelow >= spaceAbove;
+      const maxHeight = Math.max(220, Math.min(480, preferBelow ? spaceBelow : spaceAbove));
+      const top = preferBelow
+        ? rect.bottom + gap
+        : Math.max(viewportPad, rect.top - gap - maxHeight);
+      setMenuPos({ top, left: rect.left, width: rect.width, maxHeight });
     };
     update();
     window.addEventListener('resize', update);
@@ -93,11 +126,13 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
         return [product];
       });
     } else {
-    setTempSelected(prev => 
-      prev.some(p => p.nmId === product.nmId)
-        ? prev.filter(p => p.nmId !== product.nmId)
-        : [...prev, product]
-    );
+    setTempSelected(prev => {
+      if (prev.some(p => p.nmId === product.nmId)) {
+        return prev.filter(p => p.nmId !== product.nmId);
+      }
+      if (prev.length >= MAX_PRODUCTS) return prev;
+      return [...prev, product];
+    });
     }
   };
 
@@ -110,7 +145,7 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
     setTempSelected([]);
   };
 
-  const filteredOptions = useMemo(() => {
+  const searchedOptions = useMemo(() => {
       const term = searchTerm.toLowerCase().trim();
       if (!term) return options;
 
@@ -129,22 +164,37 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
       );
   }, [options, searchTerm]);
 
-  const displayValue = useMemo(() => {
-    if (selected.length === 0) return null;
-    
-    if (selected.length > 2) {
-      const first = selected[0].productName;
-      const remaining = selected.length - 1;
-      return `${first}, +${remaining}`;
-    }
-    
-    return selected.map(p => p.productName).join(', ');
-  }, [selected]);
-  
-  const selectableFilteredOptions = useMemo(() => {
-      return filteredOptions.filter(p => !(isCpcMode && !p.cpcCompatible));
-  }, [filteredOptions, isCpcMode]);
+  const isPromisingProduct = (p: SelectableProduct) => p.nmId % 5 === 0;
 
+  const allTabCount = searchedOptions.length;
+  const promisingTabCount = useMemo(
+    () => searchedOptions.filter(isPromisingProduct).length,
+    [searchedOptions],
+  );
+
+  const filteredOptions = useMemo(() => {
+    if (pickTab === 'promising') {
+      return searchedOptions.filter(isPromisingProduct);
+    }
+    return searchedOptions;
+  }, [searchedOptions, pickTab]);
+
+  const labelsForDisplay = isOpen ? tempSelected : selected;
+
+  const displayValue = useMemo(() => {
+    if (labelsForDisplay.length === 0) return null;
+
+    if (labelsForDisplay.length > 2) {
+      const firstTwo = labelsForDisplay
+        .slice(0, 2)
+        .map((p) => p.productName)
+        .join(', ');
+      return `${firstTwo}, +${labelsForDisplay.length - 2}`;
+    }
+
+    return labelsForDisplay.map((p) => p.productName).join(', ');
+  }, [labelsForDisplay]);
+  
   const groupedByCategory = useMemo(() => {
     const groups: { category: string; products: SelectableProduct[] }[] = [];
     const byCat = new Map<string, SelectableProduct[]>();
@@ -192,7 +242,8 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
       if (checked) {
         setTempSelected(prev => {
           const existing = new Set(prev.map(p => p.nmId));
-          const toAdd = selectable.filter(p => !existing.has(p.nmId));
+          const room = Math.max(0, MAX_PRODUCTS - prev.length);
+          const toAdd = selectable.filter(p => !existing.has(p.nmId)).slice(0, room);
           return [...prev, ...toAdd];
         });
       } else {
@@ -201,83 +252,128 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
     }
   };
 
-  const areAllFilteredSelected = useMemo(() => {
-      if (selectableFilteredOptions.length === 0) return false;
-      return selectableFilteredOptions.every(p => tempSelected.some(sp => sp.nmId === p.nmId));
-  }, [selectableFilteredOptions, tempSelected]);
-
-  const handleSelectAll = () => {
-      if (singleSelect) {
-          if (areAllFilteredSelected) {
-              setTempSelected([]);
-          } else {
-              // Выбираем только первый товар из списка
-              if (selectableFilteredOptions.length > 0) {
-                  setTempSelected([selectableFilteredOptions[0]]);
-              }
-          }
-      } else {
-      if (areAllFilteredSelected) {
-          setTempSelected(prev => prev.filter(p => !selectableFilteredOptions.some(fo => fo.nmId === p.nmId)));
-      } else {
-          const newSelections = selectableFilteredOptions.filter(fo => !tempSelected.some(ts => ts.nmId === fo.nmId));
-          setTempSelected(prev => [...prev, ...newSelections]);
-          }
-      }
-  };
+  const triggerValue = isSearching ? searchTerm : displayValue || '';
+  const triggerPlaceholder = disabled
+    ? 'Сначала выберите категорию'
+    : placeholder;
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
-      <div 
-        onClick={() => !disabled && setIsOpen(!isOpen)}
-        className={`
-          w-full min-h-[46px] px-3 py-2.5 bg-white border rounded-lg text-sm flex items-center justify-between transition-all
-          ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'cursor-pointer'}
-          ${isOpen ? 'border-purple-500 ring-1 ring-purple-500' : 'border-gray-200 hover:border-gray-300'}
-        `}
+      <div
+        className={`flex w-full min-h-[44px] items-center gap-2 rounded-xl border bg-white px-3 py-2.5 text-sm transition-all ${
+          disabled ? 'cursor-not-allowed bg-gray-100' : ''
+        } ${
+          isOpen
+            ? 'border-black ring-0'
+            : 'border-transparent shadow-[inset_0_0_0_1px_#E3E4E9] hover:shadow-[inset_0_0_0_1px_#C8C9D0]'
+        }`}
+        onClick={() => {
+          if (disabled) return;
+          setIsOpen(true);
+          placeCursorAtEnd();
+        }}
       >
-        <span className={`${displayValue ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
-          {/* FIX: Updated placeholder text for disabled state to be more informative. */}
-          {disabled ? 'Сначала выберите категорию' : displayValue || placeholder}
-        </span>
-        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <input
+          ref={inputRef}
+          type="text"
+          disabled={disabled}
+          value={triggerValue}
+          placeholder={triggerPlaceholder}
+          onChange={(e) => {
+            const next = e.target.value;
+            if (!isSearching) {
+              if (next === (displayValue || '')) return;
+              setIsSearching(true);
+            }
+            setSearchTerm(next);
+            if (!isOpen) setIsOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (isSearching || disabled) return;
+            if (e.key === 'Backspace' || e.key === 'Delete') {
+              e.preventDefault();
+              setIsSearching(true);
+              setSearchTerm('');
+              setIsOpen(true);
+              return;
+            }
+            if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey) {
+              e.preventDefault();
+              setIsSearching(true);
+              setSearchTerm(e.key);
+              setIsOpen(true);
+            }
+          }}
+          onFocus={() => {
+            if (disabled) return;
+            setIsOpen(true);
+            placeCursorAtEnd();
+          }}
+          className={`min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-gray-500 disabled:cursor-not-allowed ${
+            !isSearching && displayValue ? 'font-medium text-gray-900' : 'text-gray-900'
+          }`}
+          aria-expanded={isOpen}
+          aria-haspopup="listbox"
+          autoComplete="off"
+        />
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-gray-900 transition-transform duration-200 ${
+            isOpen ? 'rotate-180' : ''
+          }`}
+        />
       </div>
 
       {isOpen && menuPos
         ? createPortal(
             <div
               ref={menuRef}
-              className="fixed z-[300] overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100"
+              className="fixed z-[300] flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-100"
               style={{
                 top: menuPos.top,
                 left: menuPos.left,
                 width: menuPos.width,
+                maxHeight: menuPos.maxHeight,
               }}
             >
-              <div className="p-3 border-b border-gray-100">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    autoFocus
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Поиск по названию или ID (через запятую)"
-                    className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 focus:bg-white transition-colors"
-                  />
-                </div>
+              <div className="shrink-0 border-b border-gray-100 p-3">
                 <div
-                  onClick={handleSelectAll}
-                  className="flex items-center gap-3 px-2 py-2 mt-2 hover:bg-purple-50 rounded-lg cursor-pointer group transition-colors"
+                  className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-lg bg-gray-100 p-1"
+                  role="tablist"
+                  aria-label="Подборки товаров"
                 >
-                  <Checkbox checked={areAllFilteredSelected} className="shrink-0" />
-                  <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">
-                    Выбрать все
-                  </span>
+                  {(
+                    [
+                      { id: 'all' as const, label: 'Все', count: allTabCount },
+                      {
+                        id: 'promising' as const,
+                        label: 'Перспективные',
+                        count: promisingTabCount,
+                      },
+                    ] as const
+                  ).map((tab) => {
+                    const active = pickTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => setPickTab(tab.id)}
+                        className={`rounded-md px-3 py-1.5 text-sm font-semibold transition-colors ${
+                          active
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        {tab.label}{' '}
+                        <span className="tabular-nums text-gray-500">{tab.count}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
-              <div className="max-h-60 overflow-y-auto custom-scrollbar p-1">
+              <div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar p-1">
                 {filteredOptions.length > 0 ? (
                   showGrouped ? (
                     groupedByCategory.map(({ category, products }) => {
@@ -448,23 +544,25 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                 )}
               </div>
 
-              <div className="bg-[#fafafa] border-t border-gray-100 p-3 flex items-center justify-between gap-3 mt-1">
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="px-4 py-2 text-sm font-medium text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  Сбросить
-                </button>
+              <div className="mt-auto flex shrink-0 items-center gap-2 border-t border-gray-100 bg-[#fafafa] p-3">
                 <button
                   type="button"
                   onClick={handleApply}
-                  className="px-6 py-2 text-sm font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-sm transition-all"
+                  disabled={tempSelected.length === 0}
+                  className="rounded-lg bg-black px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A1A1A] disabled:cursor-not-allowed disabled:bg-gray-300"
                 >
-                  {tempSelected.length > 0
-                    ? `Добавить ${tempSelected.length} ${getPlural(tempSelected.length, 'товар', 'товара', 'товаров')}`
-                    : submitLabel}
+                  {submitLabel}
                 </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+                >
+                  Сбросить
+                </button>
+                <span className="ml-auto text-sm tabular-nums text-gray-500">
+                  {tempSelected.length} / {MAX_PRODUCTS}
+                </span>
               </div>
             </div>,
             document.body,

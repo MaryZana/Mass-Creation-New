@@ -115,7 +115,7 @@ export function computeCuratedProductPicks(
   if (promising.length > 0) {
     picks.push({
       id: 'promising',
-      title: 'Перспективные товары',
+      title: 'Перспективные',
       description:
         'У этих товаров конверсия в заказ выше, чем в среднем в категории — продвигайте их, чтобы увеличить продажи',
       products: promising,
@@ -185,9 +185,11 @@ function CuratedPickCard({
               pick.id,
             );
           }}
-          className="inline-flex shrink-0 items-center justify-center rounded-xl bg-[#2E3038] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#23252c]"
+          className="inline-flex h-9 shrink-0 items-center justify-center rounded-[10px] bg-black px-2.5 text-sm font-medium tracking-[0.3px] text-white transition-colors hover:bg-[#1A1A1A] active:bg-black"
         >
-          Продвигать {pick.totalCount} {productCountLabel(pick.totalCount)}
+          <span className="px-1.5">
+            Продвигать {pick.totalCount} {productCountLabel(pick.totalCount)}
+          </span>
         </button>
       </div>
     </article>
