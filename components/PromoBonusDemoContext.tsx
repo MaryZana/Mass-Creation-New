@@ -98,7 +98,7 @@ export function usePromoBonusDemo(): PromoBonusDemoContextValue {
   return ctx;
 }
 
-/** Пакеты с остатками под выбранный демо-кейс (50% / 99%). */
+/** Пакеты с остатками под выбранный демо-кейс: крупный / средний / крошечный. */
 export function buildDemoBonusPackages(total: number): Array<{
   id: string;
   amount: number;
@@ -106,23 +106,41 @@ export function buildDemoBonusPackages(total: number): Array<{
   expiry: string;
   displayBurn: string;
 }> {
-  const p1Amount = Math.floor(total / 2);
-  const p2Amount = Math.max(0, total - p1Amount);
   const fmt = (n: number) => n.toLocaleString('ru-RU');
+  if (total <= 0) {
+    return [
+      { id: 'p1', amount: 0, maxPercent: 50, expiry: '20.03.26', displayBurn: '0' },
+      { id: 'p2', amount: 0, maxPercent: 99, expiry: '27.03.26', displayBurn: '0' },
+      { id: 'p3', amount: 0, maxPercent: 100, expiry: '15.04.26', displayBurn: '0' },
+    ];
+  }
+
+  const tinyAmount = Math.min(180, Math.max(40, Math.floor(total * 0.0007)));
+  const rest = Math.max(0, total - tinyAmount);
+  const largeAmount = Math.floor(rest * 0.68);
+  const midAmount = Math.max(0, rest - largeAmount);
+
   return [
     {
       id: 'p1',
-      amount: p1Amount > 0 ? p1Amount : total > 0 ? total : 0,
+      amount: largeAmount,
       maxPercent: 50,
       expiry: '20.03.26',
-      displayBurn: fmt(p1Amount > 0 ? p1Amount : total),
+      displayBurn: fmt(largeAmount),
     },
     {
       id: 'p2',
-      amount: p1Amount > 0 ? p2Amount : 0,
+      amount: midAmount,
       maxPercent: 99,
       expiry: '27.03.26',
-      displayBurn: fmt(p2Amount),
+      displayBurn: fmt(midAmount),
     },
-  ];
+    {
+      id: 'p3',
+      amount: tinyAmount,
+      maxPercent: 100,
+      expiry: '15.04.26',
+      displayBurn: fmt(tinyAmount),
+    },
+  ].filter((pkg) => pkg.amount > 0);
 }

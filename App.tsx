@@ -188,8 +188,9 @@ function isNewSellerSecondaryShellPath(pathname: string): boolean {
 }
 
 const BONUS_PACKAGES: BonusPackage[] = [
-  { id: 'p1', amount: 15000, maxPercent: 50, expiry: '20.03.26', displayBurn: '15 000' },
-  { id: 'p2', amount: 15000, maxPercent: 99, expiry: '27.03.26', displayBurn: '15 000' },
+  { id: 'p1', amount: 170000, maxPercent: 50, expiry: '20.03.26', displayBurn: '170 000' },
+  { id: 'p2', amount: 79820, maxPercent: 99, expiry: '27.03.26', displayBurn: '79 820' },
+  { id: 'p3', amount: 180, maxPercent: 100, expiry: '15.04.26', displayBurn: '180' },
 ];
 
 /** Сколько можно списать: не больше остатка пакета, бюджета и maxPercent% от суммы. */

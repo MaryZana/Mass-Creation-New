@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from './Icons';
+import { Calendar, ChevronRight, X } from './Icons';
 import {
   buildDemoBonusPackages,
   usePromoBonusDemo,
@@ -21,39 +21,6 @@ export type BudgetWalletContext = {
   campaignCount: number;
 };
 
-export const WALLET_CONTEXT_VARIANTS = [
-  { id: 'progress', label: '1', title: 'Прогресс занятости (нравится)' },
-  { id: 'progressRemain', label: '2', title: 'Акцент на остатке + тонкий прогресс' },
-  { id: 'progressCols', label: '3', title: 'Две колонки с прогрессом' },
-  { id: 'progressPct', label: '4', title: 'Крупный % занятости' },
-  { id: 'progressStack', label: '5', title: 'Двухцветный бар: занято / свободно' },
-  { id: 'progressDraft', label: '6', title: 'Прогресс + черновик этой модалки' },
-] as const;
-
-export type WalletContextVariantId = (typeof WALLET_CONTEXT_VARIANTS)[number]['id'];
-
-const WALLET_VARIANT_KEY = 'budget_refill_wallet_context_variant_v2';
-
-function readWalletVariant(): WalletContextVariantId {
-  try {
-    const raw = sessionStorage.getItem(WALLET_VARIANT_KEY);
-    if (WALLET_CONTEXT_VARIANTS.some((item) => item.id === raw)) {
-      return raw as WalletContextVariantId;
-    }
-  } catch {
-    /* ignore */
-  }
-  return 'progress';
-}
-
-function writeWalletVariant(id: WalletContextVariantId) {
-  try {
-    sessionStorage.setItem(WALLET_VARIANT_KEY, id);
-  } catch {
-    /* ignore */
-  }
-}
-
 type BonusPackage = {
   id: string;
   amount: number;
@@ -61,8 +28,6 @@ type BonusPackage = {
   expiry: string;
   displayBurn: string;
 };
-
-const QUICK_AMOUNTS = [1000, 3000, 5000, 10000] as const;
 
 const getPlural = (number: number, one: string, two: string, five: string) => {
   let n = Math.abs(number);
@@ -84,6 +49,66 @@ const formatForDisplay = (num: number | string | undefined | null): string => {
   return numValue.toLocaleString('ru-RU', { useGrouping: true });
 };
 
+const MONTH_SHORT_RU = [
+  'янв',
+  'фев',
+  'мар',
+  'апр',
+  'мая',
+  'июн',
+  'июл',
+  'авг',
+  'сен',
+  'окт',
+  'ноя',
+  'дек',
+] as const;
+
+/** «20.03.26» → «до 20 мар» */
+const formatExpiryShort = (expiry: string): string => {
+  const match = expiry.trim().match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?$/);
+  if (!match) return `до ${expiry}`;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  if (!day || month < 1 || month > 12) return `до ${expiry}`;
+  return `до ${day} ${MONTH_SHORT_RU[month - 1]}`;
+};
+
+function CorrectionToast({
+  message,
+  onDismiss,
+}: {
+  message: string;
+  onDismiss: () => void;
+}) {
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
+  useEffect(() => {
+    if (!message) return;
+    const id = window.setTimeout(() => onDismissRef.current(), 2000);
+    return () => window.clearTimeout(id);
+  }, [message]);
+
+  if (!message) return null;
+
+  return (
+    <div className="pointer-events-none absolute inset-x-0 top-5 z-30 flex justify-center px-6">
+      <div className="pointer-events-auto flex max-w-[440px] items-start gap-2 rounded-2xl bg-[#FFF6E8] px-3.5 py-2.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+        <p className="text-[13px] leading-5 text-gray-800">{message}</p>
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-gray-500 hover:bg-black/5 hover:text-gray-800"
+          aria-label="Закрыть"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RightSheetShell({
   titleId,
   title,
@@ -91,6 +116,7 @@ function RightSheetShell({
   onClose,
   children,
   footer,
+  overlay,
 }: {
   titleId: string;
   title: string;
@@ -98,6 +124,7 @@ function RightSheetShell({
   onClose: () => void;
   children: React.ReactNode;
   footer: React.ReactNode;
+  overlay?: React.ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-[100] bg-black/50" onClick={onClose} role="presentation">
@@ -118,19 +145,20 @@ function RightSheetShell({
           </div>
 
           <div
-            className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-[#F7F7F8] shadow-2xl animate-in slide-in-from-right duration-300"
+            className="relative flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-[#F7F7F8] shadow-2xl animate-in slide-in-from-right duration-300"
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
           >
-            <div className="shrink-0 border-b border-black/[0.04] bg-white px-6 pb-4 pt-6 sm:px-7">
+            {overlay}
+            <div className="shrink-0 px-6 pb-4 pt-6 sm:px-7">
               <h2 id={titleId} className="text-[22px] font-bold tracking-tight text-gray-900">
                 {title}
               </h2>
               {subtitle ? <div className="mt-1.5 text-sm leading-5 text-gray-500">{subtitle}</div> : null}
             </div>
-            <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5 sm:px-7">{children}</div>
-            <div className="shrink-0 border-t border-black/[0.04] bg-[#F7F7F8] px-6 pb-4 pt-3 sm:px-7">
+            <div className="min-w-0 flex-1 overflow-y-auto px-6 pb-5 pt-0 sm:px-7">{children}</div>
+            <div className="shrink-0 bg-[#F7F7F8] px-6 pb-4 pt-3 sm:px-7">
               {footer}
             </div>
           </div>
@@ -150,6 +178,7 @@ type RefillLogic = {
   bonusValue: number | string;
   setBonusValue: (v: number | string) => void;
   clearBonusNotice: () => void;
+  clearBudgetNotice: () => void;
   budgetError: string;
   budgetNotice: string;
   bonusError: string;
@@ -159,12 +188,12 @@ type RefillLogic = {
   selectedPkg: BonusPackage;
   currentBudgetValue: number;
   numericBonusValue: number;
+  maxBonusAllowed: number;
   cashToPay: number;
   handleBudgetChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleBudgetBlur: () => void;
   handleBonusChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleBonusBlur: () => void;
-  setQuickAmount: (amount: number) => void;
   autoRefillEnabled: boolean;
   setAutoRefillEnabled: (v: boolean) => void;
   autoThreshold: string;
@@ -173,6 +202,12 @@ type RefillLogic = {
   setAutoAmount: (v: string) => void;
   autoUseBonuses: boolean;
   setAutoUseBonuses: (v: boolean) => void;
+  autoFrequencyMode: '1' | '2' | '3' | 'custom';
+  setAutoFrequencyMode: (v: '1' | '2' | '3' | 'custom') => void;
+  autoFrequencyTimes: string;
+  setAutoFrequencyTimes: (v: string) => void;
+  autoExpiryDate: string | null;
+  setAutoExpiryDate: (v: string | null) => void;
   handleAutoFieldChange: (
     setter: (v: string) => void,
   ) => (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -181,13 +216,17 @@ type RefillLogic = {
 
 function useRefillLogic(
   isOpen: boolean,
-  options?: { availablePromoCap?: number | null },
+  options?: { availablePromoCap?: number | null; availableElsCap?: number | null },
 ): RefillLogic {
   const { promoBonusTotal } = usePromoBonusDemo();
   const availablePromoCap =
     options?.availablePromoCap != null && Number.isFinite(options.availablePromoCap)
       ? Math.max(0, options.availablePromoCap)
       : null;
+  const availableElsCap =
+    options?.availableElsCap != null && Number.isFinite(options.availableElsCap)
+      ? Math.max(0, options.availableElsCap)
+      : UNIFIED_BALANCE;
   const packages = useMemo(
     () => buildDemoBonusPackages(promoBonusTotal).filter((pkg) => pkg.amount > 0),
     [promoBonusTotal],
@@ -212,6 +251,9 @@ function useRefillLogic(
   const [autoThreshold, setAutoThreshold] = useState('1000');
   const [autoAmount, setAutoAmount] = useState('3000');
   const [autoUseBonuses, setAutoUseBonuses] = useState(false);
+  const [autoFrequencyMode, setAutoFrequencyMode] = useState<'1' | '2' | '3' | 'custom'>('1');
+  const [autoFrequencyTimes, setAutoFrequencyTimes] = useState('4');
+  const [autoExpiryDate, setAutoExpiryDate] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -226,6 +268,9 @@ function useRefillLogic(
       setAutoThreshold('1000');
       setAutoAmount('3000');
       setAutoUseBonuses(false);
+      setAutoFrequencyMode('1');
+      setAutoFrequencyTimes('4');
+      setAutoExpiryDate(null);
     }
   }, [isOpen, fallbackPkg.id]);
 
@@ -246,22 +291,6 @@ function useRefillLogic(
     currentBudgetValue - (useBonuses ? Math.min(numericBonusValue, currentBudgetValue) : 0),
   );
 
-  const setQuickAmount = (amount: number) => {
-    setRefillAmount(String(amount));
-    if (useBonuses) {
-      const maxByPercent = Math.floor((amount * selectedPkg.maxPercent) / 100);
-      setBonusValue(
-        Math.min(
-          amount,
-          maxByPercent,
-          selectedPkg.amount,
-          availablePromoCap ?? Number.POSITIVE_INFINITY,
-        ),
-      );
-      setBonusNotice('');
-    }
-  };
-
   const handleAutoFieldChange =
     (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
       const parsed = parseDisplayValue(e.target.value);
@@ -279,6 +308,7 @@ function useRefillLogic(
     bonusValue,
     setBonusValue,
     clearBonusNotice: () => setBonusNotice(''),
+    clearBudgetNotice: () => setBudgetNotice(''),
     budgetError,
     budgetNotice,
     bonusError,
@@ -288,6 +318,7 @@ function useRefillLogic(
     selectedPkg,
     currentBudgetValue,
     numericBonusValue,
+    maxBonusAllowed,
     cashToPay,
     handleBudgetChange: (e) => {
       setBudgetNotice('');
@@ -297,9 +328,17 @@ function useRefillLogic(
     },
     handleBudgetBlur: () => {
       const parsed = parseDisplayValue(refillAmount);
+      const maxAmount = Math.max(1000, availableElsCap);
       if (Number.isNaN(parsed) || parsed < 1000) {
         setRefillAmount('1000');
         setBudgetNotice('Скорректировали до минимума — 1 000 ₽');
+        return;
+      }
+      if (parsed > maxAmount) {
+        setRefillAmount(String(maxAmount));
+        setBudgetNotice(
+          `Скорректировали до максимума — ${formatForDisplay(maxAmount)} ₽`,
+        );
       }
     },
     handleBonusChange: (e) => {
@@ -322,10 +361,6 @@ function useRefillLogic(
         );
       }
     },
-    setQuickAmount: (amount: number) => {
-      setBudgetNotice('');
-      setQuickAmount(amount);
-    },
     autoRefillEnabled,
     setAutoRefillEnabled,
     autoThreshold,
@@ -334,28 +369,49 @@ function useRefillLogic(
     setAutoAmount,
     autoUseBonuses,
     setAutoUseBonuses,
+    autoFrequencyMode,
+    setAutoFrequencyMode,
+    autoFrequencyTimes,
+    setAutoFrequencyTimes,
+    autoExpiryDate,
+    setAutoExpiryDate,
     handleAutoFieldChange,
     canSubmit: currentBudgetValue >= 1000,
   };
 }
 
-function ToggleSwitch({ on, className = '' }: { on: boolean; className?: string }) {
+function ToggleSwitch({
+  on,
+  size = 'md',
+  className = '',
+}: {
+  on: boolean;
+  size?: 'md' | 'sm';
+  className?: string;
+}) {
+  const track =
+    size === 'sm' ? 'h-5 w-9' : 'h-7 w-12';
+  const thumb =
+    size === 'sm'
+      ? `absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${
+          on ? 'translate-x-4' : 'translate-x-0.5'
+        }`
+      : `absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
+          on ? 'translate-x-5' : 'translate-x-0.5'
+        }`;
+
   return (
     <span
-      className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors ${
+      className={`relative inline-flex shrink-0 rounded-full transition-colors ${track} ${
         on ? 'bg-[#B45AFF]' : 'bg-[#E5E5EA]'
       } ${className}`}
     >
-      <span
-        className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
-          on ? 'translate-x-5' : 'translate-x-0.5'
-        }`}
-      />
+      <span className={thumb} />
     </span>
   );
 }
 
-/** RITM FormFieldText: primary fill, label inside, не pill */
+/** RITM FormFieldText: primary fill; label опционален */
 function RitFormFieldText({
   label,
   value,
@@ -367,8 +423,9 @@ function RitFormFieldText({
   notice,
   hint,
   surface = 'primary',
+  ariaLabel,
 }: {
-  label: string;
+  label?: string;
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onBlur?: () => void;
@@ -379,19 +436,27 @@ function RitFormFieldText({
   hint?: string;
   /** primary — серый fill; white — на сером фоне пакета */
   surface?: 'primary' | 'white';
+  ariaLabel?: string;
 }) {
   const surfaceClass =
     surface === 'white'
       ? 'border border-black/[0.06] bg-white hover:bg-white focus-within:border-black'
       : 'border border-transparent bg-[#F2F2F7] hover:bg-[#EBEBF0] focus-within:border-black focus-within:bg-white';
+  const hasLabel = Boolean(label);
 
   return (
     <div>
       <label
-        className={`flex min-h-[52px] cursor-text flex-col justify-center gap-0.5 rounded-[10px] px-3 py-2 transition-colors ${surfaceClass}`}
+        className={`flex cursor-text rounded-[10px] px-3 transition-colors ${
+          hasLabel
+            ? 'min-h-[52px] flex-col justify-center gap-0.5 py-2'
+            : 'h-12 items-center'
+        } ${surfaceClass}`}
       >
-        <span className="text-[12px] font-medium leading-4 text-gray-900">{label}</span>
-        <span className="flex min-w-0 items-center gap-1">
+        {hasLabel ? (
+          <span className="text-[12px] font-medium leading-4 text-gray-900">{label}</span>
+        ) : null}
+        <span className="flex min-w-0 w-full items-center gap-1">
           <input
             type="text"
             inputMode="numeric"
@@ -400,7 +465,7 @@ function RitFormFieldText({
             onChange={onChange}
             onBlur={onBlur}
             className="min-w-0 flex-1 bg-transparent text-[15px] font-semibold tabular-nums leading-5 text-gray-900 outline-none"
-            aria-label={label}
+            aria-label={ariaLabel || label}
           />
           {suffix ? (
             <span className="shrink-0 text-[14px] font-medium text-[#A0A0AB]">{suffix}</span>
@@ -420,6 +485,224 @@ function RitFormFieldText({
   );
 }
 
+const MONTH_TITLE_RU = [
+  'Январь',
+  'Февраль',
+  'Март',
+  'Апрель',
+  'Май',
+  'Июнь',
+  'Июль',
+  'Август',
+  'Сентябрь',
+  'Октябрь',
+  'Ноябрь',
+  'Декабрь',
+] as const;
+
+const WEEKDAY_SHORT_RU = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'] as const;
+
+const toIsoDate = (date: Date): string => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const formatIsoDisplay = (iso: string): string => {
+  const [y, m, d] = iso.split('-');
+  if (!y || !m || !d) return iso;
+  return `${d}.${m}.${y}`;
+};
+
+const parseIsoDate = (iso: string): Date | null => {
+  const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+function AutoExpiryDateField({
+  value,
+  onChange,
+}: {
+  value: string | null;
+  onChange: (v: string | null) => void;
+}) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const initialMonth = value ? parseIsoDate(value) ?? new Date() : new Date();
+  const [viewMonth, setViewMonth] = useState(
+    () => new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1),
+  );
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPopoverPos(null);
+      return;
+    }
+    const update = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const width = 280;
+      const height = 320;
+      const left = Math.min(
+        Math.max(8, rect.right - width),
+        window.innerWidth - width - 8,
+      );
+      const below = rect.bottom + 8;
+      const top =
+        below + height > window.innerHeight - 8
+          ? Math.max(8, rect.top - height - 8)
+          : below;
+      setPopoverPos({ top, left });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const base = value ? parseIsoDate(value) ?? new Date() : new Date();
+    setViewMonth(new Date(base.getFullYear(), base.getMonth(), 1));
+  }, [open, value]);
+
+  const year = viewMonth.getFullYear();
+  const month = viewMonth.getMonth();
+  const firstWeekday = (new Date(year, month, 1).getDay() + 6) % 7;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayIso = toIsoDate(new Date());
+  const cells: Array<{ day: number; iso: string } | null> = [];
+  for (let i = 0; i < firstWeekday; i += 1) cells.push(null);
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    cells.push({ day, iso: toIsoDate(new Date(year, month, day)) });
+  }
+
+  const popover =
+    open && popoverPos
+      ? createPortal(
+          <div
+            ref={popoverRef}
+            className="fixed z-[300] w-[280px] rounded-2xl border border-black/[0.06] bg-white p-3 shadow-xl"
+            style={{ top: popoverPos.top, left: popoverPos.left }}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setViewMonth(new Date(year, month - 1, 1))}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100"
+                aria-label="Предыдущий месяц"
+              >
+                <ChevronRight className="h-4 w-4 rotate-180 text-gray-500" />
+              </button>
+              <div className="text-[13px] font-semibold text-gray-900">
+                {MONTH_TITLE_RU[month]} {year}
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewMonth(new Date(year, month + 1, 1))}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full hover:bg-gray-100"
+                aria-label="Следующий месяц"
+              >
+                <ChevronRight className="h-4 w-4 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="mb-1 grid grid-cols-7 gap-0.5">
+              {WEEKDAY_SHORT_RU.map((label) => (
+                <div
+                  key={label}
+                  className="py-1 text-center text-[11px] font-medium uppercase text-gray-400"
+                >
+                  {label}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-0.5">
+              {cells.map((cell, index) => {
+                if (!cell) return <div key={`e-${index}`} className="h-9" />;
+                const selected = value === cell.iso;
+                const isToday = cell.iso === todayIso;
+                const isPast = cell.iso < todayIso;
+                return (
+                  <button
+                    key={cell.iso}
+                    type="button"
+                    disabled={isPast}
+                    onClick={() => {
+                      onChange(cell.iso);
+                      setOpen(false);
+                    }}
+                    className={`h-9 rounded-full text-[13px] tabular-nums transition-colors ${
+                      selected
+                        ? 'bg-gray-900 font-semibold text-white'
+                        : isPast
+                          ? 'cursor-not-allowed text-gray-300'
+                          : isToday
+                            ? 'font-semibold text-[#9A41FE] hover:bg-[#F2F2F7]'
+                            : 'text-gray-800 hover:bg-[#F2F2F7]'
+                    }`}
+                  >
+                    {cell.day}
+                  </button>
+                );
+              })}
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <div ref={rootRef}>
+      <div className="flex items-center gap-1">
+        {value ? (
+          <button
+            type="button"
+            onClick={() => {
+              onChange(null);
+              setOpen(false);
+            }}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+            aria-label="Убрать срок действия"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#F2F2F7] px-2.5 text-[13px] font-semibold text-gray-800 transition-colors hover:bg-[#EBEBF0]"
+        >
+          <Calendar className="h-3.5 w-3.5 text-gray-500" />
+          {value ? `до ${formatIsoDisplay(value)}` : 'Добавить'}
+        </button>
+      </div>
+      {popover}
+    </div>
+  );
+}
+
 function AutoRefillBlock({ logic }: { logic: RefillLogic }) {
   return (
     <div className="rounded-[24px] bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -428,71 +711,159 @@ function AutoRefillBlock({ logic }: { logic: RefillLogic }) {
         onClick={() => logic.setAutoRefillEnabled(!logic.autoRefillEnabled)}
         className="flex w-full items-center justify-between gap-3 text-left"
       >
-        <div className="text-[13px] font-semibold text-gray-900">Автопополнение</div>
+        <div className="text-[17px] font-semibold text-gray-900">Автопополнение</div>
         <ToggleSwitch on={logic.autoRefillEnabled} />
       </button>
 
       {logic.autoRefillEnabled ? (
         <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
-          <RitFormFieldText
-            label="Если бюджет меньше"
-            value={formatForDisplay(logic.autoThreshold)}
-            onChange={logic.handleAutoFieldChange(logic.setAutoThreshold)}
-            suffix="₽"
-          />
-          <RitFormFieldText
-            label="Пополнять на"
-            value={formatForDisplay(logic.autoAmount)}
-            onChange={logic.handleAutoFieldChange(logic.setAutoAmount)}
-            suffix="₽"
-          />
+          <div className="grid grid-cols-2 gap-2.5">
+            <RitFormFieldText
+              label="Если бюджет меньше"
+              value={formatForDisplay(logic.autoThreshold)}
+              onChange={logic.handleAutoFieldChange(logic.setAutoThreshold)}
+              suffix="₽"
+            />
+            <RitFormFieldText
+              label="Пополнять на"
+              value={formatForDisplay(logic.autoAmount)}
+              onChange={logic.handleAutoFieldChange(logic.setAutoAmount)}
+              suffix="₽"
+            />
+          </div>
 
-          <button
-            type="button"
-            onClick={() => logic.setAutoUseBonuses(!logic.autoUseBonuses)}
-            className="flex w-full items-center justify-between gap-3 rounded-[10px] bg-[#F2F2F7] px-3 py-2.5 text-left"
-          >
-            <div className="min-w-0">
-              <div className="text-[13px] font-semibold text-gray-900">Промобонусы</div>
-              <div className="mt-0.5 text-[12px] text-gray-500">
-                Пакет спишется автоматически
+          <div className="divide-y divide-gray-100">
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-[13px] font-medium text-gray-900">Максимум раз в день</span>
+              <div className="flex items-center gap-1.5">
+                <div className="inline-flex rounded-lg bg-[#F2F2F7] p-0.5">
+                  {(
+                    [
+                      { id: '1' as const, label: '1' },
+                      { id: '2' as const, label: '2' },
+                      { id: '3' as const, label: '3' },
+                      { id: 'custom' as const, label: 'Своё' },
+                    ] as const
+                  ).map((opt) => {
+                    const active = logic.autoFrequencyMode === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => logic.setAutoFrequencyMode(opt.id)}
+                        className={`h-7 min-w-[32px] rounded-md px-2 text-[13px] font-semibold tabular-nums transition-colors ${
+                          active
+                            ? 'bg-white text-gray-900 shadow-sm'
+                            : 'text-gray-500 hover:text-gray-800'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {logic.autoFrequencyMode === 'custom' ? (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoFocus
+                    value={logic.autoFrequencyTimes}
+                    onChange={logic.handleAutoFieldChange(logic.setAutoFrequencyTimes)}
+                    onBlur={() => {
+                      const parsed = parseDisplayValue(logic.autoFrequencyTimes);
+                      logic.setAutoFrequencyTimes(
+                        Number.isNaN(parsed) || parsed < 1
+                          ? '4'
+                          : String(Math.min(99, Math.floor(parsed))),
+                      );
+                    }}
+                    className="h-8 w-12 rounded-lg bg-[#F2F2F7] text-center text-[13px] font-semibold tabular-nums text-gray-900 outline-none focus:bg-white focus:ring-1 focus:ring-black"
+                    aria-label="Своя частота пополнений в день"
+                  />
+                ) : null}
               </div>
             </div>
-            <ToggleSwitch on={logic.autoUseBonuses} />
-          </button>
+
+            <div className="flex items-center justify-between gap-3 py-2.5">
+              <span className="text-[13px] font-medium text-gray-900">Срок действия</span>
+              <AutoExpiryDateField
+                value={logic.autoExpiryDate}
+                onChange={logic.setAutoExpiryDate}
+              />
+            </div>
+
+            <button
+              type="button"
+              onClick={() => logic.setAutoUseBonuses(!logic.autoUseBonuses)}
+              className="flex w-full items-center justify-between gap-3 py-2.5 text-left"
+            >
+              <span className="text-[13px] font-medium text-gray-900">
+                Использовать промобонусы
+              </span>
+              <ToggleSwitch on={logic.autoUseBonuses} size="sm" />
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
   );
 }
 
-function QuickAmountRow({
-  value,
-  onPick,
-}: {
-  value: number;
-  onPick: (amount: number) => void;
-}) {
+function bonusLimitReason(logic: RefillLogic): string {
+  const budget = Math.max(0, logic.currentBudgetValue);
+  const byPercent = Math.floor((budget * logic.selectedPkg.maxPercent) / 100);
+  const packageAmount = logic.selectedPkg.amount;
+  const max = logic.maxBonusAllowed;
+
+  if (packageAmount <= byPercent && packageAmount <= budget && max === packageAmount) {
+    return `На пакете ${formatForDisplay(packageAmount)} B — это весь остаток.`;
+  }
+  if (byPercent <= packageAmount && byPercent <= budget && max === byPercent) {
+    return `С пакета можно списать до ${logic.selectedPkg.maxPercent}% от пополнения — ${formatForDisplay(byPercent)} B.`;
+  }
+  if (max === budget) {
+    return `Не больше суммы пополнения — ${formatForDisplay(budget)} B.`;
+  }
+  return `Часть бонусов уже занята на кампаниях в создании, поэтому можно ещё ${formatForDisplay(max)} B.`;
+}
+
+function HoverCap({ label, text }: { label: string; text: string }) {
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  const show = () => {
+    const rect = anchorRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const width = 260;
+    const left = Math.min(Math.max(8, rect.left), window.innerWidth - width - 8);
+    const top = rect.bottom + 6;
+    setPos({ top, left });
+  };
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {QUICK_AMOUNTS.map((amount) => {
-        const active = value === amount;
-        return (
-          <button
-            key={amount}
-            type="button"
-            onClick={() => onPick(amount)}
-            className={`inline-flex h-8 items-center rounded-full px-3 text-[13px] font-semibold tabular-nums transition-colors ${
-              active
-                ? 'bg-gray-900 text-white'
-                : 'bg-white text-gray-800 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] hover:bg-gray-50'
-            }`}
-          >
-            {formatForDisplay(amount)} ₽
-          </button>
-        );
-      })}
-    </div>
+    <span
+      ref={anchorRef}
+      className="cursor-help border-b border-dashed border-gray-300"
+      onMouseEnter={show}
+      onMouseLeave={() => setPos(null)}
+      onFocus={show}
+      onBlur={() => setPos(null)}
+      tabIndex={0}
+    >
+      {label}
+      {pos
+        ? createPortal(
+            <span
+              role="tooltip"
+              className="pointer-events-none fixed z-[300] w-[260px] rounded-xl bg-gray-900 px-3 py-2 text-left text-[12px] font-normal normal-case leading-4 text-white shadow-lg"
+              style={{ top: pos.top, left: pos.left }}
+            >
+              {text}
+            </span>,
+            document.body,
+          )
+        : null}
+    </span>
   );
 }
 
@@ -529,32 +900,40 @@ function BonusPackagePicker({ logic }: { logic: RefillLogic }) {
                   {formatForDisplay(pkg.amount)} B
                 </div>
                 <div className="mt-0.5 text-[12px] leading-4 text-gray-500">
-                  Списать можно до {pkg.maxPercent}% от суммы пополнения
-                </div>
-                <div className="mt-0.5 text-[12px] text-gray-500">
-                  Доступно до {pkg.expiry}
+                  До {pkg.maxPercent}% от пополнения с единого счёта
                 </div>
               </div>
-              <span
-                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
-                  active ? 'border-gray-900' : 'border-gray-300'
-                }`}
-              >
-                {active ? <span className="h-2.5 w-2.5 rounded-full bg-gray-900" /> : null}
-              </span>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="text-[12px] text-gray-500 tabular-nums">
+                  {formatExpiryShort(pkg.expiry)}
+                </span>
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 ${
+                    active ? 'border-gray-900' : 'border-gray-300'
+                  }`}
+                >
+                  {active ? <span className="h-2.5 w-2.5 rounded-full bg-gray-900" /> : null}
+                </span>
+              </div>
             </button>
 
             {active ? (
-              <div className="border-t border-black/[0.06] px-2.5 pb-2.5 pt-2">
+              <div className="px-2.5 pb-2.5 pt-1">
                 <RitFormFieldText
-                  label="Списать с этого пакета"
                   value={formatForDisplay(logic.bonusValue)}
                   onChange={logic.handleBonusChange}
                   onBlur={logic.handleBonusBlur}
                   suffix="B"
                   surface="white"
-                  notice={logic.bonusNotice || undefined}
+                  ariaLabel="Списать с этого пакета"
                 />
+                <p className="mt-1.5 text-[12px] leading-4 text-gray-400 tabular-nums">
+                  от 0{' '}
+                  <HoverCap
+                    label={`до ${formatForDisplay(logic.maxBonusAllowed)} B`}
+                    text={bonusLimitReason(logic)}
+                  />
+                </p>
               </div>
             ) : null}
           </div>
@@ -582,323 +961,9 @@ function DailyLimitHint({
   );
 }
 
-function WalletVariantSwitcher({
-  variant,
-  onChange,
-}: {
-  variant: WalletContextVariantId;
-  onChange: (id: WalletContextVariantId) => void;
-}) {
-  return createPortal(
-    <div className="fixed bottom-5 left-1/2 z-[200] flex -translate-x-1/2 flex-col items-center gap-1.5">
-      <span className="rounded-full bg-black/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-        Варианты: прогресс · 1 = выбранный
-      </span>
-      <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1 shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
-        {WALLET_CONTEXT_VARIANTS.map((item) => {
-          const active = item.id === variant;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              title={item.title}
-              onClick={() => onChange(item.id)}
-              className={`rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
-                active
-                  ? 'bg-gray-900 text-white'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-              }`}
-            >
-              {item.label}
-            </button>
-          );
-        })}
-      </div>
-    </div>,
-    document.body,
-  );
-}
-
-function WalletContextView({
-  variant,
-  wallet,
-  thisBonus,
-  thisCash,
-}: {
-  variant: WalletContextVariantId;
-  wallet: BudgetWalletContext;
-  thisBonus: number;
-  thisCash: number;
-}) {
-  const promoLeft = Math.max(0, wallet.promoTotal - wallet.promoAllocated);
-  const elsLeft = Math.max(0, wallet.elsBalance - wallet.elsReserved);
-  const promoPct =
-    wallet.promoTotal > 0
-      ? Math.min(100, Math.round((wallet.promoAllocated / wallet.promoTotal) * 100))
-      : 0;
-  const elsPct =
-    wallet.elsBalance > 0
-      ? Math.min(100, Math.round((wallet.elsReserved / wallet.elsBalance) * 100))
-      : 0;
-  const promoDraftPct =
-    wallet.promoTotal > 0
-      ? Math.min(
-          100 - promoPct,
-          Math.round((Math.max(0, thisBonus) / wallet.promoTotal) * 100),
-        )
-      : 0;
-  const elsDraftPct =
-    wallet.elsBalance > 0
-      ? Math.min(100 - elsPct, Math.round((Math.max(0, thisCash) / wallet.elsBalance) * 100))
-      : 0;
-  const promoFreePct = Math.max(0, 100 - promoPct);
-  const elsFreePct = Math.max(0, 100 - elsPct);
-
-  if (variant === 'progress') {
-    return (
-      <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
-        <div>
-          <div className="flex justify-between text-[12px]">
-            <span className="text-gray-500">Промобонусы на кампаниях</span>
-            <span className="font-semibold tabular-nums text-gray-900">
-              {formatForDisplay(wallet.promoAllocated)} / {formatForDisplay(wallet.promoTotal)} B
-            </span>
-          </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white">
-            <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
-          </div>
-        </div>
-        <div>
-          <div className="flex justify-between text-[12px]">
-            <span className="text-gray-500">ЕЛС в резерве</span>
-            <span className="font-semibold tabular-nums text-gray-900">
-              {formatForDisplay(wallet.elsReserved)} / {formatForDisplay(wallet.elsBalance)} ₽
-            </span>
-          </div>
-          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white">
-            <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (variant === 'progressRemain') {
-    return (
-      <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <div className="text-[11px] font-medium text-gray-500">Ещё доступно</div>
-            <div className="mt-0.5 text-[18px] font-bold tabular-nums text-gray-900">
-              {formatForDisplay(promoLeft)} B
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[11px] font-medium text-gray-500">ЕЛС свободно</div>
-            <div className="mt-0.5 text-[18px] font-bold tabular-nums text-gray-900">
-              {formatForDisplay(elsLeft)} ₽
-            </div>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <div>
-            <div className="mb-1 flex justify-between text-[11px] text-gray-400">
-              <span>Занято бонусами</span>
-              <span className="tabular-nums">{promoPct}%</span>
-            </div>
-            <div className="h-1 overflow-hidden rounded-full bg-white">
-              <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
-            </div>
-          </div>
-          <div>
-            <div className="mb-1 flex justify-between text-[11px] text-gray-400">
-              <span>Занято с ЕЛС</span>
-              <span className="tabular-nums">{elsPct}%</span>
-            </div>
-            <div className="h-1 overflow-hidden rounded-full bg-white">
-              <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (variant === 'progressCols') {
-    return (
-      <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-[16px] bg-[#F7F7F8] px-3 py-3">
-          <div className="text-[11px] font-medium text-gray-500">Промобонусы</div>
-          <div className="mt-1 text-[14px] font-bold tabular-nums text-gray-900">
-            {formatForDisplay(wallet.promoAllocated)} B
-          </div>
-          <div className="mt-0.5 text-[11px] tabular-nums text-gray-400">
-            из {formatForDisplay(wallet.promoTotal)}
-          </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white">
-            <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
-          </div>
-          <div className="mt-1.5 text-[11px] tabular-nums text-gray-500">
-            свободно {formatForDisplay(promoLeft)} B
-          </div>
-        </div>
-        <div className="rounded-[16px] bg-[#F7F7F8] px-3 py-3">
-          <div className="text-[11px] font-medium text-gray-500">Единый счёт</div>
-          <div className="mt-1 text-[14px] font-bold tabular-nums text-gray-900">
-            {formatForDisplay(wallet.elsReserved)} ₽
-          </div>
-          <div className="mt-0.5 text-[11px] tabular-nums text-gray-400">
-            из {formatForDisplay(wallet.elsBalance)}
-          </div>
-          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white">
-            <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
-          </div>
-          <div className="mt-1.5 text-[11px] tabular-nums text-gray-500">
-            свободно {formatForDisplay(elsLeft)} ₽
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (variant === 'progressPct') {
-    return (
-      <div className="rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <div className="text-[11px] font-medium text-gray-500">Бонусы заняты</div>
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="text-[22px] font-bold tabular-nums leading-none text-gray-900">
-                {promoPct}%
-              </span>
-              <span className="text-[11px] tabular-nums text-gray-400">
-                {formatForDisplay(wallet.promoAllocated)} B
-              </span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
-              <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
-            </div>
-          </div>
-          <div>
-            <div className="text-[11px] font-medium text-gray-500">ЕЛС занят</div>
-            <div className="mt-1 flex items-baseline gap-1.5">
-              <span className="text-[22px] font-bold tabular-nums leading-none text-gray-900">
-                {elsPct}%
-              </span>
-              <span className="text-[11px] tabular-nums text-gray-400">
-                {formatForDisplay(wallet.elsReserved)} ₽
-              </span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
-              <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
-            </div>
-          </div>
-        </div>
-        <div className="mt-3 flex justify-between border-t border-black/[0.04] pt-2 text-[11px] tabular-nums text-gray-500">
-          <span>Свободно {formatForDisplay(promoLeft)} B</span>
-          <span>Свободно {formatForDisplay(elsLeft)} ₽</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (variant === 'progressStack') {
-    return (
-      <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
-        <div>
-          <div className="flex justify-between text-[12px]">
-            <span className="text-gray-500">Промобонусы</span>
-            <span className="font-semibold tabular-nums text-gray-900">
-              {formatForDisplay(wallet.promoAllocated)} · {formatForDisplay(promoLeft)} B
-            </span>
-          </div>
-          <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-white">
-            <div className="h-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
-            <div className="h-full bg-[#D8D8DE]" style={{ width: `${promoFreePct}%` }} />
-          </div>
-          <div className="mt-1.5 flex gap-3 text-[11px] text-gray-400">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#B45AFF]" />
-              на кампаниях
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#D8D8DE]" />
-              свободно
-            </span>
-          </div>
-        </div>
-        <div>
-          <div className="flex justify-between text-[12px]">
-            <span className="text-gray-500">Единый счёт</span>
-            <span className="font-semibold tabular-nums text-gray-900">
-              {formatForDisplay(wallet.elsReserved)} · {formatForDisplay(elsLeft)} ₽
-            </span>
-          </div>
-          <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-white">
-            <div className="h-full bg-gray-900" style={{ width: `${elsPct}%` }} />
-            <div className="h-full bg-[#D8D8DE]" style={{ width: `${elsFreePct}%` }} />
-          </div>
-          <div className="mt-1.5 flex gap-3 text-[11px] text-gray-400">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-gray-900" />
-              резерв
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#D8D8DE]" />
-              свободно
-            </span>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // progressDraft
-  return (
-    <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
-      <div>
-        <div className="flex justify-between text-[12px]">
-          <span className="text-gray-500">Промобонусы</span>
-          <span className="font-semibold tabular-nums text-gray-900">
-            {formatForDisplay(wallet.promoAllocated + Math.max(0, thisBonus))} /{' '}
-            {formatForDisplay(wallet.promoTotal)} B
-          </span>
-        </div>
-        <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-white">
-          <div className="h-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
-          <div className="h-full bg-[#D4A8FF]" style={{ width: `${promoDraftPct}%` }} />
-        </div>
-      </div>
-      <div>
-        <div className="flex justify-between text-[12px]">
-          <span className="text-gray-500">ЕЛС</span>
-          <span className="font-semibold tabular-nums text-gray-900">
-            {formatForDisplay(wallet.elsReserved + Math.max(0, thisCash))} /{' '}
-            {formatForDisplay(wallet.elsBalance)} ₽
-          </span>
-        </div>
-        <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-white">
-          <div className="h-full bg-gray-900" style={{ width: `${elsPct}%` }} />
-          <div className="h-full bg-gray-400" style={{ width: `${elsDraftPct}%` }} />
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400">
-        <span className="inline-flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#B45AFF]" />
-          уже на кампаниях
-        </span>
-        <span className="inline-flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-[#D4A8FF]" />
-          в этой модалке
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function BonusExpanded({ logic }: { logic: RefillLogic }) {
   return (
-    <div className="border-t border-gray-100 pt-4">
+    <div className="pt-3.5">
       <BonusPackagePicker logic={logic} />
     </div>
   );
@@ -920,13 +985,10 @@ function SummaryPinned({
   return (
     <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white">
       <div className="px-4 pt-3.5 pb-2">
-        <div className="text-[11px] font-medium uppercase tracking-[0.04em] text-gray-400">
-          Итог
-        </div>
-        <div className="mt-1.5 flex items-baseline justify-between gap-3">
-          <span className="text-[13px] text-gray-500">В бюджет</span>
-          <span className="text-[22px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-            +{formatForDisplay(logic.currentBudgetValue)} ₽
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[13px] text-gray-500">Итого бюджет</span>
+          <span className="text-[17px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
+            {formatForDisplay(logic.currentBudgetValue)} ₽
           </span>
         </div>
       </div>
@@ -962,7 +1024,6 @@ function SummaryBody({
   showDailyLimitInfo,
   dailyLimit,
   wallet,
-  walletVariant,
 }: {
   logic: RefillLogic;
   isMassRefill: boolean;
@@ -971,14 +1032,11 @@ function SummaryBody({
   showDailyLimitInfo: boolean;
   dailyLimit: number;
   wallet?: BudgetWalletContext | null;
-  walletVariant: WalletContextVariantId;
 }) {
-  const thisBonus = logic.useBonuses
-    ? Math.min(logic.numericBonusValue, logic.currentBudgetValue)
-    : 0;
-  const promoAvailable = wallet
-    ? Math.max(0, wallet.promoTotal - wallet.promoAllocated)
-    : logic.promoBonusTotal;
+  const elsBalance = wallet?.elsBalance ?? UNIFIED_BALANCE;
+  const elsReserved = wallet?.elsReserved ?? 0;
+  const elsAvailable = Math.max(0, elsBalance - elsReserved);
+  const promoTotal = wallet?.promoTotal ?? logic.promoBonusTotal;
 
   return (
     <div className="space-y-5">
@@ -989,66 +1047,55 @@ function SummaryBody({
       />
 
       <div className="rounded-[24px] bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        <div className="mb-2.5 flex items-baseline gap-2 text-[17px] font-semibold text-gray-900">
+          <span>Единый счёт</span>
+          <span className="tabular-nums text-gray-400">{formatForDisplay(elsBalance)} ₽</span>
+        </div>
         <RitFormFieldText
-          label={isMassRefill ? 'Сумма на 1 кампанию' : 'Сумма пополнения'}
           value={formatForDisplay(logic.refillAmount)}
           onChange={logic.handleBudgetChange}
           onBlur={logic.handleBudgetBlur}
           suffix="₽"
           autoFocus
-          notice={logic.budgetNotice || undefined}
+          ariaLabel={isMassRefill ? 'Сумма на 1 кампанию' : 'Сумма пополнения'}
           hint={
-            !logic.budgetNotice && isMassRefill
+            isMassRefill
               ? `На каждую из ${massCount} ${getPlural(massCount, 'кампании', 'кампаний', 'кампаний')}`
               : undefined
           }
         />
-        <div className="mt-3">
-          <QuickAmountRow value={logic.currentBudgetValue} onPick={logic.setQuickAmount} />
-        </div>
-        {wallet ? (
-          <div className="mt-4">
-            <WalletContextView
-              variant={walletVariant}
-              wallet={wallet}
-              thisBonus={thisBonus}
-              thisCash={logic.cashToPay}
-            />
-          </div>
-        ) : null}
-      </div>
 
-      <div className="rounded-[24px] bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-        <button
-          type="button"
-          onClick={() => logic.setUseBonuses(!logic.useBonuses)}
-          className="flex w-full items-center justify-between gap-3 text-left"
-        >
-          <div>
-            <div className="text-[13px] font-semibold text-gray-900">Промобонусы</div>
-            <div className="mt-0.5 text-[12px] tabular-nums text-gray-500">
-              {formatForDisplay(promoAvailable)} B
-              {wallet && wallet.promoAllocated > 0 ? (
-                <span className="text-gray-400">
-                  {' '}
-                  · на кампаниях {formatForDisplay(wallet.promoAllocated)} B
-                </span>
-              ) : null}
-            </div>
-          </div>
-          <span
-            className={`relative inline-flex h-7 w-12 shrink-0 rounded-full transition-colors ${
-              logic.useBonuses ? 'bg-[#B45AFF]' : 'bg-[#E5E5EA]'
-            }`}
-          >
+        <p className="mt-1.5 text-[12px] leading-4 text-gray-400 tabular-nums">
+          от 1 000{' '}
+          <span className="group relative inline-flex cursor-help">
+            <span className="border-b border-dashed border-gray-300">
+              до {formatForDisplay(elsAvailable)} ₽
+            </span>
             <span
-              className={`absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform ${
-                logic.useBonuses ? 'translate-x-5' : 'translate-x-0.5'
-              }`}
-            />
+              role="tooltip"
+              className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-[260px] rounded-xl bg-gray-900 px-3 py-2 text-left text-[12px] font-normal normal-case leading-4 text-white shadow-lg group-hover:block"
+            >
+              {elsReserved > 0
+                ? `На счёте ${formatForDisplay(elsBalance)} ₽. На кампаниях в создании уже занято ${formatForDisplay(elsReserved)} ₽, поэтому можно ещё ${formatForDisplay(elsAvailable)} ₽.`
+                : `Это весь остаток единого счёта — ${formatForDisplay(elsAvailable)} ₽.`}
+            </span>
           </span>
-        </button>
-        {logic.useBonuses ? <BonusExpanded logic={logic} /> : null}
+        </p>
+
+        <div className="mt-4 border-t border-gray-100 pt-3.5">
+          <button
+            type="button"
+            onClick={() => logic.setUseBonuses(!logic.useBonuses)}
+            className="flex w-full items-center justify-between gap-3 text-left"
+          >
+            <div className="flex min-w-0 items-baseline gap-2 text-[17px] font-semibold text-gray-900">
+              <span>Промобонусы</span>
+              <span className="tabular-nums text-gray-400">{formatForDisplay(promoTotal)} B</span>
+            </div>
+            <ToggleSwitch on={logic.useBonuses} />
+          </button>
+          {logic.useBonuses ? <BonusExpanded logic={logic} /> : null}
+        </div>
       </div>
 
       <AutoRefillBlock logic={logic} />
@@ -1061,6 +1108,8 @@ export type BudgetRefillAutoRefillExtras = {
   threshold: number;
   amount: number;
   useBonuses: boolean;
+  timesPerDay?: number;
+  expiryDate?: string | null;
 };
 
 export type BudgetRefillSaveExtras = {
@@ -1082,6 +1131,14 @@ function buildSaveExtras(logic: RefillLogic): BudgetRefillSaveExtras {
             threshold: parseDisplayValue(logic.autoThreshold) || 1000,
             amount: parseDisplayValue(logic.autoAmount) || 3000,
             useBonuses: logic.autoUseBonuses,
+            timesPerDay:
+              logic.autoFrequencyMode === 'custom'
+                ? Math.max(
+                    1,
+                    Math.floor(parseDisplayValue(logic.autoFrequencyTimes) || 1),
+                  )
+                : Number(logic.autoFrequencyMode),
+            expiryDate: logic.autoExpiryDate,
           },
         }
       : null),
@@ -1115,8 +1172,10 @@ export const BudgetRefillModal: React.FC<{
   const availablePromoCap = walletContext
     ? Math.max(0, walletContext.promoTotal - walletContext.promoAllocated)
     : null;
-  const logic = useRefillLogic(isOpen, { availablePromoCap });
-  const [walletVariant, setWalletVariant] = useState<WalletContextVariantId>(readWalletVariant);
+  const availableElsCap = walletContext
+    ? Math.max(0, walletContext.elsBalance - walletContext.elsReserved)
+    : UNIFIED_BALANCE;
+  const logic = useRefillLogic(isOpen, { availablePromoCap, availableElsCap });
 
   if (!isOpen) return null;
 
@@ -1124,12 +1183,6 @@ export const BudgetRefillModal: React.FC<{
   const isMassRefill = massCount > 1;
   const neededAmount = dailyLimit > currentBudget ? dailyLimit - currentBudget : 0;
   const ctaLabel = submitLabel ?? (isMassRefill ? 'Применить' : 'Пополнить');
-  const showWalletSwitcher = Boolean(walletContext);
-
-  const changeWalletVariant = (id: WalletContextVariantId) => {
-    writeWalletVariant(id);
-    setWalletVariant(id);
-  };
 
   const footerCta = (
     <div className="space-y-3">
@@ -1138,35 +1191,40 @@ export const BudgetRefillModal: React.FC<{
         type="button"
         disabled={!logic.canSubmit}
         onClick={() => onSave(parseDisplayValue(logic.refillAmount), buildSaveExtras(logic))}
-        className="inline-flex h-12 w-full items-center justify-center rounded-2xl bg-gray-900 text-[15px] font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
+        className="inline-flex h-12 items-center justify-center rounded-2xl bg-gray-900 px-5 text-[15px] font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
       >
         {ctaLabel}
       </button>
     </div>
   );
 
+  const correctionMessage = logic.budgetNotice || logic.bonusNotice;
+
   return (
-    <>
-      {showWalletSwitcher ? (
-        <WalletVariantSwitcher variant={walletVariant} onChange={changeWalletVariant} />
-      ) : null}
-      <RightSheetShell
-        titleId="budget-refill-title"
-        title="Пополнить"
-        onClose={onClose}
-        footer={footerCta}
-      >
-        <SummaryBody
-          logic={logic}
-          isMassRefill={isMassRefill}
-          massCount={massCount}
-          neededAmount={neededAmount}
-          showDailyLimitInfo={showDailyLimitInfo}
-          dailyLimit={dailyLimit}
-          wallet={walletContext}
-          walletVariant={walletVariant}
+    <RightSheetShell
+      titleId="budget-refill-title"
+      title="Настройка бюджета"
+      onClose={onClose}
+      footer={footerCta}
+      overlay={
+        <CorrectionToast
+          message={correctionMessage}
+          onDismiss={() => {
+            logic.clearBudgetNotice();
+            logic.clearBonusNotice();
+          }}
         />
-      </RightSheetShell>
-    </>
+      }
+    >
+      <SummaryBody
+        logic={logic}
+        isMassRefill={isMassRefill}
+        massCount={massCount}
+        neededAmount={neededAmount}
+        showDailyLimitInfo={showDailyLimitInfo}
+        dailyLimit={dailyLimit}
+        wallet={walletContext}
+      />
+    </RightSheetShell>
   );
 };
