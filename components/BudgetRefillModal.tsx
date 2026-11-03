@@ -1,12 +1,66 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from './Icons';
+import {
+  buildDemoBonusPackages,
+  usePromoBonusDemo,
+} from './PromoBonusDemoContext';
 
 const UNIFIED_BALANCE = 105350;
-const TOTAL_PROMO_BONUS = 226660517;
-const BONUS_PACKAGES = [
-  { id: 'p1', amount: 209527397, maxPercent: 100, expiry: '20.03.26', displayBurn: '209.4M' },
-  { id: 'p2', amount: 17133120, maxPercent: 99, expiry: '27.03.26', displayBurn: '168.3k' },
+
+export type BudgetWalletContext = {
+  /** Всего промобонусов в кабинете */
+  promoTotal: number;
+  /** Уже распределено на кампании (B) */
+  promoAllocated: number;
+  /** Баланс ЕЛС */
+  elsBalance: number;
+  /** Уже зарезервировано с ЕЛС под кампании (₽) */
+  elsReserved: number;
+  /** Сколько кампаний в создании */
+  campaignCount: number;
+};
+
+export const WALLET_CONTEXT_VARIANTS = [
+  { id: 'progress', label: '1', title: 'Прогресс занятости (нравится)' },
+  { id: 'progressRemain', label: '2', title: 'Акцент на остатке + тонкий прогресс' },
+  { id: 'progressCols', label: '3', title: 'Две колонки с прогрессом' },
+  { id: 'progressPct', label: '4', title: 'Крупный % занятости' },
+  { id: 'progressStack', label: '5', title: 'Двухцветный бар: занято / свободно' },
+  { id: 'progressDraft', label: '6', title: 'Прогресс + черновик этой модалки' },
 ] as const;
+
+export type WalletContextVariantId = (typeof WALLET_CONTEXT_VARIANTS)[number]['id'];
+
+const WALLET_VARIANT_KEY = 'budget_refill_wallet_context_variant_v2';
+
+function readWalletVariant(): WalletContextVariantId {
+  try {
+    const raw = sessionStorage.getItem(WALLET_VARIANT_KEY);
+    if (WALLET_CONTEXT_VARIANTS.some((item) => item.id === raw)) {
+      return raw as WalletContextVariantId;
+    }
+  } catch {
+    /* ignore */
+  }
+  return 'progress';
+}
+
+function writeWalletVariant(id: WalletContextVariantId) {
+  try {
+    sessionStorage.setItem(WALLET_VARIANT_KEY, id);
+  } catch {
+    /* ignore */
+  }
+}
+
+type BonusPackage = {
+  id: string;
+  amount: number;
+  maxPercent: number;
+  expiry: string;
+  displayBurn: string;
+};
 
 const QUICK_AMOUNTS = [1000, 3000, 5000, 10000] as const;
 
@@ -100,7 +154,9 @@ type RefillLogic = {
   budgetNotice: string;
   bonusError: string;
   bonusNotice: string;
-  selectedPkg: (typeof BONUS_PACKAGES)[number];
+  packages: readonly BonusPackage[];
+  promoBonusTotal: number;
+  selectedPkg: BonusPackage;
   currentBudgetValue: number;
   numericBonusValue: number;
   cashToPay: number;
@@ -123,10 +179,30 @@ type RefillLogic = {
   canSubmit: boolean;
 };
 
-function useRefillLogic(isOpen: boolean): RefillLogic {
+function useRefillLogic(
+  isOpen: boolean,
+  options?: { availablePromoCap?: number | null },
+): RefillLogic {
+  const { promoBonusTotal } = usePromoBonusDemo();
+  const availablePromoCap =
+    options?.availablePromoCap != null && Number.isFinite(options.availablePromoCap)
+      ? Math.max(0, options.availablePromoCap)
+      : null;
+  const packages = useMemo(
+    () => buildDemoBonusPackages(promoBonusTotal).filter((pkg) => pkg.amount > 0),
+    [promoBonusTotal],
+  );
+  const fallbackPkg = packages[0] ?? {
+    id: 'p1',
+    amount: 0,
+    maxPercent: 50,
+    expiry: '20.03.26',
+    displayBurn: '0',
+  };
+
   const [refillAmount, setRefillAmount] = useState('3000');
   const [useBonuses, setUseBonuses] = useState(false);
-  const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
+  const [selectedPkgId, setSelectedPkgId] = useState(fallbackPkg.id);
   const [bonusValue, setBonusValue] = useState<number | string>(3000);
   const [budgetError, setBudgetError] = useState('');
   const [budgetNotice, setBudgetNotice] = useState('');
@@ -141,6 +217,7 @@ function useRefillLogic(isOpen: boolean): RefillLogic {
     if (isOpen) {
       setRefillAmount('3000');
       setUseBonuses(false);
+      setSelectedPkgId(fallbackPkg.id);
       setBonusValue(3000);
       setBudgetError('');
       setBudgetNotice('');
@@ -150,11 +227,11 @@ function useRefillLogic(isOpen: boolean): RefillLogic {
       setAutoAmount('3000');
       setAutoUseBonuses(false);
     }
-  }, [isOpen]);
+  }, [isOpen, fallbackPkg.id]);
 
   const selectedPkg = useMemo(
-    () => BONUS_PACKAGES.find((p) => p.id === selectedPkgId) || BONUS_PACKAGES[0],
-    [selectedPkgId],
+    () => packages.find((p) => p.id === selectedPkgId) || fallbackPkg,
+    [packages, selectedPkgId, fallbackPkg],
   );
   const currentBudgetValue = parseDisplayValue(refillAmount);
   const numericBonusValue = parseDisplayValue(String(bonusValue));
@@ -162,6 +239,7 @@ function useRefillLogic(isOpen: boolean): RefillLogic {
     selectedPkg.amount,
     Math.floor((currentBudgetValue * selectedPkg.maxPercent) / 100),
     Math.max(0, currentBudgetValue),
+    availablePromoCap ?? Number.POSITIVE_INFINITY,
   );
   const cashToPay = Math.max(
     0,
@@ -172,7 +250,14 @@ function useRefillLogic(isOpen: boolean): RefillLogic {
     setRefillAmount(String(amount));
     if (useBonuses) {
       const maxByPercent = Math.floor((amount * selectedPkg.maxPercent) / 100);
-      setBonusValue(Math.min(amount, maxByPercent, selectedPkg.amount));
+      setBonusValue(
+        Math.min(
+          amount,
+          maxByPercent,
+          selectedPkg.amount,
+          availablePromoCap ?? Number.POSITIVE_INFINITY,
+        ),
+      );
       setBonusNotice('');
     }
   };
@@ -198,6 +283,8 @@ function useRefillLogic(isOpen: boolean): RefillLogic {
     budgetNotice,
     bonusError,
     bonusNotice,
+    packages,
+    promoBonusTotal,
     selectedPkg,
     currentBudgetValue,
     numericBonusValue,
@@ -412,7 +499,7 @@ function QuickAmountRow({
 function BonusPackagePicker({ logic }: { logic: RefillLogic }) {
   return (
     <div className="space-y-2">
-      {BONUS_PACKAGES.map((pkg) => {
+      {logic.packages.map((pkg) => {
         const active = logic.selectedPkgId === pkg.id;
         return (
           <div
@@ -441,8 +528,11 @@ function BonusPackagePicker({ logic }: { logic: RefillLogic }) {
                 <div className="text-[14px] font-bold tabular-nums text-gray-900">
                   {formatForDisplay(pkg.amount)} B
                 </div>
+                <div className="mt-0.5 text-[12px] leading-4 text-gray-500">
+                  Списать можно до {pkg.maxPercent}% от суммы пополнения
+                </div>
                 <div className="mt-0.5 text-[12px] text-gray-500">
-                  до {pkg.maxPercent}% · сгорят {pkg.expiry}
+                  Доступно до {pkg.expiry}
                 </div>
               </div>
               <span
@@ -488,6 +578,320 @@ function DailyLimitHint({
     <div className="rounded-2xl bg-[#FFF6E8] px-4 py-3 text-[13px] leading-5 text-gray-800">
       Для дневного лимита {formatForDisplay(dailyLimit)} ₽ нужно ещё{' '}
       <span className="font-semibold tabular-nums">{formatForDisplay(neededAmount)} ₽</span>
+    </div>
+  );
+}
+
+function WalletVariantSwitcher({
+  variant,
+  onChange,
+}: {
+  variant: WalletContextVariantId;
+  onChange: (id: WalletContextVariantId) => void;
+}) {
+  return createPortal(
+    <div className="fixed bottom-5 left-1/2 z-[200] flex -translate-x-1/2 flex-col items-center gap-1.5">
+      <span className="rounded-full bg-black/70 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+        Варианты: прогресс · 1 = выбранный
+      </span>
+      <div className="flex items-center gap-1 rounded-full border border-gray-200 bg-white p-1 shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
+        {WALLET_CONTEXT_VARIANTS.map((item) => {
+          const active = item.id === variant;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              title={item.title}
+              onClick={() => onChange(item.id)}
+              className={`rounded-full px-3 py-1.5 text-[12px] font-semibold transition-colors ${
+                active
+                  ? 'bg-gray-900 text-white'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              }`}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function WalletContextView({
+  variant,
+  wallet,
+  thisBonus,
+  thisCash,
+}: {
+  variant: WalletContextVariantId;
+  wallet: BudgetWalletContext;
+  thisBonus: number;
+  thisCash: number;
+}) {
+  const promoLeft = Math.max(0, wallet.promoTotal - wallet.promoAllocated);
+  const elsLeft = Math.max(0, wallet.elsBalance - wallet.elsReserved);
+  const promoPct =
+    wallet.promoTotal > 0
+      ? Math.min(100, Math.round((wallet.promoAllocated / wallet.promoTotal) * 100))
+      : 0;
+  const elsPct =
+    wallet.elsBalance > 0
+      ? Math.min(100, Math.round((wallet.elsReserved / wallet.elsBalance) * 100))
+      : 0;
+  const promoDraftPct =
+    wallet.promoTotal > 0
+      ? Math.min(
+          100 - promoPct,
+          Math.round((Math.max(0, thisBonus) / wallet.promoTotal) * 100),
+        )
+      : 0;
+  const elsDraftPct =
+    wallet.elsBalance > 0
+      ? Math.min(100 - elsPct, Math.round((Math.max(0, thisCash) / wallet.elsBalance) * 100))
+      : 0;
+  const promoFreePct = Math.max(0, 100 - promoPct);
+  const elsFreePct = Math.max(0, 100 - elsPct);
+
+  if (variant === 'progress') {
+    return (
+      <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
+        <div>
+          <div className="flex justify-between text-[12px]">
+            <span className="text-gray-500">Промобонусы на кампаниях</span>
+            <span className="font-semibold tabular-nums text-gray-900">
+              {formatForDisplay(wallet.promoAllocated)} / {formatForDisplay(wallet.promoTotal)} B
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white">
+            <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-[12px]">
+            <span className="text-gray-500">ЕЛС в резерве</span>
+            <span className="font-semibold tabular-nums text-gray-900">
+              {formatForDisplay(wallet.elsReserved)} / {formatForDisplay(wallet.elsBalance)} ₽
+            </span>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white">
+            <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'progressRemain') {
+    return (
+      <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <div className="text-[11px] font-medium text-gray-500">Ещё доступно</div>
+            <div className="mt-0.5 text-[18px] font-bold tabular-nums text-gray-900">
+              {formatForDisplay(promoLeft)} B
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-[11px] font-medium text-gray-500">ЕЛС свободно</div>
+            <div className="mt-0.5 text-[18px] font-bold tabular-nums text-gray-900">
+              {formatForDisplay(elsLeft)} ₽
+            </div>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div>
+            <div className="mb-1 flex justify-between text-[11px] text-gray-400">
+              <span>Занято бонусами</span>
+              <span className="tabular-nums">{promoPct}%</span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-white">
+              <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
+            </div>
+          </div>
+          <div>
+            <div className="mb-1 flex justify-between text-[11px] text-gray-400">
+              <span>Занято с ЕЛС</span>
+              <span className="tabular-nums">{elsPct}%</span>
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-white">
+              <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'progressCols') {
+    return (
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-[16px] bg-[#F7F7F8] px-3 py-3">
+          <div className="text-[11px] font-medium text-gray-500">Промобонусы</div>
+          <div className="mt-1 text-[14px] font-bold tabular-nums text-gray-900">
+            {formatForDisplay(wallet.promoAllocated)} B
+          </div>
+          <div className="mt-0.5 text-[11px] tabular-nums text-gray-400">
+            из {formatForDisplay(wallet.promoTotal)}
+          </div>
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white">
+            <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
+          </div>
+          <div className="mt-1.5 text-[11px] tabular-nums text-gray-500">
+            свободно {formatForDisplay(promoLeft)} B
+          </div>
+        </div>
+        <div className="rounded-[16px] bg-[#F7F7F8] px-3 py-3">
+          <div className="text-[11px] font-medium text-gray-500">Единый счёт</div>
+          <div className="mt-1 text-[14px] font-bold tabular-nums text-gray-900">
+            {formatForDisplay(wallet.elsReserved)} ₽
+          </div>
+          <div className="mt-0.5 text-[11px] tabular-nums text-gray-400">
+            из {formatForDisplay(wallet.elsBalance)}
+          </div>
+          <div className="mt-2.5 h-1.5 overflow-hidden rounded-full bg-white">
+            <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
+          </div>
+          <div className="mt-1.5 text-[11px] tabular-nums text-gray-500">
+            свободно {formatForDisplay(elsLeft)} ₽
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'progressPct') {
+    return (
+      <div className="rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div className="text-[11px] font-medium text-gray-500">Бонусы заняты</div>
+            <div className="mt-1 flex items-baseline gap-1.5">
+              <span className="text-[22px] font-bold tabular-nums leading-none text-gray-900">
+                {promoPct}%
+              </span>
+              <span className="text-[11px] tabular-nums text-gray-400">
+                {formatForDisplay(wallet.promoAllocated)} B
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
+              <div className="h-full rounded-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] font-medium text-gray-500">ЕЛС занят</div>
+            <div className="mt-1 flex items-baseline gap-1.5">
+              <span className="text-[22px] font-bold tabular-nums leading-none text-gray-900">
+                {elsPct}%
+              </span>
+              <span className="text-[11px] tabular-nums text-gray-400">
+                {formatForDisplay(wallet.elsReserved)} ₽
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
+              <div className="h-full rounded-full bg-gray-900" style={{ width: `${elsPct}%` }} />
+            </div>
+          </div>
+        </div>
+        <div className="mt-3 flex justify-between border-t border-black/[0.04] pt-2 text-[11px] tabular-nums text-gray-500">
+          <span>Свободно {formatForDisplay(promoLeft)} B</span>
+          <span>Свободно {formatForDisplay(elsLeft)} ₽</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === 'progressStack') {
+    return (
+      <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
+        <div>
+          <div className="flex justify-between text-[12px]">
+            <span className="text-gray-500">Промобонусы</span>
+            <span className="font-semibold tabular-nums text-gray-900">
+              {formatForDisplay(wallet.promoAllocated)} · {formatForDisplay(promoLeft)} B
+            </span>
+          </div>
+          <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-white">
+            <div className="h-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
+            <div className="h-full bg-[#D8D8DE]" style={{ width: `${promoFreePct}%` }} />
+          </div>
+          <div className="mt-1.5 flex gap-3 text-[11px] text-gray-400">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#B45AFF]" />
+              на кампаниях
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#D8D8DE]" />
+              свободно
+            </span>
+          </div>
+        </div>
+        <div>
+          <div className="flex justify-between text-[12px]">
+            <span className="text-gray-500">Единый счёт</span>
+            <span className="font-semibold tabular-nums text-gray-900">
+              {formatForDisplay(wallet.elsReserved)} · {formatForDisplay(elsLeft)} ₽
+            </span>
+          </div>
+          <div className="mt-1.5 flex h-2 overflow-hidden rounded-full bg-white">
+            <div className="h-full bg-gray-900" style={{ width: `${elsPct}%` }} />
+            <div className="h-full bg-[#D8D8DE]" style={{ width: `${elsFreePct}%` }} />
+          </div>
+          <div className="mt-1.5 flex gap-3 text-[11px] text-gray-400">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-gray-900" />
+              резерв
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#D8D8DE]" />
+              свободно
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // progressDraft
+  return (
+    <div className="space-y-3 rounded-[16px] bg-[#F7F7F8] px-3.5 py-3">
+      <div>
+        <div className="flex justify-between text-[12px]">
+          <span className="text-gray-500">Промобонусы</span>
+          <span className="font-semibold tabular-nums text-gray-900">
+            {formatForDisplay(wallet.promoAllocated + Math.max(0, thisBonus))} /{' '}
+            {formatForDisplay(wallet.promoTotal)} B
+          </span>
+        </div>
+        <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-white">
+          <div className="h-full bg-[#B45AFF]" style={{ width: `${promoPct}%` }} />
+          <div className="h-full bg-[#D4A8FF]" style={{ width: `${promoDraftPct}%` }} />
+        </div>
+      </div>
+      <div>
+        <div className="flex justify-between text-[12px]">
+          <span className="text-gray-500">ЕЛС</span>
+          <span className="font-semibold tabular-nums text-gray-900">
+            {formatForDisplay(wallet.elsReserved + Math.max(0, thisCash))} /{' '}
+            {formatForDisplay(wallet.elsBalance)} ₽
+          </span>
+        </div>
+        <div className="mt-1.5 flex h-1.5 overflow-hidden rounded-full bg-white">
+          <div className="h-full bg-gray-900" style={{ width: `${elsPct}%` }} />
+          <div className="h-full bg-gray-400" style={{ width: `${elsDraftPct}%` }} />
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400">
+        <span className="inline-flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#B45AFF]" />
+          уже на кампаниях
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-[#D4A8FF]" />
+          в этой модалке
+        </span>
+      </div>
     </div>
   );
 }
@@ -557,6 +961,8 @@ function SummaryBody({
   neededAmount,
   showDailyLimitInfo,
   dailyLimit,
+  wallet,
+  walletVariant,
 }: {
   logic: RefillLogic;
   isMassRefill: boolean;
@@ -564,7 +970,16 @@ function SummaryBody({
   neededAmount: number;
   showDailyLimitInfo: boolean;
   dailyLimit: number;
+  wallet?: BudgetWalletContext | null;
+  walletVariant: WalletContextVariantId;
 }) {
+  const thisBonus = logic.useBonuses
+    ? Math.min(logic.numericBonusValue, logic.currentBudgetValue)
+    : 0;
+  const promoAvailable = wallet
+    ? Math.max(0, wallet.promoTotal - wallet.promoAllocated)
+    : logic.promoBonusTotal;
+
   return (
     <div className="space-y-5">
       <DailyLimitHint
@@ -591,6 +1006,16 @@ function SummaryBody({
         <div className="mt-3">
           <QuickAmountRow value={logic.currentBudgetValue} onPick={logic.setQuickAmount} />
         </div>
+        {wallet ? (
+          <div className="mt-4">
+            <WalletContextView
+              variant={walletVariant}
+              wallet={wallet}
+              thisBonus={thisBonus}
+              thisCash={logic.cashToPay}
+            />
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-[24px] bg-white px-4 py-3.5 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -602,7 +1027,13 @@ function SummaryBody({
           <div>
             <div className="text-[13px] font-semibold text-gray-900">Промобонусы</div>
             <div className="mt-0.5 text-[12px] tabular-nums text-gray-500">
-              {formatForDisplay(TOTAL_PROMO_BONUS)} B на счету
+              {formatForDisplay(promoAvailable)} B
+              {wallet && wallet.promoAllocated > 0 ? (
+                <span className="text-gray-400">
+                  {' '}
+                  · на кампаниях {formatForDisplay(wallet.promoAllocated)} B
+                </span>
+              ) : null}
             </div>
           </div>
           <span
@@ -668,6 +1099,8 @@ export const BudgetRefillModal: React.FC<{
   showDailyLimitInfo?: boolean;
   /** Подпись основной кнопки; по умолчанию «Пополнить» / «Применить» */
   submitLabel?: string;
+  /** Уже распределённые бонусы / ЕЛС по кампаниям создания */
+  walletContext?: BudgetWalletContext | null;
 }> = ({
   isOpen,
   onClose,
@@ -677,8 +1110,13 @@ export const BudgetRefillModal: React.FC<{
   dailyLimit = 0,
   showDailyLimitInfo = false,
   submitLabel,
+  walletContext = null,
 }) => {
-  const logic = useRefillLogic(isOpen);
+  const availablePromoCap = walletContext
+    ? Math.max(0, walletContext.promoTotal - walletContext.promoAllocated)
+    : null;
+  const logic = useRefillLogic(isOpen, { availablePromoCap });
+  const [walletVariant, setWalletVariant] = useState<WalletContextVariantId>(readWalletVariant);
 
   if (!isOpen) return null;
 
@@ -686,6 +1124,12 @@ export const BudgetRefillModal: React.FC<{
   const isMassRefill = massCount > 1;
   const neededAmount = dailyLimit > currentBudget ? dailyLimit - currentBudget : 0;
   const ctaLabel = submitLabel ?? (isMassRefill ? 'Применить' : 'Пополнить');
+  const showWalletSwitcher = Boolean(walletContext);
+
+  const changeWalletVariant = (id: WalletContextVariantId) => {
+    writeWalletVariant(id);
+    setWalletVariant(id);
+  };
 
   const footerCta = (
     <div className="space-y-3">
@@ -702,20 +1146,27 @@ export const BudgetRefillModal: React.FC<{
   );
 
   return (
-    <RightSheetShell
-      titleId="budget-refill-title"
-      title="Пополнить"
-      onClose={onClose}
-      footer={footerCta}
-    >
-      <SummaryBody
-        logic={logic}
-        isMassRefill={isMassRefill}
-        massCount={massCount}
-        neededAmount={neededAmount}
-        showDailyLimitInfo={showDailyLimitInfo}
-        dailyLimit={dailyLimit}
-      />
-    </RightSheetShell>
+    <>
+      {showWalletSwitcher ? (
+        <WalletVariantSwitcher variant={walletVariant} onChange={changeWalletVariant} />
+      ) : null}
+      <RightSheetShell
+        titleId="budget-refill-title"
+        title="Пополнить"
+        onClose={onClose}
+        footer={footerCta}
+      >
+        <SummaryBody
+          logic={logic}
+          isMassRefill={isMassRefill}
+          massCount={massCount}
+          neededAmount={neededAmount}
+          showDailyLimitInfo={showDailyLimitInfo}
+          dailyLimit={dailyLimit}
+          wallet={walletContext}
+          walletVariant={walletVariant}
+        />
+      </RightSheetShell>
+    </>
   );
 };

@@ -873,16 +873,16 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                       ...campaignBase,
                       searchBid: CPC_DEFAULT_SEARCH_BID_RUB,
                       recommendationsBid: CPC_DEFAULT_SEARCH_BID_RUB,
-                      dailyLimit: 1000,
-                      autoReplenishment: true,
+                      dailyLimit: null,
+                      autoReplenishment: false,
                     } as CampaignRecord;
                 }
                 return {
                   ...campaignBase,
                   ...withSearch,
                   ...withRecs,
-                  dailyLimit: 1000,
-                  autoReplenishment: true,
+                  dailyLimit: null,
+                  autoReplenishment: false,
                 } as CampaignRecord;
             }
         });
@@ -2904,10 +2904,10 @@ export default function App() {
     setAppState('creation');
   }, [isMassCreationResearchAccess]);
 
-  // Исследования → «Промобонусы»: только главная (+ запуск одной кампании)
+  // Исследования → «Промобонусы»: главная + одиночное / массовое создание
   useEffect(() => {
     if (!isBonusesResearchAccess) return;
-    if (appState === 'single-campaign') return;
+    if (appState === 'single-campaign' || appState === 'creation') return;
     if (appState !== 'list') setAppState('list');
     if (location.pathname !== PRODUCT_PROMOTION_CONCEPT_PATH) {
       navigate(PRODUCT_PROMOTION_CONCEPT_PATH, { replace: true });
@@ -3172,7 +3172,6 @@ export default function App() {
     }
   };
   const handleNavigateToCreation = () => {
-    if (isBonusesResearchAccess) return;
     setAppState('creation');
   };
   const handleNavigateToEditing = () => {
@@ -3207,18 +3206,16 @@ export default function App() {
         CPC_DEFAULT_SEARCH_BID_RUB,
         CPC_DEFAULT_SEARCH_BID_RUB,
       ] as const;
-      const dailyPresets = [1000, 1000, 1000, 1000, null] as const;
-      const apPresets = [true, true, false, true, false] as const;
       return {
-        id: `growing-demand-v6-${p.id}-${index}`,
+        id: `growing-demand-v7-${p.id}-${index}`,
         nmId,
         productName: p.name,
         campaignName: `${p.name} CPC ${currentDate}`,
         imageUrl: p.image,
         category: 'Товары',
         budget: 3000,
-        dailyLimit: dailyPresets[index] ?? 1000,
-        autoReplenishment: apPresets[index] ?? false,
+        dailyLimit: null,
+        autoReplenishment: false,
         fundingSource: 'Единый счёт' as const,
         status: CampaignStatus.VALID,
         usePromoBonuses: false,
@@ -3229,10 +3226,6 @@ export default function App() {
   }, []);
 
   const handleNavigateToCreationWithGrowingDemand = useCallback(() => {
-    if (isBonusesResearchAccess) {
-      openSingleCampaign();
-      return;
-    }
     const config: Pick<CampaignConfig, 'paymentModel' | 'bidType'> = {
       paymentModel: PaymentModel.CPC,
       bidType: BidType.UNIFIED,
@@ -3262,7 +3255,7 @@ export default function App() {
     );
     setShowToast(true);
     setAppState('creation');
-  }, [buildGrowingDemandMassCreationCampaigns, isBonusesResearchAccess, openSingleCampaign]);
+  }, [buildGrowingDemandMassCreationCampaigns]);
 
   useEffect(() => {
     if (!pendingReferralCreationNav || profileId !== '2') return;
@@ -3466,10 +3459,6 @@ export default function App() {
 
   const handleNavigateToCreationWithSingleCampaignProducts = useCallback(
     (items: { nmId: number; productName: string; imageUrl: string; category: string }[]) => {
-      if (isBonusesResearchAccess) {
-        openSingleCampaign();
-        return;
-      }
       if (!items || items.length === 0) {
         setAppState('creation');
         return;
@@ -3483,8 +3472,8 @@ export default function App() {
         imageUrl: p.imageUrl,
         category: p.category,
         budget: 3000,
-        dailyLimit: 1000,
-        autoReplenishment: true,
+        dailyLimit: null,
+        autoReplenishment: false,
         fundingSource: 'Единый счёт',
         status: CampaignStatus.VALID,
         usePromoBonuses: false,
@@ -3503,7 +3492,7 @@ export default function App() {
       );
       setAppState('creation');
     },
-    [handleAddItemSubmit, isBonusesResearchAccess, openSingleCampaign],
+    [handleAddItemSubmit],
   );
 
   const massCreationCuratedCatalog = useMemo((): CuratedPickProduct[] => {
@@ -4538,13 +4527,28 @@ export default function App() {
     );
     const withSuggestedBonuses = computeLaunchAffordability(allValidCampaigns, bonusById);
     const distribution: BonusDistributionRow[] = allValidCampaigns
-      .filter((c) => bonusById.has(c.id))
-      .map((c) => ({
-        id: c.id,
-        name: c.campaignName || c.productName,
-        budget: c.budget,
-        bonus: bonusById.get(c.id) ?? 0,
-      }));
+      .map((c) => {
+        const suggested = potentialAllocation.perCampaign.get(c.id);
+        const maxBonus = suggested?.bonusAmount ?? bonusById.get(c.id) ?? 0;
+        const currentBonus = effectivePromoBonusAmount(c);
+        const packageId = suggested?.packageId ?? c.bonusPackageId;
+        const pkg =
+          demoBonusPackages.find((item) => item.id === packageId) ?? demoBonusPackages[0];
+        return {
+          id: c.id,
+          name: c.campaignName || c.productName,
+          budget: c.budget,
+          imageUrl: c.imageUrl,
+          bonus: maxBonus,
+          maxBonus,
+          currentBonus,
+          packageId,
+          packageLabel: pkg
+            ? `пакет до ${pkg.maxPercent}% · до ${pkg.expiry}`
+            : undefined,
+        };
+      })
+      .filter((c) => c.maxBonus > 0 || c.currentBonus > 0);
 
     const promoAccountBalance = demoBonusPackages.reduce(
       (sum, pkg) => sum + remainingDemoPackageBalance(pkg, allValidCampaigns),
@@ -4567,50 +4571,58 @@ export default function App() {
     };
   }, [allValidCampaigns, demoBonusPackages]);
 
-  /** `amount` — итоговая сумма бонусов по всем кампаниям (абсолют), не «добавка». */
-  const applyPromoBonusesAmount = useCallback((amount: number) => {
-    const allocation = launchPreview.potentialAllocation;
-    if (!allocation || allocation.totalBonus <= 0 || amount <= 0) return;
+  /** Итоговое назначение бонусов по id кампании (абсолют). */
+  const applyPromoBonusesAmount = useCallback(
+    (byCampaign: Record<string, number>) => {
+      const allocation = launchPreview.potentialAllocation;
+      if (!allocation) return;
+      const entries = Object.entries(byCampaign).filter(([, amount]) => amount > 0);
+      if (entries.length === 0) return;
 
-    const entries = [...allocation.perCampaign.entries()];
-    const shares = evenBonusShares(
-      entries.map(([, value]) => value.bonusAmount),
-      Math.min(amount, allocation.totalBonus),
-    );
-    const assignedById = new Map(
-      entries.map(([id, value], i) => [id, { ...value, bonusAmount: shares[i] }]),
-    );
-
-    const applyToCampaign = (campaign: CampaignRecord): CampaignRecord => {
-      const assigned = assignedById.get(campaign.id);
-      if (!assigned || assigned.bonusAmount <= 0) {
+      const applyToCampaign = (campaign: CampaignRecord): CampaignRecord => {
+        const want = byCampaign[campaign.id] ?? 0;
+        if (want <= 0) {
+          return {
+            ...campaign,
+            usePromoBonuses: false,
+            bonusAmount: 0,
+            bonusPackageId: undefined,
+          };
+        }
+        const fromSuggest = allocation.perCampaign.get(campaign.id);
+        const packageId = fromSuggest?.packageId ?? campaign.bonusPackageId ?? 'p1';
+        const cap = fromSuggest?.bonusAmount ?? want;
+        const bonusAmount = Math.min(want, cap);
+        if (bonusAmount <= 0) {
+          return {
+            ...campaign,
+            usePromoBonuses: false,
+            bonusAmount: 0,
+            bonusPackageId: undefined,
+          };
+        }
         return {
           ...campaign,
-          usePromoBonuses: false,
-          bonusAmount: 0,
-          bonusPackageId: undefined,
+          usePromoBonuses: true,
+          bonusAmount,
+          bonusPackageId: packageId,
         };
-      }
-      return {
-        ...campaign,
-        usePromoBonuses: true,
-        bonusAmount: assigned.bonusAmount,
-        bonusPackageId: assigned.packageId,
       };
-    };
 
-    setTemplateGroups((prev) =>
-      prev.map((group) => ({
-        ...group,
-        campaigns: group.campaigns.map(applyToCampaign),
-      })),
-    );
-    if (editingGroupId) {
-      setEditedCampaigns((prev) => prev.map(applyToCampaign));
-    }
-    setToastMessage('Промобонусы распределены');
-    setShowToast(true);
-  }, [launchPreview.potentialAllocation, editingGroupId]);
+      setTemplateGroups((prev) =>
+        prev.map((group) => ({
+          ...group,
+          campaigns: group.campaigns.map(applyToCampaign),
+        })),
+      );
+      if (editingGroupId) {
+        setEditedCampaigns((prev) => prev.map(applyToCampaign));
+      }
+      setToastMessage('Промобонусы распределены');
+      setShowToast(true);
+    },
+    [launchPreview.potentialAllocation, editingGroupId],
+  );
 
   useEffect(() => {
     if (isLaunching) {
@@ -4704,12 +4716,6 @@ export default function App() {
       <SingleCampaignPage 
         onBack={() => handleNavigationAttempt(handleNavigateToList)}
         onNavigateToMassCreation={(items) => {
-          if (isBonusesResearchAccess) {
-            setToastMessage('Кампания запущена');
-            setShowToast(true);
-            handleNavigateToList();
-            return;
-          }
           handleNavigationAttempt(() =>
             handleNavigateToCreationWithSingleCampaignProducts(items),
           );
@@ -4745,26 +4751,14 @@ export default function App() {
                     failedCampaigns={failedCampaigns}
                     onClearLaunchResult={() => setCreationResult(null)}
                     onNavigateToCreation={() => {
-                      if (isBonusesResearchAccess) {
-                        openSingleCampaign();
-                        return;
-                      }
                       handleNavigationAttempt(handleNavigateToCreation);
                     }}
                     onNavigateToCreationWithProducts={(items) => {
-                      if (isBonusesResearchAccess) {
-                        openSingleCampaign();
-                        return;
-                      }
                       handleNavigationAttempt(() =>
                         handleNavigateToCreationWithSingleCampaignProducts(items),
                       );
                     }}
                     onNavigateToCreationWithGrowingDemand={() => {
-                      if (isBonusesResearchAccess) {
-                        openSingleCampaign();
-                        return;
-                      }
                       handleNavigationAttempt(handleNavigateToCreationWithGrowingDemand);
                     }}
                     onConfirmWbDiscountPromote={handleConfirmWbDiscountPromote}
@@ -4987,10 +4981,6 @@ export default function App() {
           <OverviewBridgeProvider
             value={{
               openMassCreationWithProducts: (items) => {
-                if (isBonusesResearchAccess) {
-                  openSingleCampaign();
-                  return;
-                }
                 handleNavigationAttempt(() =>
                   handleNavigateToCreationWithSingleCampaignProducts(items),
                 );
@@ -5086,6 +5076,39 @@ export default function App() {
                 : selectedCampaignIds.length
             }
             submitLabel="Применить"
+            walletContext={{
+              promoTotal: promoBonusTotal,
+              promoAllocated: (() => {
+                const ids = new Set(
+                  listBudgetTargetIds && listBudgetTargetIds.length > 0
+                    ? listBudgetTargetIds
+                    : selectedCampaignIds,
+                );
+                return allValidCampaigns.reduce((sum, c) => {
+                  if (ids.has(c.id)) return sum;
+                  return sum + effectivePromoBonusAmount(c);
+                }, 0);
+              })(),
+              elsBalance: UNIFIED_BALANCE,
+              elsReserved: (() => {
+                const ids = new Set(
+                  listBudgetTargetIds && listBudgetTargetIds.length > 0
+                    ? listBudgetTargetIds
+                    : selectedCampaignIds,
+                );
+                return allValidCampaigns.reduce((sum, c) => {
+                  if (ids.has(c.id)) return sum;
+                  return sum + (c.budget - effectivePromoBonusAmount(c));
+                }, 0);
+              })(),
+              campaignCount: Math.max(
+                0,
+                totalAllValidCount -
+                  (listBudgetTargetIds && listBudgetTargetIds.length > 0
+                    ? listBudgetTargetIds.length
+                    : selectedCampaignIds.length),
+              ),
+            }}
             onSave={(amount, extras) => {
               applyBudgetRefillFromModal(
                 amount,
@@ -5331,6 +5354,39 @@ export default function App() {
           : selectedCampaignIds.length
       }
       submitLabel="Применить"
+      walletContext={{
+        promoTotal: promoBonusTotal,
+        promoAllocated: (() => {
+          const ids = new Set(
+            listBudgetTargetIds && listBudgetTargetIds.length > 0
+              ? listBudgetTargetIds
+              : selectedCampaignIds,
+          );
+          return allValidCampaigns.reduce((sum, c) => {
+            if (ids.has(c.id)) return sum;
+            return sum + effectivePromoBonusAmount(c);
+          }, 0);
+        })(),
+        elsBalance: UNIFIED_BALANCE,
+        elsReserved: (() => {
+          const ids = new Set(
+            listBudgetTargetIds && listBudgetTargetIds.length > 0
+              ? listBudgetTargetIds
+              : selectedCampaignIds,
+          );
+          return allValidCampaigns.reduce((sum, c) => {
+            if (ids.has(c.id)) return sum;
+            return sum + (c.budget - effectivePromoBonusAmount(c));
+          }, 0);
+        })(),
+        campaignCount: Math.max(
+          0,
+          totalAllValidCount -
+            (listBudgetTargetIds && listBudgetTargetIds.length > 0
+              ? listBudgetTargetIds.length
+              : selectedCampaignIds.length),
+        ),
+      }}
       onSave={(amount, extras) => {
         applyBudgetRefillFromModal(
           amount,
@@ -5364,6 +5420,20 @@ export default function App() {
       isOpen
       currentBudget={campaignForBonusEdit.budget}
       submitLabel="Применить"
+      walletContext={{
+        promoTotal: promoBonusTotal,
+        promoAllocated: Math.max(
+          0,
+          globalTotals.bonus - effectivePromoBonusAmount(campaignForBonusEdit),
+        ),
+        elsBalance: UNIFIED_BALANCE,
+        elsReserved: Math.max(
+          0,
+          globalTotals.real -
+            (campaignForBonusEdit.budget - effectivePromoBonusAmount(campaignForBonusEdit)),
+        ),
+        campaignCount: Math.max(0, totalAllValidCount - 1),
+      }}
       onClose={() => setCampaignForBonusEdit(null)}
       onSave={(amount, extras) => {
         const pkg =
@@ -6008,6 +6078,7 @@ export default function App() {
                   maxDistributable={launchPreview.maxDistributable}
                   maxAdditional={launchPreview.maxAdditional}
                   balance={launchPreview.promoAccountBalance}
+                  distribution={launchPreview.distribution}
                   onApply={applyPromoBonusesAmount}
                 />
                 <div className="min-w-0">

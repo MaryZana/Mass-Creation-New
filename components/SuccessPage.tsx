@@ -8660,7 +8660,7 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
 }) => {
   const isBonusesResearchAccess = researchAccess === 'bonuses';
   const hideMulticardTab = isBonusesResearchAccess;
-  const singleCampaignOnly = isBonusesResearchAccess;
+  const singleCampaignOnly = false;
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const {
     profileId,
