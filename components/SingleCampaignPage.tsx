@@ -40,10 +40,10 @@ export const BONUS_PACKAGES = [
 type BonusPlacement = 'footer' | 'budget' | 'wallet' | 'select' | 'cards';
 
 const BONUS_PLACEMENT_TABS: { id: BonusPlacement; label: string }[] = [
+  { id: 'wallet', label: 'Как в медийке' },
   { id: 'cards', label: 'Квадраты' },
   { id: 'budget', label: 'Бонусы в бюджете' },
   { id: 'footer', label: 'Бонусы внизу' },
-  { id: 'wallet', label: 'Как в медийке' },
 ];
 
 /** Сколько можно списать из пакета: не больше остатка пакета и не больше maxPercent% от бюджета кампании */
@@ -935,8 +935,15 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [usePromoBonuses, setUsePromoBonuses] = useState(false);
   const [selectedBonusPkgId, setSelectedBonusPkgId] = useState<string>(BONUS_PACKAGES[0].id);
   const [bonusAmount, setBonusAmount] = useState('300');
-  const [bonusPlacement, setBonusPlacement] = useState<BonusPlacement>('cards');
+  const [bonusPlacement, setBonusPlacement] = useState<BonusPlacement>('wallet');
+  const [bonusPlacementMenuOpen, setBonusPlacementMenuOpen] = useState(false);
+  const bonusPlacementMenuRef = useRef<HTMLDivElement>(null);
   const [isBonusMenuOpen, setIsBonusMenuOpen] = useState(false);
+
+  const bonusPlacementIndex = Math.max(
+    1,
+    BONUS_PLACEMENT_TABS.findIndex((tab) => tab.id === bonusPlacement) + 1,
+  );
 
   useEffect(() => {
     if (actionsMenuNmId === null) return;
@@ -962,6 +969,23 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   useEffect(() => {
     setIsBonusMenuOpen(false);
   }, [bonusPlacement]);
+
+  useEffect(() => {
+    if (!bonusPlacementMenuOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (bonusPlacementMenuRef.current?.contains(event.target as Node)) return;
+      setBonusPlacementMenuOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setBonusPlacementMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [bonusPlacementMenuOpen]);
 
   useEffect(() => {
     if (!singleCampaignSeed || repeatSeedAppliedRef.current) return;
@@ -1345,34 +1369,6 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             <ReferralInviteCreationBanner />
           </div>
         )}
-
-        <div className="mx-auto w-full max-w-[1200px]">
-          <div
-            className="inline-flex w-fit max-w-full gap-1 rounded-xl bg-[#F2F2F7] p-1"
-            role="tablist"
-            aria-label="Расположение бонусов"
-          >
-            {BONUS_PLACEMENT_TABS.map((tab) => {
-              const selected = bonusPlacement === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setBonusPlacement(tab.id)}
-                  className={`shrink-0 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-medium transition-colors ${
-                    selected
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Управление кампанией — макет карточки */}
         <div className="mx-auto w-full max-w-[1200px] overflow-visible rounded-2xl border border-[#EBEBEF] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
@@ -2304,6 +2300,57 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           setShowToast(true);
         }}
       />
+
+      <div
+        ref={bonusPlacementMenuRef}
+        className="fixed bottom-5 right-4 z-[90] flex flex-col items-end gap-1.5"
+      >
+        {bonusPlacementMenuOpen ? (
+          <div
+            className="min-w-[12rem] overflow-hidden rounded-xl border border-gray-200/90 bg-white/95 py-1 shadow-lg backdrop-blur-sm"
+            role="menu"
+            aria-label="Расположение бонусов"
+          >
+            {BONUS_PLACEMENT_TABS.map((tab, index) => {
+              const active = bonusPlacement === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  onClick={() => {
+                    setBonusPlacement(tab.id);
+                    setBonusPlacementMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] transition-colors ${
+                    active
+                      ? 'bg-gray-900 font-medium text-white'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  <span className="tabular-nums text-[11px] opacity-70">
+                    {index + 1}/{BONUS_PLACEMENT_TABS.length}
+                  </span>
+                  <span className="min-w-0 truncate">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setBonusPlacementMenuOpen((open) => !open)}
+          className={`inline-flex h-8 items-center justify-center rounded-full border border-gray-200/80 bg-white/85 px-2.5 text-[11px] font-medium tabular-nums text-gray-500 shadow-sm backdrop-blur-sm transition-colors hover:bg-white hover:text-gray-800 ${
+            bonusPlacementMenuOpen ? 'ring-2 ring-gray-900/10' : ''
+          }`}
+          aria-expanded={bonusPlacementMenuOpen}
+          aria-label={`Расположение бонусов ${bonusPlacementIndex} из ${BONUS_PLACEMENT_TABS.length}`}
+          title="Расположение бонусов"
+        >
+          {bonusPlacementIndex}/{BONUS_PLACEMENT_TABS.length}
+        </button>
+      </div>
     </div>
   );
 };
