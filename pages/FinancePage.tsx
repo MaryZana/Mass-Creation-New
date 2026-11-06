@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -2208,9 +2208,196 @@ function SpendScheduleModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+type PostponeOptionId = 'w0' | 'w1' | 'w2' | 'w3' | 'w7';
+
+type PostponeOption = {
+  id: PostponeOptionId;
+  weeksLater: number;
+  feePercent: number;
+  dateLabel: string;
+  subLabel: string;
+};
+
+function buildPostponeOptions(weekOffset: number): PostponeOption[] {
+  const defs: { id: PostponeOptionId; weeksLater: number; feePercent: number; subLabel: string }[] = [
+    { id: 'w0', weeksLater: 0, feePercent: 0, subLabel: 'Воскресенье' },
+    { id: 'w1', weeksLater: 1, feePercent: 1, subLabel: 'Через 1 неделю' },
+    { id: 'w2', weeksLater: 2, feePercent: 1.5, subLabel: 'Через 2 недели' },
+    { id: 'w3', weeksLater: 3, feePercent: 2, subLabel: 'Через 3 недели' },
+    { id: 'w7', weeksLater: 7, feePercent: 4, subLabel: 'Через 7 недель' },
+  ];
+  return defs.map((item) => ({
+    ...item,
+    dateLabel: financeBalanceWeekDate(6, undefined, weekOffset + item.weeksLater),
+  }));
+}
+
+function formatFeePercent(feePercent: number): string {
+  return Number.isInteger(feePercent) ? String(feePercent) : feePercent.toLocaleString('ru-RU');
+}
+
+function PostponeChargeModal({
+  spentRub,
+  periodLabel,
+  weekOffset,
+  initialOptionId,
+  onClose,
+  onApply,
+}: {
+  spentRub: number;
+  periodLabel: string;
+  weekOffset: number;
+  initialOptionId: PostponeOptionId;
+  onClose: () => void;
+  onApply: (option: PostponeOption) => void;
+}) {
+  const options = useMemo(() => buildPostponeOptions(weekOffset), [weekOffset]);
+  const [selectedId, setSelectedId] = useState<PostponeOptionId>(initialOptionId);
+  const [howOpen, setHowOpen] = useState(false);
+  const selected = options.find((item) => item.id === selectedId) ?? options[0];
+  const feeRub = Math.round((spentRub * selected.feePercent) / 100);
+  const totalRub = spentRub + feeRub;
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4 sm:p-6"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="relative w-full max-w-[720px] rounded-2xl bg-white px-5 py-5 shadow-2xl sm:px-7 sm:py-7"
+        onClick={(event) => event.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="postpone-charge-title"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+          aria-label="Закрыть"
+        >
+          <X className="h-5 w-5" aria-hidden />
+        </button>
+
+        <h2
+          id="postpone-charge-title"
+          className="max-w-[34rem] pr-10 text-[22px] font-bold leading-snug tracking-tight text-gray-900 sm:text-2xl"
+        >
+          Когда списать баланс, израсходованный на этой неделе
+        </h2>
+
+        <div className="mt-5 -mx-1 overflow-x-auto px-1 pb-1 pt-3">
+          <div className="flex min-w-max gap-2.5">
+            {options.map((option) => {
+              const active = option.id === selected.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setSelectedId(option.id)}
+                  className={`relative flex w-[124px] shrink-0 flex-col items-start rounded-2xl border px-3.5 py-3.5 text-left transition-colors ${
+                    active
+                      ? 'border-[#9A41FE] bg-[#F7F2FF]'
+                      : 'border-transparent bg-[#F3F5F8] hover:bg-[#EBEDF1]'
+                  }`}
+                >
+                  {active ? (
+                    <span className="absolute -top-3 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#9A41FE] px-2.5 py-1 text-[11px] font-medium leading-none text-white">
+                      Выбрано
+                    </span>
+                  ) : null}
+                  <span className="text-sm font-semibold text-gray-900">{option.dateLabel}</span>
+                  <span className="mt-1 text-xs text-gray-500">{option.subLabel}</span>
+                  <span
+                    className={`mt-3 text-sm font-medium ${
+                      option.feePercent === 0 ? 'text-[#16A34A]' : 'text-gray-900'
+                    }`}
+                  >
+                    {option.feePercent === 0
+                      ? 'Без комиссии'
+                      : `${formatFeePercent(option.feePercent)}%`}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <button
+            type="button"
+            onClick={() => setHowOpen((open) => !open)}
+            className="flex w-full items-center justify-between gap-3 rounded-xl bg-[#F3F5F8] px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:bg-[#EBEDF1]"
+            aria-expanded={howOpen}
+          >
+            <span>
+              Дату списания можно изменить в любой момент.{' '}
+              <span className="font-medium text-gray-900">Как это работает?</span>
+            </span>
+            <ChevronDown
+              className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${howOpen ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          </button>
+          {howOpen ? (
+            <p className="mt-2 px-1 text-sm leading-relaxed text-gray-500">
+              Расход за неделю списывается в выбранную дату. Чем позже дата, тем выше комиссия. Без
+              комиссии — в ближайшее воскресенье. После применения дату можно сменить снова.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <button
+            type="button"
+            onClick={() => onApply(selected)}
+            className="inline-flex h-12 shrink-0 items-center justify-center rounded-xl bg-[#9A41FE] px-8 text-sm font-semibold text-white transition-colors hover:bg-[#8a38e8]"
+          >
+            Применить
+          </button>
+          <div className="min-w-0 text-sm sm:text-right">
+            <p className="mb-0 text-gray-500">
+              Расход за {periodLabel}:{' '}
+              <span className="tabular-nums">{fmtRub(spentRub)} ₽</span>
+            </p>
+            <p className="mb-0 mt-1 text-gray-500">
+              {selected.feePercent === 0
+                ? 'Комиссия: 0 ₽'
+                : `Комиссия ${formatFeePercent(selected.feePercent)}%: ${fmtRub(feeRub)} ₽`}
+            </p>
+            <p className="mb-0 mt-1.5 font-bold text-gray-900">
+              Спишем {selected.dateLabel}:{' '}
+              <span className="border-b border-dotted border-gray-400 tabular-nums">
+                ~ {fmtRub(totalRub)} ₽
+              </span>
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function BalanceSpendCard() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [postponeOpen, setPostponeOpen] = useState(false);
   const [postponed, setPostponed] = useState(false);
+  const [postponeOptionId, setPostponeOptionId] = useState<PostponeOptionId>('w0');
   const [simWeekId, setSimWeekId] = useState(readFinanceBalanceSimWeek);
   const [simDay, setSimDay] = useState(readFinanceBalanceSimDay);
   const [simAdjust, setSimAdjust] = useState(readFinanceBalanceSimAdjust);
@@ -2226,13 +2413,39 @@ function BalanceSpendCard() {
   }, []);
 
   const simView = buildFinanceBalanceSimView(simWeekId, simDay, simAdjust);
-  const periodLabel = `За ${financeBalanceWeekRangeLabel(undefined, simView.weekOffset)}`;
-  const chargeDate = financeBalanceWeekChargeDate(undefined, simView.weekOffset);
+  const weekRange = financeBalanceWeekRangeLabel(undefined, simView.weekOffset);
+  const periodLabel = `За ${weekRange}`;
   const spentRub = simView.spentThisWeekRub;
+  const postponeOptions = useMemo(
+    () => buildPostponeOptions(simView.weekOffset),
+    [simView.weekOffset],
+  );
+  const activePostpone =
+    postponeOptions.find((item) => item.id === postponeOptionId) ?? postponeOptions[0];
+  const chargeDate = postponed
+    ? activePostpone.dateLabel
+    : financeBalanceWeekChargeDate(undefined, simView.weekOffset);
+  const feePercent = postponed ? activePostpone.feePercent : 0;
+  const feeRub = Math.round((spentRub * feePercent) / 100);
+  const chargeRub = spentRub + feeRub;
 
   return (
     <div className="rounded-2xl bg-white p-4 sm:p-5">
       {scheduleOpen ? <SpendScheduleModal onClose={() => setScheduleOpen(false)} /> : null}
+      {postponeOpen ? (
+        <PostponeChargeModal
+          spentRub={spentRub}
+          periodLabel={weekRange}
+          weekOffset={simView.weekOffset}
+          initialOptionId={postponeOptionId}
+          onClose={() => setPostponeOpen(false)}
+          onApply={(option) => {
+            setPostponeOptionId(option.id);
+            setPostponed(option.feePercent > 0 || option.weeksLater > 0);
+            setPostponeOpen(false);
+          }}
+        />
+      ) : null}
       {postponed ? (
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F3E8FF] px-2.5 py-1 text-xs font-medium text-[#7C3AED]">
           Списание отложено
@@ -2250,13 +2463,15 @@ function BalanceSpendCard() {
           <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(spentRub)} ₽</span>
         </div>
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-gray-500">Комиссия 0%</span>
-          <span className="shrink-0 tabular-nums text-gray-500">0 ₽</span>
+          <span className="text-gray-500">
+            Комиссия {feePercent === 0 ? '0%' : `${formatFeePercent(feePercent)}%`}
+          </span>
+          <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(feeRub)} ₽</span>
         </div>
         <div className="flex items-baseline justify-between gap-3">
           <span className="whitespace-nowrap font-medium text-gray-900">Спишем {chargeDate}</span>
           <span className="tooltip shrink-0 whitespace-nowrap font-bold tabular-nums text-gray-900">
-            {spentRub > 0 ? `~${fmtRub(spentRub)}` : fmtRub(spentRub)} ₽
+            {chargeRub > 0 ? `~${fmtRub(chargeRub)}` : fmtRub(chargeRub)} ₽
             <span className="tooltip-text !left-auto !right-0 !translate-x-0 !w-[16rem] !max-w-[16rem] !whitespace-normal !px-3 !py-2 !text-left !font-normal !leading-snug">
               Сумма меняется, когда вы тратите баланс. Итоговую сумму рассчитаем {chargeDate}.
             </span>
@@ -2266,9 +2481,7 @@ function BalanceSpendCard() {
 
       <button
         type="button"
-        onClick={() => {
-          if (!postponed) setPostponed(true);
-        }}
+        onClick={() => setPostponeOpen(true)}
         className="mt-5 flex w-full items-center justify-center rounded-xl bg-[#4B4B57] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#3d3d48]"
       >
         {postponed ? 'Изменить дату списания' : 'Отложить списание'}

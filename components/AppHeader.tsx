@@ -9,7 +9,7 @@ import { Check, ChevronDown, MoreVertical, Plus, X } from './Icons';
 import { isNewSellerProfile, PROFILES, useProfile, type ProfileId } from './ProfileContext';
 import { usePromoBonusDemo } from './PromoBonusDemoContext';
 import { FINANCE_BALANCE_DEMO_EVENT, readFinanceBufferRub } from '../utils/financeBalanceDemo';
-import { financeHomePath } from '../utils/financeRoutes';
+import { financeHomePath, financeTopUpPath } from '../utils/financeRoutes';
 
 export const NEW_SELLER_CREATE_CAMPAIGN_PATH = '/create-campaign';
 
@@ -263,6 +263,7 @@ export function AppHeader({
   const helpNavActive = location.pathname === '/help' || location.pathname.startsWith('/help/');
   const productSpaceId = resolveProductSpace(location.pathname);
   const financeTo = financeHomePath(location.pathname);
+  const financeTopUpTo = financeTopUpPath(location.pathname);
   const activeProductSpace =
     PRODUCT_SPACES.find((space) => space.id === productSpaceId) ?? PRODUCT_SPACES[0];
   const isNewSeller = isNewSellerProfile(profileId);
@@ -749,21 +750,42 @@ export function AppHeader({
 
         <div className="flex items-center gap-3 text-sm font-medium text-black">
           <div className="flex items-center gap-2">
-            <div className="min-w-0 leading-none">
-              <p className="m-0 text-sm font-semibold tabular-nums tracking-tight text-gray-900">
-                {formatBonusAmount(elsBalanceRub)} ₽
-              </p>
-              <p className="m-0 text-xs font-medium tabular-nums text-gray-500">
-                {formatBonusAmount(promoBonusTotal)} B
-              </p>
-            </div>
             {!isResearchAccess ? (
               <NavLink
                 to={financeTo}
                 end
                 onClick={onNavigate}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
+                className="group relative inline-flex min-h-9 min-w-[6.5rem] items-center justify-center rounded-lg px-2 py-1 transition-colors hover:bg-gray-50"
                 aria-label="Перейти в финансы"
+              >
+                <span className="flex flex-col items-start leading-none transition-opacity group-hover:pointer-events-none group-hover:opacity-0">
+                  <span className="text-sm font-semibold tabular-nums tracking-tight text-gray-900">
+                    {formatBonusAmount(elsBalanceRub)} ₽
+                  </span>
+                  <span className="text-xs font-medium tabular-nums text-gray-500">
+                    {formatBonusAmount(promoBonusTotal)} B
+                  </span>
+                </span>
+                <span className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm font-medium text-gray-900 opacity-0 transition-opacity group-hover:opacity-100">
+                  Финансы
+                </span>
+              </NavLink>
+            ) : (
+              <div className="min-w-0 leading-none">
+                <p className="m-0 text-sm font-semibold tabular-nums tracking-tight text-gray-900">
+                  {formatBonusAmount(elsBalanceRub)} ₽
+                </p>
+                <p className="m-0 text-xs font-medium tabular-nums text-gray-500">
+                  {formatBonusAmount(promoBonusTotal)} B
+                </p>
+              </div>
+            )}
+            {!isResearchAccess ? (
+              <NavLink
+                to={financeTopUpTo}
+                onClick={onNavigate}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
+                aria-label="Пополнить счёт"
               >
                 <Plus className="h-4 w-4" aria-hidden />
               </NavLink>
