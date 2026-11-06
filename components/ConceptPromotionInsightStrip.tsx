@@ -9,7 +9,10 @@ import {
   Gift,
   X,
 } from './Icons';
-import { BONUS_PACKAGES } from './SingleCampaignPage';
+import {
+  buildDemoBonusPackages,
+  usePromoBonusDemo,
+} from './PromoBonusDemoContext';
 
 /** Максимум закрываемых баннеров одновременно; блок «Скидка WB» всегда рядом. */
 const MAX_VISIBLE_CLOSABLE_CARDS = 2;
@@ -21,6 +24,21 @@ const WB_DISCOUNT_CARD_W = 'w-[220px]';
 const WB_DISCOUNT_BARS_CARD_W = 'w-[272px]';
 const WB_DISCOUNT_HORIZONTAL_H = 'h-[64px]';
 const WB_DISCOUNT_HORIZONTAL_W = 'w-max max-w-full';
+
+
+function formatPromoExpiryShort(expiry: string): string {
+  const match = expiry.trim().match(/^(\d{1,2})\.(\d{1,2})/);
+  if (!match) return `До ${expiry}`;
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const months = [
+    'янв', 'фев', 'мар', 'апр', 'мая', 'июн',
+    'июл', 'авг', 'сен', 'окт', 'ноя', 'дек',
+  ];
+  return `До ${day} ${months[month - 1] ?? ''}`.trim();
+}
+
+type DemoBonusPkg = ReturnType<typeof buildDemoBonusPackages>[number];
 
 type WbDiscountCardLayout = 'card' | 'horizontal';
 
@@ -42,11 +60,11 @@ type ConceptInsightCard = {
 
 const CONCEPT_INSIGHT_CARD_QUEUE: ConceptInsightCard[] = [
   {
-    id: 'cpc-promote',
-    kind: 'cpc-promote',
+    id: 'budget',
+    kind: 'budget',
     image:
-      'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=96&h=96&fit=crop&q=80',
-    title: 'Запустить кампанию CPC',
+      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=96&h=96&fit=crop&q=80',
+    title: 'Пополнить бюджет',
   },
   {
     id: 'promo-bonus',
@@ -55,11 +73,11 @@ const CONCEPT_INSIGHT_CARD_QUEUE: ConceptInsightCard[] = [
     title: 'Потратить промобонусы',
   },
   {
-    id: 'budget',
-    kind: 'budget',
+    id: 'cpc-promote',
+    kind: 'cpc-promote',
     image:
-      'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=96&h=96&fit=crop&q=80',
-    title: 'Пополнить бюджет',
+      'https://images.unsplash.com/photo-1434389677669-e08b4cac3105?w=96&h=96&fit=crop&q=80',
+    title: 'Запустить кампанию CPC',
   },
   {
     id: 'new-product',
@@ -197,7 +215,7 @@ function PromoBonusThumb() {
   );
 }
 
-function CardMeta({ card }: { card: ConceptInsightCard }) {
+function CardMeta({ card, packages }: { card: ConceptInsightCard; packages: DemoBonusPkg[] }) {
   switch (card.kind) {
     case 'budget':
       return (
@@ -226,20 +244,26 @@ function CardMeta({ card }: { card: ConceptInsightCard }) {
           <ArrowUp className="h-3 w-3 rotate-180 text-orange-500" aria-hidden />
         </div>
       );
-    case 'promo-bonus':
+    case 'promo-bonus': {
+      const pkg = packages[0];
+      if (!pkg) return null;
       return (
         <div className="min-w-0 text-right">
-          <p className="text-[11px] leading-none text-[#8B8B9A]">До 10 фев</p>
-          <p className="mt-1 text-sm font-bold leading-none text-gray-900">967 B</p>
+          <p className="text-[11px] leading-none text-[#8B8B9A]">{formatPromoExpiryShort(pkg.expiry)}</p>
+          <p className="mt-1 text-sm font-bold leading-none text-gray-900">
+            {pkg.amount.toLocaleString('ru-RU')} B
+          </p>
         </div>
       );
+    }
     case 'promo-bonus-urgent': {
-      const urgentPkg = BONUS_PACKAGES[1];
+      const urgentPkg = packages[1] ?? packages[0];
+      if (!urgentPkg) return null;
       return (
         <div className="min-w-0 text-right">
           <p className="inline-flex items-center gap-1 text-[11px] leading-none text-orange-500">
             <Clock className="h-3 w-3" aria-hidden />
-            До {urgentPkg.expiry}
+            {formatPromoExpiryShort(urgentPkg.expiry)}
           </p>
           <p className="mt-1 text-sm font-bold leading-none text-orange-500">
             {urgentPkg.amount.toLocaleString('ru-RU')} B
@@ -261,10 +285,12 @@ function CardMeta({ card }: { card: ConceptInsightCard }) {
 
 function ClosableInsightCard({
   card,
+  packages,
   onClose,
   onClick,
 }: {
   card: ConceptInsightCard;
+  packages: DemoBonusPkg[];
   onClose: () => void;
   onClick?: () => void;
 }) {
@@ -296,7 +322,7 @@ function ClosableInsightCard({
           ) : (
             <CardThumb src={card.image} />
           )}
-          <CardMeta card={card} />
+          <CardMeta card={card} packages={packages} />
         </div>
         <div className="flex items-end justify-between gap-1.5">
           <span className="text-[13px] font-bold leading-snug text-gray-900">{card.title}</span>
@@ -1216,6 +1242,11 @@ export function ConceptPromotionInsightStrip({
   wbDiscountCompact?: boolean;
 }) {
   const navigate = useNavigate();
+  const { promoBonusTotal } = usePromoBonusDemo();
+  const promoPackages = useMemo(
+    () => buildDemoBonusPackages(promoBonusTotal),
+    [promoBonusTotal],
+  );
   const [closedIds, setClosedIds] = useState<Set<string>>(new Set());
   const [range, setRange] = useState<StatsRangeId>('month');
 
@@ -1241,10 +1272,10 @@ export function ConceptPromotionInsightStrip({
         onBidClick?.();
         break;
       case 'promo-bonus':
-        onBonusClick?.(BONUS_PACKAGES[0].id);
+        onBonusClick?.(promoPackages[0]?.id ?? 'p1');
         break;
       case 'promo-bonus-urgent':
-        onBonusClick?.(BONUS_PACKAGES[1].id);
+        onBonusClick?.(promoPackages[1]?.id ?? promoPackages[0]?.id ?? 'p2');
         break;
       default:
         break;
@@ -1315,6 +1346,7 @@ export function ConceptPromotionInsightStrip({
           <ClosableInsightCard
             key={card.id}
             card={card}
+            packages={promoPackages}
             onClose={() =>
               setClosedIds((prev) => {
                 const next = new Set(prev);

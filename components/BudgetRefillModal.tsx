@@ -28,13 +28,15 @@ export type BudgetRefillCampaignItem = {
   nmId?: number;
 };
 
-type BonusPackage = {
+export type BudgetRefillBonusPackage = {
   id: string;
   amount: number;
   maxPercent: number;
   expiry: string;
   displayBurn: string;
 };
+
+type BonusPackage = BudgetRefillBonusPackage;
 
 type BonusPackageSlice = {
   packageId: string;
@@ -332,6 +334,7 @@ function useRefillLogic(
     availableElsCap?: number | null;
     shareCount?: number;
     initialValues?: BudgetRefillInitialValues | null;
+    packages?: readonly BonusPackage[] | null;
   },
 ): RefillLogic {
   const { promoBonusTotal } = usePromoBonusDemo();
@@ -349,10 +352,15 @@ function useRefillLogic(
     availablePromoCap != null
       ? Math.floor(availablePromoCap / shareCount)
       : null;
-  const packages = useMemo(
-    () => buildDemoBonusPackages(promoBonusTotal).filter((pkg) => pkg.amount > 0),
-    [promoBonusTotal],
-  );
+  const packagesOverrideKey = JSON.stringify(options?.packages ?? null);
+  const packages = useMemo(() => {
+    const override = options?.packages ?? null;
+    if (override != null && override.length > 0) {
+      return override.filter((pkg) => pkg.amount > 0);
+    }
+    return buildDemoBonusPackages(promoBonusTotal).filter((pkg) => pkg.amount > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- packages compared by JSON key
+  }, [packagesOverrideKey, promoBonusTotal]);
   const fallbackPkg = packages[0] ?? {
     id: 'p1',
     amount: 0,
@@ -389,7 +397,8 @@ function useRefillLogic(
       init?.packageId && packages.some((p) => p.id === init.packageId)
         ? init.packageId
         : fallbackPkg.id;
-    const useBonus = Boolean(init?.useBonuses);
+    const useBonus = Boolean(init?.useBonuses && (init.bonusAmount ?? 0) > 0);
+    const bonusAmt = useBonus ? Math.max(0, Math.floor(init?.bonusAmount ?? 0)) : 0;
     const isMass = shareCount > 1 && packages.length > 1;
     const pickMode: 'auto' | 'manual' =
       init?.bonusPickMode === 'auto' || init?.bonusPickMode === 'manual'
@@ -408,26 +417,11 @@ function useRefillLogic(
         : times != null && times > 3
           ? 'custom'
           : '1';
-    const pkgForInit = packages.find((p) => p.id === pkgId) || fallbackPkg;
-    const maxForPkg = Math.min(
-      pkgForInit.amount,
-      Math.floor((amount * pkgForInit.maxPercent) / 100),
-      Math.max(0, amount),
-      perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
-    );
-    const maxForAuto =
-      pickMode === 'auto' && isMass
-        ? allocateBonusForBudgets(
-            packages,
-            Array.from({ length: shareCount }, () => amount),
-            availablePromoCap,
-          )[0]?.bonusAmount ?? maxForPkg
-        : maxForPkg;
 
     setRefillAmount(String(amount));
     setUseBonuses(useBonus);
     setSelectedPkgId(pkgId);
-    setBonusValue(Math.max(0, Math.floor(maxForAuto)));
+    setBonusValue(bonusAmt > 0 ? bonusAmt : Math.min(amount, 3000));
     setBonusPickModeState(pickMode);
     setBudgetError('');
     setBudgetNotice('');
@@ -513,12 +507,7 @@ function useRefillLogic(
     useBonuses,
     setUseBonuses: (v: boolean) => {
       setUseBonuses(v);
-      if (!v) {
-        setBonusPickModeState(shareCount > 1 ? 'auto' : 'manual');
-        return;
-      }
-      setBonusValue(maxBonusAllowed);
-      setBonusNotice('');
+      if (!v) setBonusPickModeState('auto');
     },
     selectedPkgId,
     setSelectedPkgId,
@@ -546,32 +535,16 @@ function useRefillLogic(
     handleBudgetBlur: () => {
       const parsed = parseDisplayValue(refillAmount);
       const maxAmount = Math.max(1000, availableElsCap);
-      let nextBudget = parsed;
       if (Number.isNaN(parsed) || parsed < 1000) {
-        nextBudget = 1000;
         setRefillAmount('1000');
         setBudgetNotice('Скорректировали до минимума — 1 000 ₽');
-      } else if (parsed > maxAmount) {
-        nextBudget = maxAmount;
+        return;
+      }
+      if (parsed > maxAmount) {
         setRefillAmount(String(maxAmount));
         setBudgetNotice(
           `Скорректировали до максимума — ${formatForDisplay(maxAmount)} ₽`,
         );
-      }
-      if (useBonuses) {
-        const nextMax = autoMode
-          ? allocateBonusForBudgets(
-              packages,
-              Array.from({ length: shareCount }, () => nextBudget),
-              availablePromoCap,
-            )[0]?.bonusAmount ?? 0
-          : Math.min(
-              selectedPkg.amount,
-              Math.floor((nextBudget * selectedPkg.maxPercent) / 100),
-              Math.max(0, nextBudget),
-              perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
-            );
-        setBonusValue(nextMax);
       }
     },
     handleBonusChange: (e) => {
@@ -1623,6 +1596,8 @@ export const BudgetRefillModal: React.FC<{
   campaigns?: readonly BudgetRefillCampaignItem[];
   /** Текущие настройки кампании/выбора — подставляются при открытии */
   initialValues?: BudgetRefillInitialValues | null;
+  /** Свои пакеты вместо демо из PromoBonusDemoContext */
+  packages?: readonly BonusPackage[] | null;
 }> = ({
   isOpen,
   onClose,
@@ -1635,6 +1610,7 @@ export const BudgetRefillModal: React.FC<{
   walletContext = null,
   campaigns = [],
   initialValues = null,
+  packages = null,
 }) => {
   const availablePromoCap = walletContext
     ? Math.max(0, walletContext.promoTotal - walletContext.promoAllocated)
@@ -1648,6 +1624,7 @@ export const BudgetRefillModal: React.FC<{
     availablePromoCap,
     availableElsCap: perCampaignElsCap,
     shareCount,
+    packages,
     initialValues: {
       amount: initialValues?.amount ?? (currentBudget > 0 ? currentBudget : undefined),
       useBonuses: initialValues?.useBonuses,

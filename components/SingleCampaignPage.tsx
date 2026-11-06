@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical, Edit2, Info, ChevronDown } from './Icons';
 import { SingleCampaignAddProductsModal } from './SingleCampaignAddProductsModal';
-import { AppHeader } from './AppHeader';
+import { AppHeader, PROMOTION_ACCOUNT_BALANCE_BY_PROFILE } from './AppHeader';
+import {
+  BudgetRefillModal,
+  type BudgetRefillSaveExtras,
+} from './BudgetRefillModal';
+import {
+  buildDemoBonusPackages,
+  usePromoBonusDemo,
+} from './PromoBonusDemoContext';
 import { ReferralInviteCreationBanner } from './ReferralInviteCreationBanner';
 import { DailyLimitBidMismatchHint } from './DailyLimitBidMismatchHint';
 import {
@@ -11,6 +19,7 @@ import {
 } from '../utils/cpcDailyLimitBid';
 import { normalizeCpmBidRub } from '../utils/cpmBidRounding';
 import { useCpmBidRoundedAlert } from './CpmBidRoundedAlert';
+import { RitmNotification } from './RitmNotification';
 import { useProfile } from './ProfileContext';
 import {
   PRODUCT_TABLE_THUMB_FALLBACK,
@@ -25,26 +34,144 @@ import {
   type AutoRefillMode,
 } from './CpcCampaignPage';
 
-export const BONUS_PACKAGES = [
-  {
-    id: 'p1',
-    amount: 115365,
-    maxPercent: 10,
-    expiry: '3 января',
-    label: 'Пакет 1',
-  },
-  { id: 'p2', amount: 12233, maxPercent: 99, expiry: '12 февраля', label: 'Пакет 2' },
-  { id: 'p3', amount: 20, maxPercent: 100, expiry: '28 февраля', label: 'Пакет 3' },
-] as const;
+/** Пакеты создания кампании — те же, что в шторке бюджета / кабинете. */
+export function getCampaignBonusPackages(promoBonusTotal: number) {
+  return buildDemoBonusPackages(promoBonusTotal).map((pkg, index) => ({
+    id: pkg.id,
+    amount: pkg.amount,
+    maxPercent: pkg.maxPercent,
+    expiry: pkg.expiry,
+    label: `Пакет ${index + 1}`,
+  }));
+}
 
-type BonusPlacement = 'footer' | 'budget' | 'wallet' | 'select' | 'cards';
+/** @deprecated используйте getCampaignBonusPackages(promoBonusTotal) */
+export const BONUS_PACKAGES = getCampaignBonusPackages(250_000);
+
+type BonusPlacement = 'mass' | 'footer' | 'budget' | 'wallet' | 'select' | 'cards';
 
 const BONUS_PLACEMENT_TABS: { id: BonusPlacement; label: string }[] = [
+  { id: 'mass', label: 'Карточка бюджета' },
   { id: 'wallet', label: 'Как в медийке' },
   { id: 'cards', label: 'Квадраты' },
   { id: 'budget', label: 'Бонусы в бюджете' },
   { id: 'footer', label: 'Бонусы внизу' },
 ];
+
+function AutoRefillOnIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={className} aria-hidden>
+      <circle cx="6" cy="6" r="6" fill="#34C759" />
+      <path
+        d="M3.4 6.15 5.05 7.8 8.6 4.2"
+        fill="none"
+        stroke="#0B3D1C"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AutoRefillOffIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 12 12" className={className} aria-hidden>
+      <circle cx="6" cy="6" r="6" fill="#1C1C1E" />
+      <path
+        d="M4 4 8 8M8 4 4 8"
+        fill="none"
+        stroke="#FFFFFF"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function CreationBudgetSettingsCard({
+  budgetRub,
+  bonusRub,
+  usePromo,
+  autoRefillEnabled,
+  onOpenBudget,
+  onOpenAutoRefill,
+  formatRub,
+}: {
+  budgetRub: number;
+  bonusRub: number;
+  usePromo: boolean;
+  autoRefillEnabled: boolean;
+  onOpenBudget: () => void;
+  onOpenAutoRefill: () => void;
+  formatRub: (n: number) => string;
+}) {
+  const hasPromo = usePromo && bonusRub > 0;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpenBudget}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpenBudget();
+        }
+      }}
+      className="relative flex h-[140px] w-full cursor-pointer flex-col justify-between rounded-2xl border border-[#E3E4E9] bg-white p-4 text-left transition-colors hover:bg-[#F7F7F8] sm:w-[248px] sm:shrink-0"
+      aria-label="Настроить разовое пополнение бюджета"
+    >
+      <div className="flex h-6 items-center justify-between gap-3">
+        <span className="text-[14px] leading-5 text-[#8B8B9A]">Бюджет</span>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[#757383]">
+          <Edit2 className="h-3.5 w-3.5" aria-hidden />
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <p className="mb-0 text-[17px] font-semibold leading-5 tracking-[0.2px] tabular-nums text-gray-900">
+          {formatRub(budgetRub)} ₽
+        </p>
+        <p className="mb-0 flex items-center gap-1 text-[13px] leading-4 tracking-[0.2px]">
+          <span
+            className={`font-bold tabular-nums ${
+              hasPromo ? 'text-[#22C55E]' : 'text-gray-900'
+            }`}
+          >
+            {hasPromo ? `–${formatRub(bonusRub)} ₽` : '0 ₽'}
+          </span>
+          <span className="font-normal text-[#9191A0]">промобонусами</span>
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenAutoRefill();
+        }}
+        className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-1 text-[12px] font-medium leading-4 transition-colors ${
+          autoRefillEnabled
+            ? 'bg-[#E7FCDE] text-[#166533] hover:bg-[#D8F5CC]'
+            : 'bg-[#F0F0F2] text-gray-900 hover:bg-[#E4E4EA]'
+        }`}
+        aria-label="Настроить автопополнение"
+      >
+        {autoRefillEnabled ? (
+          <>
+            <AutoRefillOnIcon className="h-3.5 w-3.5 shrink-0" />
+            Автопополнение
+          </>
+        ) : (
+          <>
+            <AutoRefillOffIcon className="h-3.5 w-3.5 shrink-0" />
+            Без автопополнения
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
 
 /** Сколько можно списать из пакета: не больше остатка пакета и не больше maxPercent% от бюджета кампании */
 function maxSpendableBonusFromPackage(
@@ -870,6 +997,12 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     consumePendingPromoBonusPackageId,
     notifyReferralCampaignCreatedFromCreation,
   } = useProfile();
+  const { promoBonusTotal } = usePromoBonusDemo();
+  const bonusPackages = useMemo(
+    () => getCampaignBonusPackages(promoBonusTotal),
+    [promoBonusTotal],
+  );
+  const fallbackBonusPkg = bonusPackages[0] ?? BONUS_PACKAGES[0];
   const repeatSeedAppliedRef = useRef(false);
   const promoBonusSeedAppliedRef = useRef(false);
   const [campaignName, setCampaignName] = useState('Кампания от 26.12.2024');
@@ -883,6 +1016,10 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   }, [profileId, showReferralInviteCreationBanner]);
   const [isAutoRefillEnabled, setIsAutoRefillEnabled] = useState(false);
   const [isAutoRefillModalOpen, setIsAutoRefillModalOpen] = useState(false);
+  const [isBudgetRefillModalOpen, setIsBudgetRefillModalOpen] = useState(false);
+  const [budgetRefillPreferAuto, setBudgetRefillPreferAuto] = useState(false);
+  const [autoRefillThreshold, setAutoRefillThreshold] = useState(1000);
+  const [autoRefillAmountValue, setAutoRefillAmountValue] = useState(3000);
   const [wasAutoRefillToggledOn, setWasAutoRefillToggledOn] = useState(false);
   const [autoRefillMode, setAutoRefillMode] = useState<AutoRefillMode>('manual');
   const [bidType, setBidType] = useState<'unified' | 'manual'>('unified');
@@ -922,6 +1059,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [toastIsError, setToastIsError] = useState(false);
+  const [promoPackageNotice, setPromoPackageNotice] = useState<string | null>(null);
   const { showCpmBidRoundedAlert, cpmBidRoundedAlertNode } = useCpmBidRoundedAlert();
   const [isMultiCategoryWarningOpen, setIsMultiCategoryWarningOpen] = useState(false);
   const [products, setProducts] = useState<CampaignProductRow[]>([]);
@@ -935,7 +1073,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   const [usePromoBonuses, setUsePromoBonuses] = useState(false);
   const [selectedBonusPkgId, setSelectedBonusPkgId] = useState<string>(BONUS_PACKAGES[0].id);
   const [bonusAmount, setBonusAmount] = useState('300');
-  const [bonusPlacement, setBonusPlacement] = useState<BonusPlacement>('wallet');
+  const [bonusPlacement, setBonusPlacement] = useState<BonusPlacement>('mass');
   const [bonusPlacementMenuOpen, setBonusPlacementMenuOpen] = useState(false);
   const bonusPlacementMenuRef = useRef<HTMLDivElement>(null);
   const [isBonusMenuOpen, setIsBonusMenuOpen] = useState(false);
@@ -1022,12 +1160,14 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
     const pkgId = consumePendingPromoBonusPackageId();
     if (!pkgId) return;
     promoBonusSeedAppliedRef.current = true;
-    const pkg = BONUS_PACKAGES.find((item) => item.id === pkgId) ?? BONUS_PACKAGES[0];
-    setBonusPlacement('budget');
+    const pkg =
+      bonusPackages.find((item) => item.id === pkgId) ?? fallbackBonusPkg;
+    setBonusPlacement('mass');
     setSelectedBonusPkgId(pkg.id);
     setUsePromoBonuses(true);
     setBonusAmount(String(maxSpendableBonusFromPackage(pkg, parseDisplayValue(budget))));
-  }, [consumePendingPromoBonusPackageId, budget]);
+    setPromoPackageNotice('Пакет промобонусов применён');
+  }, [consumePendingPromoBonusPackageId, budget, bonusPackages, fallbackBonusPkg]);
 
   const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const parsed = parseDisplayValue(e.target.value);
@@ -1107,7 +1247,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
 
   const budgetRub = parseDisplayValue(budget);
   const selectedBonusPkg =
-    BONUS_PACKAGES.find((pkg) => pkg.id === selectedBonusPkgId) ?? BONUS_PACKAGES[0];
+    bonusPackages.find((pkg) => pkg.id === selectedBonusPkgId) ?? fallbackBonusPkg;
   const maxPromoBonusB = maxSpendableBonusFromPackage(selectedBonusPkg, budgetRub);
   const parsedBonusAmount = parseDisplayValue(bonusAmount);
   const appliedPromoBonusB = usePromoBonuses
@@ -1121,9 +1261,9 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   useEffect(() => {
     if (!usePromoBonuses) return;
     const pkg =
-      BONUS_PACKAGES.find((item) => item.id === selectedBonusPkgId) ?? BONUS_PACKAGES[0];
+      bonusPackages.find((item) => item.id === selectedBonusPkgId) ?? fallbackBonusPkg;
     setBonusAmount(String(maxSpendableBonusFromPackage(pkg, budgetRub)));
-  }, [usePromoBonuses, selectedBonusPkgId, budgetRub]);
+  }, [usePromoBonuses, selectedBonusPkgId, budgetRub, bonusPackages, fallbackBonusPkg]);
 
   const handleBonusAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const digits = e.target.value.replace(/[^\d]/g, '');
@@ -1160,7 +1300,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
   };
 
   const selectBonusPackage = (pkgId: string) => {
-    const pkg = BONUS_PACKAGES.find((item) => item.id === pkgId) ?? BONUS_PACKAGES[0];
+    const pkg = bonusPackages.find((item) => item.id === pkgId) ?? fallbackBonusPkg;
     setSelectedBonusPkgId(pkg.id);
     setBonusAmount(String(maxSpendableBonusFromPackage(pkg, budgetRub)));
     if (!usePromoBonuses) setUsePromoBonuses(true);
@@ -1371,7 +1511,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
         )}
 
         {/* Управление кампанией — макет карточки */}
-        <div className="mx-auto w-full max-w-[1200px] overflow-visible rounded-2xl border border-[#EBEBEF] bg-white shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
+        <div className="mx-auto w-full max-w-[1200px] overflow-visible rounded-2xl bg-white">
           <div className="flex items-center justify-between gap-4 px-5 pb-2 pt-5">
             <input
               type="text"
@@ -1398,7 +1538,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
 
         {/* Бюджет — единый блок как в редактировании, слева ввод вместо «Остаток» */}
         <div className="mx-auto w-full max-w-[1200px]">
-          <div className="flex w-full flex-col gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-black/[0.03]">
+          <div className="flex w-full flex-col gap-3 rounded-2xl bg-white p-4">
             {bonusPlacement === 'cards' ? (
               <>
                 <p className="mb-2 text-xl font-bold leading-none text-gray-900">Бюджет кампании</p>
@@ -1549,6 +1689,95 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
                   </div>
                 </div>
               </>
+            ) : bonusPlacement === 'mass' ? (
+              <div className="flex w-full flex-col gap-2">
+                <p className="text-xl font-bold leading-none text-gray-900">Настройка бюджета</p>
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
+                  <CreationBudgetSettingsCard
+                    budgetRub={budgetRub > 0 ? budgetRub : 0}
+                    bonusRub={appliedPromoBonusB}
+                    usePromo={usePromoBonuses}
+                    autoRefillEnabled={isAutoRefillEnabled}
+                    formatRub={(n) => formatForDisplay(n)}
+                    onOpenBudget={() => {
+                      setBudgetRefillPreferAuto(false);
+                      setIsBudgetRefillModalOpen(true);
+                    }}
+                    onOpenAutoRefill={() => {
+                      setBudgetRefillPreferAuto(true);
+                      setIsBudgetRefillModalOpen(true);
+                    }}
+                  />
+
+                  {paymentModel === 'CPC' ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDailyLimitDraft(dailyLimitValue || String(DAILY_LIMIT_ABSOLUTE_MIN));
+                        setIsAdvancedDailyLimitModalOpen(true);
+                      }}
+                      className="flex h-[140px] w-full flex-col justify-between rounded-2xl border border-[#E3E4E9] bg-white p-4 text-left transition-colors hover:bg-[#F7F7F8] sm:w-[248px] sm:shrink-0"
+                    >
+                      <div className="flex h-6 items-center justify-between gap-3">
+                        <span className="text-[14px] leading-5 text-[#8B8B9A]">Дневной лимит</span>
+                        {isDailyLimitEnabled ? (
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[#757383]">
+                            <Edit2 className="h-3.5 w-3.5" aria-hidden />
+                          </span>
+                        ) : (
+                          <span className="h-6 w-6 shrink-0" aria-hidden />
+                        )}
+                      </div>
+
+                      {isDailyLimitEnabled ? (
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-start gap-1.5">
+                            <p className="mb-0 text-[17px] font-semibold leading-5 tracking-[0.2px] tabular-nums text-gray-900">
+                              {formatForDisplay(dailyLimitValue || DAILY_LIMIT_ABSOLUTE_MIN)} ₽
+                            </p>
+                            {showDailyLimitBidMismatchHint ? (
+                              <DailyLimitBidMismatchHint
+                                recommendedDailyLimitRub={recommendedDailyLimitForBids}
+                                className="mt-0.5"
+                              />
+                            ) : null}
+                          </div>
+                          {advancedDailyLimitSettings.autoIncreaseEnabled ? (
+                            <p className="mb-0 inline-flex items-center gap-1.5 text-[13px] leading-4 text-[#8B8B9A]">
+                              <svg
+                                viewBox="0 0 16 16"
+                                className="h-3.5 w-3.5 shrink-0 text-[#34C759]"
+                                fill="none"
+                                aria-hidden
+                              >
+                                <path
+                                  d="M1.5 10.5 5 7l3 3 6.5-6.5"
+                                  stroke="currentColor"
+                                  strokeWidth="1.6"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                                <path
+                                  d="M11 3.5h3.5V7"
+                                  stroke="currentColor"
+                                  strokeWidth="1.6"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                              Меняется от ДРР
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <span className="w-fit rounded-[10px] bg-[#F0F0F2] px-3 py-1.5 text-[14px] font-medium leading-5 text-gray-900">
+                          Установить
+                        </span>
+                      )}
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             ) : (
             <div className="flex w-full flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-stretch">
               <div className="flex w-full flex-col justify-between gap-3 sm:min-h-[116px] sm:w-[240px] sm:shrink-0">
@@ -1665,7 +1894,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             </div>
             )}
 
-            {bonusPlacement !== 'footer' && bonusPlacement !== 'cards' ? (
+            {bonusPlacement !== 'footer' && bonusPlacement !== 'cards' && bonusPlacement !== 'mass' ? (
             <div className="flex w-full flex-col gap-4 border-t border-gray-100 pt-3">
               {bonusPlacement === 'budget' ? (
                 <div
@@ -1797,7 +2026,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
 
         {/* Зоны показов */}
         {paymentModel === 'CPC' ? (
-          <section className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
+          <section className="mx-auto w-full max-w-[1200px] rounded-2xl bg-white p-5">
             <h2 className="text-xl font-bold text-gray-900 mb-4">Зоны показов</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3 min-h-[4.5rem]">
@@ -1885,7 +2114,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
         )}
 
         {/* Товары */}
-        <div className="bg-white rounded-2xl px-5 pt-0 pb-0 shadow-sm border border-gray-100 w-full max-w-[1200px] mx-auto">
+        <div className="mx-auto w-full max-w-[1200px] rounded-2xl bg-white px-5 pt-0 pb-0">
           {products.length === 0 ? (
             <div className="py-4">
               <button
@@ -2053,6 +2282,12 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           setToastIsError(false);
         }}
       />
+      {promoPackageNotice ? (
+        <RitmNotification
+          message={promoPackageNotice}
+          onClose={() => setPromoPackageNotice(null)}
+        />
+      ) : null}
       {cpmBidRoundedAlertNode}
 
       <RankingFactorsSidePanel
@@ -2219,6 +2454,62 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
             </button>
           </div>
         </div>
+      ) : null}
+
+      {isBudgetRefillModalOpen ? (
+        <BudgetRefillModal
+          isOpen={isBudgetRefillModalOpen}
+          currentBudget={budgetRub > 0 ? budgetRub : 3000}
+          submitLabel="Применить"
+          campaignCount={1}
+          dailyLimit={
+            isDailyLimitEnabled ? parseDisplayValue(dailyLimitValue) || 0 : 0
+          }
+          showDailyLimitInfo={isDailyLimitEnabled}
+          initialValues={{
+            amount: budgetRub > 0 ? budgetRub : 3000,
+            useBonuses: usePromoBonuses && appliedPromoBonusB > 0,
+            bonusAmount: appliedPromoBonusB,
+            packageId: selectedBonusPkgId,
+            bonusPickMode: 'manual',
+            autoRefillEnabled: isAutoRefillEnabled,
+            autoThreshold: autoRefillThreshold,
+            autoAmount: autoRefillAmountValue,
+            autoUseBonuses: usePromoBonuses,
+            preferAutoRefill: budgetRefillPreferAuto,
+          }}
+          walletContext={{
+            promoTotal: promoBonusTotal,
+            promoAllocated: 0,
+            elsBalance: PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId] ?? 105350,
+            elsReserved: 0,
+            campaignCount: 0,
+          }}
+          onClose={() => {
+            setIsBudgetRefillModalOpen(false);
+            setBudgetRefillPreferAuto(false);
+          }}
+          onSave={(amount, extras?: BudgetRefillSaveExtras) => {
+            const nextBudget = Math.max(1000, amount || 0);
+            setBudget(String(nextBudget));
+            const useBonuses = Boolean(extras?.useBonuses && (extras.bonusAmount ?? 0) > 0);
+            setUsePromoBonuses(useBonuses);
+            setBonusAmount(String(useBonuses ? extras?.bonusAmount ?? 0 : 0));
+            if (extras?.packageId) setSelectedBonusPkgId(extras.packageId);
+            if (extras?.autoRefill?.enabled) {
+              setIsAutoRefillEnabled(true);
+              setAutoRefillThreshold(extras.autoRefill.threshold);
+              setAutoRefillAmountValue(extras.autoRefill.amount);
+              setAutoRefillMode('manual');
+            } else {
+              setIsAutoRefillEnabled(false);
+            }
+            setIsBudgetRefillModalOpen(false);
+            setBudgetRefillPreferAuto(false);
+            setToastMessage('Бюджет настроен');
+            setShowToast(true);
+          }}
+        />
       ) : null}
 
       {isAutoRefillModalOpen ? (
