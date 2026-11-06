@@ -313,7 +313,7 @@ export function AppHeader({
   };
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
+    <header className="sticky top-0 z-50 bg-white">
       <div className="flex items-center justify-between px-6 h-14 bg-white">
         <div className="flex items-center gap-4">
           {isResearchAccess ? (

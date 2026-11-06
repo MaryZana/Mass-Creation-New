@@ -9,7 +9,7 @@ import {
   CreditCard,
   Download,
   Gift,
-  HelpCircle,
+  InfoCircleFill,
   Landmark,
   Plus,
   Search,
@@ -19,6 +19,10 @@ import {
 } from '../components/Icons';
 import { UnifiedAccountInstructionModal } from '../components/UnifiedAccountInstructionModal';
 import { FinanceBalanceModalVariant } from '../components/FinanceBalanceModalVariants';
+import {
+  FINANCE_BALANCE_STORY_VARIANTS,
+  FinanceBalanceStory,
+} from '../components/FinanceBalanceStory';
 import {
   FinanceMoneyIconRows,
   financeUnifiedHasOwnHeader,
@@ -151,11 +155,11 @@ function FinanceDropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex w-max items-center justify-between whitespace-nowrap text-sm font-medium transition-colors hover:bg-[#E6E9EE] ${
+        className={`inline-flex w-max items-center justify-between whitespace-nowrap text-sm font-medium transition-colors hover:bg-[#F3F5F8] ${
           chip
-            ? 'h-8 gap-1.5 rounded-full bg-[#F3F5F8] px-3 text-gray-800'
-            : 'h-8 gap-1.5 rounded-xl border border-transparent bg-[#F3F5F8] px-2.5 text-gray-900'
-        } ${open ? 'bg-[#E6E9EE]' : ''}`}
+            ? 'h-8 gap-1.5 rounded-full bg-white px-3 text-gray-800'
+            : 'h-8 gap-1.5 rounded-xl border border-transparent bg-white px-2.5 text-gray-900'
+        } ${open ? 'bg-[#F3F5F8]' : ''}`}
       >
         <span>{selected?.label}</span>
         <ChevronDown
@@ -203,7 +207,7 @@ function FinanceDropdown({
                             aria-label={opt.infoTooltip}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <HelpCircle className="h-4 w-4" aria-hidden />
+                            <InfoCircleFill className="h-4 w-4" aria-hidden />
                           </span>
                           <span className="tooltip-text !bottom-auto !left-auto !right-0 !top-full !mt-1.5 !w-[14rem] !max-w-[14rem] !translate-x-0 !whitespace-normal !py-2 !px-2.5 !text-left text-xs !font-normal !leading-snug">
                             {opt.infoTooltip}
@@ -281,8 +285,8 @@ function TopupStatusFilter({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-[#F3F5F8] px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE] ${
-          open ? 'bg-[#E6E9EE]' : ''
+        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F3F5F8] ${
+          open ? 'bg-[#F3F5F8]' : ''
         }`}
       >
         <span>{selected.label}</span>
@@ -342,10 +346,10 @@ function FinanceTitleHelp() {
       {videoModal}
       <button
         type="button"
-        className="inline-flex cursor-help items-center justify-center transition-opacity hover:opacity-80"
+        className="inline-flex cursor-help items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
         aria-label="Информация и видеоинструкция по финансам"
       >
-        <HelpCircle className="h-4 w-4 text-gray-400" />
+        <InfoCircleFill className="h-4 w-4" />
       </button>
       {tip.show ? (
         <div className="absolute left-0 top-full z-40 pt-1.5">
@@ -511,12 +515,9 @@ type ExpenseRow = {
 
 const EXPENSE_PAGE_SIZE = 10;
 
-const FINANCE_TABLE_HEAD_ROW_CLASS =
-  'text-sm font-medium text-black [&>th]:border-b [&>th]:border-gray-100';
+const FINANCE_TABLE_HEAD_ROW_CLASS = 'text-sm font-medium text-black';
 
 const FINANCE_TABLE_BODY_CLASS = [
-  '[&>tr>td]:border-b [&>tr>td]:border-gray-100',
-  '[&>tr:last-child>td]:border-b-0',
   '[&>tr:not([data-month-heading])>td]:transition-colors',
   '[&>tr:not([data-month-heading]):hover>td]:bg-[#F3F5F8]',
   '[&>tr:not([data-month-heading]):hover>td:first-child]:rounded-l-xl',
@@ -1417,6 +1418,116 @@ function CoinStackIcon({ className }: { className?: string }) {
   );
 }
 
+/** Демо-сценарий баланса: неделя, день, потрачено и резерв */
+function FinanceBalanceSimControls({
+  simWeekId,
+  onSimWeekChange,
+  simDay,
+  onSimDayChange,
+  simAdjust,
+  onSimAdjustChange,
+}: {
+  simWeekId: FinanceBalanceSimWeekId;
+  onSimWeekChange: (id: FinanceBalanceSimWeekId) => void;
+  simDay: number;
+  onSimDayChange: (index: number) => void;
+  simAdjust: FinanceBalanceSimAdjust;
+  onSimAdjustChange: (value: FinanceBalanceSimAdjust) => void;
+}) {
+  const simView = buildFinanceBalanceSimView(simWeekId, simDay, simAdjust);
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="px-1 text-xs text-gray-500">Неделя</span>
+        {FINANCE_BALANCE_SIM_WEEKS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            title={item.explain}
+            onClick={() => {
+              onSimWeekChange(item.id);
+              onSimDayChange(0);
+            }}
+            className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              simWeekId === item.id
+                ? 'bg-black text-white'
+                : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+            }`}
+          >
+            {item.short}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1">
+        <span className="px-1 text-xs text-gray-500">День</span>
+        {FINANCE_BALANCE_WEEK_DAYS.map((label, index) => (
+          <button
+            key={label}
+            type="button"
+            title={financeBalanceWeekDate(index, undefined, simView.weekOffset)}
+            onClick={() => onSimDayChange(index)}
+            className={`flex min-w-[2rem] flex-col items-center rounded-lg px-2 py-1 text-xs font-medium leading-tight transition-colors ${
+              simDay === index
+                ? 'bg-black text-white'
+                : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+            }`}
+          >
+            {label}
+            <span className={`text-[10px] font-normal tabular-nums ${simDay === index ? 'text-white/60' : 'text-gray-500'}`}>
+              {financeBalanceWeekDate(index, undefined, simView.weekOffset).split(' ')[0]}
+            </span>
+          </button>
+        ))}
+      </div>
+      {(
+        [
+          { key: 'spent', label: 'Потрачено', value: simView.spentThisWeekRub },
+          { key: 'reserve', label: 'Резерв в кампаниях', value: simView.reservedThisWeekRub },
+        ] as const
+      ).map((item) => {
+        const step = Math.min(FINANCE_BALANCE_SIM_STEP_RUB, simView.availableNowRub);
+        const actions = simAdjust[simView.weekId] ?? [];
+        const add = () =>
+          onSimAdjustChange({
+            ...simAdjust,
+            [simView.weekId]: [...actions, { day: simDay, kind: item.key, rub: step }],
+          });
+        const reset = () =>
+          onSimAdjustChange({
+            ...simAdjust,
+            [simView.weekId]: actions.filter((action) => action.kind !== item.key),
+          });
+        return (
+          <div key={item.key} className="flex flex-wrap items-center gap-1">
+            <span className="px-1 text-xs text-gray-500">{item.label}</span>
+            <span className="min-w-[4.5rem] px-1 text-xs font-semibold tabular-nums text-gray-900">
+              {fmtRub(item.value)} ₽
+            </span>
+            <button
+              type="button"
+              disabled={step <= 0}
+              title={step <= 0 ? 'На балансе больше нет денег' : undefined}
+              onClick={add}
+              className="rounded-lg bg-[rgba(74,74,89,0.08)] px-2.5 py-1.5 text-xs font-medium tabular-nums text-black transition-colors hover:bg-[rgba(74,74,89,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              +{fmtRub(FINANCE_BALANCE_SIM_STEP_RUB)} ₽
+            </button>
+            {item.value > 0 ? (
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.08)]"
+              >
+                Сбросить
+              </button>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function BufferSchemeModal({
   row,
   onClose,
@@ -1726,102 +1837,15 @@ function BufferSchemeModal({
           role="group"
           aria-label="Демо: вариант модалки баланса"
         >
-          {showStatusLayout && onSimWeekChange ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="px-1 text-xs text-gray-500">Неделя</span>
-                {FINANCE_BALANCE_SIM_WEEKS.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    title={item.explain}
-                    onClick={() => {
-                      onSimWeekChange(item.id);
-                      onSimDayChange?.(0);
-                    }}
-                    className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                      simWeekId === item.id
-                        ? 'bg-black text-white'
-                        : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
-                    }`}
-                  >
-                    {item.short}
-                  </button>
-                ))}
-              </div>
-              {onSimDayChange ? (
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className="px-1 text-xs text-gray-500">День</span>
-                  {FINANCE_BALANCE_WEEK_DAYS.map((label, index) => (
-                    <button
-                      key={label}
-                      type="button"
-                      title={financeBalanceWeekDate(index, undefined, simView.weekOffset)}
-                      onClick={() => onSimDayChange(index)}
-                      className={`flex min-w-[2rem] flex-col items-center rounded-lg px-2 py-1 text-xs font-medium leading-tight transition-colors ${
-                        simDay === index
-                          ? 'bg-black text-white'
-                          : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
-                      }`}
-                    >
-                      {label}
-                      <span
-                        className={`text-[10px] font-normal tabular-nums ${simDay === index ? 'text-white/60' : 'text-gray-500'}`}
-                      >
-                        {financeBalanceWeekDate(index, undefined, simView.weekOffset).split(' ')[0]}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {onSimAdjustChange
-                ? (
-                    [
-                      { key: 'spent', label: 'Потрачено', value: simView.spentThisWeekRub },
-                      { key: 'reserve', label: 'Резерв в кампаниях', value: simView.reservedThisWeekRub },
-                    ] as const
-                  ).map((item) => {
-                    const step = Math.min(FINANCE_BALANCE_SIM_STEP_RUB, simView.availableNowRub);
-                    const actions = simAdjust[simView.weekId] ?? [];
-                    const add = () =>
-                      onSimAdjustChange({
-                        ...simAdjust,
-                        [simView.weekId]: [...actions, { day: simDay, kind: item.key, rub: step }],
-                      });
-                    const reset = () =>
-                      onSimAdjustChange({
-                        ...simAdjust,
-                        [simView.weekId]: actions.filter((action) => action.kind !== item.key),
-                      });
-                    return (
-                      <div key={item.key} className="flex flex-wrap items-center gap-1">
-                        <span className="px-1 text-xs text-gray-500">{item.label}</span>
-                        <span className="min-w-[4.5rem] px-1 text-xs font-semibold tabular-nums text-gray-900">
-                          {fmtRub(item.value)} ₽
-                        </span>
-                        <button
-                          type="button"
-                          disabled={step <= 0}
-                          title={step <= 0 ? 'На балансе больше нет денег' : undefined}
-                          onClick={add}
-                          className="rounded-lg bg-[rgba(74,74,89,0.08)] px-2.5 py-1.5 text-xs font-medium tabular-nums text-black transition-colors hover:bg-[rgba(74,74,89,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
-                        >
-                          +{fmtRub(FINANCE_BALANCE_SIM_STEP_RUB)} ₽
-                        </button>
-                        {item.value > 0 ? (
-                          <button
-                            type="button"
-                            onClick={reset}
-                            className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.08)]"
-                          >
-                            Сбросить
-                          </button>
-                        ) : null}
-                      </div>
-                    );
-                  })
-                : null}
-            </div>
+          {showStatusLayout && onSimWeekChange && onSimDayChange && onSimAdjustChange ? (
+            <FinanceBalanceSimControls
+              simWeekId={simWeekId}
+              onSimWeekChange={onSimWeekChange}
+              simDay={simDay}
+              onSimDayChange={onSimDayChange}
+              simAdjust={simAdjust}
+              onSimAdjustChange={onSimAdjustChange}
+            />
           ) : null}
           {layout === 'current' && onCurrentCaseChange ? (
             <div className="flex flex-wrap gap-1 border-t border-gray-100 pt-2">
@@ -1885,7 +1909,69 @@ function ArrowUpRightIcon({ className }: { className?: string }) {
   );
 }
 
-function FinanceBalancesCard() {
+const BALANCE_INLINE_VARIANTS = [
+  { id: '1', label: 'Подробности в модалке' },
+  ...FINANCE_BALANCE_STORY_VARIANTS,
+  { id: '6', label: 'Как 1 · список из 3 без номеров' },
+] as const;
+type BalanceInlineVariant = (typeof BALANCE_INLINE_VARIANTS)[number]['id'];
+const BALANCE_INLINE_VARIANT_KEY = 'finance-balance-inline-v2';
+
+function readBalanceInlineVariant(): BalanceInlineVariant {
+  try {
+    const raw = window.localStorage.getItem(BALANCE_INLINE_VARIANT_KEY);
+    const match = BALANCE_INLINE_VARIANTS.find((item) => item.id === raw);
+    if (match) return match.id;
+  } catch {
+    /* ignore */
+  }
+  return '1';
+}
+
+function BalanceInlineVariantSwitcher({
+  value,
+  onChange,
+}: {
+  value: BalanceInlineVariant;
+  onChange: (next: BalanceInlineVariant) => void;
+}) {
+  const active = BALANCE_INLINE_VARIANTS.find((item) => item.id === value);
+  return (
+    <div
+      className="fixed bottom-4 right-4 z-[110] flex flex-col gap-1.5 rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
+      role="group"
+      aria-label="Демо: баланс без модалки"
+    >
+      <div className="flex items-center gap-1">
+        <span className="px-1 text-xs text-gray-500">Баланс</span>
+        {BALANCE_INLINE_VARIANTS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            title={item.label}
+            onClick={() => onChange(item.id)}
+            className={`min-w-[2rem] rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+              value === item.id
+                ? 'bg-black text-white'
+                : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
+            }`}
+          >
+            {item.id}
+          </button>
+        ))}
+      </div>
+      {active ? <p className="mb-0 px-1 text-xs text-gray-500">{active.label}</p> : null}
+    </div>
+  );
+}
+
+function FinanceBalancesCard({
+  spend,
+  inlineVariant,
+}: {
+  spend: BalanceSpend;
+  inlineVariant: BalanceInlineVariant;
+}) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { profileId } = useProfile();
@@ -1908,6 +1994,29 @@ function FinanceBalancesCard() {
     readFinanceBalanceSimScenario,
   );
   const simView = buildFinanceBalanceSimView(simWeekId, simDay, simAdjust);
+  const changeSimWeek = (next: FinanceBalanceSimWeekId) => {
+    const weekIds = FINANCE_BALANCE_SIM_WEEKS.map((week) => week.id);
+    const from = weekIds.indexOf(simWeekId);
+    const to = weekIds.indexOf(next);
+    /** Новая неделя начинается без трат и резерва; более поздние недели тоже сбрасываем */
+    const keepUntil = to > from ? to : to + 1;
+    const nextAdjust: FinanceBalanceSimAdjust = {};
+    weekIds.slice(0, keepUntil).forEach((id) => {
+      if (simAdjust[id]) nextAdjust[id] = simAdjust[id];
+    });
+    setSimAdjust(nextAdjust);
+    writeFinanceBalanceSimAdjust(nextAdjust);
+    setSimWeekId(next);
+    writeFinanceBalanceSimWeek(next);
+  };
+  const changeSimDay = (next: number) => {
+    setSimDay(next);
+    writeFinanceBalanceSimDay(next);
+  };
+  const changeSimAdjust = (next: FinanceBalanceSimAdjust) => {
+    setSimAdjust(next);
+    writeFinanceBalanceSimAdjust(next);
+  };
   const caseBalanceRub = BALANCE_DEMO_CASES.find((item) => item.id === balanceCaseId)?.amount ?? 0;
   /** В раскладке «Статус» карточка следует симуляции недель */
   const balanceRub = schemeLayout === 'status' ? simView.availableNowRub : caseBalanceRub;
@@ -1928,16 +2037,16 @@ function FinanceBalancesCard() {
       <span className="text-sm font-medium text-gray-600">Единый счёт</span>
       <button
         type="button"
-        className="inline-flex items-center justify-center transition-opacity hover:opacity-80"
+        className="inline-flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
         aria-label="Что такое счёт продвижения"
       >
-        <HelpCircle className="h-4 w-4 text-gray-400" />
+        <InfoCircleFill className="h-4 w-4" />
       </button>
       {labelTip.show ? (
-        <div className="absolute left-full top-1/2 z-40 -translate-y-[19px] pl-2.5">
+        <div className="absolute left-0 top-full z-50 pt-1.5">
           <div className="relative w-[17rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
             <span
-              className="absolute right-full top-3 border-y-[7px] border-r-[8px] border-y-transparent border-r-gray-900"
+              className="absolute bottom-full left-4 border-x-[7px] border-b-[8px] border-x-transparent border-b-gray-900"
               aria-hidden
             />
             <p>Сумма ваших денег и баланса</p>
@@ -1968,8 +2077,22 @@ function FinanceBalancesCard() {
     writeFinanceBalanceAmountRub(simView.availableNowRub);
   }, [schemeLayout, simView.availableNowRub]);
 
+  const framedInline =
+    inlineVariant === '2' ||
+    inlineVariant === '3' ||
+    inlineVariant === '4' ||
+    inlineVariant === '5' ||
+    inlineVariant === '6';
+
   return (
-    <div className="relative z-20 rounded-2xl bg-white p-4 sm:p-5">
+    <>
+      <div
+        className={
+          framedInline
+            ? 'relative z-20 rounded-2xl bg-[#F0F0F2] p-1'
+            : 'relative z-20 rounded-2xl bg-white p-4 sm:p-5'
+        }
+      >
       {instructionOpen && (
         <UnifiedAccountInstructionModal
           videoSrc={UNIFIED_ACCOUNT_VIDEO_SRC}
@@ -1994,31 +2117,11 @@ function FinanceBalancesCard() {
             writeFinanceBalanceCurrentDay(next);
           }}
           simWeekId={simWeekId}
-          onSimWeekChange={(next) => {
-            const weekIds = FINANCE_BALANCE_SIM_WEEKS.map((week) => week.id);
-            const from = weekIds.indexOf(simWeekId);
-            const to = weekIds.indexOf(next);
-            /** Новая неделя начинается без трат и резерва; более поздние недели тоже сбрасываем */
-            const keepUntil = to > from ? to : to + 1;
-            const nextAdjust: FinanceBalanceSimAdjust = {};
-            weekIds.slice(0, keepUntil).forEach((id) => {
-              if (simAdjust[id]) nextAdjust[id] = simAdjust[id];
-            });
-            setSimAdjust(nextAdjust);
-            writeFinanceBalanceSimAdjust(nextAdjust);
-            setSimWeekId(next);
-            writeFinanceBalanceSimWeek(next);
-          }}
+          onSimWeekChange={changeSimWeek}
           simDay={simDay}
-          onSimDayChange={(next) => {
-            setSimDay(next);
-            writeFinanceBalanceSimDay(next);
-          }}
+          onSimDayChange={changeSimDay}
           simAdjust={simAdjust}
-          onSimAdjustChange={(next) => {
-            setSimAdjust(next);
-            writeFinanceBalanceSimAdjust(next);
-          }}
+          onSimAdjustChange={changeSimAdjust}
           simScenarioId={simScenarioId}
           onSimScenarioChange={(next) => {
             setSimScenarioId(next);
@@ -2052,43 +2155,83 @@ function FinanceBalancesCard() {
               balanceRub={balanceRub}
               onOpen={() => setBalanceSchemeOpen(true)}
               onTopUp={() => navigate(financeTopUpPath(pathname))}
+              balanceExtra={inlineVariant === '1' ? <BalanceSpendNestedPanel spend={spend} /> : undefined}
+              balanceSlot={
+                inlineVariant === '1' ? undefined : (
+                  <FinanceBalanceStory
+                    variant={inlineVariant}
+                    view={simView}
+                    weekdayIndex={simDay}
+                    spend={spend}
+                  />
+                )
+              }
             />
           </div>
         </div>
-
-        <div className="border-t border-gray-100 pt-5">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="text-sm font-medium text-gray-600">Промобонусы</span>
-              <span className="tooltip justify-start">
-                <button
-                  type="button"
-                  className="inline-flex text-gray-400 transition-colors hover:text-gray-600"
-                  aria-label="Что такое промобонусы"
-                >
-                  <HelpCircle className="h-4 w-4" aria-hidden />
-                </button>
-                <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-1.5 !w-[17rem] !max-w-[17rem] !translate-x-0 !whitespace-normal !py-2.5 !px-3 !text-left text-xs !font-normal !leading-snug">
-                  Дополнительный источник, с которого можно списать часть от суммы пополнения. Начисляем
-                  их, например, за регистрацию нового продавца или за задания по продвижению.
-                </span>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => navigate('/bonuses')}
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F2F2F7] text-gray-700 transition-colors hover:bg-[#ECECF0]"
-              aria-label="Перейти к промобонусам"
-            >
-              <ArrowUpRightIcon className="h-4 w-4" />
-            </button>
-          </div>
-          <p className="mt-3 text-[28px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-            {fmtRub(promoBonusTotal)} B
-          </p>
-        </div>
       </div>
     </div>
+      <FinancePromoBonusesCard />
+      {balanceSchemeOpen ? null : (
+        <div
+          className="fixed bottom-[5.5rem] right-4 z-[110] max-w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
+          role="group"
+          aria-label="Демо: сценарий баланса"
+        >
+          <FinanceBalanceSimControls
+            simWeekId={simWeekId}
+            onSimWeekChange={changeSimWeek}
+            simDay={simDay}
+            onSimDayChange={changeSimDay}
+            simAdjust={simAdjust}
+            onSimAdjustChange={changeSimAdjust}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function FinancePromoBonusesCard() {
+  const navigate = useNavigate();
+  const { promoBonusTotal } = usePromoBonusDemo();
+  return (
+    <button
+      type="button"
+      onClick={() => navigate('/bonuses')}
+      aria-label="Перейти к промобонусам"
+      className="relative z-10 w-full rounded-2xl bg-[#F0F0F2] p-1 text-left transition-colors hover:bg-[#E8E8EC]"
+    >
+      <div className="px-3.5 py-3.5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="relative z-20 flex min-w-0 items-center gap-1.5">
+            <span className="text-sm font-medium text-gray-600">Промобонусы</span>
+            <span className="tooltip justify-start">
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => e.stopPropagation()}
+                className="inline-flex text-gray-400 transition-colors hover:text-gray-600"
+                aria-label="Что такое промобонусы"
+              >
+                <InfoCircleFill className="h-4 w-4" aria-hidden />
+              </span>
+              <span className="tooltip-text !bottom-auto !left-0 !top-full !z-50 !mt-1.5 !w-[17rem] !max-w-[17rem] !translate-x-0 !whitespace-normal !py-2.5 !px-3 !text-left text-xs !font-normal !leading-snug">
+                Дополнительный источник, с которого можно списать часть от суммы пополнения. Начисляем
+                их, например, за регистрацию нового продавца или за задания по продвижению.
+              </span>
+            </span>
+          </div>
+          <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-gray-700">
+            <ArrowUpRightIcon className="h-4 w-4" />
+          </span>
+        </div>
+        <p className="mb-0 mt-3 text-[28px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
+          {fmtRub(promoBonusTotal)} B
+        </p>
+      </div>
+    </button>
   );
 }
 
@@ -2393,7 +2536,7 @@ function PostponeChargeModal({
   );
 }
 
-function BalanceSpendCard() {
+function useBalanceSpend() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [postponeOpen, setPostponeOpen] = useState(false);
   const [postponed, setPostponed] = useState(false);
@@ -2414,7 +2557,7 @@ function BalanceSpendCard() {
 
   const simView = buildFinanceBalanceSimView(simWeekId, simDay, simAdjust);
   const weekRange = financeBalanceWeekRangeLabel(undefined, simView.weekOffset);
-  const periodLabel = `За ${weekRange}`;
+  const periodLabel = `Расход на ${shortDayMonth(weekRange)}`;
   const spentRub = simView.spentThisWeekRub;
   const postponeOptions = useMemo(
     () => buildPostponeOptions(simView.weekOffset),
@@ -2429,8 +2572,8 @@ function BalanceSpendCard() {
   const feeRub = Math.round((spentRub * feePercent) / 100);
   const chargeRub = spentRub + feeRub;
 
-  return (
-    <div className="rounded-2xl bg-white p-4 sm:p-5">
+  const modals = (
+    <>
       {scheduleOpen ? <SpendScheduleModal onClose={() => setScheduleOpen(false)} /> : null}
       {postponeOpen ? (
         <PostponeChargeModal
@@ -2446,57 +2589,110 @@ function BalanceSpendCard() {
           }}
         />
       ) : null}
-      {postponed ? (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F3E8FF] px-2.5 py-1 text-xs font-medium text-[#7C3AED]">
-          Списание отложено
-          <HistoryClockIcon className="h-3.5 w-3.5" />
-        </span>
-      ) : null}
+    </>
+  );
 
-      <h2 className={`${postponed ? 'mt-3' : ''} text-xl font-bold tracking-tight text-gray-900`}>
-        Расход баланса
-      </h2>
+  return {
+    modals,
+    periodLabel,
+    spentRub,
+    feePercent,
+    feeRub,
+    chargeRub,
+    chargeDate,
+    postponed,
+    openPostpone: () => setPostponeOpen(true),
+    openSchedule: () => setScheduleOpen(true),
+  };
+}
 
-      <div className="mt-4 space-y-2.5 text-sm">
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-gray-500">{periodLabel}</span>
-          <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(spentRub)} ₽</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="text-gray-500">
-            Комиссия {feePercent === 0 ? '0%' : `${formatFeePercent(feePercent)}%`}
-          </span>
-          <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(feeRub)} ₽</span>
-        </div>
-        <div className="flex items-baseline justify-between gap-3">
-          <span className="whitespace-nowrap font-medium text-gray-900">Спишем {chargeDate}</span>
-          <span className="tooltip shrink-0 whitespace-nowrap font-bold tabular-nums text-gray-900">
-            {chargeRub > 0 ? `~${fmtRub(chargeRub)}` : fmtRub(chargeRub)} ₽
-            <span className="tooltip-text !left-auto !right-0 !translate-x-0 !w-[16rem] !max-w-[16rem] !whitespace-normal !px-3 !py-2 !text-left !font-normal !leading-snug">
-              Сумма меняется, когда вы тратите баланс. Итоговую сумму рассчитаем {chargeDate}.
-            </span>
-          </span>
-        </div>
+type BalanceSpend = ReturnType<typeof useBalanceSpend>;
+
+const fmtCharge = (rub: number) => `${fmtRub(rub)} ₽`;
+
+/** «8 ноября» → «8 нояб» */
+const shortDayMonth = (label: string) => {
+  const [day, month, ...rest] = label.split(' ');
+  if (!month) return label;
+  return [day, month.length > 4 ? month.slice(0, 4) : month, ...rest].join(' ');
+};
+
+function BalanceSpendChargeAmount({ spend, className = '' }: { spend: BalanceSpend; className?: string }) {
+  return (
+    <span className={`tooltip shrink-0 whitespace-nowrap tabular-nums ${className}`}>
+      {fmtCharge(spend.chargeRub)}
+      <span className="tooltip-text !left-auto !right-0 !translate-x-0 !w-[16rem] !max-w-[16rem] !whitespace-normal !px-3 !py-2 !text-left !font-normal !leading-snug">
+        Сумма меняется, когда вы тратите баланс. Итоговую сумму рассчитаем {spend.chargeDate}.
+      </span>
+    </span>
+  );
+}
+
+function BalanceSpendRows({ spend }: { spend: BalanceSpend }) {
+  return (
+    <div className="space-y-2.5 text-sm">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-gray-500">{spend.periodLabel}</span>
+        <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(spend.spentRub)} ₽</span>
       </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-gray-500">
+          Комиссия {spend.feePercent === 0 ? '0%' : `${formatFeePercent(spend.feePercent)}%`}
+        </span>
+        <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(spend.feeRub)} ₽</span>
+      </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="tooltip cursor-default whitespace-nowrap font-medium text-gray-900">
+          К списанию {shortDayMonth(spend.chargeDate)}
+          <span className="tooltip-text !left-0 !translate-x-0 !w-[15rem] !max-w-[15rem] !whitespace-normal !px-3 !py-2 !text-left !font-normal !leading-snug">
+            Спишем с баланса на портале продавца {spend.chargeDate}
+          </span>
+        </span>
+        <BalanceSpendChargeAmount spend={spend} className="font-bold text-gray-900" />
+      </div>
+    </div>
+  );
+}
 
+/** Серая плашка расхода, «выросшая» из строки баланса */
+function BalanceSpendNestedPanel({ spend }: { spend: BalanceSpend }) {
+  return (
+    <div className="relative mt-2 rounded-xl bg-[#F3F5F8] p-3">
+      <span
+        className="absolute -top-1.5 left-3 h-3 w-3 rotate-45 rounded-[2px] bg-[#F3F5F8]"
+        aria-hidden
+      />
+      <div className="mb-2.5 flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-gray-600">Расход</span>
+        {spend.postponed ? <HistoryClockIcon className="h-3.5 w-3.5 text-[#7C3AED]" /> : null}
+      </div>
+      <BalanceSpendRows spend={spend} />
+      <BalanceSpendActions spend={spend} />
+    </div>
+  );
+}
+
+function BalanceSpendActions({ spend }: { spend: BalanceSpend }) {
+  return (
+    <>
       <button
         type="button"
-        onClick={() => setPostponeOpen(true)}
-        className="mt-5 flex w-full items-center justify-center rounded-xl bg-[#4B4B57] px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-[#3d3d48]"
+        onClick={spend.openPostpone}
+        className="mt-3 flex h-7 w-full items-center justify-center rounded-lg bg-white px-2.5 text-xs font-medium text-gray-900 transition-colors hover:bg-gray-50"
       >
-        {postponed ? 'Изменить дату списания' : 'Отложить списание'}
+        {spend.postponed ? 'Изменить дату списания' : 'Отложить списание'}
       </button>
-      {postponed ? (
+      {spend.postponed ? (
         <button
           type="button"
-          onClick={() => setScheduleOpen(true)}
-          className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F3F4F6] px-4 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-[#ECECF0] hover:text-gray-700"
+          onClick={spend.openSchedule}
+          className="mt-1.5 flex h-7 w-full items-center justify-center gap-1.5 rounded-lg bg-white px-2.5 text-xs font-medium text-gray-900 transition-colors hover:bg-gray-50"
         >
-          <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+          <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
           График списаний
         </button>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -2751,8 +2947,8 @@ function FinancePeriodPicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={openPicker}
-        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-[#F3F5F8] px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE] ${
-          open ? 'bg-[#E6E9EE]' : ''
+        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F3F5F8] ${
+          open ? 'bg-[#F3F5F8]' : ''
         }`}
       >
         <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -2987,7 +3183,7 @@ function FinanceMonthGroups<T>({
         return (
           <React.Fragment key={rowKey(row)}>
             {showMonth ? (
-              <tr data-month-heading className="border-b border-gray-100">
+              <tr data-month-heading>
                 <td colSpan={colSpan} className={separateFromPrevious ? 'px-4 pb-2 pt-6' : 'px-4 py-2'}>
                   {renderMonthHeader ? (
                     renderMonthHeader({ key, title, total })
@@ -3012,8 +3208,24 @@ function FinanceMonthGroups<T>({
 
 const FinancePage: React.FC = () => {
   const [mainTab] = useState<'my_money' | 'bonuses'>('my_money');
+  const balanceSpend = useBalanceSpend();
+  const [inlineVariant, setInlineVariant] = useState<BalanceInlineVariant>(readBalanceInlineVariant);
+  const changeInlineVariant = (next: BalanceInlineVariant) => {
+    setInlineVariant(next);
+    try {
+      window.localStorage.setItem(BALANCE_INLINE_VARIANT_KEY, next);
+    } catch {
+      /* ignore */
+    }
+  };
+  const asideWidthClass = 'lg:w-[380px]';
   const [bufferSubTab, setBufferSubTab] = useState<'accrued' | 'spent'>('accrued');
-  const [historyFilter, setHistoryFilter] = useState('expenses');
+  const [historySection, setHistorySection] = useState<'campaigns' | 'account' | 'balance' | 'bonuses'>(
+    'campaigns',
+  );
+  const [campaignSubTab, setCampaignSubTab] = useState<'expenses' | 'campaign_topups' | 'pending_refunds'>(
+    'expenses',
+  );
   const [period, setPeriod] = useState<FinancePeriod>({ kind: 'all' });
   const [channel, setChannel] = useState<FinanceChannelFilter>('all');
   const [mediaExpenseFilter, setMediaExpenseFilter] = useState<'all' | MediaExpenseTag>('all');
@@ -3028,12 +3240,13 @@ const FinancePage: React.FC = () => {
   const expenseSentinelRef = useRef<HTMLDivElement>(null);
   const [visibleTopupCount, setVisibleTopupCount] = useState(EXPENSE_PAGE_SIZE);
   const topupSentinelRef = useRef<HTMLDivElement>(null);
-  const isPendingRefunds = historyFilter === 'pending_refunds';
-  const isTopups = historyFilter === 'topups';
-  const isBufferHistory = historyFilter === 'buffer';
-  const isExpenses = historyFilter === 'expenses';
-  const isCampaignTopups = historyFilter === 'campaign_topups';
-  const isExpiredBonuses = historyFilter === 'expired_bonuses';
+  const isPendingRefunds = historySection === 'campaigns' && campaignSubTab === 'pending_refunds';
+  const isTopups = historySection === 'account';
+  const isBufferHistory = historySection === 'balance';
+  const isExpenses = historySection === 'campaigns' && campaignSubTab === 'expenses';
+  const isCampaignTopups = historySection === 'campaigns' && campaignSubTab === 'campaign_topups';
+  const isExpiredBonuses = historySection === 'bonuses';
+  const isCampaigns = historySection === 'campaigns';
 
   const setFinancePeriod = (next: FinancePeriod) => {
     setPeriod(next);
@@ -3221,45 +3434,66 @@ const FinancePage: React.FC = () => {
 
   const bufferSubTabClass = (active: boolean) =>
     `h-7 rounded-lg px-2.5 text-sm font-medium transition-colors ${
-      active ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
+      active ? 'bg-[#F0F0F2] text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
     }`;
 
   return (
     <main className="mx-auto w-full max-w-[1920px] px-6 py-8">
+      <BalanceInlineVariantSwitcher value={inlineVariant} onChange={changeInlineVariant} />
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
-        <aside className="flex w-full shrink-0 flex-col gap-4 lg:w-[320px]">
-          <FinanceBalancesCard />
-          <BalanceSpendCard />
+        <aside className={`flex w-full shrink-0 flex-col gap-4 ${asideWidthClass}`}>
+          {balanceSpend.modals}
+          <FinanceBalancesCard spend={balanceSpend} inlineVariant={inlineVariant} />
         </aside>
 
-        <section className="min-w-0 flex-1 rounded-2xl bg-white px-5 py-6 sm:px-8 sm:py-8">
-          <div className="flex min-w-0 items-center gap-2">
-            <h1 className="mb-0 text-[28px] font-bold leading-tight tracking-tight text-gray-900">История операций</h1>
-            <FinanceTitleHelp />
+        <section className="min-w-0 flex-1 overflow-hidden rounded-2xl bg-[#F0F0F2] p-1">
+          <div className="px-4 pt-4 sm:px-7 sm:pt-6">
+            <div className="flex min-w-0 items-center gap-2">
+              <h1 className="mb-0 text-[28px] font-bold leading-tight tracking-tight text-gray-900">История операций</h1>
+              <FinanceTitleHelp />
+            </div>
           </div>
 
           {mainTab === 'my_money' ? (
             <>
-              <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3">
+              <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3 px-4 sm:px-7">
+                <div className="relative w-[16rem] shrink-0">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+                    aria-hidden
+                  />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                      setVisibleTopupCount(EXPENSE_PAGE_SIZE);
+                    }}
+                    placeholder="Поиск"
+                    className="h-8 w-full rounded-xl border border-transparent bg-white py-1.5 pl-9 pr-3 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 hover:bg-white/80 focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+                  />
+                </div>
                 <div className="shrink-0">
                   <FinancePeriodPicker value={period} onChange={setFinancePeriod} />
                 </div>
                 <FinanceDropdown
                   aria-label="Тип истории"
-                  value={historyFilter}
+                  value={historySection}
                   onChange={(value) => {
-                    setHistoryFilter(value);
+                    setHistorySection(value as 'campaigns' | 'account' | 'balance' | 'bonuses');
                     setSourceFilter('all');
                     setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                    setVisibleTopupCount(EXPENSE_PAGE_SIZE);
+                    if (value === 'campaigns') setCampaignSubTab('expenses');
+                    if (value === 'balance') setBufferSubTab('accrued');
                   }}
                   className="shrink-0"
                   options={[
-                    { value: 'expenses', label: 'Списания по кампаниям' },
-                    { value: 'campaign_topups', label: 'Пополнения кампаний' },
-                    { value: 'topups', label: 'Пополнения счёта' },
-                    { value: 'buffer', label: 'История баланса' },
-                    { value: 'expired_bonuses', label: 'Истёкшие бонусы' },
-                    { value: 'pending_refunds', label: 'Возвраты с кампаний' },
+                    { value: 'campaigns', label: 'Кампании' },
+                    { value: 'account', label: 'Счёт' },
+                    { value: 'balance', label: 'Баланс' },
+                    { value: 'bonuses', label: 'Бонусы' },
                   ]}
                 />
                 {isExpenses && channel === 'media' ? (
@@ -3275,6 +3509,23 @@ const FinancePage: React.FC = () => {
                       { value: 'all', label: 'Тип списания' },
                       { value: 'pause', label: MEDIA_EXPENSE_TAG_LABEL.pause },
                       { value: 'fraud', label: MEDIA_EXPENSE_TAG_LABEL.fraud },
+                    ]}
+                  />
+                ) : null}
+                {isCampaigns ? (
+                  <FinanceDropdown
+                    aria-label="Операции кампаний"
+                    value={campaignSubTab}
+                    onChange={(value) => {
+                      setCampaignSubTab(value as 'expenses' | 'campaign_topups' | 'pending_refunds');
+                      setSourceFilter('all');
+                      setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                    }}
+                    className="shrink-0"
+                    options={[
+                      { value: 'expenses', label: 'Списания' },
+                      { value: 'campaign_topups', label: 'Пополнения' },
+                      { value: 'pending_refunds', label: 'Возвраты' },
                     ]}
                   />
                 ) : null}
@@ -3318,68 +3569,45 @@ const FinancePage: React.FC = () => {
                 ) : null}
                 {isExpenses || isCampaignTopups ? (
                   <>
-                    <div
-                      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg bg-[#F3F5F8] p-0.5"
-                      role="tablist"
+                    <FinanceDropdown
                       aria-label="Канал"
-                    >
-                      {FINANCE_CHANNELS.map((item) => {
-                        const active = channel === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            className={`h-7 rounded-md px-2.5 text-sm font-medium transition-colors ${
-                              active
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-600 hover:bg-[#E6E9EE] hover:text-gray-900'
-                            }`}
-                            onClick={() => {
-                              setChannel(item.id);
-                              if (item.id !== 'media') setMediaExpenseFilter('all');
-                              setSourceFilter('all');
-                              setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                            }}
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <div
-                      className="inline-flex h-8 shrink-0 items-center gap-0.5 rounded-lg bg-[#F3F5F8] p-0.5"
-                      role="tablist"
+                      value={channel}
+                      onChange={(value) => {
+                        const next = value as FinanceChannelFilter;
+                        setChannel(next);
+                        if (next !== 'media') setMediaExpenseFilter('all');
+                        setSourceFilter('all');
+                        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                      }}
+                      className="shrink-0"
+                      options={FINANCE_CHANNELS.map((item) => ({
+                        value: item.id,
+                        label: item.id === 'all' ? 'Канал' : item.label,
+                      }))}
+                    />
+                    <FinanceDropdown
                       aria-label={isCampaignTopups ? 'Источник' : 'Источник списания'}
-                    >
-                      {['all', ...(isCampaignTopups ? EXPENSE_SOURCES : expenseSourceOptions)].map((source) => {
-                        const active = sourceFilter === source;
-                        return (
-                          <button
-                            key={source}
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            className={`h-7 rounded-md px-2.5 text-sm font-medium transition-colors ${
-                              active
-                                ? 'bg-white text-gray-900 shadow-sm'
-                                : 'text-gray-600 hover:bg-[#E6E9EE] hover:text-gray-900'
-                            }`}
-                            onClick={() => {
-                              setSourceFilter(source);
-                              setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                            }}
-                          >
-                            {source === 'all' ? 'Все' : source}
-                          </button>
-                        );
-                      })}
-                    </div>
+                      value={sourceFilter}
+                      onChange={(value) => {
+                        setSourceFilter(value);
+                        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                      }}
+                      className="shrink-0"
+                      options={[
+                        {
+                          value: 'all',
+                          label: isCampaignTopups ? 'Источник' : 'Источник списания',
+                        },
+                        ...(isCampaignTopups ? EXPENSE_SOURCES : expenseSourceOptions).map((source) => ({
+                          value: source,
+                          label: source,
+                        })),
+                      ]}
+                    />
                   </>
                 ) : isBufferHistory ? (
                   <div
-                    className="inline-flex h-8 w-fit shrink-0 items-center gap-0.5 rounded-lg bg-[#F2F2F7] p-0.5"
+                    className="inline-flex h-8 w-fit shrink-0 items-center gap-0.5 rounded-lg bg-white p-0.5"
                     role="tablist"
                     aria-label="Операции баланса"
                   >
@@ -3405,34 +3633,18 @@ const FinancePage: React.FC = () => {
                 ) : null}
                 <button
                   type="button"
-                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-[#F3F5F8] px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE]"
+                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-white px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-white/80"
                 >
                   <Download className="h-3.5 w-3.5 text-gray-500" aria-hidden />
                   Excel
                   <span className="tooltip-text">Скачать</span>
                 </button>
               </div>
-              <div className="relative mt-3 w-full">
-                <Search
-                  className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
-                  aria-hidden
-                />
-                <input
-                  type="search"
-                  value={searchQuery}
-                  onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                    setVisibleTopupCount(EXPENSE_PAGE_SIZE);
-                  }}
-                  placeholder="Поиск"
-                  className="h-10 w-full rounded-xl border border-transparent bg-[#F3F5F8] py-2 pl-9 pr-3 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 hover:bg-[#E6E9EE] focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
-                />
-              </div>
 
+              <div className="mt-3 rounded-xl bg-white px-4 py-4 sm:px-7 sm:py-5">
               {isBufferHistory ? (
                 <>
-              <div className="mt-5 overflow-x-auto">
+              <div className="overflow-x-auto">
                 {bufferSubTab === 'accrued' ? (
                   <table className="w-full min-w-[520px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
@@ -3462,7 +3674,7 @@ const FinancePage: React.FC = () => {
                         getAmount={(row) => row.amountRub}
                         rowKey={(row) => row.id}
                         renderRow={(row) => (
-                        <tr className="border-b border-gray-50 last:border-0">
+                        <tr>
                           <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.date}
                           </td>
@@ -3507,7 +3719,7 @@ const FinancePage: React.FC = () => {
                         getAmount={(row) => row.amountRub}
                         rowKey={(row) => row.id}
                         renderRow={(row) => (
-                        <tr className="border-b border-gray-50 last:border-0">
+                        <tr>
                           <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.date}
                           </td>
@@ -3596,7 +3808,7 @@ const FinancePage: React.FC = () => {
                         getAmount={(row) => row.amountRub}
                         rowKey={(row) => String(row.campaignId)}
                         renderRow={(row) => (
-                        <tr className="border-b border-gray-50 last:border-0">
+                        <tr>
                           <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.campaignId}
                           </td>
@@ -3655,7 +3867,7 @@ const FinancePage: React.FC = () => {
                           getAmount={(row) => row.amountRub}
                           rowKey={(row) => row.id}
                           renderRow={(row) => (
-                          <tr className="border-b border-gray-50 last:border-0">
+                          <tr>
                             <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {row.date}
                             </td>
@@ -3696,7 +3908,7 @@ const FinancePage: React.FC = () => {
                         </tr>
                       ) : (
                         filteredExpiredBonuses.map((row) => (
-                          <tr key={row.id} className="border-b border-gray-50 last:border-0">
+                          <tr key={row.id}>
                             <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {row.endsAt}
                             </td>
@@ -3754,7 +3966,7 @@ const FinancePage: React.FC = () => {
                           getAmount={(row) => row.amountRub}
                           rowKey={(row) => row.id}
                           renderRow={(row) => (
-                            <tr className="border-b border-gray-50 last:border-0">
+                            <tr>
                               <td className="px-4 py-2">
                                 <button
                                   type="button"
@@ -3793,7 +4005,7 @@ const FinancePage: React.FC = () => {
                           <span className="inline-flex items-center gap-1">
                             Дата списания
                             <span className="tooltip inline-flex">
-                              <HelpCircle className="h-3.5 w-3.5 text-gray-400" aria-label="Подсказка" />
+                              <InfoCircleFill className="h-3.5 w-3.5 text-gray-400" aria-label="Подсказка" />
                               <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-1.5 !w-max !max-w-[16rem] !translate-x-0 !whitespace-normal !px-2.5 !py-2 !text-left !font-normal !leading-snug">
                                 Дата фактического выставления платежа
                               </span>
@@ -3826,7 +4038,7 @@ const FinancePage: React.FC = () => {
                           getAmount={(row) => row.amountRub}
                           rowKey={(row) => row.id ?? `${row.campaignId}-${row.debitDate}-${row.source}-${row.amountRub}`}
                           renderRow={(row) => (
-                        <tr className="border-b border-gray-50 last:border-0">
+                        <tr>
                           <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                             {row.campaignId}
                           </td>
@@ -3850,7 +4062,7 @@ const FinancePage: React.FC = () => {
                               <span className="mt-1 flex items-center gap-1 text-xs text-gray-400">
                                 Корректировка
                                 <span className="tooltip inline-flex">
-                                  <HelpCircle className="h-3 w-3 text-gray-400" aria-label="Подсказка" />
+                                  <InfoCircleFill className="h-3 w-3 text-gray-400" aria-label="Подсказка" />
                                   <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-1.5 !w-max !max-w-[14rem] !translate-x-0 !whitespace-normal !px-2.5 !py-2 !text-left !font-normal !leading-snug">
                                     Сумма скорректирована после пересчёта
                                   </span>
@@ -3906,7 +4118,7 @@ const FinancePage: React.FC = () => {
                           getAmount={(row) => row.amountRub}
                           rowKey={(row) => row.id ?? `${row.campaignId}-${row.documentNo}`}
                           renderRow={(row) => (
-                        <tr className="border-b border-gray-50 last:border-0">
+                        <tr>
                           <td className="px-4 py-2">
                             <button
                               type="button"
@@ -3955,16 +4167,17 @@ const FinancePage: React.FC = () => {
               ) : null}
                 </>
               )}
+              </div>
             </>
           ) : (
             <>
-              <div className="mt-5 flex min-w-0 flex-nowrap items-center gap-3">
+              <div className="mt-3 flex min-w-0 flex-nowrap items-center gap-3 px-4 sm:px-7">
                 <div className="shrink-0">
                   <FinancePeriodPicker value={period} onChange={setFinancePeriod} />
                 </div>
                 <button
                   type="button"
-                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-[#F3F5F8] px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#E6E9EE]"
+                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-white px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-white/80"
                 >
                   <Download className="h-3.5 w-3.5 text-gray-500" aria-hidden />
                   Excel
@@ -3972,47 +4185,49 @@ const FinancePage: React.FC = () => {
                 </button>
               </div>
 
-              <div className="mt-4 overflow-x-auto">
-                <table className="w-full min-w-[640px] border-separate border-spacing-0 text-left text-sm">
-                  <thead>
-                    <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
-                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Дата начисления</th>
-                      <th className="min-w-[220px] px-3 py-2 text-sm font-medium">Источник</th>
-                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма, B</th>
-                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Тип</th>
-                      <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сгорают до</th>
-                    </tr>
-                  </thead>
-                  <tbody className={FINANCE_TABLE_BODY_CLASS}>
-                    <FinanceMonthGroups
-                      rows={filteredBonuses}
-                      sourceRows={filteredBonuses}
-                      period={period}
-                      colSpan={5}
-                      amountSuffix="B"
-                      getDate={(row) => row.date}
-                      getAmount={(row) => row.amountB}
-                      rowKey={(row) => row.id}
-                      renderRow={(row) => (
-                      <tr className="border-b border-gray-50 last:border-0">
-                        <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
-                          {row.date}
-                        </td>
-                        <td className="px-4 py-2 text-gray-900">{row.source}</td>
-                        <td className="whitespace-nowrap px-4 py-2 font-semibold tabular-nums text-gray-900">
-                          {fmtRub(row.amountB)}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2 text-gray-900">
-                          {row.kind === 'permanent' ? 'Несгораемые' : 'Сгораемые'}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-500">
-                          {row.expiresAt ?? '—'}
-                        </td>
+              <div className="mt-3 rounded-xl bg-white px-4 py-4 sm:px-7 sm:py-5">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[640px] border-separate border-spacing-0 text-left text-sm">
+                    <thead>
+                      <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Дата начисления</th>
+                        <th className="min-w-[220px] px-3 py-2 text-sm font-medium">Источник</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сумма, B</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Тип</th>
+                        <th className="whitespace-nowrap px-3 py-2 text-sm font-medium">Сгорают до</th>
                       </tr>
-                      )}
-                    />
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className={FINANCE_TABLE_BODY_CLASS}>
+                      <FinanceMonthGroups
+                        rows={filteredBonuses}
+                        sourceRows={filteredBonuses}
+                        period={period}
+                        colSpan={5}
+                        amountSuffix="B"
+                        getDate={(row) => row.date}
+                        getAmount={(row) => row.amountB}
+                        rowKey={(row) => row.id}
+                        renderRow={(row) => (
+                        <tr>
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
+                            {row.date}
+                          </td>
+                          <td className="px-4 py-2 text-gray-900">{row.source}</td>
+                          <td className="whitespace-nowrap px-4 py-2 font-semibold tabular-nums text-gray-900">
+                            {fmtRub(row.amountB)}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2 text-gray-900">
+                            {row.kind === 'permanent' ? 'Несгораемые' : 'Сгораемые'}
+                          </td>
+                          <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-500">
+                            {row.expiresAt ?? '—'}
+                          </td>
+                        </tr>
+                        )}
+                      />
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </>
           )}

@@ -177,6 +177,8 @@ type Props = {
   view: FinanceBalanceSimView;
   weekdayIndex: number;
   spendView?: FinanceBalanceSpendViewId;
+  /** Встроено в карточку на странице: без заголовка и с меньшими отступами */
+  embedded?: boolean;
 };
 
 function useDerived(view: FinanceBalanceSimView, day: number) {
@@ -318,7 +320,7 @@ function HowFaq() {
   );
 }
 
-function BalanceIntro() {
+export function BalanceIntro() {
   return (
     <div className="[&_p]:mb-0">
       <HowFaq />
@@ -896,7 +898,7 @@ function OpRow({
   );
 }
 
-function FeedVariant({ titleId, view, weekdayIndex, spendView }: Omit<Props, 'variant'>) {
+function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false }: Omit<Props, 'variant'>) {
   const d = useDerived(view, weekdayIndex);
   const [calcOpen, setCalcOpen] = useState(false);
   const [spendOpen, setSpendOpen] = useState(false);
@@ -1266,10 +1268,15 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView }: Omit<Props, 'va
 
   return (
     <>
-      <h2 id={titleId} className="text-2xl font-bold tracking-tight text-gray-900">
-        Баланс
-      </h2>
-      <div role="tablist" className="mt-6 flex rounded-xl bg-[rgba(74,74,89,0.08)] p-1">
+      {embedded ? null : (
+        <h2 id={titleId} className="text-2xl font-bold tracking-tight text-gray-900">
+          Баланс
+        </h2>
+      )}
+      <div
+        role="tablist"
+        className={`${embedded ? '' : 'mt-6'} flex rounded-xl bg-[rgba(74,74,89,0.08)] p-1`}
+      >
         {(
           [
             ['balance', 'Мой баланс'],
@@ -1301,10 +1308,14 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView }: Omit<Props, 'va
         {spendView === 'split' ? (
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-sm text-white/60">Остаток</p>
-              <p className="mt-3 text-[34px] font-bold leading-none tabular-nums tracking-tight">
-                {fmtRub(view.availableNowRub)} ₽
-              </p>
+              <span className="tooltip inline-flex cursor-default">
+                <span className="text-[34px] font-bold leading-none tabular-nums tracking-tight">
+                  {fmtRub(view.availableNowRub)} ₽
+                </span>
+                <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-2 !w-max !translate-x-0 !whitespace-nowrap !px-2.5 !py-1.5 !text-xs !font-normal">
+                  Остаток на балансе
+                </span>
+              </span>
             </div>
             <div className="border-l border-white/10 pl-4 text-right">
               <p className="text-xs text-white/60">Потрачено</p>
@@ -1315,19 +1326,24 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView }: Omit<Props, 'va
             </div>
           </div>
         ) : (
-          <>
-            <p className="text-sm text-white/60">Остаток</p>
-            <p className="mt-3 text-[34px] font-bold leading-none tabular-nums tracking-tight">
+          <span className="tooltip inline-flex cursor-default">
+            <span className="text-[34px] font-bold leading-none tabular-nums tracking-tight">
               {fmtRub(view.availableNowRub)} ₽
-            </p>
-          </>
+            </span>
+            <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-2 !w-max !translate-x-0 !whitespace-nowrap !px-2.5 !py-1.5 !text-xs !font-normal">
+              Остаток на балансе
+            </span>
+          </span>
         )}
-        {d.daysToBurn <= 2 && view.availableNowRub > 0 ? (
-          <p className="mt-3 flex w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70">
-            <Info className="h-3.5 w-3.5 shrink-0 text-white/50" />
-            Остаток обнулится во вторник, {d.burnDate}
-          </p>
-        ) : null}
+        <p
+          className={`mt-3 flex h-7 w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70 ${
+            d.daysToBurn <= 2 && view.availableNowRub > 0 ? '' : 'invisible'
+          }`}
+          aria-hidden={!(d.daysToBurn <= 2 && view.availableNowRub > 0)}
+        >
+          <Info className="h-3.5 w-3.5 shrink-0 text-white/50" />
+          Обнулится во вторник, {d.burnDate}
+        </p>
         {spendView === 'stack' && view.grossRub > 0 ? (
           (() => {
             const parts = [

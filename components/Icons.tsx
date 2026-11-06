@@ -106,6 +106,16 @@ export const HelpCircle = ({ className }: { className?: string }) => (
   </svg>
 );
 
+/** RITM `info-circle-fill` — стандартный информер у подписей */
+export const InfoCircleFill = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z" />
+  </svg>
+);
+
+/** @deprecated используйте InfoCircleFill — RITM info-circle-fill */
+export const HelpCircleFilled = InfoCircleFill;
+
 /** Знак вопроса с бейджем play — подсказка + видеоинструкция. */
 export const HelpVideoIcon = ({ className }: { className?: string }) => (
   <span className={`relative inline-flex h-4 w-4 shrink-0 ${className ?? ''}`} aria-hidden>
@@ -130,6 +140,12 @@ export const Wallet = ({ className }: { className?: string }) => (
     <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
     <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
     <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
+  </svg>
+);
+
+export const WalletFilled = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+    <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H19a1 1 0 1 1 0 2H5.5a.5.5 0 0 0 0 1H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5.5A2.5 2.5 0 0 1 3 17.5v-11Zm15.25 7.75a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5Z" />
   </svg>
 );
 
@@ -249,6 +265,16 @@ export const Coins = ({ className }: { className?: string }) => (
     <ellipse cx="12" cy="6" rx="7" ry="3" />
     <path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6" />
     <path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6" />
+  </svg>
+);
+
+export const CoinsFilled = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden>
+    <ellipse cx="9" cy="8" rx="6" ry="2.75" />
+    <path d="M3 8v4.25c0 1.52 2.69 2.75 6 2.75s6-1.23 6-2.75V8c0 1.52-2.69 2.75-6 2.75S3 9.52 3 8Z" />
+    <path d="M3 12.25V16.5c0 1.52 2.69 2.75 6 2.75s6-1.23 6-2.75v-4.25c0 1.52-2.69 2.75-6 2.75s-6-1.23-6-2.75Z" />
+    <path d="M15.4 10.9c1.1.4 2.48.66 4.1.66 2.76 0 5-.9 5-2s-2.24-2-5-2c-.55 0-1.08.04-1.57.1A8.3 8.3 0 0 1 19 9.5c1.66 0 3 .68 3 1.5s-1.34 1.5-3 1.5c-1.3 0-2.4-.42-2.85-.9.08.25.14.5.25.8Z" />
+    <path d="M15.15 14.35c.3.55 1.55 1.15 3.35 1.15 2.76 0 5-.9 5-2 0-.38-.27-.73-.74-1.02.18.3.29.62.29 1.02 0 1.1-2.24 2-5 2-1.55 0-2.9-.3-3.85-.78.32.22.63.42.95.63Z" />
   </svg>
 );
 

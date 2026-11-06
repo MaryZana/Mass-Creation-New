@@ -1,19 +1,14 @@
-import React from 'react';
-import { ChevronRight, Coins, Plus, Wallet } from './Icons';
+import React, { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { BalanceIntro } from './FinanceBalanceModalVariants';
+import { notifySidePanelOpen, useCloseOnOtherSidePanel } from './FeatureVideoGuide';
+import { ChevronRight, Coins, InfoCircleFill, Plus, Wallet, X } from './Icons';
 
 const fmtRub = (n: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n);
 
-function IconTile({ children, tone }: { children: React.ReactNode; tone: 'own' | 'balance' }) {
-  return (
-    <span
-      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-white ${
-        tone === 'own' ? 'bg-gray-400' : 'bg-gray-900'
-      }`}
-      aria-hidden
-    >
-      {children}
-    </span>
-  );
+function IconTile({ tone = 'own' }: { children?: React.ReactNode; tone?: 'own' | 'balance' }) {
+  const Icon = tone === 'balance' ? Coins : Wallet;
+  return <Icon className="h-5 w-5 shrink-0 text-gray-900" />;
 }
 
 function ClickableRow({
@@ -160,7 +155,7 @@ function SplitRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           half,
           <>
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Wallet className="h-3.5 w-3.5" /> Счёт
+              <Wallet className="h-5 w-5 shrink-0" /> Счёт
             </span>
             <span className="font-semibold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
           </>,
@@ -172,7 +167,7 @@ function SplitRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           half,
           <>
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
-              <Coins className="h-3.5 w-3.5" /> Баланс
+              <Coins className="h-5 w-5 shrink-0" /> Баланс
             </span>
             <span className="font-semibold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
           </>,
@@ -225,9 +220,7 @@ function NestedRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           'Пополнить счёт',
           card,
           <>
-            <IconTile tone="own">
-              <Wallet className="h-3.5 w-3.5" />
-            </IconTile>
+            <IconTile tone="own" />
             <span className="min-w-0 flex-1 text-gray-600">Счёт</span>
             <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
             <Plus className="h-4 w-4 shrink-0 text-gray-400" />
@@ -238,9 +231,7 @@ function NestedRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           'Начисления баланса',
           card,
           <>
-            <IconTile tone="balance">
-              <Coins className="h-3.5 w-3.5" />
-            </IconTile>
+            <IconTile tone="balance" />
             <span className="min-w-0 flex-1 text-gray-600">Баланс</span>
             <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
             <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
@@ -285,30 +276,133 @@ function GrayTotal({ label, totalRub }: { label: React.ReactNode; totalRub: numb
 
 function AccountLabel({ plain = false }: { plain?: boolean }) {
   return (
-    <>
-      {plain ? (
-        <Wallet className="h-5 w-5 shrink-0 text-gray-400" />
-      ) : (
-        <IconTile tone="own">
-          <Wallet className="h-3.5 w-3.5" />
-        </IconTile>
-      )}
-      <span className="min-w-0 flex-1 text-gray-600">Счёт</span>
-    </>
+    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+      {plain ? <Wallet className="h-5 w-5 shrink-0 text-gray-900" /> : <IconTile tone="own" />}
+      <span className="text-gray-600">Счёт</span>
+    </span>
   );
 }
 
 function BalanceLabel({ plain = false }: { plain?: boolean }) {
   return (
+    <span className="flex min-w-0 flex-1 items-center gap-1.5">
+      {plain ? <Coins className="h-5 w-5 shrink-0 text-gray-900" /> : <IconTile tone="balance" />}
+      <span className="text-gray-600">Баланс</span>
+    </span>
+  );
+}
+
+function BalanceFaqSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const handleClose = useCallback(() => onClose(), [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    notifySidePanelOpen('balance-faq');
+  }, [open]);
+
+  useCloseOnOtherSidePanel('balance-faq', handleClose);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') handleClose();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [open, handleClose]);
+
+  if (!open) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[120] bg-black/50" onClick={handleClose} role="presentation">
+      <div className="flex h-full w-full justify-end" onClick={handleClose}>
+        <div
+          className="flex h-full max-h-full min-w-0 items-stretch gap-2"
+          onClick={(event) => event.stopPropagation()}
+          onMouseEnter={(event) => event.stopPropagation()}
+          onMouseLeave={(event) => event.stopPropagation()}
+          onMouseOver={(event) => event.stopPropagation()}
+          onMouseOut={(event) => event.stopPropagation()}
+        >
+          <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
+              aria-label="Закрыть"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div
+            className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-white shadow-2xl animate-in slide-in-from-right duration-300"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="balance-faq-title"
+          >
+            <div className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-8 sm:p-10">
+              <h2 id="balance-faq-title" className="text-2xl font-bold tracking-tight text-gray-900">
+                Частые вопросы по балансу
+              </h2>
+              <div className="mt-6">
+                <BalanceIntro />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/** Информер у «Баланс»: тултип + кнопка открывает боковую шторку FAQ */
+function BalanceHowInformer() {
+  const [tipOpen, setTipOpen] = useState(false);
+  const [faqOpen, setFaqOpen] = useState(false);
+
+  return (
     <>
-      {plain ? (
-        <Coins className="h-5 w-5 shrink-0 text-gray-400" />
-      ) : (
-        <IconTile tone="balance">
-          <Coins className="h-3.5 w-3.5" />
-        </IconTile>
-      )}
-      <span className="min-w-0 flex-1 text-gray-600">Баланс</span>
+      <span
+        className="relative inline-flex"
+        onMouseEnter={() => setTipOpen(true)}
+        onMouseLeave={() => setTipOpen(false)}
+      >
+        <button
+          type="button"
+          className="inline-flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
+          aria-label="Как работает баланс"
+          onClick={(event) => {
+            event.stopPropagation();
+            setTipOpen((value) => !value);
+          }}
+        >
+          <InfoCircleFill className="h-4 w-4" />
+        </button>
+        {tipOpen ? (
+          <div className="absolute left-0 top-full z-50 pt-1.5">
+            <div className="relative w-[16rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
+              <span
+                className="absolute bottom-full left-3 border-x-[7px] border-b-[8px] border-x-transparent border-b-gray-900"
+                aria-hidden
+              />
+              <p className="mb-0">Деньги WB на рекламу. Не потратите — ничего не заплатите.</p>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setTipOpen(false);
+                  setFaqOpen(true);
+                }}
+                className="mt-2.5 flex w-full items-center justify-center rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/15"
+              >
+                Частые вопросы
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </span>
+      <BalanceFaqSheet open={faqOpen} onClose={() => setFaqOpen(false)} />
     </>
   );
 }
@@ -343,9 +437,7 @@ function GrayActionsRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
       <GrayTotal label={label} totalRub={accountRub + balanceRub} />
       <div className="space-y-1.5">
         <div className={`${whiteRow} py-1.5 pr-1.5`}>
-          <IconTile tone="own">
-            <Wallet className="h-3.5 w-3.5" />
-          </IconTile>
+          <IconTile tone="own" />
           <span className="min-w-0 flex-1">
             <span className="block text-xs leading-tight text-gray-500">Счёт</span>
             <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
@@ -359,9 +451,7 @@ function GrayActionsRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
           </button>
         </div>
         <div className={`${whiteRow} py-1.5 pr-1.5`}>
-          <IconTile tone="balance">
-            <Coins className="h-3.5 w-3.5" />
-          </IconTile>
+          <IconTile tone="balance" />
           <span className="min-w-0 flex-1">
             <span className="block text-xs leading-tight text-gray-500">Баланс</span>
             <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
@@ -421,9 +511,7 @@ function GrayCaptionRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
       </div>
       <div className="space-y-1.5">
         <div className={`${whiteRow} py-1.5 pr-1.5`}>
-          <IconTile tone="own">
-            <Wallet className="h-3.5 w-3.5" />
-          </IconTile>
+          <IconTile tone="own" />
           <span className="min-w-0 flex-1">
             <span className="block leading-tight text-gray-900">Счёт</span>
             <span className="text-xs leading-tight text-gray-500">Пополняете вы</span>
@@ -432,9 +520,7 @@ function GrayCaptionRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
           <PurplePlus onClick={onTopUp} />
         </div>
         <button type="button" onClick={onOpen} aria-label="Начисления баланса" className={`${whiteRow} ${whiteRowHover} py-1.5 pr-1.5`}>
-          <IconTile tone="balance">
-            <Coins className="h-3.5 w-3.5" />
-          </IconTile>
+          <IconTile tone="balance" />
           <span className="min-w-0 flex-1">
             <span className="block leading-tight text-gray-900">Баланс</span>
             <span className="text-xs leading-tight text-gray-500">Начисляет WB</span>
@@ -450,13 +536,37 @@ function GrayCaptionRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
 }
 
 /** 10 — счёт на белой строке с кнопкой, баланс — текстовой строкой прямо на сером */
-function GrayLightBalanceRows({ label, accountRub, balanceRub, onOpen, onTopUp }: LabeledRowsProps) {
-  return (
-    <div className="text-sm">
-      {label}
-      <p className="mb-0 mt-1.5 pb-3 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-        {fmtRub(accountRub + balanceRub)} ₽
-      </p>
+function GrayLightBalanceRows({
+  label,
+  accountRub,
+  balanceRub,
+  onOpen,
+  onTopUp,
+  balanceExtra,
+  balanceSlot,
+  hideBalanceChevron,
+}: LabeledRowsProps & {
+  balanceExtra?: React.ReactNode;
+  balanceSlot?: React.ReactNode;
+  hideBalanceChevron?: boolean;
+}) {
+  const accountRow = (framed: boolean) =>
+    framed ? (
+      <div className="flex w-full items-center gap-2 px-4 py-3">
+        <AccountLabel />
+        <button
+          type="button"
+          onClick={onTopUp}
+          aria-label="Пополнить счёт"
+          className="group -mr-1.5 inline-flex items-center gap-2 rounded-xl py-1 pl-1 pr-1.5 transition-colors hover:bg-black/[0.04]"
+        >
+          <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#9A41FE] text-white transition-colors group-hover:bg-[#8a38e8]">
+            <Plus className="h-4 w-4" />
+          </span>
+          <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+        </button>
+      </div>
+    ) : (
       <button
         type="button"
         onClick={onTopUp}
@@ -464,23 +574,65 @@ function GrayLightBalanceRows({ label, accountRub, balanceRub, onOpen, onTopUp }
         className="group flex items-center gap-2.5 -mx-1.5 w-[calc(100%+0.75rem)] rounded-xl px-1.5 py-1 text-left transition-colors hover:bg-black/[0.04]"
       >
         <AccountLabel />
-        <span className="text-base font-semibold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
-        <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#9A41FE] text-white transition-colors group-hover:bg-[#8a38e8]">
-          <Plus className="h-5 w-5" />
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#9A41FE] text-white transition-colors group-hover:bg-[#8a38e8]">
+          <Plus className="h-4 w-4" />
         </span>
+        <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
       </button>
-      <button
-        type="button"
-        onClick={onOpen}
-        aria-label="Начисления баланса"
-        className="group mt-0.5 flex items-center gap-2.5 -mx-1.5 w-[calc(100%+0.75rem)] rounded-xl px-1.5 py-1 text-left transition-colors hover:bg-black/[0.04]"
-      >
-        <BalanceLabel />
-        <span className="text-base font-semibold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F2F2F7] text-gray-700 transition-colors group-hover:bg-[#ECECF0]">
-          <ChevronRight className="h-4 w-4" />
-        </span>
-      </button>
+    );
+
+  return (
+    <div className="text-sm">
+      {balanceSlot ? (
+        <>
+          <div className="px-3.5 pt-3.5">
+            {label}
+            <p className="mb-0 mt-1.5 pb-3 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
+              {fmtRub(accountRub + balanceRub)} ₽
+            </p>
+          </div>
+          <div className="rounded-xl bg-white">
+            {accountRow(true)}
+            <div className="flex w-full items-center gap-2 border-t border-gray-200 px-4 pt-3 pb-1">
+              <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5">
+                <IconTile tone="balance" />
+                <span className="text-gray-600">Баланс</span>
+                <BalanceHowInformer />
+              </span>
+              <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+            </div>
+            <div className="px-4 pb-4 pt-1">{balanceSlot}</div>
+          </div>
+        </>
+      ) : (
+        <>
+          {label}
+          <p className="mb-0 mt-1.5 pb-3 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
+            {fmtRub(accountRub + balanceRub)} ₽
+          </p>
+          {accountRow(false)}
+          {hideBalanceChevron ? (
+            <div className="mt-0.5 flex items-center gap-2.5 -mx-1.5 w-[calc(100%+0.75rem)] px-1.5 py-1">
+              <BalanceLabel />
+              <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpen}
+              aria-label="Начисления баланса"
+              className="group mt-0.5 flex items-center gap-2.5 -mx-1.5 w-[calc(100%+0.75rem)] rounded-xl px-1.5 py-1 text-left transition-colors hover:bg-black/[0.04]"
+            >
+              <BalanceLabel />
+              <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F2F2F7] text-gray-700 transition-colors group-hover:bg-[#ECECF0]">
+                <ChevronRight className="h-4 w-4" />
+              </span>
+            </button>
+          )}
+          {balanceExtra}
+        </>
+      )}
     </div>
   );
 }
@@ -492,14 +644,32 @@ export function financeUnifiedHasOwnHeader(variant: FinanceUnifiedVariant) {
 
 /** Сумма единого счёта и кликабельные строки «Счёт» / «Баланс» */
 export function FinanceMoneyIconRows(
-  props: RowsProps & { variant?: FinanceUnifiedVariant; label?: React.ReactNode },
+  props: RowsProps & {
+    variant?: FinanceUnifiedVariant;
+    label?: React.ReactNode;
+    /** Контент сразу под строкой «Баланс» (только вариант 10) */
+    balanceExtra?: React.ReactNode;
+    /** Заменяет строку «Баланс» целиком (только вариант 10) */
+    balanceSlot?: React.ReactNode;
+    /** Без шеврона у строки «Баланс» (когда подробности уже на странице) */
+    hideBalanceChevron?: boolean;
+  },
 ) {
-  const { variant = '0', label = null, ...rows } = props;
+  const { variant = '0', label = null, balanceExtra, balanceSlot, hideBalanceChevron, ...rows } = props;
   if (variant === '6') return <GrayPlusRows label={label} {...rows} />;
   if (variant === '7') return <GrayActionsRows label={label} {...rows} />;
   if (variant === '8') return <GraySideButtonRows label={label} {...rows} />;
   if (variant === '9') return <GrayCaptionRows label={label} {...rows} />;
-  if (variant === '10') return <GrayLightBalanceRows label={label} {...rows} />;
+  if (variant === '10')
+    return (
+      <GrayLightBalanceRows
+        label={label}
+        balanceExtra={balanceExtra}
+        balanceSlot={balanceSlot}
+        hideBalanceChevron={hideBalanceChevron}
+        {...rows}
+      />
+    );
   if (variant === '1') return <FormulaRows {...rows} />;
   if (variant === '2') return <TreeRows {...rows} />;
   if (variant === '3') return <SplitRows {...rows} />;
@@ -517,9 +687,7 @@ function CurrentRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
       <div className="mt-2 space-y-0.5">
         <ClickableRow onClick={onTopUp} ariaLabel="Пополнить счёт">
           <span className="flex min-w-0 flex-1 items-center gap-2.5">
-            <IconTile tone="own">
-              <Wallet className="h-3.5 w-3.5" />
-            </IconTile>
+            <IconTile tone="own" />
             <span className="min-w-0 whitespace-nowrap text-gray-600">Счёт</span>
           </span>
           <span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-gray-900">
@@ -529,9 +697,7 @@ function CurrentRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
         </ClickableRow>
         <ClickableRow onClick={onOpen} ariaLabel="Начисления баланса">
           <span className="flex min-w-0 flex-1 items-center gap-2.5">
-            <IconTile tone="balance">
-              <Coins className="h-3.5 w-3.5" />
-            </IconTile>
+            <IconTile tone="balance" />
             <span className="min-w-0 whitespace-nowrap text-gray-600">Баланс</span>
           </span>
           <span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-gray-900">
