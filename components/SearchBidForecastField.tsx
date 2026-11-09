@@ -147,10 +147,29 @@ export function resolveCpmBidStatus(
 
 export function BidBarsIcon({ className }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 16 16" fill="currentColor" aria-hidden>
-      <rect x="0" y="6" width="4" height="10" rx="1" />
-      <rect x="6" y="0" width="4" height="16" rx="1" />
-      <rect x="12" y="3" width="4" height="13" rx="1" />
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden
+    >
+      <rect
+        x="1.5"
+        y="1.5"
+        width="13"
+        height="13"
+        rx="3.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M5.25 11V8.25M8 11V6.25M10.75 11V4.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
@@ -304,21 +323,17 @@ export function SearchBidForecastField({
       <button
         type="button"
         onClick={onBarsClick}
-        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[#757383] hover:bg-gray-100 ${
+        className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-gray-900 hover:bg-gray-100 ${
           barsActive ? 'bg-gray-100' : ''
         }`}
         aria-label="Выбор позиций в поиске"
         aria-expanded={barsActive}
       >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden>
-          <rect x="1" y="8" width="3" height="7" rx="0.5" fill="currentColor" opacity="0.35" />
-          <rect x="6.5" y="5" width="3" height="10" rx="0.5" fill="currentColor" opacity="0.6" />
-          <rect x="12" y="2" width="3" height="13" rx="0.5" fill="currentColor" />
-        </svg>
+        <BidBarsIcon className="h-4 w-4" />
       </button>
     ) : showBarsButton ? (
       <span
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-[#757383]"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-gray-900"
         aria-hidden
       >
         <BidBarsIcon className="h-4 w-4" />

@@ -313,13 +313,40 @@ export function BulkSearchBidModal({
     setGlobalDraft(formatBidInput(demoBid));
   };
 
-  const commitGlobal = () => {
+  const parsedGlobalBid = parseBidInput(globalDraft);
+  const showGlobalBidActions =
+    globalDraft.trim() !== '' &&
+    parsedGlobalBid != null &&
+    parsedGlobalBid > 0;
+
+  /** Только нормализует черновик — ставки в строках меняются только по ссылкам ниже. */
+  const normalizeGlobalDraft = () => {
     const parsed = parseBidInput(globalDraft);
     if (parsed == null) return;
+    setGlobalDraft(formatBidInput(parsed));
+  };
+
+  const replaceAllBids = () => {
+    if (!showGlobalBidActions || parsedGlobalBid == null) return;
     setMode('manual');
     setCpmPreset('manual');
-    applyGlobalValue(parsed);
-    setGlobalDraft(formatBidInput(parsed));
+    applyGlobalValue(parsedGlobalBid);
+    setGlobalDraft(formatBidInput(parsedGlobalBid));
+  };
+
+  const addGlobalBidToAll = () => {
+    if (!showGlobalBidActions || parsedGlobalBid == null) return;
+    setMode('manual');
+    setCpmPreset('manual');
+    setBidsById((prev) => {
+      const next = { ...prev };
+      for (const item of items) {
+        const current = prev[item.id] ?? item.bid;
+        const base = Number.isFinite(current) ? current : 0;
+        next[item.id] = Math.round((base + parsedGlobalBid) * 100) / 100;
+      }
+      return next;
+    });
   };
 
   const handleApply = () => {
@@ -375,7 +402,7 @@ export function BulkSearchBidModal({
                 <p className="mt-1 text-sm leading-relaxed text-gray-500">
                   {showCpcPositionChips && modeHint
                     ? `Для всех товаров подставлена рекомендуемая ставка за ${modeHint}`
-                    : 'Значение применится ко всем выбранным товарам'}
+                    : 'Чтобы применить значение ко всем товарам, нажмите действие ниже'}
                 </p>
 
                 {showCpcPositionChips ? (
@@ -478,9 +505,12 @@ export function BulkSearchBidModal({
                       setMode('manual');
                       setCpmPreset('manual');
                     }}
-                    onBlur={commitGlobal}
+                    onBlur={normalizeGlobalDraft}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitGlobal();
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        normalizeGlobalDraft();
+                      }
                     }}
                     className="w-full rounded-full bg-[#F3F4F6] px-4 py-3 pr-[4.25rem] text-base tabular-nums text-gray-900 outline-none placeholder:text-gray-400 focus:ring-2 focus:ring-purple-500/30"
                     aria-label="Общая ставка"
@@ -505,6 +535,24 @@ export function BulkSearchBidModal({
                     ) : null}
                   </div>
                 </div>
+                {showGlobalBidActions ? (
+                  <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+                    <button
+                      type="button"
+                      onClick={replaceAllBids}
+                      className="text-sm font-medium text-gray-900 transition-colors hover:text-black"
+                    >
+                      Заменить все ставки
+                    </button>
+                    <button
+                      type="button"
+                      onClick={addGlobalBidToAll}
+                      className="text-sm font-medium text-gray-900 transition-colors hover:text-black"
+                    >
+                      Прибавить ко всем
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-6">

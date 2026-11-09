@@ -20,7 +20,6 @@ import {
   AdvancedDailyLimitModal,
   AutoStrategiesModal,
   createDefaultAdvancedDailyLimitSettings,
-  formatConfiguredDailyLimitConditions,
   formatDynamicDailyLimitBadgeLabel,
   formatDynamicDailyLimitTooltipLines,
   isDynamicDailyLimitConfigured,
@@ -69,8 +68,7 @@ export type MassCreationAutobidderSetup = {
 };
 
 function autobidderCellLabel(setup: MassCreationAutobidderSetup | undefined): string | null {
-  if (!setup) return null;
-  if (setup.mode === 'profit') return formatConfiguredDailyLimitConditions(setup.settings);
+  if (!setup || setup.mode !== 'positions') return null;
   return formatBidChasingPositionLabel(setup.position);
 }
 
@@ -357,33 +355,21 @@ function DailyLimitSettingsCard({
   }
 
   return (
-    <div className="relative flex min-h-[97px] w-full min-w-[160px] max-w-[200px] flex-col gap-1 rounded-xl border border-[#E3E4E9] bg-white p-2 text-left transition-colors hover:bg-[#F7F7F8]">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="absolute inset-0 z-0 rounded-xl"
-        aria-label="Настроить дневной лимит"
-      />
-      <span className="pointer-events-none absolute right-1.5 top-1.5 z-[1] inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#757383]">
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label="Настроить дневной лимит"
+      className="relative flex min-h-[97px] w-full min-w-[160px] max-w-[200px] flex-col gap-1 rounded-xl border border-[#E3E4E9] bg-white p-2 text-left transition-colors hover:bg-[#F7F7F8]"
+    >
+      <span className="absolute right-1.5 top-1.5 inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#757383]">
         <Edit2 className="h-3.5 w-3.5" />
       </span>
-      <p className="relative z-[1] pr-8 text-[15px] font-bold leading-5 tracking-[0.3px] tabular-nums text-gray-900">
+      <p className="pr-8 text-[15px] font-bold leading-5 tracking-[0.3px] tabular-nums text-gray-900">
         {formatRub(row.dailyLimit!)} ₽ в день
       </p>
       {needsRaise ? (
-        <div
-          className="group/limit-warn relative z-[2]"
-          onClick={onOpen}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onOpen();
-            }
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          <p className="inline-flex cursor-help items-center gap-0.5 text-[11px] font-bold leading-4 text-[#F97316]">
+        <div className="group/limit-warn relative">
+          <p className="inline-flex items-center gap-0.5 text-[11px] font-bold leading-4 text-[#F97316]">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
             <span>Нужно от</span>
             <span>{formatRub(recommended)} ₽</span>
@@ -395,19 +381,8 @@ function DailyLimitSettingsCard({
         </div>
       ) : null}
       {dynamicBadgeLabel ? (
-        <div
-          className="group/dynamic-limit relative z-[2] mt-auto"
-          onClick={onOpen}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              onOpen();
-            }
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          <p className="inline-flex cursor-help items-center gap-0.5 text-[11px] font-bold leading-4 text-[#0F9F6E]">
+        <div className="group/dynamic-limit relative mt-auto">
+          <p className="inline-flex items-center gap-0.5 text-[11px] font-bold leading-4 text-[#0F9F6E]">
             <DrrTrendIcon className="h-3.5 w-3.5 shrink-0 text-[#34C759]" />
             {dynamicBadgeLabel}
           </p>
@@ -422,7 +397,7 @@ function DailyLimitSettingsCard({
           ) : null}
         </div>
       ) : null}
-    </div>
+    </button>
   );
 }
 
@@ -453,6 +428,11 @@ export type MassCreationIslandProps = {
   onAutobidderSetupChange: React.Dispatch<
     React.SetStateAction<Record<string, MassCreationAutobidderSetup>>
   >;
+  /** Правила автоувеличения дневного лимита (отдельно от автобиддера) */
+  dailyLimitRules?: Record<string, AdvancedDailyLimitSettings>;
+  onDailyLimitRulesChange?: React.Dispatch<
+    React.SetStateAction<Record<string, AdvancedDailyLimitSettings>>
+  >;
 };
 
 export function MassCreationIsland({
@@ -474,6 +454,8 @@ export function MassCreationIsland({
   promoBonusesTotal,
   autobidderSetup,
   onAutobidderSetupChange,
+  dailyLimitRules = {},
+  onDailyLimitRulesChange,
 }: MassCreationIslandProps) {
   const [dailyLimitCampaign, setDailyLimitCampaign] = useState<CampaignRecord | null>(null);
   const [isDailyLimitEnabled, setIsDailyLimitEnabled] = useState(false);
@@ -582,13 +564,13 @@ export function MassCreationIsland({
     setDailyLimitValue(limitStr);
     setSavedDailyLimit(limitStr);
     setIsCarryoverEnabled(true);
-    const existing = autobidderSetup[dailyLimitCampaign.id];
+    const existing = dailyLimitRules[dailyLimitCampaign.id];
     setAdvancedSettings(
-      existing?.mode === 'profit'
-        ? existing.settings
+      existing && isDynamicDailyLimitConfigured(existing)
+        ? existing
         : createDefaultAdvancedDailyLimitSettings(),
     );
-  }, [dailyLimitCampaign, autobidderSetup]);
+  }, [dailyLimitCampaign, dailyLimitRules]);
 
   const enableDailyLimit = useCallback(() => {
     if (!dailyLimitCampaign) return;
@@ -613,13 +595,12 @@ export function MassCreationIsland({
     setSavedDailyLimit('');
     setAdvancedSettings(createDefaultAdvancedDailyLimitSettings());
     onUpdate(dailyLimitCampaign.id, { dailyLimit: null });
-    setAutobidderSetup((prev) => {
-      const current = prev[dailyLimitCampaign.id];
-      if (!current || current.mode !== 'profit') return prev;
+    onDailyLimitRulesChange?.((prev) => {
+      if (!(dailyLimitCampaign.id in prev)) return prev;
       const { [dailyLimitCampaign.id]: _removed, ...rest } = prev;
       return rest;
     });
-  }, [dailyLimitCampaign, onUpdate, setAutobidderSetup]);
+  }, [dailyLimitCampaign, onUpdate, onDailyLimitRulesChange]);
 
   const handleDailyLimitCommit = useCallback(
     (parsed: number) => {
@@ -763,14 +744,15 @@ export function MassCreationIsland({
               const bidderLabel = autobidderCellLabel(bidderSetup);
               const showDiscount = rowIndex === 1 || rowIndex === 3;
               const showConflict = rowIndex === 2;
-              const dynamicSettings =
-                bidderSetup?.mode === 'profit' ? bidderSetup.settings : null;
-              const dynamicBadgeLabel = dynamicSettings
-                ? formatDynamicDailyLimitBadgeLabel(dynamicSettings)
-                : null;
-              const dynamicTooltipLines = dynamicSettings
-                ? formatDynamicDailyLimitTooltipLines(dynamicSettings)
-                : [];
+              const dynamicSettings = dailyLimitRules[row.id] ?? null;
+              const dynamicBadgeLabel =
+                dynamicSettings && isDynamicDailyLimitConfigured(dynamicSettings)
+                  ? formatDynamicDailyLimitBadgeLabel(dynamicSettings)
+                  : null;
+              const dynamicTooltipLines =
+                dynamicSettings && isDynamicDailyLimitConfigured(dynamicSettings)
+                  ? formatDynamicDailyLimitTooltipLines(dynamicSettings)
+                  : [];
 
               return (
                 <tr key={row.id} className="align-top">
@@ -1283,6 +1265,11 @@ export function MassCreationIsland({
             setAdvancedSettings(settings);
             if (options?.reset) {
               onUpdate(dailyLimitCampaign.id, { dailyLimit: null });
+              onDailyLimitRulesChange?.((prev) => {
+                if (!(dailyLimitCampaign.id in prev)) return prev;
+                const { [dailyLimitCampaign.id]: _removed, ...rest } = prev;
+                return rest;
+              });
               setDailyLimitCampaign(null);
               return;
             }
@@ -1304,25 +1291,15 @@ export function MassCreationIsland({
               dailyLimit:
                 limitFromSettings != null && limitFromSettings > 0 ? limitFromSettings : null,
             });
-            if (isDynamicDailyLimitConfigured(settings)) {
-              setAutobidderSetup((prev) => ({
-                ...prev,
-                [dailyLimitCampaign.id]: {
-                  mode: 'profit',
-                  settings,
-                  position:
-                    prev[dailyLimitCampaign.id]?.position ?? DEFAULT_BID_CHASING_POSITION,
-                  maxBid: prev[dailyLimitCampaign.id]?.maxBid ?? maxBidForLimit,
-                },
-              }));
-            } else {
-              setAutobidderSetup((prev) => {
-                const current = prev[dailyLimitCampaign.id];
-                if (!current || current.mode !== 'profit') return prev;
-                const { [dailyLimitCampaign.id]: _removed, ...rest } = prev;
-                return rest;
-              });
-            }
+            onDailyLimitRulesChange?.((prev) => {
+              const next = { ...prev };
+              if (isDynamicDailyLimitConfigured(settings)) {
+                next[dailyLimitCampaign.id] = settings;
+              } else {
+                delete next[dailyLimitCampaign.id];
+              }
+              return next;
+            });
             setDailyLimitCampaign(null);
           }}
         />

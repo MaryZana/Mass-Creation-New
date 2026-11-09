@@ -21,9 +21,12 @@ import { UnifiedAccountInstructionModal } from '../components/UnifiedAccountInst
 import { FinanceBalanceModalVariant } from '../components/FinanceBalanceModalVariants';
 import {
   FINANCE_BALANCE_STORY_VARIANTS,
+  FinanceBalanceChargeRow,
   FinanceBalanceStory,
+  formatPostponedPaymentsLabel,
 } from '../components/FinanceBalanceStory';
 import {
+  BalanceDarkLabel,
   FinanceMoneyIconRows,
   financeUnifiedHasOwnHeader,
   readFinanceUnifiedVariant,
@@ -41,6 +44,7 @@ import {
   FINANCE_BALANCE_WEEK_DAYS,
   FINANCE_BALANCE_SIM_EVENT,
   buildFinanceBalanceSimView,
+  financeBalanceDuePostponedCharges,
   financeBalancePayoutDates,
   financeBalanceWeekChargeDate,
   financeBalanceWeekDate,
@@ -50,7 +54,9 @@ import {
   readFinanceBalanceSimDay,
   readFinanceBalanceSimScenario,
   readFinanceBalanceSimAdjust,
+  readFinanceBalanceSimPostpone,
   writeFinanceBalanceSimAdjust,
+  writeFinanceBalanceSimPostpone,
   FINANCE_BALANCE_SIM_STEP_RUB,
   type FinanceBalanceSimAdjust,
   readFinanceBalanceSimWeek,
@@ -478,13 +484,13 @@ const FINANCE_CHANNELS: { id: FinanceChannelFilter; label: string }[] = [
   { id: 'all', label: 'Все' },
   { id: 'promotion', label: 'Продвижение' },
   { id: 'media', label: 'Медиа' },
-  { id: 'wibes', label: 'Wibes' },
+  { id: 'wibes', label: 'Инфлюенс' },
 ];
 
 const FINANCE_CHANNEL_LABEL: Record<FinanceChannel, string> = {
   promotion: 'Продвижение',
   media: 'Медиа',
-  wibes: 'Wibes',
+  wibes: 'Инфлюенс',
 };
 
 type MediaExpenseTag = 'pause' | 'fraud';
@@ -1481,9 +1487,9 @@ function FinanceBalanceSimControls({
       </div>
       {(
         [
-          { key: 'spent', label: 'Потрачено', value: simView.spentThisWeekRub },
-          { key: 'reserve', label: 'Резерв в кампаниях', value: simView.reservedThisWeekRub },
-        ] as const
+          { key: 'spent' as const, label: 'Потрачено', value: simView.spentThisWeekRub },
+          { key: 'reserve' as const, label: 'Резерв в кампаниях', value: simView.reservePendingRub },
+        ]
       ).map((item) => {
         const step = Math.min(FINANCE_BALANCE_SIM_STEP_RUB, simView.availableNowRub);
         const actions = simAdjust[simView.weekId] ?? [];
@@ -1495,32 +1501,77 @@ function FinanceBalanceSimControls({
         const reset = () =>
           onSimAdjustChange({
             ...simAdjust,
-            [simView.weekId]: actions.filter((action) => action.kind !== item.key),
+            [simView.weekId]: actions.filter((action) => action.kind !== item.key && action.kind !== 'release'),
           });
+        const completeCampaigns = () => {
+          if (simView.reservePendingRub <= 0) return;
+          onSimAdjustChange({
+            ...simAdjust,
+            [simView.weekId]: [
+              ...actions,
+              { day: simDay, kind: 'release', rub: simView.reservePendingRub },
+            ],
+          });
+        };
         return (
           <div key={item.key} className="flex flex-wrap items-center gap-1">
             <span className="px-1 text-xs text-gray-500">{item.label}</span>
             <span className="min-w-[4.5rem] px-1 text-xs font-semibold tabular-nums text-gray-900">
               {fmtRub(item.value)} ₽
             </span>
-            <button
-              type="button"
-              disabled={step <= 0}
-              title={step <= 0 ? 'На балансе больше нет денег' : undefined}
-              onClick={add}
-              className="rounded-lg bg-[rgba(74,74,89,0.08)] px-2.5 py-1.5 text-xs font-medium tabular-nums text-black transition-colors hover:bg-[rgba(74,74,89,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              +{fmtRub(FINANCE_BALANCE_SIM_STEP_RUB)} ₽
-            </button>
-            {item.value > 0 ? (
-              <button
-                type="button"
-                onClick={reset}
-                className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.08)]"
-              >
-                Сбросить
-              </button>
-            ) : null}
+            {item.key === 'reserve' ? (
+              <>
+                <button
+                  type="button"
+                  disabled={step <= 0}
+                  title={step <= 0 ? 'На балансе больше нет денег' : 'Перевести с баланса в кампании'}
+                  onClick={add}
+                  className="rounded-lg bg-[rgba(74,74,89,0.08)] px-2.5 py-1.5 text-xs font-medium tabular-nums text-black transition-colors hover:bg-[rgba(74,74,89,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  +{fmtRub(FINANCE_BALANCE_SIM_STEP_RUB)} ₽
+                </button>
+                {item.value > 0 ? (
+                  <button
+                    type="button"
+                    title="Завершить кампании — резерв вернётся на баланс"
+                    onClick={completeCampaigns}
+                    className="rounded-lg bg-[rgba(74,74,89,0.08)] px-2.5 py-1.5 text-xs font-medium text-black transition-colors hover:bg-[rgba(74,74,89,0.12)]"
+                  >
+                    Завершить кампании
+                  </button>
+                ) : null}
+                {item.value > 0 ? (
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.08)]"
+                  >
+                    Сбросить
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={step <= 0}
+                  title={step <= 0 ? 'На балансе больше нет денег' : undefined}
+                  onClick={add}
+                  className="rounded-lg bg-[rgba(74,74,89,0.08)] px-2.5 py-1.5 text-xs font-medium tabular-nums text-black transition-colors hover:bg-[rgba(74,74,89,0.12)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  +{fmtRub(FINANCE_BALANCE_SIM_STEP_RUB)} ₽
+                </button>
+                {item.value > 0 ? (
+                  <button
+                    type="button"
+                    onClick={reset}
+                    className="rounded-lg px-2 py-1.5 text-xs font-medium text-gray-500 transition-colors hover:bg-[rgba(74,74,89,0.08)]"
+                  >
+                    Сбросить
+                  </button>
+                ) : null}
+              </>
+            )}
           </div>
         );
       })}
@@ -1913,6 +1964,9 @@ const BALANCE_INLINE_VARIANTS = [
   { id: '1', label: 'Подробности в модалке' },
   ...FINANCE_BALANCE_STORY_VARIANTS,
   { id: '6', label: 'Как 1 · список из 3 без номеров' },
+  { id: '7', label: 'Начисления карточками платежей' },
+  { id: '8', label: 'Как 6 · начисления по дням' },
+  { id: '9', label: 'Баланс как в шторке' },
 ] as const;
 type BalanceInlineVariant = (typeof BALANCE_INLINE_VARIANTS)[number]['id'];
 const BALANCE_INLINE_VARIANT_KEY = 'finance-balance-inline-v2';
@@ -2077,12 +2131,7 @@ function FinanceBalancesCard({
     writeFinanceBalanceAmountRub(simView.availableNowRub);
   }, [schemeLayout, simView.availableNowRub]);
 
-  const framedInline =
-    inlineVariant === '2' ||
-    inlineVariant === '3' ||
-    inlineVariant === '4' ||
-    inlineVariant === '5' ||
-    inlineVariant === '6';
+  const framedInline = inlineVariant !== '1';
 
   return (
     <>
@@ -2156,8 +2205,24 @@ function FinanceBalancesCard({
               onOpen={() => setBalanceSchemeOpen(true)}
               onTopUp={() => navigate(financeTopUpPath(pathname))}
               balanceExtra={inlineVariant === '1' ? <BalanceSpendNestedPanel spend={spend} /> : undefined}
+              balanceInSlot={inlineVariant === '9'}
               balanceSlot={
-                inlineVariant === '1' ? undefined : (
+                inlineVariant === '1' ? undefined : inlineVariant === '9' ? (
+                  <div className="rounded-xl bg-white pb-4">
+                    <FinanceBalanceModalVariant
+                      variant="feed"
+                      titleId="finance-balance-inline-title"
+                      view={simView}
+                      weekdayIndex={simDay}
+                      embedded
+                      compact
+                      cardLabel={<BalanceDarkLabel />}
+                    />
+                    <div className="mt-3 px-4">
+                      <FinanceBalanceChargeRow view={simView} weekdayIndex={simDay} spend={spend} />
+                    </div>
+                  </div>
+                ) : (
                   <FinanceBalanceStory
                     variant={inlineVariant}
                     view={simView}
@@ -2256,26 +2321,22 @@ function HistoryClockIcon({ className }: { className?: string }) {
   );
 }
 
-const SPEND_SCHEDULE_ROWS = [
-  {
-    id: 's1',
-    period: '26 сен – 3 окт',
-    spentRub: 163_490,
-    commission: '2%',
-    chargeRub: 166_759,
-    chargeDate: '24 октября',
-  },
-  {
-    id: 's2',
-    period: '3–10 окт',
-    spentRub: 143_350,
-    commission: '4%',
-    chargeRub: 149_084,
-    chargeDate: '28 ноября',
-  },
-] as const;
+type SpendScheduleRow = {
+  id: string;
+  period: string;
+  spentRub: number;
+  commission: string;
+  chargeRub: number;
+  chargeDate: string;
+};
 
-function SpendScheduleModal({ onClose }: { onClose: () => void }) {
+function SpendScheduleModal({
+  onClose,
+  rows,
+}: {
+  onClose: () => void;
+  rows: readonly SpendScheduleRow[];
+}) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -2312,7 +2373,7 @@ function SpendScheduleModal({ onClose }: { onClose: () => void }) {
         </button>
 
         <h2 id="spend-schedule-title" className="pr-10 text-2xl font-bold tracking-tight text-gray-900">
-          График списаний
+          {formatPostponedPaymentsLabel(rows.length)}
         </h2>
         <p className="mt-3 max-w-[34rem] text-sm leading-relaxed text-gray-500">
           Показываем только прошлые периоды — расходы за эту неделю появятся в воскресенье.{' '}
@@ -2333,7 +2394,7 @@ function SpendScheduleModal({ onClose }: { onClose: () => void }) {
               </tr>
             </thead>
             <tbody>
-              {SPEND_SCHEDULE_ROWS.map((row) => (
+              {rows.map((row) => (
                 <tr key={row.id} className="border-b border-gray-100 last:border-0">
                   <td className="py-4 pr-4 text-gray-900">{row.period}</td>
                   <td className="py-4 pr-4 tabular-nums text-gray-900">{fmtRub(row.spentRub)} ₽</td>
@@ -2539,17 +2600,17 @@ function PostponeChargeModal({
 function useBalanceSpend() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [postponeOpen, setPostponeOpen] = useState(false);
-  const [postponed, setPostponed] = useState(false);
-  const [postponeOptionId, setPostponeOptionId] = useState<PostponeOptionId>('w0');
   const [simWeekId, setSimWeekId] = useState(readFinanceBalanceSimWeek);
   const [simDay, setSimDay] = useState(readFinanceBalanceSimDay);
   const [simAdjust, setSimAdjust] = useState(readFinanceBalanceSimAdjust);
+  const [postponeMap, setPostponeMap] = useState(readFinanceBalanceSimPostpone);
 
   useEffect(() => {
     const refresh = () => {
       setSimWeekId(readFinanceBalanceSimWeek());
       setSimDay(readFinanceBalanceSimDay());
       setSimAdjust(readFinanceBalanceSimAdjust());
+      setPostponeMap(readFinanceBalanceSimPostpone());
     };
     window.addEventListener(FINANCE_BALANCE_SIM_EVENT, refresh);
     return () => window.removeEventListener(FINANCE_BALANCE_SIM_EVENT, refresh);
@@ -2563,6 +2624,9 @@ function useBalanceSpend() {
     () => buildPostponeOptions(simView.weekOffset),
     [simView.weekOffset],
   );
+  const savedPostpone = postponeMap[simWeekId];
+  const postponed = Boolean(savedPostpone && savedPostpone.weeksLater > 0);
+  const postponeOptionId = (savedPostpone?.optionId as PostponeOptionId | undefined) ?? 'w0';
   const activePostpone =
     postponeOptions.find((item) => item.id === postponeOptionId) ?? postponeOptions[0];
   const chargeDate = postponed
@@ -2571,10 +2635,41 @@ function useBalanceSpend() {
   const feePercent = postponed ? activePostpone.feePercent : 0;
   const feeRub = Math.round((spentRub * feePercent) / 100);
   const chargeRub = spentRub + feeRub;
+  const dueFromEarlier = financeBalanceDuePostponedCharges(simWeekId, simAdjust, postponeMap);
+  const dueFromEarlierRub = dueFromEarlier.reduce((sum, item) => sum + item.chargeRub, 0);
+  const weekChargeDate = financeBalanceWeekChargeDate(undefined, simView.weekOffset);
+  /** К оплате в воскресенье этой недели: свой расход (если не перенесён) + долги с прошлых недель */
+  const weekChargeRub = (postponed ? 0 : chargeRub) + dueFromEarlierRub;
+
+  const postponedScheduleRows: SpendScheduleRow[] = FINANCE_BALANCE_SIM_WEEKS.flatMap((week) => {
+    const entry = postponeMap[week.id];
+    if (!entry || entry.weeksLater <= 0) return [];
+    const spent =
+      week.id === simWeekId
+        ? spentRub
+        : buildFinanceBalanceSimView(week.id, 6, simAdjust).spentThisWeekRub;
+    if (spent <= 0) return [];
+    const fee = Math.round((spent * entry.feePercent) / 100);
+    return [
+      {
+        id: `postpone-${week.id}`,
+        period: financeBalanceWeekRangeLabel(undefined, week.weekOffset),
+        spentRub: spent,
+        commission: entry.feePercent > 0 ? `${entry.feePercent}%` : '—',
+        chargeRub: spent + fee,
+        chargeDate: financeBalanceWeekDate(6, undefined, week.weekOffset + entry.weeksLater),
+      },
+    ];
+  });
+  /** Только реально отложенные пользователем — без демо-строк графика */
+  const scheduleRows: SpendScheduleRow[] = postponedScheduleRows;
+  const postponedCount = postponedScheduleRows.length;
 
   const modals = (
     <>
-      {scheduleOpen ? <SpendScheduleModal onClose={() => setScheduleOpen(false)} /> : null}
+      {scheduleOpen ? (
+        <SpendScheduleModal onClose={() => setScheduleOpen(false)} rows={scheduleRows} />
+      ) : null}
       {postponeOpen ? (
         <PostponeChargeModal
           spentRub={spentRub}
@@ -2583,8 +2678,17 @@ function useBalanceSpend() {
           initialOptionId={postponeOptionId}
           onClose={() => setPostponeOpen(false)}
           onApply={(option) => {
-            setPostponeOptionId(option.id);
-            setPostponed(option.feePercent > 0 || option.weeksLater > 0);
+            const next = { ...readFinanceBalanceSimPostpone() };
+            if (option.weeksLater > 0) {
+              next[simWeekId] = {
+                optionId: option.id,
+                weeksLater: option.weeksLater,
+                feePercent: option.feePercent,
+              };
+            } else {
+              delete next[simWeekId];
+            }
+            writeFinanceBalanceSimPostpone(next);
             setPostponeOpen(false);
           }}
         />
@@ -2601,6 +2705,10 @@ function useBalanceSpend() {
     chargeRub,
     chargeDate,
     postponed,
+    postponedCount,
+    weekChargeRub,
+    weekChargeDate,
+    dueFromEarlier,
     openPostpone: () => setPostponeOpen(true),
     openSchedule: () => setScheduleOpen(true),
   };
@@ -2682,14 +2790,14 @@ function BalanceSpendActions({ spend }: { spend: BalanceSpend }) {
       >
         {spend.postponed ? 'Изменить дату списания' : 'Отложить списание'}
       </button>
-      {spend.postponed ? (
+      {spend.postponedCount > 0 ? (
         <button
           type="button"
           onClick={spend.openSchedule}
           className="mt-1.5 flex h-7 w-full items-center justify-center gap-1.5 rounded-lg bg-white px-2.5 text-xs font-medium text-gray-900 transition-colors hover:bg-gray-50"
         >
           <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          График списаний
+          {formatPostponedPaymentsLabel(spend.postponedCount)}
         </button>
       ) : null}
     </>
@@ -3492,8 +3600,7 @@ const FinancePage: React.FC = () => {
                   options={[
                     { value: 'campaigns', label: 'Кампании' },
                     { value: 'account', label: 'Счёт' },
-                    { value: 'balance', label: 'Баланс' },
-                    { value: 'bonuses', label: 'Бонусы' },
+                    { value: 'bonuses', label: 'Возвраты бонусов' },
                   ]}
                 />
                 {isExpenses && channel === 'media' ? (
@@ -3509,23 +3616,6 @@ const FinancePage: React.FC = () => {
                       { value: 'all', label: 'Тип списания' },
                       { value: 'pause', label: MEDIA_EXPENSE_TAG_LABEL.pause },
                       { value: 'fraud', label: MEDIA_EXPENSE_TAG_LABEL.fraud },
-                    ]}
-                  />
-                ) : null}
-                {isCampaigns ? (
-                  <FinanceDropdown
-                    aria-label="Операции кампаний"
-                    value={campaignSubTab}
-                    onChange={(value) => {
-                      setCampaignSubTab(value as 'expenses' | 'campaign_topups' | 'pending_refunds');
-                      setSourceFilter('all');
-                      setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                    }}
-                    className="shrink-0"
-                    options={[
-                      { value: 'expenses', label: 'Списания' },
-                      { value: 'campaign_topups', label: 'Пополнения' },
-                      { value: 'pending_refunds', label: 'Возвраты' },
                     ]}
                   />
                 ) : null}
@@ -3569,22 +3659,29 @@ const FinancePage: React.FC = () => {
                 ) : null}
                 {isExpenses || isCampaignTopups ? (
                   <>
-                    <FinanceDropdown
+                    <div
+                      className="inline-flex h-8 w-fit shrink-0 items-center gap-0.5 rounded-lg bg-white p-0.5"
+                      role="tablist"
                       aria-label="Канал"
-                      value={channel}
-                      onChange={(value) => {
-                        const next = value as FinanceChannelFilter;
-                        setChannel(next);
-                        if (next !== 'media') setMediaExpenseFilter('all');
-                        setSourceFilter('all');
-                        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                      }}
-                      className="shrink-0"
-                      options={FINANCE_CHANNELS.map((item) => ({
-                        value: item.id,
-                        label: item.id === 'all' ? 'Канал' : item.label,
-                      }))}
-                    />
+                    >
+                      {FINANCE_CHANNELS.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={channel === item.id}
+                          className={bufferSubTabClass(channel === item.id)}
+                          onClick={() => {
+                            setChannel(item.id);
+                            if (item.id !== 'media') setMediaExpenseFilter('all');
+                            setSourceFilter('all');
+                            setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                          }}
+                        >
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
                     <FinanceDropdown
                       aria-label={isCampaignTopups ? 'Источник' : 'Источник списания'}
                       value={sourceFilter}

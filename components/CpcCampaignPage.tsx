@@ -5852,14 +5852,14 @@ export const BidChasingClustersModal: React.FC<{
                     <button
                       type="button"
                       onClick={replaceAllProductLimits}
-                      className="text-sm font-medium text-blue-600 transition-colors hover:text-blue-800"
+                      className="text-sm font-medium text-gray-900 transition-colors hover:text-black"
                     >
                       Заменить все лимиты
                     </button>
                     <button
                       type="button"
                       onClick={addUnifiedLimitToAllProducts}
-                      className="text-sm font-medium text-blue-600 transition-colors hover:text-blue-800"
+                      className="text-sm font-medium text-gray-900 transition-colors hover:text-black"
                     >
                       Прибавить ко всем
                     </button>
@@ -6389,7 +6389,7 @@ function conditionMetricLabel(metric: DailyLimitConditionMetric) {
       return 'ДРР';
     case 'cr':
     case 'crCart':
-      return 'CR (конверсия в корзину)';
+      return 'CR';
     case 'crOrder':
       return 'CR (конверсия в заказ)';
     case 'ctr':
@@ -6528,7 +6528,10 @@ export function formatConfiguredDailyLimitConditions(
 const CONDITION_PERCENT_THRESHOLD_MIN = 1;
 const CONDITION_PERCENT_THRESHOLD_MAX = 99;
 const CONDITION_CPO_THRESHOLD_MIN = 1;
-const CONDITION_INCREASE_RUB_MIN = 100;
+/** Плейсхолдер порога в конструкторе условий («Если CR выше …»). */
+const CONDITION_THRESHOLD_PLACEHOLDER = '1,25';
+/** Плейсхолдер суммы «Повысить до». */
+const CONDITION_RAISE_TO_PLACEHOLDER_RUB = 1000;
 
 function minConditionThreshold(metric: DailyLimitConditionMetric) {
   return metric === 'cpo' ? CONDITION_CPO_THRESHOLD_MIN : CONDITION_PERCENT_THRESHOLD_MIN;
@@ -6544,9 +6547,14 @@ function clampConditionThreshold(metric: DailyLimitConditionMetric, parsed: numb
   return Math.min(maxConditionThreshold(metric), Math.max(minConditionThreshold(metric), rounded));
 }
 
-function clampConditionIncreaseRub(parsed: number) {
-  if (!Number.isFinite(parsed) || parsed <= 0) return CONDITION_INCREASE_RUB_MIN;
-  return Math.max(CONDITION_INCREASE_RUB_MIN, Math.round(parsed));
+/** Абсолютная сумма «Повысить до»: не ниже текущего лимита + 1 ₽. */
+function clampConditionRaiseToRub(parsed: number, dailyLimitRub = 0) {
+  const minRaiseTo =
+    Number.isFinite(dailyLimitRub) && dailyLimitRub > 0
+      ? Math.round(dailyLimitRub) + 1
+      : 0;
+  if (!Number.isFinite(parsed) || parsed <= 0) return minRaiseTo;
+  return Math.max(minRaiseTo, Math.round(parsed));
 }
 
 function isConditionThresholdValid(metric: DailyLimitConditionMetric, parsed: number) {
@@ -6556,7 +6564,7 @@ function isConditionThresholdValid(metric: DailyLimitConditionMetric, parsed: nu
 }
 
 function isConditionBudgetChangeValid(parsed: number) {
-  return Number.isFinite(parsed) && parsed >= CONDITION_INCREASE_RUB_MIN && parsed <= 99_999_999;
+  return Number.isFinite(parsed) && parsed > 0 && parsed <= 99_999_999;
 }
 
 function resolveConditionBudgetChangeUnit(
@@ -6768,20 +6776,17 @@ function getDailyLimitIncreaseRulesSaveError(
       }
     } else {
       if (condition.budgetChangeRub <= 0) {
-        return `Нельзя увеличить на 0 ₽. Минимум — ${formatForDisplay(CONDITION_INCREASE_RUB_MIN)} ₽`;
+        return 'Укажите сумму, до которой повысить лимит';
       }
-      if (condition.budgetChangeRub < CONDITION_INCREASE_RUB_MIN) {
-        return `Минимальное увеличение — ${formatForDisplay(CONDITION_INCREASE_RUB_MIN)} ₽`;
+      if (
+        options.dailyLimitRub > 0 &&
+        condition.budgetChangeRub <= options.dailyLimitRub
+      ) {
+        return `Сумма должна быть выше текущего лимита ${formatForDisplay(options.dailyLimitRub)} ₽`;
       }
       if (!options.allowLimitAboveBudget) {
         if (condition.budgetChangeRub > options.campaignBudget) {
-          return 'Увеличение больше остатка бюджета кампании';
-        }
-        if (
-          options.dailyLimitRub > 0 &&
-          options.dailyLimitRub + condition.budgetChangeRub > options.campaignBudget
-        ) {
-          return 'После увеличения лимит станет больше остатка бюджета';
+          return 'Сумма больше остатка бюджета кампании';
         }
       }
     }
@@ -7305,13 +7310,13 @@ function DailyLimitStrategyTemplateDropdown({
 function DailyLimitConditionRulesBuilder({
   rules,
   onChange,
-  campaignBudget,
-  allowLimitAboveBudget = false,
+  dailyLimitRub = 0,
 }: {
   rules: DailyLimitIncreaseRule[];
   onChange: (rules: DailyLimitIncreaseRule[]) => void;
   campaignBudget?: number;
   allowLimitAboveBudget?: boolean;
+  dailyLimitRub?: number;
 }) {
   useEffect(() => {
     if (rules.length === 0) {
@@ -7325,13 +7330,7 @@ function DailyLimitConditionRulesBuilder({
   const direction = metric ? budgetDirectionForMetric(metric) : null;
   const unit = metric ? conditionMetricUnit(metric) : '%';
   const canAddCondition =
-    metric != null &&
-    conditions.length < DAILY_LIMIT_RULE_MAX_CONDITIONS &&
-    conditions.every(
-      (c) =>
-        isConditionThresholdValid(metric, c.threshold) &&
-        isConditionBudgetChangeConfigured(c),
-    );
+    metric != null && conditions.length < DAILY_LIMIT_RULE_MAX_CONDITIONS;
 
   const patchRule = (patch: Partial<DailyLimitIncreaseRule>) => {
     onChange([{ ...rule, ...patch, presetId: patch.presetId ?? 'custom' }]);
@@ -7367,9 +7366,17 @@ function DailyLimitConditionRulesBuilder({
   };
 
   const removeCondition = (conditionId: string) => {
-    patchRule({
-      conditions: conditions.filter((c) => c.id !== conditionId),
-    });
+    const nextConditions = conditions.filter((c) => c.id !== conditionId);
+    if (nextConditions.length === 0) {
+      patchRule({
+        metric: null,
+        conditions: [],
+        drrBelowPercent: 0,
+        crAbovePercent: 0,
+      });
+      return;
+    }
+    patchRule({ conditions: nextConditions });
   };
 
   const addCondition = () => {
@@ -7391,7 +7398,7 @@ function DailyLimitConditionRulesBuilder({
         ariaLabel="Метрика"
         options={DAILY_LIMIT_CONDITION_METRICS.map((m) => ({
           value: m,
-          label: conditionMetricLabel(m),
+          label: m === 'cr' ? 'CR (конверсия в корзину)' : conditionMetricLabel(m),
         }))}
         onChange={setMetric}
       />
@@ -7445,7 +7452,7 @@ function DailyLimitConditionRulesBuilder({
                       type="text"
                       inputMode="decimal"
                       value={thresholdDisplay}
-                      placeholder={String(minConditionThreshold(metric))}
+                      placeholder={CONDITION_THRESHOLD_PLACEHOLDER}
                       onChange={(e) => {
                         const v = e.target.value.replace(',', '.');
                         if (v === '' || /^\d*\.?\d*$/.test(v)) {
@@ -7504,7 +7511,7 @@ function DailyLimitConditionRulesBuilder({
                       type="text"
                       inputMode="numeric"
                       value={amountDisplay}
-                      placeholder={formatForDisplay(CONDITION_INCREASE_RUB_MIN)}
+                      placeholder={formatForDisplay(CONDITION_RAISE_TO_PLACEHOLDER_RUB)}
                       onChange={(e) => {
                         const parsed = parseDisplayValue(e.target.value);
                         if (e.target.value === '') {
@@ -7549,11 +7556,13 @@ function DailyLimitConditionRulesBuilder({
                           }
                           return next;
                         });
-                        if (raw === '') return;
-                        const parsed = parseDisplayValue(raw);
+                        const parsed = raw === '' ? 0 : parseDisplayValue(raw);
                         updateCondition(condition.id, {
                           compare,
-                          budgetChangeRub: clampConditionIncreaseRub(parsed),
+                          budgetChangeRub: clampConditionRaiseToRub(
+                            parsed,
+                            dailyLimitRub,
+                          ),
                           budgetChangeUnit: 'rub',
                         });
                       }}
@@ -7564,18 +7573,14 @@ function DailyLimitConditionRulesBuilder({
                   </div>
                 </label>
 
-                {conditions.length > 1 ? (
-                  <button
-                    type="button"
-                    onClick={() => removeCondition(condition.id)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center text-gray-400 transition-colors hover:text-gray-700"
-                    aria-label="Убрать условие"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <span className="h-8 w-8 shrink-0" aria-hidden />
-                )}
+                <button
+                  type="button"
+                  onClick={() => removeCondition(condition.id)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center text-gray-400 transition-colors hover:text-gray-700"
+                  aria-label="Убрать условие"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
             );
           })}
@@ -8319,6 +8324,9 @@ export const AdvancedDailyLimitModal: React.FC<{
                           onChange={setIncreaseRules}
                           campaignBudget={effectiveCampaignBudget}
                           allowLimitAboveBudget={allowLimitAboveBudget}
+                          dailyLimitRub={
+                            Number.isFinite(parsedDailyLimit) ? parsedDailyLimit : 0
+                          }
                         />
                       </div>
                     </div>
@@ -8328,6 +8336,9 @@ export const AdvancedDailyLimitModal: React.FC<{
                       onChange={setIncreaseRules}
                       campaignBudget={effectiveCampaignBudget}
                       allowLimitAboveBudget={allowLimitAboveBudget}
+                      dailyLimitRub={
+                        Number.isFinite(parsedDailyLimit) ? parsedDailyLimit : 0
+                      }
                     />
                   )
                 ) : (
@@ -8442,7 +8453,7 @@ export const AdvancedDailyLimitModal: React.FC<{
                     <button
                       type="button"
                       onClick={handleDisableSpendRules}
-                      className="ml-auto rounded-[10px] px-3 py-2.5 text-sm font-medium text-[#63616C] transition-colors hover:bg-black/[0.04] hover:text-gray-900"
+                      className="ml-auto rounded-[10px] bg-[#FDECEC] px-4 py-2.5 text-sm font-medium text-[#C9372C] transition-colors hover:bg-red-100"
                     >
                       Отключить
                     </button>

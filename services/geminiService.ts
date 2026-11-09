@@ -165,7 +165,7 @@ export const getMockProductsForCategory = (category: string): Pick<CampaignRecor
             productName: `${category} #${i}`,
             imageUrl: placeholderUrl,
             category: category,
-            cpcCompatible: i % 4 !== 0,
+            cpcCompatible: true,
         });
     }
     return products;

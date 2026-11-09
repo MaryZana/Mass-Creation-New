@@ -946,7 +946,7 @@ function AutoRefillBlock({ logic }: { logic: RefillLogic }) {
 
           <div className="divide-y divide-gray-100">
             <div className="flex items-center justify-between gap-3 py-2.5">
-              <span className="text-[13px] font-medium text-gray-900">Максимум раз в день</span>
+              <span className="text-[13px] font-medium text-gray-900">Максимум в день</span>
               <div className="flex items-center gap-1.5">
                 <div className="inline-flex rounded-lg bg-[#F2F2F7] p-0.5">
                   {(

@@ -274,11 +274,48 @@ function GrayTotal({ label, totalRub }: { label: React.ReactNode; totalRub: numb
   );
 }
 
+function AccountHowInformer() {
+  const [tipOpen, setTipOpen] = useState(false);
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setTipOpen(true)}
+      onMouseLeave={() => setTipOpen(false)}
+    >
+      <button
+        type="button"
+        className="inline-flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
+        aria-label="Что такое счёт"
+        onClick={(event) => {
+          event.stopPropagation();
+          setTipOpen((value) => !value);
+        }}
+      >
+        <InfoCircleFill className="h-4 w-4" />
+      </button>
+      {tipOpen ? (
+        <div className="absolute left-0 top-full z-50 pt-1.5">
+          <div className="relative w-[16rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
+            <span
+              className="absolute bottom-full left-3 border-x-[7px] border-b-[8px] border-x-transparent border-b-gray-900"
+              aria-hidden
+            />
+            <p className="mb-0">
+              Это ваши деньги, которые вы сами вносите на продвижение. Их можно тратить на рекламу в любой момент.
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
 function AccountLabel({ plain = false }: { plain?: boolean }) {
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5">
       {plain ? <Wallet className="h-5 w-5 shrink-0 text-gray-900" /> : <IconTile tone="own" />}
       <span className="text-gray-600">Счёт</span>
+      <AccountHowInformer />
     </span>
   );
 }
@@ -357,7 +394,7 @@ function BalanceFaqSheet({ open, onClose }: { open: boolean; onClose: () => void
 }
 
 /** Информер у «Баланс»: тултип + кнопка открывает боковую шторку FAQ */
-function BalanceHowInformer() {
+function BalanceHowInformer({ dark = false }: { dark?: boolean }) {
   const [tipOpen, setTipOpen] = useState(false);
   const [faqOpen, setFaqOpen] = useState(false);
 
@@ -370,7 +407,9 @@ function BalanceHowInformer() {
       >
         <button
           type="button"
-          className="inline-flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
+          className={`inline-flex items-center justify-center transition-colors ${
+            dark ? 'text-white/50 hover:text-white/80' : 'text-gray-400 hover:text-gray-600'
+          }`}
           aria-label="Как работает баланс"
           onClick={(event) => {
             event.stopPropagation();
@@ -381,12 +420,22 @@ function BalanceHowInformer() {
         </button>
         {tipOpen ? (
           <div className="absolute left-0 top-full z-50 pt-1.5">
-            <div className="relative w-[16rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
+            <div
+              className={`relative w-[16rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg ${
+                dark ? 'ring-1 ring-white/15' : ''
+              }`}
+            >
               <span
                 className="absolute bottom-full left-3 border-x-[7px] border-b-[8px] border-x-transparent border-b-gray-900"
                 aria-hidden
               />
-              <p className="mb-0">Деньги WB на рекламу. Не потратите — ничего не заплатите.</p>
+              <p className="mb-0">
+                Это деньги, которые мы даём вам на рекламу и продвижение: начисляем каждую неделю как деньги в долг.
+                Их можно тратить так же, как деньги на счёте.
+              </p>
+              <p className="mb-0 mt-1.5">
+                Платить нужно только за то, что вы потратили, — и только в конце недели.
+              </p>
               <button
                 type="button"
                 onClick={(event) => {
@@ -404,6 +453,17 @@ function BalanceHowInformer() {
       </span>
       <BalanceFaqSheet open={faqOpen} onClose={() => setFaqOpen(false)} />
     </>
+  );
+}
+
+/** Подпись «Баланс» с информером для тёмной карточки */
+export function BalanceDarkLabel() {
+  return (
+    <span className="relative z-10 flex items-center gap-1.5 text-sm">
+      <Coins className="h-5 w-5 shrink-0 text-white" />
+      <span className="text-white/70">Баланс</span>
+      <BalanceHowInformer dark />
+    </span>
   );
 }
 
@@ -545,10 +605,12 @@ function GrayLightBalanceRows({
   balanceExtra,
   balanceSlot,
   hideBalanceChevron,
+  balanceInSlot,
 }: LabeledRowsProps & {
   balanceExtra?: React.ReactNode;
   balanceSlot?: React.ReactNode;
   hideBalanceChevron?: boolean;
+  balanceInSlot?: boolean;
 }) {
   const accountRow = (framed: boolean) =>
     framed ? (
@@ -591,18 +653,27 @@ function GrayLightBalanceRows({
               {fmtRub(accountRub + balanceRub)} ₽
             </p>
           </div>
-          <div className="rounded-xl bg-white">
-            {accountRow(true)}
-            <div className="flex w-full items-center gap-2 border-t border-gray-200 px-4 pt-3 pb-1">
-              <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5">
-                <IconTile tone="balance" />
-                <span className="text-gray-600">Баланс</span>
-                <BalanceHowInformer />
-              </span>
-              <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+          {balanceInSlot ? (
+            <div className="space-y-1">
+              <div className="rounded-xl bg-white">{accountRow(true)}</div>
+              {balanceSlot}
             </div>
-            <div className="px-4 pb-4 pt-1">{balanceSlot}</div>
+          ) : (
+          <div className="rounded-xl bg-white">
+              <>
+                {accountRow(true)}
+                <div className="flex w-full items-center gap-2 border-t border-gray-200 px-4 pt-3 pb-1">
+                  <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5">
+                    <IconTile tone="balance" />
+                    <span className="text-gray-600">Баланс</span>
+                    <BalanceHowInformer />
+                  </span>
+                  <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+                </div>
+                <div className="px-4 pb-4 pt-1">{balanceSlot}</div>
+              </>
           </div>
+          )}
         </>
       ) : (
         <>
@@ -653,9 +724,12 @@ export function FinanceMoneyIconRows(
     balanceSlot?: React.ReactNode;
     /** Без шеврона у строки «Баланс» (когда подробности уже на странице) */
     hideBalanceChevron?: boolean;
+    /** Строка «Баланс» целиком внутри balanceSlot */
+    balanceInSlot?: boolean;
   },
 ) {
-  const { variant = '0', label = null, balanceExtra, balanceSlot, hideBalanceChevron, ...rows } = props;
+  const { variant = '0', label = null, balanceExtra, balanceSlot, hideBalanceChevron, balanceInSlot, ...rows } =
+    props;
   if (variant === '6') return <GrayPlusRows label={label} {...rows} />;
   if (variant === '7') return <GrayActionsRows label={label} {...rows} />;
   if (variant === '8') return <GraySideButtonRows label={label} {...rows} />;
@@ -667,6 +741,7 @@ export function FinanceMoneyIconRows(
         balanceExtra={balanceExtra}
         balanceSlot={balanceSlot}
         hideBalanceChevron={hideBalanceChevron}
+        balanceInSlot={balanceInSlot}
         {...rows}
       />
     );

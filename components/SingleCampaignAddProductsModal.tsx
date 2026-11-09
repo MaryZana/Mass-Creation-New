@@ -294,11 +294,8 @@ export function SingleCampaignAddProductsModal({
         : 'Сначала с высоким сезоном';
 
   const selectableInView = useMemo(
-    () =>
-      sortedFilteredProducts.filter(
-        (p) => !(isCpcMode && !p.cpcCompatible) && !alreadyAddedNmIds.has(p.nmId),
-      ),
-    [sortedFilteredProducts, isCpcMode, alreadyAddedNmIds],
+    () => sortedFilteredProducts.filter((p) => !alreadyAddedNmIds.has(p.nmId)),
+    [sortedFilteredProducts, alreadyAddedNmIds],
   );
 
   const allInViewSelected =
@@ -311,7 +308,6 @@ export function SingleCampaignAddProductsModal({
   const singleSelectMode = maxSelect <= 1;
 
   const selectSingleProduct = (product: SingleCampaignSelectableProduct) => {
-    if (isCpcMode && !product.cpcCompatible) return;
     if (alreadyAddedNmIds.has(product.nmId)) return;
     setPending([product]);
   };
@@ -321,7 +317,6 @@ export function SingleCampaignAddProductsModal({
       selectSingleProduct(product);
       return;
     }
-    if (isCpcMode && !product.cpcCompatible) return;
     if (alreadyAddedNmIds.has(product.nmId)) return;
     setPending((prev) => {
       if (prev.some((p) => p.nmId === product.nmId)) {
@@ -571,8 +566,7 @@ export function SingleCampaignAddProductsModal({
                     ) : (
                       sortedFilteredProducts.map((product, index) => {
                         const isAdded = alreadyAddedNmIds.has(product.nmId);
-                        const isIncompatible = isCpcMode && !product.cpcCompatible;
-                        const disabled = isAdded || isIncompatible;
+                        const disabled = isAdded;
                         const isChecked = pending.some((p) => p.nmId === product.nmId);
                         const atCap =
                           !singleSelectMode && pending.length >= maxSelect && !isChecked;
@@ -623,9 +617,6 @@ export function SingleCampaignAddProductsModal({
                               </p>
                               {isAdded && (
                                 <p className="mt-0.5 text-xs text-gray-500">Уже в кампании</p>
-                              )}
-                              {isIncompatible && !isAdded && (
-                                <p className="mt-0.5 text-xs text-red-600">Не продвигается по CPC</p>
                               )}
                             </td>
                           </tr>

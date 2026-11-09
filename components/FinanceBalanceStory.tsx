@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Calendar, ChevronDown, Clock } from './Icons';
 import {
+  financeBalanceWeekChargeDate,
   financeBalanceWeekDate,
+  financeBalanceWeekRangeLabel,
   financeBalanceWeekRangeLabelShort,
   type FinanceBalanceSimView,
 } from '../utils/financeBalanceDemo';
@@ -13,9 +15,24 @@ export type FinanceBalanceStorySpend = {
   chargeRub: number;
   chargeDate: string;
   postponed: boolean;
+  /** Сколько платежей уже отложено (включая текущий, если перенесён) */
+  postponedCount: number;
+  /** Сумма к оплате в воскресенье этой недели (свой расход, если не перенесён, + долги с прошлых) */
+  weekChargeRub: number;
+  weekChargeDate: string;
+  /** Перенесённые с прошлых недель платежи, которые списываются в это воскресенье */
+  dueFromEarlier: { period: string; chargeRub: number }[];
   openPostpone: () => void;
   openSchedule: () => void;
 };
+
+export function formatPostponedPaymentsLabel(count: number) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} отложенный платёж`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} отложенных платежа`;
+  return `${count} отложенных платежей`;
+}
 
 export const FINANCE_BALANCE_STORY_VARIANTS = [
   { id: '2', label: 'Белая карта с обводкой' },
@@ -24,7 +41,7 @@ export const FINANCE_BALANCE_STORY_VARIANTS = [
   { id: '5', label: 'Новичку · календарь: вт, чт, вс' },
 ] as const;
 
-export type FinanceBalanceStoryVariant = (typeof FINANCE_BALANCE_STORY_VARIANTS)[number]['id'] | '6';
+export type FinanceBalanceStoryVariant = (typeof FINANCE_BALANCE_STORY_VARIANTS)[number]['id'] | '6' | '7' | '8';
 
 type Props = {
   variant: FinanceBalanceStoryVariant;
@@ -108,10 +125,10 @@ function Actions({ spend, tone = 'white' }: { spend: FinanceBalanceStorySpend; t
       <button type="button" onClick={spend.openPostpone} className={base}>
         {spend.postponed ? 'Изменить дату' : 'Отложить списание'}
       </button>
-      {spend.postponed ? (
+      {spend.postponedCount > 0 ? (
         <button type="button" onClick={spend.openSchedule} className={base}>
           <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          График списаний
+          {formatPostponedPaymentsLabel(spend.postponedCount)}
         </button>
       ) : null}
     </div>
@@ -123,45 +140,96 @@ function SpendDetails({
   spend,
   story,
   buttonClass,
+  spentLabel,
+  chargeLabel,
+  chargeRub,
 }: {
   spend: FinanceBalanceStorySpend;
   story: Story;
   buttonClass?: string;
+  spentLabel?: string;
+  chargeLabel?: string;
+  /** Сумма в итоговой строке; по умолчанию spend.weekChargeRub */
+  chargeRub?: number;
 }) {
   const btn = buttonClass ?? 'bg-[#F2F2F7] text-gray-900 hover:bg-[#ECECF0]';
+  const totalRub = chargeRub ?? spend.weekChargeRub;
+  const thisWeekDueRub = spend.postponed ? 0 : spend.chargeRub;
+  const hasDueFromEarlier = spend.dueFromEarlier.length > 0;
+
+  const thisWeekRows = (
+    <div className="space-y-1.5 text-xs text-gray-500">
+      <div className="flex justify-between gap-3">
+        <span>{spentLabel ?? `Расход на ${story.range}`}</span>
+        <span className="tabular-nums text-gray-700">{rub(spend.spentRub)}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span>{story.feeLabel}</span>
+        <span className="tabular-nums text-gray-700">{rub(spend.feeRub)}</span>
+      </div>
+      <div className="flex justify-between gap-3">
+        <span className="min-w-0 font-medium text-gray-700">
+          К оплате {spend.weekChargeDate}
+          {spend.postponed ? (
+            <span className="mt-0.5 block text-[11px] font-normal text-gray-500">
+              Перенесено на {spend.chargeDate} — в это воскресенье не списываем
+            </span>
+          ) : null}
+        </span>
+        <span className="shrink-0 font-medium tabular-nums text-gray-900">{rub(thisWeekDueRub)}</span>
+      </div>
+    </div>
+  );
+
   return (
     <div>
-      <div className="space-y-1.5 text-xs text-gray-500">
-        <div className="flex justify-between gap-3">
-          <span>Расход на {story.range}</span>
-          <span className="tabular-nums text-gray-700">{rub(spend.spentRub)}</span>
+      {hasDueFromEarlier ? (
+        <div className="space-y-3">
+          <div>
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              Эта неделя
+            </p>
+            {thisWeekRows}
+          </div>
+          <div className="border-t border-gray-200/80 pt-3">
+            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+              Отложенные с прошлых недель
+            </p>
+            <div className="space-y-1.5 text-xs text-gray-500">
+              {spend.dueFromEarlier.map((item) => (
+                <div key={item.period} className="flex justify-between gap-3">
+                  <span>Расход за {item.period}</span>
+                  <span className="tabular-nums text-gray-700">{rub(item.chargeRub)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="flex justify-between gap-3">
-          <span>{story.feeLabel}</span>
-          <span className="tabular-nums text-gray-700">{rub(spend.feeRub)}</span>
-        </div>
+      ) : (
+        thisWeekRows
+      )}
+      <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-200 pt-2">
+        <span className="text-sm font-semibold text-gray-900">
+          {chargeLabel ?? `К списанию ${story.chargeShort}`}
+        </span>
+        <span className="text-sm font-bold tabular-nums text-gray-900">{rub(totalRub)}</span>
       </div>
-      <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-100 pt-2">
-        <span className="text-sm font-semibold text-gray-900">К списанию {story.chargeShort}</span>
-        <span className="text-sm font-bold tabular-nums text-gray-900">{rub(spend.chargeRub)}</span>
-      </div>
-      <p className="mb-0 mt-0.5 text-[11px] text-gray-500">С баланса на портале продавца</p>
-      <div className="mt-2.5 flex gap-1.5">
+      <div className="mt-2.5 flex flex-col gap-1.5">
         <button
           type="button"
           onClick={spend.openPostpone}
-          className={`flex h-7 flex-1 items-center justify-center rounded-lg px-2.5 text-xs font-medium transition-colors ${btn}`}
+          className={`flex h-7 w-full items-center justify-center rounded-lg px-2.5 text-xs font-medium transition-colors ${btn}`}
         >
           {spend.postponed ? 'Изменить дату' : 'Отложить списание'}
         </button>
-        {spend.postponed ? (
+        {spend.postponedCount > 0 ? (
           <button
             type="button"
             onClick={spend.openSchedule}
-            className={`flex h-7 flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${btn}`}
+            className={`flex h-7 w-full items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${btn}`}
           >
-            <Calendar className="h-3.5 w-3.5" />
-            График
+            <Calendar className="h-3.5 w-3.5 shrink-0" />
+            {formatPostponedPaymentsLabel(spend.postponedCount)}
           </button>
         ) : null}
       </div>
@@ -212,7 +280,13 @@ function AccrualBreakdown({ view, story, accent = 'text-emerald-600' }: { view: 
   );
 }
 
-type RowSection = { key: string; title: string; value: string; body: React.ReactNode };
+type RowSection = {
+  key: string;
+  title: string;
+  value: string;
+  body: React.ReactNode;
+  status?: 'done' | 'pending';
+};
 
 function detailRows(view: FinanceBalanceSimView, spend: FinanceBalanceStorySpend, story: Story): RowSection[] {
   return [
@@ -222,6 +296,57 @@ function detailRows(view: FinanceBalanceSimView, spend: FinanceBalanceStorySpend
       title: story.accruedRub > 0 ? 'Начислено' : 'Начислим',
       value: `+${rub(story.accruedRub > 0 ? story.accruedRub : Math.max(0, story.expectedRub))}`,
       body: <AccrualBreakdown view={view} story={story} />,
+    },
+    {
+      key: 'charge',
+      title: `Списание ${story.chargeShort}`,
+      value: rub(spend.chargeRub),
+      body: <SpendDetails spend={spend} story={story} />,
+    },
+  ];
+}
+
+function AccrualDayCalc({ share, gross, net }: { share: string; gross: number; net: number }) {
+  const cut = Math.max(0, gross - net);
+  return (
+    <div className="space-y-1.5 text-xs text-gray-500">
+      <div className="flex justify-between gap-3">
+        <span>{share} лимита</span>
+        <span className="tabular-nums text-gray-700">{rub(gross)}</span>
+      </div>
+      {cut > 0 ? (
+        <div className="flex justify-between gap-3">
+          <span>Баланс в кампаниях</span>
+          <span className="tabular-nums text-gray-700">−{rub(cut)}</span>
+        </div>
+      ) : null}
+      <div className="flex justify-between gap-3 font-medium text-gray-900">
+        <span>Придёт на баланс</span>
+        <span className="tabular-nums">+{rub(net)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** Как detailRows, но начисление разбито на вторник и четверг */
+function splitDetailRows(view: FinanceBalanceSimView, spend: FinanceBalanceStorySpend, story: Story): RowSection[] {
+  const tueDate = financeBalanceWeekDate(TUESDAY, undefined, view.weekOffset);
+  const thuDate = financeBalanceWeekDate(THURSDAY, undefined, view.weekOffset);
+  return [
+    { key: 'limit', title: `Лимит ${story.range}`, value: rub(view.grossRub), body: <LimitCalc view={view} /> },
+    {
+      key: 'tue',
+      title: `${story.tueDone ? 'Начислено' : 'Начислим'} · Вторник, ${tueDate}`,
+      value: `+${rub(view.tuesdayRub)}`,
+      body: <AccrualDayCalc share="75%" gross={view.grossTuesdayRub} net={view.tuesdayRub} />,
+      status: story.tueDone ? 'done' : 'pending',
+    },
+    {
+      key: 'thu',
+      title: `${story.thuDone ? 'Начислено' : 'Начислим'} · Четверг, ${thuDate}`,
+      value: `+${rub(view.thursdayRub)}`,
+      body: <AccrualDayCalc share="25%" gross={view.grossThursdayRub} net={view.thursdayRub} />,
+      status: story.thuDone ? 'done' : 'pending',
     },
     {
       key: 'charge',
@@ -337,10 +462,146 @@ function LightCardVariant({ view, spend, story }: VariantProps) {
   );
 }
 
+function ArrowInIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M17 7 7 17" />
+      <path d="M17 17H7V7" />
+    </svg>
+  );
+}
+
+function ArrowOutIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+      <path d="M7 17 17 7" />
+      <path d="M7 7h10v10" />
+    </svg>
+  );
+}
+
+function PaymentCard({
+  kind,
+  title,
+  date,
+  amount,
+  done,
+  note,
+}: {
+  kind: 'in' | 'out';
+  title: string;
+  date: string;
+  amount: string;
+  done: boolean;
+  note?: string;
+}) {
+  return (
+    <div
+      className={`rounded-xl px-3 py-2.5 ${
+        done ? 'bg-[#F7F7F9]' : 'border border-dashed border-gray-200'
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <span
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+            done ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-50 text-gray-400'
+          }`}
+        >
+          {kind === 'in' ? <ArrowInIcon className="h-4 w-4" /> : <ArrowOutIcon className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="mb-0 text-sm leading-tight text-gray-700">{title}</p>
+          <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">{date}</p>
+        </div>
+        <span
+          className={`text-sm tabular-nums ${
+            done ? 'font-semibold text-emerald-600' : 'text-gray-400'
+          }`}
+        >
+          {amount}
+        </span>
+      </div>
+      {note ? <p className="mb-0 mt-1.5 pl-12 text-[11px] tabular-nums text-gray-400">{note}</p> : null}
+    </div>
+  );
+}
+
+/** 7 — как 2, но начисления карточками будущих платежей */
+function PaymentsVariant({ view, spend, story }: VariantProps) {
+  const [limitOpen, setLimitOpen] = useState(false);
+  const tueReserve = Math.max(0, view.grossTuesdayRub - view.tuesdayRub);
+  const thuReserve = Math.max(0, view.grossThursdayRub - view.thursdayRub);
+  const payments = [
+    {
+      key: 'tue',
+      title: 'Первая часть баланса',
+      date: `Вторник, ${financeBalanceWeekDate(TUESDAY, undefined, view.weekOffset)}`,
+      amount: view.tuesdayRub,
+      done: story.tueDone,
+      note: tueReserve > 0 ? `${rub(view.grossTuesdayRub)} − ${rub(tueReserve)} резерв` : undefined,
+    },
+    {
+      key: 'thu',
+      title: 'Вторая часть баланса',
+      date: `Четверг, ${financeBalanceWeekDate(THURSDAY, undefined, view.weekOffset)}`,
+      amount: view.thursdayRub,
+      done: story.thuDone,
+      note: thuReserve > 0 ? `${rub(view.grossThursdayRub)} − ${rub(thuReserve)} резерв` : undefined,
+    },
+  ];
+
+  return (
+    <div>
+      <BurnPill story={story} />
+      <div className={story.burnSoon ? 'mt-2' : ''}>
+        <button
+          type="button"
+          onClick={() => setLimitOpen((value) => !value)}
+          aria-expanded={limitOpen}
+          className="-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-lg px-1.5 py-2.5 text-left text-xs transition-colors hover:bg-black/[0.04]"
+        >
+          <span className="min-w-0 flex-1 text-gray-500">Лимит {story.range}</span>
+          <span className="text-sm font-normal tabular-nums text-gray-900">{rub(view.grossRub)}</span>
+          <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${limitOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {limitOpen ? <div className="pb-3">{<LimitCalc view={view} />}</div> : null}
+      </div>
+      {story.zeroWeek ? (
+        <p className="mb-0 mt-1 text-xs leading-snug text-gray-500">{view.explain}</p>
+      ) : (
+        <div className="mt-1 space-y-2">
+          {payments.map((payment) => (
+            <React.Fragment key={payment.key}>
+              <PaymentCard
+                kind="in"
+                title={payment.title}
+                date={payment.date}
+                amount={`+${rub(payment.amount)}`}
+                done={payment.done}
+                note={payment.note}
+              />
+            </React.Fragment>
+          ))}
+          {spend.chargeRub > 0 ? (
+            <PaymentCard
+              kind="out"
+              title="Оплата продвижения"
+              date={`Воскресенье, ${spend.chargeDate} · на портале продавца`}
+              amount={`−${rub(spend.chargeRub)}`}
+              done={false}
+            />
+          ) : null}
+        </div>
+      )}
+      <Actions spend={spend} tone="gray" />
+    </div>
+  );
+}
+
 /** 3 — Wise: просторный список, у каждой строки круглая иконка */
-function WiseVariant({ view, spend, story }: VariantProps) {
+function WiseVariant({ view, spend, story, split = false }: VariantProps & { split?: boolean }) {
   const [open, setOpen] = useState<string | null>(null);
-  const rows = detailRows(view, spend, story);
+  const rows = split ? splitDetailRows(view, spend, story) : detailRows(view, spend, story);
   return (
     <div>
       <BurnPill story={story} />
@@ -355,8 +616,27 @@ function WiseVariant({ view, spend, story }: VariantProps) {
                 aria-expanded={isOpen}
                 className="-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-lg px-1.5 py-2.5 text-left text-xs transition-colors hover:bg-black/[0.04]"
               >
-                <span className="min-w-0 flex-1 text-gray-500">{section.title}</span>
-                {section.value ? <span className="text-sm font-normal tabular-nums text-gray-900">{section.value}</span> : null}
+                <span className="flex min-w-0 flex-1 items-center gap-1.5 text-gray-500">
+                  {section.status === 'done' ? (
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
+                  ) : section.status === 'pending' ? (
+                    <Clock className="h-3 w-3 shrink-0 text-gray-400" aria-hidden />
+                  ) : null}
+                  {section.title}
+                </span>
+                {section.value ? (
+                  <span
+                    className={`text-sm font-normal tabular-nums ${
+                      section.status === 'done'
+                        ? 'text-emerald-600'
+                        : section.status === 'pending'
+                          ? 'text-gray-400'
+                          : 'text-gray-900'
+                    }`}
+                  >
+                    {section.value}
+                  </span>
+                ) : null}
                 <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
               </button>
               {isOpen ? <div className="pb-3">{section.body}</div> : null}
@@ -488,6 +768,53 @@ export function FinanceBalanceWiseNestedPanel({
   );
 }
 
+/** Раскрывающаяся строка «Списание …» с расходом, комиссией и кнопками */
+export function FinanceBalanceChargeRow({
+  view,
+  weekdayIndex,
+  spend,
+}: {
+  view: FinanceBalanceSimView;
+  weekdayIndex: number;
+  spend: FinanceBalanceStorySpend;
+}) {
+  const story = useStory(view, weekdayIndex, spend);
+  const [open, setOpen] = useState(false);
+  const weekChargeDate = spend.weekChargeDate;
+  const weekChargeRub = spend.weekChargeRub;
+  return (
+    <div className="border-t border-gray-100">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-lg px-1.5 py-2.5 text-left text-xs"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-medium text-gray-500">К оплате {weekChargeDate}</span>
+          <span className="mt-0.5 block text-[11px] font-normal text-gray-400">
+            С баланса на портале продавца
+          </span>
+        </span>
+        <span className="text-sm font-normal tabular-nums text-gray-900">{rub(weekChargeRub)}</span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open ? (
+        <div className="mt-1 rounded-xl bg-[#F7F7F9] p-3.5">
+          <SpendDetails
+            spend={spend}
+            story={story}
+            buttonClass="bg-white text-gray-900 hover:bg-gray-50"
+            spentLabel={`Расход за ${financeBalanceWeekRangeLabel(undefined, view.weekOffset)}`}
+            chargeLabel={`Итого к оплате ${weekChargeDate}`}
+            chargeRub={weekChargeRub}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Всё о балансе одним блоком под строкой «Счёт» */
 export function FinanceBalanceStory(props: Props) {
   const story = useStory(props.view, props.weekdayIndex, props.spend);
@@ -502,6 +829,10 @@ export function FinanceBalanceStory(props: Props) {
       return <NoviceStatusVariant {...p} />;
     case '5':
       return <NoviceDaysVariant {...p} />;
+    case '7':
+      return <PaymentsVariant {...p} />;
+    case '8':
+      return <WiseVariant {...p} split />;
     default:
       return <LightCardVariant {...p} />;
   }

@@ -1,6 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
-import { X } from './Icons';
 import type { PromoMissedBonusUxId } from './PromoMissedBonusUxContext';
 
 type OfferProps = {
@@ -734,7 +732,7 @@ export function isPromoPillOfferUx(uxId: PromoMissedBonusUxId): boolean {
   return uxId === 'pb-pill';
 }
 
-/** C53 — сумма + «Используйте ещё»: правый шит с распределением по кампаниям */
+/** C53 — сумма + «Используйте ещё»: дропдаун с суммой и «Распределить» */
 export function MissedBonusPromoPill({
   alreadyDistributed,
   maxDistributable,
@@ -742,6 +740,7 @@ export function MissedBonusPromoPill({
   balance,
   distribution = [],
   onApply,
+  menuPlacement = 'top',
 }: {
   alreadyDistributed: number;
   maxDistributable: number;
@@ -750,14 +749,12 @@ export function MissedBonusPromoPill({
   distribution?: readonly BonusDistributionRow[];
   /** Итоговое назначение по id кампании (абсолют, не «добавка»). */
   onApply: (byCampaign: Record<string, number>) => void;
-  /** @deprecated попап заменён на правый шит */
   menuPlacement?: 'top' | 'bottom';
 }) {
   const spendable = alreadyDistributed > 0 ? maxAdditional : maxDistributable;
   const [open, setOpen] = React.useState(false);
   const [amount, setAmount] = React.useState(spendable);
-  const [draftById, setDraftById] = React.useState<Record<string, number>>({});
-  const [manual, setManual] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
   const canAct = maxAdditional > 0;
   const pool = maxDistributable > 0 ? maxDistributable : balance;
 
@@ -771,56 +768,35 @@ export function MissedBonusPromoPill({
     [rows],
   );
 
-  const targetTotal = React.useMemo(() => {
-    const add = clampBonus(amount, spendable);
-    return Math.min(maxDistributable, alreadyDistributed > 0 ? alreadyDistributed + add : add);
-  }, [amount, spendable, alreadyDistributed, maxDistributable]);
-
-  const redistributeByLimits = React.useCallback(
-    (total: number) => {
-      const shares = allocateByCaps(caps, total);
-      const next: Record<string, number> = {};
-      rows.forEach((row, i) => {
-        next[row.id] = shares[i] ?? 0;
-      });
-      setDraftById(next);
-      setManual(false);
-    },
-    [caps, rows],
-  );
-
   React.useEffect(() => {
     if (!open) return;
     setAmount(spendable);
-    setManual(false);
   }, [open, spendable]);
 
   React.useEffect(() => {
-    if (!open || manual) return;
-    redistributeByLimits(targetTotal);
-  }, [open, targetTotal, manual, redistributeByLimits]);
-
-  const draftTotal = rows.reduce((sum, row) => sum + (draftById[row.id] ?? 0), 0);
-
-  const setRowBonus = (id: string, value: number) => {
-    const row = rows.find((item) => item.id === id);
-    if (!row) return;
-    const max = row.maxBonus ?? row.bonus;
-    setManual(true);
-    setDraftById((prev) => ({ ...prev, [id]: clampBonus(value, max) }));
-  };
-
-  const close = () => setOpen(false);
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
 
   const apply = () => {
-    if (draftTotal <= 0) return;
+    if (amount <= 0) return;
+    const total = Math.min(
+      maxDistributable,
+      alreadyDistributed > 0 ? alreadyDistributed + amount : amount,
+    );
+    const shares = allocateByCaps(caps, total);
     const payload: Record<string, number> = {};
-    for (const row of rows) {
-      const value = draftById[row.id] ?? 0;
+    rows.forEach((row, i) => {
+      const value = shares[i] ?? 0;
       if (value > 0) payload[row.id] = value;
-    }
+    });
+    if (Object.keys(payload).length === 0) return;
     onApply(payload);
-    close();
+    setOpen(false);
   };
 
   return (
@@ -836,168 +812,67 @@ export function MissedBonusPromoPill({
           {alreadyDistributed > 0 ? ' B' : ''}
         </span>
         {canAct ? (
-          <button
-            type="button"
-            aria-haspopup="dialog"
-            aria-expanded={open}
-            onClick={() => setOpen(true)}
-            className="inline-flex h-7 items-center gap-1 rounded-full bg-[#F0F0F2] px-2.5 text-[13px] font-semibold tabular-nums text-gray-900 transition-colors hover:bg-[#E6E6EA]"
-          >
-            Используйте ещё {fmt(maxAdditional > 0 ? maxAdditional : pool)} B
-            <svg
-              viewBox="0 0 12 12"
-              className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              aria-hidden
+          <div ref={ref} className="relative">
+            <button
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded={open}
+              onClick={() => setOpen((value) => !value)}
+              className="inline-flex h-7 items-center gap-1 rounded-full bg-[#F0F0F2] px-2.5 text-[13px] font-semibold tabular-nums text-gray-900 transition-colors hover:bg-[#E6E6EA]"
             >
-              <path d="M2.5 4.5L6 8l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
+              Используйте ещё {fmt(maxAdditional > 0 ? maxAdditional : pool)} B
+              <svg
+                viewBox="0 0 12 12"
+                className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden
+              >
+                <path d="M2.5 4.5L6 8l3.5-3.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            {open ? (
+              <div
+                role="menu"
+                className={`absolute left-0 z-50 w-[280px] rounded-xl bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.16)] ${
+                  menuPlacement === 'bottom' ? 'top-full mt-2' : 'bottom-full mb-2'
+                }`}
+              >
+                <div className="text-[15px] font-bold leading-5 text-gray-900">Использовать</div>
+                <label className="mt-1.5 flex h-9 items-center gap-1.5 rounded-lg bg-[#F0F0F2] px-3 text-[15px] font-semibold tabular-nums text-gray-900 focus-within:bg-white focus-within:ring-2 focus-within:ring-[#9C45FD]/40">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoFocus
+                    value={amount ? fmt(amount) : ''}
+                    placeholder="0"
+                    onChange={(e) =>
+                      setAmount(clampBonus(Number(e.target.value.replace(/\D/g, '')), spendable))
+                    }
+                    className="min-w-0 flex-1 bg-transparent outline-none"
+                    aria-label="Сумма промобонусов"
+                  />
+                  <span className="text-[#9191A0]">B</span>
+                </label>
+                <p className="mb-0 mt-2 text-[12px] leading-[16px] text-[#63616C]">
+                  Пополним кампании бонусами поровну. Сколько достанется каждой — зависит от остатка
+                  на пакетах и условий пакетов.
+                </p>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={amount <= 0}
+                  onClick={apply}
+                  className="mt-2 inline-flex h-9 w-full items-center justify-center rounded-lg bg-gray-900 text-[13px] font-semibold text-white transition-colors hover:bg-gray-800 disabled:opacity-40"
+                >
+                  Распределить на кампании
+                </button>
+              </div>
+            ) : null}
+          </div>
         ) : null}
       </div>
-
-      {open
-        ? createPortal(
-            <div
-              className="fixed inset-0 z-[100] bg-black/50"
-              onClick={close}
-              role="presentation"
-            >
-              <div className="flex h-full w-full justify-end" onClick={close}>
-                <div
-                  className="flex h-full max-h-full min-w-0 items-stretch gap-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="flex shrink-0 flex-col justify-start pt-5 pl-3">
-                    <button
-                      type="button"
-                      onClick={close}
-                      className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-gray-500 shadow-md hover:bg-gray-50 hover:text-gray-700"
-                      aria-label="Закрыть"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-
-                  <div
-                    className="flex h-full w-[720px] max-w-[calc(100vw-3rem)] shrink-0 flex-col overflow-hidden rounded-l-[28px] bg-[#F7F7F8] shadow-2xl animate-in slide-in-from-right duration-300"
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby="promo-bonus-distribute-title"
-                  >
-                    <div className="shrink-0 border-b border-black/[0.04] bg-white px-6 pb-4 pt-6 sm:px-7">
-                      <h2
-                        id="promo-bonus-distribute-title"
-                        className="text-[22px] font-bold tracking-tight text-gray-900"
-                      >
-                        Использовать промобонусы
-                      </h2>
-                    </div>
-
-                    <div className="min-w-0 flex-1 space-y-5 overflow-y-auto px-6 py-5 sm:px-7">
-                      <div className="rounded-[24px] bg-white px-4 py-4 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                        <label className="flex min-h-[52px] cursor-text flex-col justify-center gap-0.5 rounded-[10px] border border-transparent bg-[#F2F2F7] px-3 py-2 transition-colors hover:bg-[#EBEBF0] focus-within:border-black focus-within:bg-white">
-                          <span className="text-[12px] font-medium leading-4 text-gray-900">
-                            Сумма
-                          </span>
-                          <span className="flex min-w-0 items-center gap-1">
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              autoFocus
-                              value={amount ? fmt(amount) : ''}
-                              placeholder="0"
-                              onChange={(e) => {
-                                setManual(false);
-                                setAmount(
-                                  clampBonus(Number(e.target.value.replace(/\D/g, '')), spendable),
-                                );
-                              }}
-                              className="min-w-0 flex-1 bg-transparent text-[15px] font-semibold tabular-nums leading-5 text-gray-900 outline-none"
-                              aria-label="Сумма промобонусов"
-                            />
-                            <span className="shrink-0 text-[14px] font-medium text-[#A0A0AB]">B</span>
-                          </span>
-                        </label>
-                      </div>
-
-                      <div className="rounded-[24px] bg-white px-4 py-2 shadow-[0_1px_2px_rgba(0,0,0,0.04)]">
-                        <div className="px-1 pb-1 pt-3 text-[13px] font-semibold text-gray-900">
-                          На кампании
-                        </div>
-                        <div>
-                          {rows.map((row) => {
-                            const max = row.maxBonus ?? row.bonus;
-                            const value = draftById[row.id] ?? 0;
-                            const current = row.currentBonus ?? 0;
-                            return (
-                              <div
-                                key={row.id}
-                                className="flex items-start justify-between gap-4 border-b border-gray-100 py-3.5 last:border-b-0"
-                              >
-                                <div className="flex min-w-0 items-start gap-3">
-                                  {row.imageUrl ? (
-                                    <img
-                                      src={row.imageUrl}
-                                      alt=""
-                                      className="h-12 w-12 shrink-0 rounded-lg bg-gray-50 object-cover"
-                                    />
-                                  ) : (
-                                    <div className="h-12 w-12 shrink-0 rounded-lg bg-gray-100" />
-                                  )}
-                                  <div className="min-w-0">
-                                    <p className="truncate text-sm font-semibold text-gray-950">
-                                      {row.name}
-                                    </p>
-                                    <div className="mt-0.5 text-xs tabular-nums text-gray-500">
-                                      макс {fmt(max)} B
-                                      {row.packageLabel ? ` · ${row.packageLabel}` : ''}
-                                      {current > 0 ? ` · сейчас ${fmt(current)} B` : ''}
-                                    </div>
-                                  </div>
-                                </div>
-                                <label className="relative inline-flex h-9 w-[140px] shrink-0 items-center overflow-hidden rounded-[10px] border border-transparent bg-[#F2F2F7] px-2.5 transition-colors hover:bg-[#EBEBF0] focus-within:border-black focus-within:bg-white">
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={value ? fmt(value) : ''}
-                                    placeholder="0"
-                                    onChange={(e) =>
-                                      setRowBonus(row.id, Number(e.target.value.replace(/\D/g, '')))
-                                    }
-                                    className="min-w-0 flex-1 bg-transparent pr-6 text-sm font-medium tabular-nums text-gray-900 outline-none"
-                                    aria-label={`Бонусы для ${row.name}`}
-                                  />
-                                  <span className="pointer-events-none absolute right-2.5 text-sm font-medium text-[#A0A0AB]">
-                                    B
-                                  </span>
-                                </label>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="shrink-0 border-t border-black/[0.04] bg-white px-6 py-4 sm:px-7">
-                      <button
-                        type="button"
-                        disabled={draftTotal <= 0}
-                        onClick={apply}
-                        className="inline-flex h-12 w-full items-center justify-center rounded-2xl bg-gray-900 text-[15px] font-semibold text-white transition-colors hover:bg-gray-800 disabled:cursor-not-allowed disabled:bg-gray-300"
-                      >
-                        Применить
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
     </div>
   );
 }

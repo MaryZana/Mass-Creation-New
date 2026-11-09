@@ -156,7 +156,7 @@ export const FINANCE_BALANCE_SIM_STEP_RUB = 1_000;
  * Ручные действия по неделям: потрачено с баланса и переведено в резерв кампаний.
  * Резерв недели N вычитается из начисления недели N+1.
  */
-export type FinanceBalanceSimAction = { day: number; kind: 'spent' | 'reserve'; rub: number };
+export type FinanceBalanceSimAction = { day: number; kind: 'spent' | 'reserve' | 'release'; rub: number };
 export type FinanceBalanceSimAdjust = Partial<Record<FinanceBalanceSimWeekId, FinanceBalanceSimAction[]>>;
 export const FINANCE_BALANCE_SIM_ADJUST_KEY = 'finance_balance_sim_adjust_v2';
 
@@ -183,6 +183,7 @@ export const FINANCE_BALANCE_SIM_WEEK_KEY = 'finance_balance_sim_week';
 export const FINANCE_BALANCE_SIM_DAY_KEY = 'finance_balance_sim_day';
 export const FINANCE_BALANCE_SIM_SPEND_KEY = 'finance_balance_sim_spend';
 export const FINANCE_BALANCE_SIM_SCENARIO_KEY = 'finance_balance_sim_scenario';
+export const FINANCE_BALANCE_SIM_POSTPONE_KEY = 'finance_balance_sim_postpone_v1';
 
 /** Сценарии симуляции баланса */
 export const FINANCE_BALANCE_SIM_SCENARIOS = [
@@ -251,13 +252,19 @@ export type FinanceBalanceSimStepId = FinanceBalanceSimWeekId | 'week1_spent' | 
 
 export const FINANCE_BALANCE_SIM_STEPS = FINANCE_BALANCE_SIM_WEEKS;
 
-/**
- * Лимит делим 75% вт / 25% чт, затем вычитаем резерв в кампаниях:
- * сначала из вторника, остаток резерва — из четверга. Сам лимит не меняется.
- */
-function splitGross(grossRub: number, inCampaignsRub: number) {
+/** Лимит недели: 75% во вторник, 25% в четверг — до вычета резерва */
+function grossParts(grossRub: number) {
   const grossTuesdayRub = Math.round(grossRub * 0.75);
   const grossThursdayRub = grossRub - grossTuesdayRub;
+  return { grossTuesdayRub, grossThursdayRub };
+}
+
+/**
+ * Лимит делим 75% вт / 25% чт, затем вычитаем резерв в кампаниях
+ * (сначала из вторника, остаток — из четверга). Для статичных превью без демо-действий.
+ */
+function splitGross(grossRub: number, inCampaignsRub: number) {
+  const { grossTuesdayRub, grossThursdayRub } = grossParts(grossRub);
   const tuesdayRub = Math.max(0, grossTuesdayRub - inCampaignsRub);
   const reserveLeftRub = Math.max(0, inCampaignsRub - grossTuesdayRub);
   const thursdayRub = Math.max(0, grossThursdayRub - reserveLeftRub);
@@ -339,37 +346,79 @@ function pastFromWeek(week: (typeof FINANCE_BALANCE_SIM_WEEKS)[number]): Finance
 }
 
 /**
- * Прогон одной недели до выбранного дня: начисления вт/чт, затем ручные траты и резерв.
- * Во вторник перед новым начислением неиспользованный остаток с прошлой недели сгорает.
- * Траты и резерв не больше того, что было на балансе.
+ * Прогон одной недели до выбранного дня.
+ * Во вторник / четверг начисляем 75% / 25% лимита минус резерв в кампаниях
+ * на этот момент — если в среду завершили кампании, четверг пересчитается без вычета.
+ * release — завершение кампаний: деньги из резерва возвращаются на баланс.
  */
 function runWeekBalance(
   startRub: number,
-  tuesdayRub: number,
-  thursdayRub: number,
+  grossTuesdayRub: number,
+  grossThursdayRub: number,
   untilDay: number,
   actions: FinanceBalanceSimAction[],
-): { balance: number; spentRub: number; reserveRub: number; unusedWipedRub: number } {
+  startReserveStockRub = 0,
+): {
+  balance: number;
+  spentRub: number;
+  reserveRub: number;
+  unusedWipedRub: number;
+  reserveStockRub: number;
+  tuesdayRub: number;
+  thursdayRub: number;
+  tuesdayCutRub: number;
+  thursdayCutRub: number;
+} {
   let balance = startRub;
   let unusedWipedRub = 0;
   let spentRub = 0;
   let reserveRub = 0;
+  let reserveStockRub = startReserveStockRub;
+  let tuesdayRub = 0;
+  let thursdayRub = 0;
+  let tuesdayCutRub = 0;
+  let thursdayCutRub = 0;
   for (let day = 0; day <= Math.min(6, untilDay); day += 1) {
     if (day === 1) {
       unusedWipedRub = balance;
+      tuesdayCutRub = Math.min(reserveStockRub, grossTuesdayRub);
+      tuesdayRub = grossTuesdayRub - tuesdayCutRub;
       balance = tuesdayRub;
     }
-    if (day === 3) balance += thursdayRub;
+    if (day === 3) {
+      thursdayCutRub = Math.min(reserveStockRub, grossThursdayRub);
+      thursdayRub = grossThursdayRub - thursdayCutRub;
+      balance += thursdayRub;
+    }
     actions
       .filter((action) => action.day === day)
       .forEach((action) => {
+        if (action.kind === 'release') {
+          const rub = Math.min(action.rub, reserveStockRub);
+          reserveStockRub -= rub;
+          balance += rub;
+          return;
+        }
         const rub = Math.min(action.rub, balance);
         balance -= rub;
         if (action.kind === 'spent') spentRub += rub;
-        else reserveRub += rub;
+        else {
+          reserveRub += rub;
+          reserveStockRub += rub;
+        }
       });
   }
-  return { balance, spentRub, reserveRub, unusedWipedRub };
+  return {
+    balance,
+    spentRub,
+    reserveRub,
+    unusedWipedRub,
+    reserveStockRub,
+    tuesdayRub,
+    thursdayRub,
+    tuesdayCutRub,
+    thursdayCutRub,
+  };
 }
 
 export function buildFinanceBalanceSimView(
@@ -394,9 +443,8 @@ export function buildFinanceBalanceSimView(
   };
 
   /**
-   * Резерв на кампаниях — остаток, а не разовый вычет.
-   * Пока деньги в кампаниях, они уменьшают каждое начисление (не больше лимита недели).
-   * Списывается с доступного баланса при переводе, из начисления — каждый раз заново.
+   * Резерв на кампаниях уменьшает начисление в день начисления по остатку на этот день.
+   * Завершение кампаний в среду возвращает деньги на баланс и убирает вычет из четверга.
    */
   let carryRub = 0;
   let prevReserveRub = 0;
@@ -408,16 +456,21 @@ export function buildFinanceBalanceSimView(
   for (let i = 0; i < weekIndex; i += 1) {
     const prev = FINANCE_BALANCE_SIM_WEEKS[i];
     const actions = adjustOf(prev.id);
-    const mondayReserveRub = runWeekBalance(carryRub, 0, 0, 0, actions).reserveRub;
-    const deductRub = Math.min(reserveStockRub + mondayReserveRub, prev.grossRub);
-    const split = splitGross(prev.grossRub, prev.inCampaignsRub + deductRub);
+    const parts = grossParts(prev.grossRub);
     pastWeeks.push(pastFromWeek(prev));
-    const prevRun = runWeekBalance(carryRub, split.tuesdayRub, split.thursdayRub, 6, actions);
+    const prevRun = runWeekBalance(
+      carryRub,
+      parts.grossTuesdayRub,
+      parts.grossThursdayRub,
+      6,
+      actions,
+      reserveStockRub + prev.inCampaignsRub,
+    );
     carryRub = prevRun.balance;
     prevReserveRub = prevRun.reserveRub;
     prevSpentRub = prevRun.spentRub;
+    reserveStockRub = prevRun.reserveStockRub;
     if (prevRun.reserveRub > 0) {
-      reserveStockRub += prevRun.reserveRub;
       reserveSources = [...reserveSources, { weekOffset: prev.weekOffset, rub: prevRun.reserveRub }];
     }
   }
@@ -426,16 +479,35 @@ export function buildFinanceBalanceSimView(
   const inPrevPeriod = weekIndex > 0 && weekdayIndex < 1;
 
   const actions = adjustOf(week.id);
-  const mondayReserveRub = runWeekBalance(carryRub, 0, 0, 0, actions).reserveRub;
-  const deductRub = Math.min(reserveStockRub + mondayReserveRub, week.grossRub);
-  const split = splitGross(week.grossRub, week.inCampaignsRub + deductRub);
-  const weekRun = runWeekBalance(carryRub, split.tuesdayRub, split.thursdayRub, weekdayIndex, actions);
-  /** Остаток в кампаниях = прошлые недели + то, что успели зарезервировать к сегодня */
-  const reservePendingRub = reserveStockRub + weekRun.reserveRub;
+  const parts = grossParts(week.grossRub);
+  const startStock = reserveStockRub + week.inCampaignsRub;
+  const fullRun = runWeekBalance(
+    carryRub,
+    parts.grossTuesdayRub,
+    parts.grossThursdayRub,
+    6,
+    actions,
+    startStock,
+  );
+  const weekRun =
+    weekdayIndex >= 6
+      ? fullRun
+      : runWeekBalance(
+          carryRub,
+          parts.grossTuesdayRub,
+          parts.grossThursdayRub,
+          weekdayIndex,
+          actions,
+          startStock,
+        );
+  /** Остаток в кампаниях после резервов и завершений к сегодня */
+  const reservePendingRub = weekRun.reserveStockRub;
   const currentSources =
     weekRun.reserveRub > 0
       ? [...reserveSources, { weekOffset: week.weekOffset, rub: weekRun.reserveRub }]
       : reserveSources;
+  const netRub = fullRun.tuesdayRub + fullRun.thursdayRub;
+  const cutRub = fullRun.tuesdayCutRub + fullRun.thursdayCutRub;
 
   return {
     weekId: week.id,
@@ -446,13 +518,13 @@ export function buildFinanceBalanceSimView(
     startAvailableRub: carryRub,
     unusedWipedRub: weekRun.unusedWipedRub,
     freeOverrideRub: null,
-    inCampaignsRub: split.inCampaignsRub,
-    grossRub: split.grossRub,
-    netRub: split.netRub,
-    tuesdayRub: split.tuesdayRub,
-    thursdayRub: split.thursdayRub,
-    grossTuesdayRub: split.grossTuesdayRub,
-    grossThursdayRub: split.grossThursdayRub,
+    inCampaignsRub: cutRub,
+    grossRub: week.grossRub,
+    netRub,
+    tuesdayRub: fullRun.tuesdayRub,
+    thursdayRub: fullRun.thursdayRub,
+    grossTuesdayRub: parts.grossTuesdayRub,
+    grossThursdayRub: parts.grossThursdayRub,
     reservedThisWeekRub: weekRun.reserveRub,
     reservePendingRub,
     reserveSources: currentSources,
@@ -473,6 +545,76 @@ export function buildFinanceBalanceSimView(
 /** Воскресенье выбранной недели симуляции — дата списания расхода */
 export function financeBalanceWeekChargeDate(now = new Date(), weekOffset = 0): string {
   return financeBalanceWeekDate(6, now, weekOffset);
+}
+
+/** Перенос списания расхода конкретной недели на воскресенье через N недель */
+export type FinanceBalancePostponeEntry = {
+  optionId: string;
+  weeksLater: number;
+  feePercent: number;
+};
+export type FinanceBalancePostponeMap = Partial<Record<FinanceBalanceSimWeekId, FinanceBalancePostponeEntry>>;
+
+export function readFinanceBalanceSimPostpone(): FinanceBalancePostponeMap {
+  try {
+    const raw = sessionStorage.getItem(FINANCE_BALANCE_SIM_POSTPONE_KEY);
+    if (raw) return JSON.parse(raw) as FinanceBalancePostponeMap;
+  } catch {
+    /* ignore */
+  }
+  return {};
+}
+
+export function writeFinanceBalanceSimPostpone(value: FinanceBalancePostponeMap) {
+  try {
+    sessionStorage.setItem(FINANCE_BALANCE_SIM_POSTPONE_KEY, JSON.stringify(value));
+  } catch {
+    /* ignore */
+  }
+  window.dispatchEvent(new Event(FINANCE_BALANCE_SIM_EVENT));
+}
+
+/** Платежи прошлых недель, которые должны списаться в воскресенье текущей недели */
+export function financeBalanceDuePostponedCharges(
+  weekId: FinanceBalanceSimWeekId,
+  adjust: FinanceBalanceSimAdjust = {},
+  postponeMap: FinanceBalancePostponeMap = readFinanceBalanceSimPostpone(),
+): {
+  period: string;
+  spentRub: number;
+  feePercent: number;
+  feeRub: number;
+  chargeRub: number;
+  sourceWeekId: FinanceBalanceSimWeekId;
+}[] {
+  const current = FINANCE_BALANCE_SIM_WEEKS.find((week) => week.id === weekId);
+  if (!current) return [];
+  const due: {
+    period: string;
+    spentRub: number;
+    feePercent: number;
+    feeRub: number;
+    chargeRub: number;
+    sourceWeekId: FinanceBalanceSimWeekId;
+  }[] = [];
+  for (const week of FINANCE_BALANCE_SIM_WEEKS) {
+    if (week.weekOffset >= current.weekOffset) continue;
+    const entry = postponeMap[week.id];
+    if (!entry || entry.weeksLater <= 0) continue;
+    if (week.weekOffset + entry.weeksLater !== current.weekOffset) continue;
+    const spentRub = buildFinanceBalanceSimView(week.id, 6, adjust).spentThisWeekRub;
+    if (spentRub <= 0) continue;
+    const feeRub = Math.round((spentRub * entry.feePercent) / 100);
+    due.push({
+      period: financeBalanceWeekRangeLabel(undefined, week.weekOffset),
+      spentRub,
+      feePercent: entry.feePercent,
+      feeRub,
+      chargeRub: spentRub + feeRub,
+      sourceWeekId: week.id,
+    });
+  }
+  return due;
 }
 
 export const FINANCE_BALANCE_SIM_EVENT = 'finance-balance-sim';

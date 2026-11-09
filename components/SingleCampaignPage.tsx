@@ -375,8 +375,7 @@ export const MOCK_PRODUCTS: CampaignProductRow[] = (() => {
       // Явный URL для превью, чтобы картинки точно отличались
       imageUrl: `https://picsum.photos/seed/wb-${nmId}/60/76`,
       category,
-      // иногда несовместимы с CPC, чтобы было видно дизейбл-стейт
-      cpcCompatible: indexInCategory % 8 !== 0,
+      cpcCompatible: true,
       conversionRate,
       conversionChangePercent,
     };

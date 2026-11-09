@@ -671,7 +671,6 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
     const excelFileInputRef = useRef<HTMLInputElement>(null);
     const [uploadedFiles, setUploadedFiles] = useState<{ id: string; fileName: string; loaded: number; total: number }[]>([]);
     const [isProcessingExcel, setIsProcessingExcel] = useState(false);
-    const [isConfirmCloseOpen, setIsConfirmCloseOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'select' | 'upload'>('select');
     const [isDragOver, setIsDragOver] = useState(false);
     const [manualZones, setManualZones] = useState<{ search: boolean; recommendations: boolean }>({
@@ -703,14 +702,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
         return tempConfig.categories.flatMap(category => getMockProductsForCategory(category));
     }, [tempConfig.categories]);
 
-    const validSelectedProducts = useMemo(() => {
-        return selectedProducts.filter(p => tempConfig.paymentModel === PaymentModel.CPC ? p.cpcCompatible : true);
-    }, [selectedProducts, tempConfig.paymentModel]);
-
-    const cpcIncompatibleInSelection = useMemo(() => {
-        if (tempConfig.paymentModel !== PaymentModel.CPC) return [];
-        return selectedProducts.filter(p => !p.cpcCompatible);
-    }, [selectedProducts, tempConfig.paymentModel]);
+    const validSelectedProducts = selectedProducts;
 
     const handleDownloadTemplateFile = (fileType: 'xlsx' | 'csv') => {
         const content = "nmId\n12345678\n87654321\n11223344";
@@ -898,39 +890,12 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
 
     const hasChanges = selectedProducts.length > 0 || uploadedFiles.length > 0;
 
-    const handleCloseRequest = () => {
-        if (hasChanges) {
-            setIsConfirmCloseOpen(true);
-        } else {
-            onClose();
-        }
-    };
-
-    const handleConfirmClose = () => {
-        setIsConfirmCloseOpen(false);
-        onClose();
-    };
-    
-    if (isConfirmCloseOpen) {
-      return (
-          <ConfirmationModal
-              isOpen={true}
-              onClose={() => setIsConfirmCloseOpen(false)}
-              onConfirm={handleConfirmClose}
-              title="Подтвердите закрытие"
-              confirmText="Закрыть"
-              confirmColor="red"
-              children={<p>У вас есть несохраненные изменения. Вы уверены, что хотите закрыть окно? Все настроенные товары будут сброшены.</p>}
-          />
-      );
-    }
-    
     if (!isOpen) {
         return null;
     }
 
     return ( 
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={handleCloseRequest}> 
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4" onClick={onClose}> 
             <div
               className="relative m-auto flex w-full max-w-xl flex-col rounded-2xl bg-white shadow-xl max-h-[85vh]"
               onClick={(e) => e.stopPropagation()}
@@ -945,7 +910,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                     </div>
                     <button
                       type="button"
-                      onClick={handleCloseRequest}
+                      onClick={onClose}
                       className="shrink-0 rounded-full p-1 text-gray-400 hover:text-gray-600"
                       aria-label="Закрыть"
                     >
@@ -1091,25 +1056,9 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                                             options={mockProducts}
                                             selected={selectedProducts}
                                             onChange={setSelectedProducts}
-                                            isCpcMode={tempConfig.paymentModel === PaymentModel.CPC}
                                             disabled={uploadedFiles.length > 0 || isProcessingExcel}
                                             submitLabel="Применить"
                                         />
-                                        {cpcIncompatibleInSelection.length > 0 && (
-                                            <div className="mt-3 text-sm text-red-700 bg-red-50 p-3 rounded-lg border border-red-200">
-                                                Часть товаров&nbsp;
-                                                <span className="tooltip underline decoration-dotted cursor-help">
-                                                    ({cpcIncompatibleInSelection.length})
-                                                    <span className="tooltip-text !w-64 text-left">
-                                                        <span className="font-bold block mb-1 text-white">Несовместимые ID товаров:</span>
-                                                        <span className="font-normal text-gray-200 break-all">
-                                                            {cpcIncompatibleInSelection.map(p => p.nmId).join(', ')}
-                                                        </span>
-                                                    </span>
-                                                </span>
-                                                &nbsp;не может продвигаться по CPC, они не будут добавлены в кампанию.
-                                            </div>
-                                        )}
                                     </div>
                                     ) : null}
                                 </div>
@@ -1329,7 +1278,7 @@ const AddItemModal = ({ isOpen, onClose, onSubmit, onTemplateDownload, initialCo
                     </button>
                     <button
                       type="button"
-                      onClick={handleCloseRequest}
+                      onClick={onClose}
                       className="rounded-lg bg-gray-100 px-5 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-gray-200"
                     >
                       Отмена
@@ -3052,7 +3001,7 @@ export default function App() {
   const [creationBulkCarryover, setCreationBulkCarryover] = useState(false);
   const [creationBulkDailyLimitSettings, setCreationBulkDailyLimitSettings] =
     useState<AdvancedDailyLimitSettings>(() => createDefaultAdvancedDailyLimitSettings());
-  const [creationBulkAutoRefillOnRules, setCreationBulkAutoRefillOnRules] = useState(true);
+  const [creationBulkAutoRefillOnRules, setCreationBulkAutoRefillOnRules] = useState(false);
   const [isCreationZonesModalOpen, setIsCreationZonesModalOpen] = useState(false);
   const [creationZonesDraft, setCreationZonesDraft] = useState({ search: true, recommendations: true });
   /** Скоуп автобиддера из дропдауна CPC/CPM в массовых действиях */
@@ -3061,6 +3010,10 @@ export default function App() {
   /** Включённый автобиддер в таблице массового создания (по id кампании) */
   const [creationAutobidderSetup, setCreationAutobidderSetup] = useState<
     Record<string, MassCreationAutobidderSetup>
+  >({});
+  /** Правила автоувеличения дневного лимита (отдельно от автобиддера) */
+  const [creationDailyLimitRules, setCreationDailyLimitRules] = useState<
+    Record<string, AdvancedDailyLimitSettings>
   >({});
   const [campaignForBonusEdit, setCampaignForBonusEdit] = useState<CampaignRecord | null>(null);
   const [singleReplenishAction, setSingleReplenishAction] = useState<'budget' | 'autorefill'>('budget');
@@ -4365,41 +4318,59 @@ export default function App() {
   );
 
   const budgetRefillInitialValues = useMemo(() => {
-    if (bulkEditPrefillData) {
-      return {
-        amount: bulkEditPrefillData.budget,
-        useBonuses: bulkEditPrefillData.useBonuses,
-        bonusAmount: bulkEditPrefillData.bonusAmount,
-        bonusPickMode: 'manual' as const,
-      };
-    }
     const first = budgetRefillTargetCampaigns[0];
-    if (!first) return null;
-    const sameBudget = budgetRefillTargetCampaigns.every((c) => c.budget === first.budget);
-    const sameBonus = budgetRefillTargetCampaigns.every(
-      (c) =>
-        c.usePromoBonuses === first.usePromoBonuses &&
-        (c.bonusAmount ?? 0) === (first.bonusAmount ?? 0) &&
-        (c.bonusPackageId ?? 'p1') === (first.bonusPackageId ?? 'p1'),
-    );
-    const sameAuto = budgetRefillTargetCampaigns.every(
-      (c) =>
-        c.autoReplenishment === first.autoReplenishment &&
-        (c.autoRefillThreshold ?? 1000) === (first.autoRefillThreshold ?? 1000) &&
-        (c.autoRefillAmount ?? 3000) === (first.autoRefillAmount ?? 3000),
-    );
+    if (!first && !bulkEditPrefillData) return null;
+
+    const sameBudget =
+      first != null &&
+      budgetRefillTargetCampaigns.every((c) => c.budget === first.budget);
+    const sameBonus =
+      first != null &&
+      budgetRefillTargetCampaigns.every(
+        (c) =>
+          Boolean(c.usePromoBonuses) === Boolean(first.usePromoBonuses) &&
+          (c.bonusAmount ?? 0) === (first.bonusAmount ?? 0) &&
+          (c.bonusPackageId ?? 'p1') === (first.bonusPackageId ?? 'p1'),
+      );
+    const sameAuto =
+      first != null &&
+      budgetRefillTargetCampaigns.every(
+        (c) =>
+          Boolean(c.autoReplenishment) === Boolean(first.autoReplenishment) &&
+          (c.autoRefillThreshold ?? 1000) === (first.autoRefillThreshold ?? 1000) &&
+          (c.autoRefillAmount ?? 3000) === (first.autoRefillAmount ?? 3000),
+      );
+
+    // Массово: подставляем только совпадающие поля. Автопополнение — всегда из кампаний,
+    // даже если budget/бонусы пришли через bulkEditPrefillData.
+    const amount = bulkEditPrefillData
+      ? bulkEditPrefillData.budget
+      : sameBudget
+        ? first!.budget
+        : undefined;
+    const useBonuses = bulkEditPrefillData
+      ? bulkEditPrefillData.useBonuses
+      : sameBonus
+        ? Boolean(first!.usePromoBonuses && (first!.bonusAmount ?? 0) > 0)
+        : false;
+    const bonusAmount = bulkEditPrefillData
+      ? bulkEditPrefillData.bonusAmount
+      : sameBonus
+        ? first!.bonusAmount ?? 0
+        : 0;
+
     return {
-      amount: sameBudget ? first.budget : first.budget,
-      useBonuses: sameBonus
-        ? Boolean(first.usePromoBonuses && (first.bonusAmount ?? 0) > 0)
-        : Boolean(first.usePromoBonuses && (first.bonusAmount ?? 0) > 0),
-      bonusAmount: first.bonusAmount ?? 0,
-      packageId: first.bonusPackageId ?? 'p1',
+      amount,
+      useBonuses,
+      bonusAmount,
+      packageId: sameBonus ? first!.bonusPackageId ?? 'p1' : undefined,
       bonusPickMode: 'manual' as const,
-      autoRefillEnabled: sameAuto ? Boolean(first.autoReplenishment) : Boolean(first.autoReplenishment),
-      autoThreshold: first.autoRefillThreshold ?? 1000,
-      autoAmount: first.autoRefillAmount ?? 3000,
-      autoUseBonuses: Boolean(first.usePromoBonuses),
+      autoRefillEnabled: sameAuto ? Boolean(first!.autoReplenishment) : false,
+      autoThreshold: sameAuto ? first!.autoRefillThreshold ?? 1000 : 1000,
+      autoAmount: sameAuto ? first!.autoRefillAmount ?? 3000 : 3000,
+      autoUseBonuses: sameAuto
+        ? Boolean(first!.usePromoBonuses)
+        : useBonuses,
     };
   }, [bulkEditPrefillData, budgetRefillTargetCampaigns]);
 
@@ -4553,17 +4524,57 @@ export default function App() {
   );
 
   const openCreationBulkDailyLimit = () => {
-    const withLimit = selectedCreationCampaigns.find((c) => c.dailyLimit != null && c.dailyLimit > 0);
-    const hasExisting = withLimit?.dailyLimit != null && withLimit.dailyLimit > 0;
-    const limitStr = hasExisting
-      ? String(withLimit!.dailyLimit)
-      : String(DAILY_LIMIT_ABSOLUTE_MIN);
-    setCreationBulkDailyLimitEnabled(hasExisting);
-    setCreationBulkDailyLimitValue(limitStr);
-    setCreationBulkSavedDailyLimit(limitStr);
-    setCreationBulkDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
+    const campaigns = selectedCreationCampaigns;
+    const first = campaigns[0];
+    const sameLimit =
+      first != null &&
+      campaigns.every((c) => (c.dailyLimit ?? null) === (first.dailyLimit ?? null));
+    const sharedLimit =
+      sameLimit && first?.dailyLimit != null && first.dailyLimit > 0
+        ? first.dailyLimit
+        : null;
+
+    const rulesSignature = (id: string) => {
+      const settings = creationDailyLimitRules[id];
+      if (!settings || !isDynamicDailyLimitConfigured(settings)) return '';
+      return JSON.stringify({
+        strategyId: settings.strategyId,
+        autoIncreaseEnabled: settings.autoIncreaseEnabled,
+        rules: (settings.increaseRules ?? [])
+          .filter((r) => r.enabled)
+          .map((r) => ({
+            metric: r.metric,
+            conditions: (r.conditions ?? []).map((c) => ({
+              compare: c.compare,
+              threshold: c.threshold,
+              budgetChangeRub: c.budgetChangeRub,
+              budgetChangePercent: c.budgetChangePercent ?? 0,
+              budgetChangeUnit: c.budgetChangeUnit ?? 'rub',
+            })),
+          })),
+      });
+    };
+    const firstRulesSig = first ? rulesSignature(first.id) : '';
+    const sameRules =
+      first != null && campaigns.every((c) => rulesSignature(c.id) === firstRulesSig);
+    const sharedRules =
+      sameRules && firstRulesSig
+        ? creationDailyLimitRules[first!.id]
+        : createDefaultAdvancedDailyLimitSettings();
+
+    if (sharedLimit != null) {
+      const limitStr = String(sharedLimit);
+      setCreationBulkDailyLimitEnabled(true);
+      setCreationBulkDailyLimitValue(limitStr);
+      setCreationBulkSavedDailyLimit(limitStr);
+    } else {
+      setCreationBulkDailyLimitEnabled(false);
+      setCreationBulkDailyLimitValue(String(DAILY_LIMIT_ABSOLUTE_MIN));
+      setCreationBulkSavedDailyLimit('');
+    }
+    setCreationBulkDailyLimitSettings(sharedRules);
     setCreationBulkCarryover(true);
-    setCreationBulkAutoRefillOnRules(true);
+    setCreationBulkAutoRefillOnRules(false);
     setIsCreationBulkDailyLimitOpen(true);
   };
 
@@ -5048,7 +5059,7 @@ export default function App() {
     );
 
     return (
-      <div className="min-h-screen bg-[#F3F5F8] font-sans text-gray-900 relative">
+      <div className="min-h-screen bg-[#F6F6F8] font-sans text-gray-900 relative">
         <AppHeader
           onNavigate={() => handleNavigationAttempt(handleNavigateToList)}
           onLaunchPromotion={() =>
@@ -5935,6 +5946,8 @@ export default function App() {
                   promoBonusesTotal={totals.bonus}
                   autobidderSetup={creationAutobidderSetup}
                   onAutobidderSetupChange={setCreationAutobidderSetup}
+                  dailyLimitRules={creationDailyLimitRules}
+                  onDailyLimitRulesChange={setCreationDailyLimitRules}
                 />
                 <Pagination
                   total={validCount}
@@ -6000,11 +6013,9 @@ export default function App() {
           setCreationBulkSavedDailyLimit('');
           setCreationBulkDailyLimitSettings(createDefaultAdvancedDailyLimitSettings());
           applyPatchToSelectedCreationCampaigns({ dailyLimit: null });
-          setCreationAutobidderSetup((prev) => {
+          setCreationDailyLimitRules((prev) => {
             const next = { ...prev };
-            for (const id of selectedCampaignIds) {
-              if (next[id]?.mode === 'profit') delete next[id];
-            }
+            for (const id of selectedCampaignIds) delete next[id];
             return next;
           });
           setIsCreationBulkDailyLimitOpen(false);
@@ -6027,55 +6038,50 @@ export default function App() {
         initialSettings={creationBulkDailyLimitSettings}
         referenceCpcBidRub={creationBulkMaxBid}
         autoRefillOnRulesTrigger={creationBulkAutoRefillOnRules}
-        onAutoRefillOnRulesTriggerChange={(enabled) => {
-          setCreationBulkAutoRefillOnRules(enabled);
-          if (enabled) {
-            applyPatchToSelectedCreationCampaigns({ autoReplenishment: true });
-          }
-        }}
+        onAutoRefillOnRulesTriggerChange={setCreationBulkAutoRefillOnRules}
         onApply={(settings, options) => {
           setCreationBulkDailyLimitSettings(settings);
           if (options?.reset) {
             applyPatchToSelectedCreationCampaigns({ dailyLimit: null });
+            setCreationDailyLimitRules((prev) => {
+              const next = { ...prev };
+              for (const id of selectedCampaignIds) delete next[id];
+              return next;
+            });
             setIsCreationBulkDailyLimitOpen(false);
             setToastMessage('Дневной лимит сброшен');
             setShowToast(true);
             return;
           }
+          const typedLimit = Number.parseFloat(creationBulkDailyLimitValue);
+          const savedLimit = Number.parseFloat(creationBulkSavedDailyLimit);
+          const liveLimit =
+            Number.isFinite(typedLimit) && typedLimit > 0
+              ? typedLimit
+              : Number.isFinite(savedLimit) && savedLimit > 0
+                ? savedLimit
+                : null;
           const limitFromSettings =
             settings.strategyId === 'maxSpend' &&
             settings.maxSpendLimitRub != null &&
             settings.maxSpendLimitRub > 0
               ? settings.maxSpendLimitRub
-              : Number.parseFloat(creationBulkSavedDailyLimit) ||
-                Number.parseFloat(creationBulkDailyLimitValue) ||
-                null;
+              : liveLimit;
           applyPatchToSelectedCreationCampaigns({
             dailyLimit:
               limitFromSettings != null && limitFromSettings > 0 ? limitFromSettings : null,
           });
-          if (isDynamicDailyLimitConfigured(settings)) {
-            setCreationAutobidderSetup((prev) => {
-              const next = { ...prev };
-              for (const id of selectedCampaignIds) {
-                next[id] = {
-                  mode: 'profit',
-                  settings,
-                  position: prev[id]?.position ?? DEFAULT_BID_CHASING_POSITION,
-                  maxBid: prev[id]?.maxBid ?? creationBulkMaxBid,
-                };
+          setCreationDailyLimitRules((prev) => {
+            const next = { ...prev };
+            for (const id of selectedCampaignIds) {
+              if (isDynamicDailyLimitConfigured(settings)) {
+                next[id] = settings;
+              } else {
+                delete next[id];
               }
-              return next;
-            });
-          } else {
-            setCreationAutobidderSetup((prev) => {
-              const next = { ...prev };
-              for (const id of selectedCampaignIds) {
-                if (next[id]?.mode === 'profit') delete next[id];
-              }
-              return next;
-            });
-          }
+            }
+            return next;
+          });
           setIsCreationBulkDailyLimitOpen(false);
           setToastMessage(
             `Дневной лимит обновлён для ${selectedCampaignIds.length} ${getPlural(selectedCampaignIds.length, 'кампании', 'кампаний', 'кампаний')}`,

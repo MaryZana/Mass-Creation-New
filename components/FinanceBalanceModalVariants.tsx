@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, Check, ChevronDown, Clock, Coins, Info, Wallet } from './Icons';
+import { Calendar, Check, ChevronDown, Clock, Coins, Info, InfoCircleFill, Wallet } from './Icons';
 import {
   FINANCE_BALANCE_WEEK_DAYS,
   buildFinanceBalanceSimView,
@@ -20,6 +20,44 @@ export const FINANCE_BALANCE_MODAL_VARIANTS = [
   { id: 'chart', label: '9' },
   { id: 'schedule', label: '10' },
 ] as const;
+
+function CampaignBalanceInformer() {
+  const [tipOpen, setTipOpen] = useState(false);
+  return (
+    <span
+      className="relative inline-flex"
+      onMouseEnter={() => setTipOpen(true)}
+      onMouseLeave={() => setTipOpen(false)}
+    >
+      <button
+        type="button"
+        className="inline-flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
+        aria-label="Что такое баланс в кампаниях"
+        onClick={(event) => {
+          event.stopPropagation();
+          setTipOpen((value) => !value);
+        }}
+      >
+        <InfoCircleFill className="h-3.5 w-3.5" />
+      </button>
+      {tipOpen ? (
+        <div className="absolute left-0 top-full z-50 pt-1.5">
+          <div className="relative w-[15rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
+            <span
+              className="absolute bottom-full left-3 border-x-[7px] border-b-[8px] border-x-transparent border-b-gray-900"
+              aria-hidden
+            />
+            <p className="mb-0">
+              Часть денег из баланса прошлых недель уже лежит на разных кампаниях. В день начисления мы их
+              учитываем. Если к этому дню кампании уже завершены — вычет почти или полностью пропадёт, и придёт
+              больше.
+            </p>
+          </div>
+        </div>
+      ) : null}
+    </span>
+  );
+}
 
 /** Поступление: стрелка вниз-влево */
 function ArrowInIcon({ className }: { className?: string }) {
@@ -179,6 +217,10 @@ type Props = {
   spendView?: FinanceBalanceSpendViewId;
   /** Встроено в карточку на странице: без заголовка и с меньшими отступами */
   embedded?: boolean;
+  /** Та же вёрстка, уменьшенная под узкую колонку */
+  compact?: boolean;
+  /** Подпись над суммой в тёмной карточке */
+  cardLabel?: React.ReactNode;
 };
 
 function useDerived(view: FinanceBalanceSimView, day: number) {
@@ -204,24 +246,28 @@ function LimitCalculation({ view }: { view: FinanceBalanceSimView }) {
   const row = 'flex items-baseline justify-between gap-4 py-1.5';
 
   return (
-    <div className="mt-3 rounded-xl bg-white/5 p-3.5 text-xs text-white/60">
-      <p className="mb-2 leading-snug text-white/80">Лимит считается как средняя прибыль за 3 недели</p>
-      <p className="mb-1 text-white/80">Прибыль по фин. отчётам</p>
-      {weeks.map((amount, index) => (
-        <div key={index} className={row}>
-          <span>{financeBalanceWeekRangeLabelShort(undefined, view.weekOffset - 3 + index)}</span>
-          <span className={`tabular-nums ${amount === 0 ? 'text-red-300' : 'text-white/80'}`}>
-            {fmtRub(amount)} ₽
-          </span>
-        </div>
-      ))}
-      <div className={`${row} mt-1 border-t border-white/10 pt-2.5`}>
-        <span>{hasZero ? 'Есть неделя с 0 ₽ — начисления нет' : 'Среднее за 3 недели'}</span>
-        <span className="tabular-nums text-white/80">{fmtRub(average)} ₽</span>
+    <div className="mt-3 space-y-2">
+      <div className="rounded-xl bg-white/5 p-3.5 text-xs leading-snug text-white/80">
+        Лимит — это сумма, которую мы выделили вам на продвижение на эту неделю. Берём среднюю прибыль за последние 3 недели
       </div>
-      <div className={`${row} font-semibold text-white`}>
-        <span>Лимит недели</span>
-        <span className="tabular-nums">{fmtRub(view.grossRub)} ₽</span>
+      <div className="rounded-xl bg-white/5 p-3.5 text-xs text-white/60">
+        <p className="mb-1 text-white/80">Прибыль по фин. отчётам</p>
+        {weeks.map((amount, index) => (
+          <div key={index} className={row}>
+            <span>{financeBalanceWeekRangeLabelShort(undefined, view.weekOffset - 3 + index)}</span>
+            <span className={`tabular-nums ${amount === 0 ? 'text-red-300' : 'text-white/80'}`}>
+              {fmtRub(amount)} ₽
+            </span>
+          </div>
+        ))}
+        <div className={`${row} mt-1 border-t border-white/10 pt-2.5`}>
+          <span>{hasZero ? 'Есть неделя с 0 ₽ — начисления нет' : 'Среднее за 3 недели'}</span>
+          <span className="tabular-nums text-white/80">{fmtRub(average)} ₽</span>
+        </div>
+        <div className={`${row} font-semibold text-white`}>
+          <span>Лимит недели</span>
+          <span className="tabular-nums">{fmtRub(view.grossRub)} ₽</span>
+        </div>
       </div>
     </div>
   );
@@ -886,8 +932,8 @@ function OpRow({
         {kind === 'in' ? <ArrowInIcon className="h-4 w-4" /> : <ArrowOutIcon className="h-4 w-4" />}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-sm leading-tight text-gray-900">{title}</p>
-        {caption ? <p className="mt-0.5 text-xs leading-tight text-gray-500">{caption}</p> : null}
+        <p className="mb-0 text-sm leading-tight text-gray-900">{title}</p>
+        {caption ? <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">{caption}</p> : null}
       </div>
       <span className={`text-sm font-semibold tabular-nums ${kind === 'in' ? 'text-emerald-600' : 'text-gray-900'}`}>
         {kind === 'in' ? '+' : '−'}
@@ -898,7 +944,16 @@ function OpRow({
   );
 }
 
-function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false }: Omit<Props, 'variant'>) {
+function FeedVariant({
+  titleId,
+  view,
+  weekdayIndex,
+  spendView,
+  embedded = false,
+  compact = false,
+  cardLabel,
+}: Omit<Props, 'variant'>) {
+  const gap = compact ? 'mt-4' : 'mt-6';
   const d = useDerived(view, weekdayIndex);
   const [calcOpen, setCalcOpen] = useState(false);
   const [spendOpen, setSpendOpen] = useState(false);
@@ -929,26 +984,27 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
     day.index === TUESDAY ? view.grossTuesdayRub : day.index === THURSDAY ? view.grossThursdayRub : 0;
   const reserveCutFor = (day: LedgerDay) => Math.max(0, grossFor(day) - day.accrualRub);
   /** Расчёт зачисления: по графику − резерв в кампаниях = придёт */
-  /** Резерв, который ещё не вычли к моменту этого начисления (во вторник — весь) */
-  const reserveLeftFor = (day: LedgerDay) =>
-    day.index === TUESDAY
-      ? view.reservePendingRub
-      : Math.max(0, view.reservePendingRub - view.grossTuesdayRub);
-  const accrualBreakdown = (day: LedgerDay) => {
-    if (reserveCutFor(day) <= 0) return null;
+  const accrualBreakdown = (day: LedgerDay, flush = false) => {
+    const cutRub = reserveCutFor(day);
+    if (cutRub <= 0) return null;
     const share = day.index === TUESDAY ? '75%' : '25%';
     return (
-      <div className="ml-12 mt-1.5 space-y-1 border-t border-dashed border-gray-200 pt-2 text-xs text-gray-500">
+      <div
+        className={`${flush ? '' : 'ml-12 '}mt-1.5 space-y-1 border-t border-dashed border-gray-200 pt-2 text-xs text-gray-500`}
+      >
         <div className="flex justify-between gap-3">
           <span>По графику · {share} лимита</span>
           <span className="tabular-nums text-gray-700">{fmtRub(grossFor(day))} ₽</span>
         </div>
         <div className="flex justify-between gap-3">
-          <span>Резерв на кампаниях</span>
-          <span className="tabular-nums text-gray-700">−{fmtRub(reserveLeftFor(day))} ₽</span>
+          <span className="inline-flex items-center gap-1">
+            Баланс в кампаниях
+            <CampaignBalanceInformer />
+          </span>
+          <span className="tabular-nums text-gray-700">−{fmtRub(cutRub)} ₽</span>
         </div>
         <div className="flex justify-between gap-3 font-semibold text-gray-900">
-          <span>Придёт на баланс</span>
+          <span>{day.planned ? 'Придёт на баланс' : 'Пришло на баланс'}</span>
           <span className="tabular-nums">{fmtRub(day.accrualRub)} ₽</span>
         </div>
       </div>
@@ -1269,10 +1325,14 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
   return (
     <>
       {embedded ? null : (
-        <h2 id={titleId} className="text-2xl font-bold tracking-tight text-gray-900">
+        <h2
+          id={titleId}
+          className={`${compact ? 'text-lg' : 'text-2xl'} font-bold tracking-tight text-gray-900`}
+        >
           Баланс
         </h2>
       )}
+      {compact ? null : (
       <div
         role="tablist"
         className={`${embedded ? '' : 'mt-6'} flex rounded-xl bg-[rgba(74,74,89,0.08)] p-1`}
@@ -1297,15 +1357,21 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
           </button>
         ))}
       </div>
+      )}
 
       {tab === 'how' ? (
-        <div className="mt-5">
+        <div className={compact ? 'mt-4' : 'mt-5'}>
           <BalanceIntro />
         </div>
       ) : (
       <>
-      <div className="mt-6 rounded-2xl bg-gray-900 p-5 text-white">
-        {spendView === 'split' ? (
+      <div className={`${compact ? 'rounded-xl px-4 py-3' : 'mt-6 rounded-2xl p-5'} bg-gray-900 text-white`}>
+        {cardLabel ? (
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">{cardLabel}</div>
+            <span className="text-lg font-bold tabular-nums">{fmtRub(view.availableNowRub)} ₽</span>
+          </div>
+        ) : spendView === 'split' ? (
           <div className="flex items-end justify-between gap-4">
             <div>
               <span className="tooltip inline-flex cursor-default">
@@ -1327,7 +1393,7 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
           </div>
         ) : (
           <span className="tooltip inline-flex cursor-default">
-            <span className="text-[34px] font-bold leading-none tabular-nums tracking-tight">
+            <span className={`${compact ? 'text-[28px]' : 'text-[34px]'} font-bold leading-none tabular-nums tracking-tight`}>
               {fmtRub(view.availableNowRub)} ₽
             </span>
             <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-2 !w-max !translate-x-0 !whitespace-nowrap !px-2.5 !py-1.5 !text-xs !font-normal">
@@ -1336,8 +1402,8 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
           </span>
         )}
         <p
-          className={`mt-3 flex h-7 w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70 ${
-            d.daysToBurn <= 2 && view.availableNowRub > 0 ? '' : 'invisible'
+          className={`mb-0 mt-3 h-7 w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70 ${
+            d.daysToBurn <= 2 && view.availableNowRub > 0 ? 'flex' : compact ? 'hidden' : 'invisible flex'
           }`}
           aria-hidden={!(d.daysToBurn <= 2 && view.availableNowRub > 0)}
         >
@@ -1394,7 +1460,11 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
           className="mt-4 flex w-full items-center justify-between border-t border-white/10 pt-3 text-left text-xs text-white/60"
         >
           <span>Лимит недели {d.range}</span>
-          <span className="flex items-center gap-1.5 text-base font-semibold tabular-nums leading-none text-white">
+          <span
+            className={`flex items-center gap-1.5 tabular-nums leading-none text-white ${
+              compact ? 'text-sm font-medium' : 'text-base font-semibold'
+            }`}
+          >
             {fmtRub(view.grossRub)} ₽
             <ChevronDown
               className={`h-4 w-4 text-white/50 transition-transform ${calcOpen ? 'rotate-180' : ''}`}
@@ -1404,6 +1474,7 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
         {calcOpen ? <LimitCalculation view={view} /> : null}
       </div>
 
+      <div className={compact ? 'px-4' : ''}>
       {d.zeroWeek ? (
         <ZeroWeekNote
           explain={view.explain}
@@ -1419,9 +1490,40 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
 
       {spendBlock}
 
-      {accrualGroups.map((day) => (
-        <div key={day.index} className="mt-6">
-          <p className="text-xs font-medium text-gray-500">{groupTitle(day)}</p>
+      {compact && accrualGroups.length > 0 ? (
+        <div className={gap}>
+          <p className="mb-0 text-sm font-medium text-gray-500">Начислено</p>
+          {accrualGroups.map((day) => (
+            <div key={day.index} className="mt-2 rounded-xl border border-dashed border-gray-200 px-2.5 py-2">
+              <div className="flex items-start gap-2.5">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                  <ArrowInIcon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2.5">
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-0 text-sm leading-tight text-gray-900">
+                        {day.index === TUESDAY ? 'Первая часть баланса' : 'Вторая часть баланса'}
+                      </p>
+                      <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
+                        {DAY_NAMES[day.index]}, {day.date} · {day.index === TUESDAY ? '75%' : '25%'}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums text-emerald-600">
+                      +{fmtRub(day.accrualRub)} ₽
+                    </span>
+                  </div>
+                  {accrualBreakdown(day, true)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {(compact ? [] : accrualGroups).map((day) => (
+        <div key={day.index} className={gap}>
+          <p className="mb-0 text-xs font-medium text-gray-500">{groupTitle(day)}</p>
           <div className="mt-1">
             <OpRow
               kind="in"
@@ -1434,25 +1536,38 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
       ))}
 
       {upcoming.length > 0 || showPendingCharge ? (
-        <div className="mt-6">
-          <p className="text-sm font-medium text-gray-500">Ожидается</p>
+        <div className={gap}>
+          <p className="mb-0 text-sm font-medium text-gray-500">Ожидается</p>
           {upcoming.map((day) => (
-            <div key={day.index} className="mt-2 rounded-xl border border-dashed border-gray-200 px-3 py-2.5">
-              <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400">
+            <div
+              key={day.index}
+              className={`mt-2 rounded-xl border border-dashed border-gray-200 ${compact ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}
+            >
+              <div className={`flex items-start ${compact ? 'gap-2.5' : 'gap-3'}`}>
+                <span
+                  className={`flex shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400 ${
+                    compact ? 'h-8 w-8' : 'h-9 w-9'
+                  }`}
+                >
                   <ArrowInIcon className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm leading-tight text-gray-700">
-                    {day.index === TUESDAY ? 'Первая часть баланса' : 'Вторая часть баланса'}
-                  </p>
-                  <p className="mt-0.5 text-xs leading-tight text-gray-500">
-                    {DAY_NAMES[day.index]}, {day.date}
-                  </p>
+                  <div className={`flex items-center ${compact ? 'gap-2.5' : 'gap-3'}`}>
+                    <div className="min-w-0 flex-1">
+                      <p className="mb-0 text-sm leading-tight text-gray-700">
+                        {day.index === TUESDAY ? 'Первая часть баланса' : 'Вторая часть баланса'}
+                      </p>
+                      <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
+                        {DAY_NAMES[day.index]}, {day.date} · {day.index === TUESDAY ? '75%' : '25%'}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums text-gray-400">
+                      +{fmtRub(day.accrualRub)} ₽
+                    </span>
+                  </div>
+                  {accrualBreakdown(day, true)}
                 </div>
-                <span className="text-sm font-semibold tabular-nums text-gray-400">+{fmtRub(day.accrualRub)} ₽</span>
               </div>
-              {accrualBreakdown(day)}
             </div>
           ))}
           {showPendingCharge ? (
@@ -1461,8 +1576,8 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
                 <ArrowOutIcon className="h-4 w-4" />
               </span>
               <div className="min-w-0 flex-1">
-                <p className="text-sm leading-tight text-gray-700">Оплата продвижения</p>
-                <p className="mt-0.5 text-xs leading-tight text-gray-500">
+                <p className="mb-0 text-sm leading-tight text-gray-700">Оплата продвижения</p>
+                <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
                   {DAY_NAMES[6]}, {chargeDate} · на портале продавца
                 </p>
               </div>
@@ -1471,6 +1586,7 @@ function FeedVariant({ titleId, view, weekdayIndex, spendView, embedded = false 
           ) : null}
         </div>
       ) : null}
+      </div>
       </>
       )}
     </>

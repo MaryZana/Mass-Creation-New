@@ -14,7 +14,8 @@ interface ProductMultiSelectProps {
   options: SelectableProduct[];
   selected: SelectableProduct[];
   onChange: (selected: SelectableProduct[]) => void;
-  isCpcMode: boolean;
+  /** @deprecated все товары доступны в CPC */
+  isCpcMode?: boolean;
   disabled?: boolean;
   placeholder?: string;
   className?: string;
@@ -26,7 +27,6 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
   options,
   selected,
   onChange,
-  isCpcMode,
   disabled = false,
   placeholder = 'Выберите товары',
   className,
@@ -220,30 +220,27 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
 
   const isGroupAllSelected = (category: string) => {
     const products = groupedByCategory.find(g => g.category === category)?.products ?? [];
-    const selectable = products.filter(p => !(isCpcMode && !p.cpcCompatible));
-    return selectable.length > 0 && selectable.every(p => tempSelected.some(sp => sp.nmId === p.nmId));
+    return products.length > 0 && products.every(p => tempSelected.some(sp => sp.nmId === p.nmId));
   };
 
   const isGroupIndeterminate = (category: string) => {
     const products = groupedByCategory.find(g => g.category === category)?.products ?? [];
-    const selectable = products.filter(p => !(isCpcMode && !p.cpcCompatible));
-    const selectedCount = selectable.filter(p => tempSelected.some(sp => sp.nmId === p.nmId)).length;
-    return selectedCount > 0 && selectedCount < selectable.length;
+    const selectedCount = products.filter(p => tempSelected.some(sp => sp.nmId === p.nmId)).length;
+    return selectedCount > 0 && selectedCount < products.length;
   };
 
   const handleSelectGroup = (category: string, checked: boolean) => {
     const products = groupedByCategory.find(g => g.category === category)?.products ?? [];
-    const selectable = products.filter(p => !(isCpcMode && !p.cpcCompatible));
-    const ids = new Set(selectable.map(p => p.nmId));
+    const ids = new Set(products.map(p => p.nmId));
     if (singleSelect) {
-      if (checked && selectable.length > 0) setTempSelected([selectable[0]]);
+      if (checked && products.length > 0) setTempSelected([products[0]]);
       else if (!checked) setTempSelected(prev => prev.filter(p => !ids.has(p.nmId)));
     } else {
       if (checked) {
         setTempSelected(prev => {
           const existing = new Set(prev.map(p => p.nmId));
           const room = Math.max(0, MAX_PRODUCTS - prev.length);
-          const toAdd = selectable.filter(p => !existing.has(p.nmId)).slice(0, room);
+          const toAdd = products.filter(p => !existing.has(p.nmId)).slice(0, room);
           return [...prev, ...toAdd];
         });
       } else {
@@ -377,10 +374,7 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                 {filteredOptions.length > 0 ? (
                   showGrouped ? (
                     groupedByCategory.map(({ category, products }) => {
-                      const selectableInGroup = products.filter(
-                        (p) => !(isCpcMode && !p.cpcCompatible),
-                      );
-                      const selectedInGroup = selectableInGroup.filter((p) =>
+                      const selectedInGroup = products.filter((p) =>
                         tempSelected.some((sp) => sp.nmId === p.nmId),
                       ).length;
                       const isCollapsed = collapsedCategories.has(category);
@@ -430,9 +424,9 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                               </span>
                               <span className="text-xs text-gray-500 shrink-0">
                                 {selectedInGroup > 0
-                                  ? `${selectedInGroup} / ${selectableInGroup.length}`
-                                  : selectableInGroup.length}{' '}
-                                {getPlural(selectableInGroup.length, 'товар', 'товара', 'товаров')}
+                                  ? `${selectedInGroup} / ${products.length}`
+                                  : products.length}{' '}
+                                {getPlural(products.length, 'товар', 'товара', 'товаров')}
                               </span>
                             </div>
                           </div>
@@ -440,18 +434,16 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                             <div className="mt-0.5 ml-2 pl-1 border-l border-gray-200 space-y-0.5">
                               {products.map((p) => {
                                 const isSelected = tempSelected.some((sp) => sp.nmId === p.nmId);
-                                const isIncompatible = isCpcMode && !p.cpcCompatible;
                                 return (
                                   <div
                                     key={p.nmId}
-                                    onClick={() => !isIncompatible && toggleOption(p)}
-                                    className={`flex items-center gap-3 px-2 py-2 rounded-lg transition-colors ${isIncompatible ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'hover:bg-purple-50 cursor-pointer group'}`}
+                                    onClick={() => toggleOption(p)}
+                                    className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-purple-50 group"
                                   >
                                     <Checkbox
-                                      checked={isSelected && !isIncompatible}
-                                      disabled={isIncompatible}
+                                      checked={isSelected}
                                       onClick={(e) => e.stopPropagation()}
-                                      onChange={() => !isIncompatible && toggleOption(p)}
+                                      onChange={() => toggleOption(p)}
                                       className="shrink-0"
                                     />
                                     <div className="relative group/image">
@@ -470,18 +462,11 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                                     </div>
                                     <div className="min-w-0">
                                       <p
-                                        className={`text-sm truncate ${isSelected && !isIncompatible ? 'text-gray-900 font-medium' : 'text-gray-700'}`}
+                                        className={`text-sm truncate ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}
                                       >
                                         {p.productName}
                                       </p>
-                                      <div className="flex items-center gap-2">
-                                        <p className="text-xs text-gray-500">ID {p.nmId}</p>
-                                        {isIncompatible && (
-                                          <span className="text-xs text-red-600 font-medium">
-                                            не продвигается по СPC
-                                          </span>
-                                        )}
-                                      </div>
+                                      <p className="text-xs text-gray-500">ID {p.nmId}</p>
                                     </div>
                                   </div>
                                 );
@@ -494,16 +479,14 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                   ) : (
                     filteredOptions.map((p) => {
                       const isSelected = tempSelected.some((sp) => sp.nmId === p.nmId);
-                      const isIncompatible = isCpcMode && !p.cpcCompatible;
                       return (
                         <div
                           key={p.nmId}
-                          onClick={() => !isIncompatible && toggleOption(p)}
-                          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors ${isIncompatible ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'hover:bg-purple-50 cursor-pointer group'}`}
+                          onClick={() => toggleOption(p)}
+                          className="group flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-purple-50"
                         >
                           <Checkbox
-                            checked={isSelected && !isIncompatible}
-                            disabled={isIncompatible}
+                            checked={isSelected}
                             className="shrink-0"
                           />
                           <div className="relative group/image">
@@ -522,18 +505,11 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
                           </div>
                           <div>
                             <p
-                              className={`text-sm ${isSelected && !isIncompatible ? 'text-gray-900 font-medium' : 'text-gray-700'}`}
+                              className={`text-sm ${isSelected ? 'text-gray-900 font-medium' : 'text-gray-700'}`}
                             >
                               {p.productName}
                             </p>
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs text-gray-500">ID {p.nmId}</p>
-                              {isIncompatible && (
-                                <span className="text-xs text-red-600 font-medium">
-                                  не продвигается по СPC
-                                </span>
-                              )}
-                            </div>
+                            <p className="text-xs text-gray-500">ID {p.nmId}</p>
                           </div>
                         </div>
                       );
