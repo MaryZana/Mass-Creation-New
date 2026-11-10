@@ -167,6 +167,11 @@ export const PROMOTION_ACCOUNT_BALANCE_BY_PROFILE: Record<ProfileId, number> = {
   '3': 12_400,
 };
 
+/** Единый счёт = счёт продвижения + баланс (буфер) — одно значение везде */
+export function readUnifiedAccountRub(profileId: ProfileId): number {
+  return PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId] + readFinanceBufferRub();
+}
+
 const TASKS_DROPDOWN_NEW_COUNT: Record<ProfileId, number> = {
   '1': 1,
   '2': 3,

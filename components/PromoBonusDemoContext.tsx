@@ -1,16 +1,12 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
-export type PromoBonusDemoCaseId = '100' | '250000' | '1600';
+export type PromoBonusDemoCaseId = '8200';
 
 export const PROMO_BONUS_DEMO_CASES: ReadonlyArray<{
   id: PromoBonusDemoCaseId;
   total: number;
   label: string;
-}> = [
-  { id: '100', total: 100, label: '100 B' },
-  { id: '250000', total: 250_000, label: '250 000 B' },
-  { id: '1600', total: 1_600, label: '1 600 B' },
-];
+}> = [{ id: '8200', total: 8_200, label: '8 200 B' }];
 
 type PromoBonusDemoContextValue = {
   caseId: PromoBonusDemoCaseId;
@@ -32,11 +28,11 @@ const STORAGE_KEY = 'mass_creation_promo_bonus_demo_case';
 function readStoredCaseId(): PromoBonusDemoCaseId {
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw === '100' || raw === '250000' || raw === '1600') return raw;
+    if (raw === '8200') return raw;
   } catch {
     /* ignore */
   }
-  return '250000';
+  return '8200';
 }
 
 export function PromoBonusDemoProvider({ children }: { children: React.ReactNode }) {
@@ -53,7 +49,7 @@ export function PromoBonusDemoProvider({ children }: { children: React.ReactNode
   };
 
   const promoBonusTotal =
-    PROMO_BONUS_DEMO_CASES.find((item) => item.id === caseId)?.total ?? 250_000;
+    PROMO_BONUS_DEMO_CASES.find((item) => item.id === caseId)?.total ?? 8_200;
 
   const value = useMemo(
     () => ({ caseId, setCaseId, promoBonusTotal }),

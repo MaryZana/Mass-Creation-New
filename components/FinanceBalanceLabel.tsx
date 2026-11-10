@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { BalanceIntro } from './FinanceBalanceModalVariants';
+import {
+  BalanceIntro,
+  financeBalanceCardTone,
+  readFinanceBalanceCardTone,
+} from './FinanceBalanceModalVariants';
 import { notifySidePanelOpen, useCloseOnOtherSidePanel } from './FeatureVideoGuide';
 import { ChevronRight, Coins, InfoCircleFill, Plus, Wallet, X } from './Icons';
 
@@ -456,13 +460,21 @@ function BalanceHowInformer({ dark = false }: { dark?: boolean }) {
   );
 }
 
-/** Подпись «Баланс» с информером для тёмной карточки */
+/** Подпись «Баланс» с информером — светлая/тёмная под тон карточки */
 export function BalanceDarkLabel() {
+  const [dark, setDark] = useState(() => financeBalanceCardTone(readFinanceBalanceCardTone()).dark);
+
+  useEffect(() => {
+    const sync = () => setDark(financeBalanceCardTone(readFinanceBalanceCardTone()).dark);
+    window.addEventListener('finance-balance-card-tone', sync);
+    return () => window.removeEventListener('finance-balance-card-tone', sync);
+  }, []);
+
   return (
     <span className="relative z-10 flex items-center gap-1.5 text-sm">
-      <Coins className="h-5 w-5 shrink-0 text-white" />
-      <span className="text-white/70">Баланс</span>
-      <BalanceHowInformer dark />
+      <Coins className={`h-5 w-5 shrink-0 ${dark ? 'text-white' : 'text-gray-900'}`} />
+      <span className={dark ? 'text-white/70' : 'text-gray-600'}>Баланс</span>
+      <BalanceHowInformer dark={dark} />
     </span>
   );
 }

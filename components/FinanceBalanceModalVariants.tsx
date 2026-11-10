@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Calendar, Check, ChevronDown, Clock, Coins, Info, InfoCircleFill, Wallet } from './Icons';
 import {
   FINANCE_BALANCE_WEEK_DAYS,
@@ -20,6 +20,82 @@ export const FINANCE_BALANCE_MODAL_VARIANTS = [
   { id: 'chart', label: '9' },
   { id: 'schedule', label: '10' },
 ] as const;
+
+/** Тона блока баланса: чёрный и белый. */
+export const FINANCE_BALANCE_CARD_TONES = [
+  {
+    id: 'black',
+    label: 'Чёрный',
+    dark: true,
+    shell: 'bg-[#2B2B30] text-white',
+    muted: 'text-white/55',
+    soft: 'text-white/75',
+    pill: 'bg-white/10 text-white/70',
+    pillIcon: 'text-white/45',
+    border: 'border-white/10',
+    calcPanel: 'bg-white/[0.06] text-white/55',
+    calcHead: 'text-white/80',
+    calcStrong: 'text-white',
+    calcZero: 'text-red-300',
+    calcBorder: 'border-white/10',
+    barTrack: 'bg-white/12',
+    barFill: 'bg-white/45',
+    barSoft: 'bg-white/12',
+    barStrong: 'bg-white/35',
+    chevron: 'text-white/45',
+    splitBorder: 'border-white/10',
+  },
+  {
+    id: 'white',
+    label: 'Белый',
+    dark: false,
+    shell: 'bg-white text-gray-900 ring-1 ring-black/[0.14]',
+    muted: 'text-gray-500',
+    soft: 'text-gray-600',
+    pill: 'bg-[#F0F0F2] text-gray-600',
+    pillIcon: 'text-gray-400',
+    border: 'border-black/[0.12]',
+    calcPanel: 'bg-[#F5F5F7] text-gray-600',
+    calcHead: 'text-gray-800',
+    calcStrong: 'text-gray-900',
+    calcZero: 'text-red-500',
+    calcBorder: 'border-black/[0.10]',
+    barTrack: 'bg-black/[0.07]',
+    barFill: 'bg-gray-900/35',
+    barSoft: 'bg-gray-900/12',
+    barStrong: 'bg-gray-900/50',
+    chevron: 'text-gray-400',
+    splitBorder: 'border-black/[0.10]',
+  },
+] as const;
+
+export type FinanceBalanceCardToneId = (typeof FINANCE_BALANCE_CARD_TONES)[number]['id'];
+export type FinanceBalanceCardTone = (typeof FINANCE_BALANCE_CARD_TONES)[number];
+
+const BALANCE_CARD_TONE_KEY = 'finance_balance_card_tone';
+
+export function readFinanceBalanceCardTone(): FinanceBalanceCardToneId {
+  try {
+    const raw = window.localStorage.getItem(BALANCE_CARD_TONE_KEY);
+    const match = FINANCE_BALANCE_CARD_TONES.find((item) => item.id === raw);
+    if (match) return match.id;
+  } catch {
+    /* ignore */
+  }
+  return 'black';
+}
+
+export function writeFinanceBalanceCardTone(id: FinanceBalanceCardToneId) {
+  try {
+    window.localStorage.setItem(BALANCE_CARD_TONE_KEY, id);
+  } catch {
+    /* ignore */
+  }
+}
+
+export function financeBalanceCardTone(id: FinanceBalanceCardToneId): FinanceBalanceCardTone {
+  return FINANCE_BALANCE_CARD_TONES.find((item) => item.id === id) ?? FINANCE_BALANCE_CARD_TONES[0];
+}
 
 function CampaignBalanceInformer() {
   const [tipOpen, setTipOpen] = useState(false);
@@ -239,32 +315,44 @@ function useDerived(view: FinanceBalanceSimView, day: number) {
 }
 
 /** Из чего сложился лимит недели: прибыль 3 недель → среднее */
-function LimitCalculation({ view }: { view: FinanceBalanceSimView }) {
+function LimitCalculation({
+  view,
+  tone,
+}: {
+  view: FinanceBalanceSimView;
+  tone?: FinanceBalanceCardTone;
+}) {
   const weeks = view.weekProfitRub;
   const hasZero = weeks.includes(0);
   const average = hasZero ? 0 : Math.round((weeks[0] + weeks[1] + weeks[2]) / 3);
   const row = 'flex items-baseline justify-between gap-4 py-1.5';
+  const panel = tone?.calcPanel ?? 'bg-white/5 text-white/60';
+  const head = tone?.calcHead ?? 'text-white/80';
+  const strong = tone?.calcStrong ?? 'text-white';
+  const zero = tone?.calcZero ?? 'text-red-300';
+  const value = tone?.calcHead ?? 'text-white/80';
+  const border = tone?.calcBorder ?? 'border-white/10';
 
   return (
     <div className="mt-3 space-y-2">
-      <div className="rounded-xl bg-white/5 p-3.5 text-xs leading-snug text-white/80">
+      <div className={`rounded-xl p-3.5 text-xs leading-snug ${panel} ${head}`}>
         Лимит — это сумма, которую мы выделили вам на продвижение на эту неделю. Берём среднюю прибыль за последние 3 недели
       </div>
-      <div className="rounded-xl bg-white/5 p-3.5 text-xs text-white/60">
-        <p className="mb-1 text-white/80">Прибыль по фин. отчётам</p>
+      <div className={`rounded-xl p-3.5 text-xs ${panel}`}>
+        <p className={`mb-1 ${head}`}>Прибыль по фин. отчётам</p>
         {weeks.map((amount, index) => (
           <div key={index} className={row}>
             <span>{financeBalanceWeekRangeLabelShort(undefined, view.weekOffset - 3 + index)}</span>
-            <span className={`tabular-nums ${amount === 0 ? 'text-red-300' : 'text-white/80'}`}>
+            <span className={`tabular-nums ${amount === 0 ? zero : value}`}>
               {fmtRub(amount)} ₽
             </span>
           </div>
         ))}
-        <div className={`${row} mt-1 border-t border-white/10 pt-2.5`}>
+        <div className={`${row} mt-1 border-t ${border} pt-2.5`}>
           <span>{hasZero ? 'Есть неделя с 0 ₽ — начисления нет' : 'Среднее за 3 недели'}</span>
-          <span className="tabular-nums text-white/80">{fmtRub(average)} ₽</span>
+          <span className={`tabular-nums ${value}`}>{fmtRub(average)} ₽</span>
         </div>
-        <div className={`${row} font-semibold text-white`}>
+        <div className={`${row} font-semibold ${strong}`}>
           <span>Лимит недели</span>
           <span className="tabular-nums">{fmtRub(view.grossRub)} ₽</span>
         </div>
@@ -958,6 +1046,13 @@ function FeedVariant({
   const [calcOpen, setCalcOpen] = useState(false);
   const [spendOpen, setSpendOpen] = useState(false);
   const [tab, setTab] = useState<'balance' | 'how'>('balance');
+  const [cardToneId, setCardToneId] = useState<FinanceBalanceCardToneId>(readFinanceBalanceCardTone);
+  useEffect(() => {
+    const sync = () => setCardToneId(readFinanceBalanceCardTone());
+    window.addEventListener('finance-balance-card-tone', sync);
+    return () => window.removeEventListener('finance-balance-card-tone', sync);
+  }, []);
+  const tone = financeBalanceCardTone(cardToneId);
   const ledger = buildLedger(view, weekdayIndex);
   const groupTitle = (day: LedgerDay) =>
     day.index === weekdayIndex ? 'Сегодня' : day.index === weekdayIndex - 1 ? 'Вчера' : `${DAY_NAMES[day.index]}, ${day.date}`;
@@ -1365,7 +1460,7 @@ function FeedVariant({
         </div>
       ) : (
       <>
-      <div className={`${compact ? 'rounded-xl px-4 py-3' : 'mt-6 rounded-2xl p-5'} bg-gray-900 text-white`}>
+      <div className={`${compact ? 'rounded-xl px-4 py-3' : 'mt-6 rounded-2xl p-5'} ${tone.shell}`}>
         {cardLabel ? (
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">{cardLabel}</div>
@@ -1383,12 +1478,12 @@ function FeedVariant({
                 </span>
               </span>
             </div>
-            <div className="border-l border-white/10 pl-4 text-right">
-              <p className="text-xs text-white/60">Потрачено</p>
-              <p className="mt-1.5 text-lg font-semibold leading-none tabular-nums text-white/80">
+            <div className={`border-l ${tone.splitBorder} pl-4 text-right`}>
+              <p className={`text-xs ${tone.muted}`}>Потрачено</p>
+              <p className={`mt-1.5 text-lg font-semibold leading-none tabular-nums ${tone.soft}`}>
                 {fmtRub(spentRub)} ₽
               </p>
-              {spentRub > 0 ? <p className="mt-1.5 text-[11px] text-white/40">на портале {chargeDate}</p> : null}
+              {spentRub > 0 ? <p className={`mt-1.5 text-[11px] ${tone.muted}`}>на портале {chargeDate}</p> : null}
             </div>
           </div>
         ) : (
@@ -1402,20 +1497,20 @@ function FeedVariant({
           </span>
         )}
         <p
-          className={`mb-0 mt-3 h-7 w-fit items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/70 ${
+          className={`mb-0 mt-3 h-7 w-fit items-center gap-1.5 rounded-full px-3 py-1.5 text-xs ${tone.pill} ${
             d.daysToBurn <= 2 && view.availableNowRub > 0 ? 'flex' : compact ? 'hidden' : 'invisible flex'
           }`}
           aria-hidden={!(d.daysToBurn <= 2 && view.availableNowRub > 0)}
         >
-          <Info className="h-3.5 w-3.5 shrink-0 text-white/50" />
+          <Info className={`h-3.5 w-3.5 shrink-0 ${tone.pillIcon}`} />
           Обнулится во вторник, {d.burnDate}
         </p>
         {spendView === 'stack' && view.grossRub > 0 ? (
           (() => {
             const parts = [
-              { key: 'spent', label: 'Потрачено', value: spentRub, bar: 'bg-white/40', dot: 'bg-white/40' },
-              { key: 'reserve', label: 'В кампаниях', value: reserveDeductedRub, bar: 'bg-white/15', dot: 'bg-white/15' },
-              { key: 'left', label: 'Осталось', value: view.availableNowRub, bar: 'bg-white', dot: 'bg-white' },
+              { key: 'spent', label: 'Потрачено', value: spentRub, bar: tone.barStrong, dot: tone.barStrong },
+              { key: 'reserve', label: 'В кампаниях', value: reserveDeductedRub, bar: tone.barSoft, dot: tone.barSoft },
+              { key: 'left', label: 'Осталось', value: view.availableNowRub, bar: tone.barFill, dot: tone.barFill },
             ];
             const total = Math.max(1, parts.reduce((sum, part) => sum + part.value, 0));
             return (
@@ -1427,12 +1522,12 @@ function FeedVariant({
                       <span key={part.key} className={`h-full ${part.bar}`} style={{ width: `${(part.value / total) * 100}%` }} />
                     ))}
                 </div>
-                <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/60">
+                <div className={`mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs ${tone.muted}`}>
                   {parts.map((part) => (
                     <span key={part.key} className="flex items-center gap-1.5">
                       <span className={`h-2 w-2 rounded-full ${part.dot}`} />
                       {part.label}
-                      <span className="tabular-nums text-white">{fmtRub(part.value)} ₽</span>
+                      <span className={`tabular-nums ${tone.calcStrong}`}>{fmtRub(part.value)} ₽</span>
                     </span>
                   ))}
                 </div>
@@ -1442,12 +1537,13 @@ function FeedVariant({
         ) : null}
         {spendView === 'card' && spendTotalRub > 0 ? (
           <div className="mt-5">
-            <div className="flex h-1.5 overflow-hidden rounded-full bg-white/15">
-              <span className="h-full rounded-full bg-white/50" style={{ width: `${spentPct}%` }} />
+            <div className={`flex h-1.5 overflow-hidden rounded-full ${tone.barTrack}`}>
+              <span className={`h-full rounded-full ${tone.barFill}`} style={{ width: `${spentPct}%` }} />
             </div>
-            <div className="mt-2 flex justify-between text-xs text-white/60">
+            <div className={`mt-2 flex justify-between text-xs ${tone.muted}`}>
               <span>
-                Потрачено <span className="font-semibold tabular-nums text-white">{fmtRub(spentRub)} ₽</span>
+                Потрачено{' '}
+                <span className={`font-semibold tabular-nums ${tone.calcStrong}`}>{fmtRub(spentRub)} ₽</span>
               </span>
               {spentRub > 0 ? <span>на портале {chargeDate}</span> : null}
             </div>
@@ -1457,21 +1553,21 @@ function FeedVariant({
           type="button"
           onClick={() => setCalcOpen((open) => !open)}
           aria-expanded={calcOpen}
-          className="mt-4 flex w-full items-center justify-between border-t border-white/10 pt-3 text-left text-xs text-white/60"
+          className={`mt-4 flex w-full items-center justify-between border-t ${tone.border} pt-3 text-left text-xs ${tone.muted}`}
         >
           <span>Лимит недели {d.range}</span>
           <span
-            className={`flex items-center gap-1.5 tabular-nums leading-none text-white ${
+            className={`flex items-center gap-1.5 tabular-nums leading-none ${tone.calcStrong} ${
               compact ? 'text-sm font-medium' : 'text-base font-semibold'
             }`}
           >
             {fmtRub(view.grossRub)} ₽
             <ChevronDown
-              className={`h-4 w-4 text-white/50 transition-transform ${calcOpen ? 'rotate-180' : ''}`}
+              className={`h-4 w-4 ${tone.chevron} transition-transform ${calcOpen ? 'rotate-180' : ''}`}
             />
           </span>
         </button>
-        {calcOpen ? <LimitCalculation view={view} /> : null}
+        {calcOpen ? <LimitCalculation view={view} tone={tone} /> : null}
       </div>
 
       <div className={compact ? 'px-4' : ''}>

@@ -11291,9 +11291,9 @@ export const SuccessPage: React.FC<SuccessPageProps> = ({
             isDailyLimitEnabled: false,
             savedDailyLimitRub: 0,
             otherMaxProductBidRub: 0,
-            isBidChasingEnabled:
-              campaignBulkAutobidderScopeCampaigns.length > 0 &&
-              campaignBulkAutobidderScopeCampaigns.every((c) => Boolean(c.bidChasingPosition)),
+            isBidChasingEnabled: campaignBulkAutobidderScopeCampaigns.some((c) =>
+              Boolean(c.bidChasingPosition),
+            ),
             onDisable: () => {
               const scopedIds = new Set(
                 campaignBulkAutobidderScopeCampaigns.map((c) => c.id),

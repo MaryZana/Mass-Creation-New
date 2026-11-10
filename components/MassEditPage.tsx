@@ -2,10 +2,11 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Checkbox } from 'antd';
 import { MOCK_CHANGES, CampaignChange, Product } from './ReviewEditsModal';
 import { Edit2, Trash2, Bell, HelpCircle, Wallet, ChevronDown, RefreshCw, Download, X, Search, Clock, SingleAccountIcon, Settings, Info, AlertTriangle } from './Icons';
-import { AppHeader } from './AppHeader';
+import { AppHeader, readUnifiedAccountRub } from './AppHeader';
+import { useProfile } from './ProfileContext';
+import { FINANCE_BALANCE_DEMO_EVENT } from '../utils/financeBalanceDemo';
 
 const PAGE_SIZE = 50;
-const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 226660517;
 
 interface BonusPackage {
@@ -1589,6 +1590,14 @@ const AutoRefillModal: React.FC<{
   onSave: () => void;
   campaign: any;
 }> = ({ isOpen, onClose, onSave, campaign }) => {
+  const { profileId } = useProfile();
+  const [unifiedBalance, setUnifiedBalance] = useState(() => readUnifiedAccountRub(profileId));
+  useEffect(() => {
+    const sync = () => setUnifiedBalance(readUnifiedAccountRub(profileId));
+    sync();
+    window.addEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+    return () => window.removeEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+  }, [profileId]);
   const [threshold, setThreshold] = useState('1000');
   const [amount, setAmount] = useState('3000');
   const [usePromoBonuses, setUsePromoBonuses] = useState(true);
@@ -1653,7 +1662,7 @@ const AutoRefillModal: React.FC<{
              <div className="space-y-3">
                 <div className="flex items-center py-2">
                     <SingleAccountIcon className="w-6 h-6 text-gray-500 mr-4"/>
-                    <p className="font-medium text-gray-800">Единый счёт: {UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽</p>
+                    <p className="font-medium text-gray-800">Единый счёт: {unifiedBalance.toLocaleString('ru-RU')} ₽</p>
                 </div>
                 <div className="flex items-center py-2">
                     <div className="w-6 h-6 mr-4 rounded-full bg-purple-500"></div>

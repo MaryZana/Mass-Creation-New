@@ -742,7 +742,6 @@ export function MassCreationIsland({
               const stockLeft = rowIndex === 0 ? 0 : stockLeftForRow(row);
               const bidderSetup = autobidderSetup[row.id];
               const bidderLabel = autobidderCellLabel(bidderSetup);
-              const showDiscount = rowIndex === 1 || rowIndex === 3;
               const showConflict = rowIndex === 2;
               const dynamicSettings = dailyLimitRules[row.id] ?? null;
               const dynamicBadgeLabel =
@@ -784,11 +783,6 @@ export function MassCreationIsland({
                           <MassCreationStockQty row={row} stockLeft={stockLeft} />
                           <span className="text-[#9191A0]">·</span>
                           <span className="tabular-nums text-[#9191A0]">Арт: {row.nmId}</span>
-                          {showDiscount ? (
-                            <span className="inline-flex min-h-5 items-center rounded bg-[#E7FCDE] px-1.5 py-0.5 text-[11px] font-medium leading-[14px] text-[#166533]">
-                              –30%
-                            </span>
-                          ) : null}
                         </div>
                         {showConflict ? (
                           <button

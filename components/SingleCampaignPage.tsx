@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Wallet, HelpCircle, X, Plus, Bell, MoreVertical, Edit2, Info, ChevronDown } from './Icons';
 import { SingleCampaignAddProductsModal } from './SingleCampaignAddProductsModal';
-import { AppHeader, PROMOTION_ACCOUNT_BALANCE_BY_PROFILE } from './AppHeader';
+import { AppHeader, readUnifiedAccountRub } from './AppHeader';
 import {
   BudgetRefillModal,
   type BudgetRefillSaveExtras,
@@ -2480,7 +2480,7 @@ export const SingleCampaignPage: React.FC<SingleCampaignPageProps> = ({
           walletContext={{
             promoTotal: promoBonusTotal,
             promoAllocated: 0,
-            elsBalance: PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId] ?? 105350,
+            elsBalance: readUnifiedAccountRub(profileId),
             elsReserved: 0,
             campaignCount: 0,
           }}

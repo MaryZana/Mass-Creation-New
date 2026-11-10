@@ -18,7 +18,13 @@ import {
   X,
 } from '../components/Icons';
 import { UnifiedAccountInstructionModal } from '../components/UnifiedAccountInstructionModal';
-import { FinanceBalanceModalVariant } from '../components/FinanceBalanceModalVariants';
+import {
+  FinanceBalanceModalVariant,
+  FINANCE_BALANCE_CARD_TONES,
+  readFinanceBalanceCardTone,
+  writeFinanceBalanceCardTone,
+  type FinanceBalanceCardToneId,
+} from '../components/FinanceBalanceModalVariants';
 import {
   FINANCE_BALANCE_STORY_VARIANTS,
   FinanceBalanceChargeRow,
@@ -481,7 +487,7 @@ type FinanceChannel = 'promotion' | 'media' | 'wibes';
 type FinanceChannelFilter = 'all' | FinanceChannel;
 
 const FINANCE_CHANNELS: { id: FinanceChannelFilter; label: string }[] = [
-  { id: 'all', label: 'Все' },
+  { id: 'all', label: 'Все каналы' },
   { id: 'promotion', label: 'Продвижение' },
   { id: 'media', label: 'Медиа' },
   { id: 'wibes', label: 'Инфлюенс' },
@@ -784,24 +790,35 @@ function ExpenseSourceLabel({ source }: { source: string }) {
 
 function buildDemoExpenses(): ExpenseRow[] {
   const start = new Date(2026, 7, 11);
-  const generated = Array.from({ length: 100 }, (_, index) => {
-    const campaign = EXPENSE_CAMPAIGNS[index % EXPENSE_CAMPAIGNS.length];
+  const dayCount = 36;
+  const generated: ExpenseRow[] = [];
+  let index = 0;
+
+  for (let day = 0; day < dayCount; day += 1) {
     const date = new Date(start);
-    date.setDate(start.getDate() - index);
+    date.setDate(start.getDate() - day);
     const debitDate = date.toLocaleDateString('ru-RU', {
       day: '2-digit',
       month: '2-digit',
       year: '2-digit',
     });
-    return {
-      id: `ex${index}`,
-      ...campaign,
-      debitDate,
-      source: EXPENSE_SOURCES[index % EXPENSE_SOURCES.length],
-      amountRub: index === 0 ? 1 : 80 + ((index * 137) % 9_200),
-      documentNo: 5_820_000 + index,
-    };
-  });
+    // Обычно 5–6 списаний в день, иногда 7
+    const perDay = 5 + (day % 3 === 0 ? 2 : day % 2);
+    for (let slot = 0; slot < perDay; slot += 1) {
+      const campaign = EXPENSE_CAMPAIGNS[(day * 5 + slot * 2) % EXPENSE_CAMPAIGNS.length];
+      generated.push({
+        id: `ex${index}`,
+        ...campaign,
+        debitDate,
+        source: EXPENSE_SOURCES[(index + slot) % EXPENSE_SOURCES.length],
+        amountRub: index === 0 ? 1 : 80 + ((index * 137 + slot * 41) % 9_200),
+        documentNo: slot === 4 && day % 4 === 1 ? null : 5_820_000 + index,
+        ...(slot === 3 && day % 6 === 2 ? { isCorrection: true } : {}),
+      });
+      index += 1;
+    }
+  }
+
   return [...generated, ...DEMO_WIBES_EXPENSES];
 }
 
@@ -1332,13 +1349,16 @@ function BufferMonthStatsBlock({
   title,
   total,
   variant,
+  showFreeOnCampaigns = true,
 }: {
   monthKey: string;
   title: string;
   total: number;
   variant: 'accrued' | 'spent';
+  /** Месячный остаток на РК — один раз на месяц при дневной группировке */
+  showFreeOnCampaigns?: boolean;
 }) {
-  const freeOnCampaignsRub = DEMO_BUFFER_FREE_ON_CAMPAIGNS[monthKey];
+  const freeOnCampaignsRub = showFreeOnCampaigns ? DEMO_BUFFER_FREE_ON_CAMPAIGNS[monthKey] : undefined;
   const lines: Array<[string, number]> =
     variant === 'accrued'
       ? [
@@ -1985,14 +2005,19 @@ function readBalanceInlineVariant(): BalanceInlineVariant {
 function BalanceInlineVariantSwitcher({
   value,
   onChange,
+  cardTone,
+  onCardToneChange,
 }: {
   value: BalanceInlineVariant;
   onChange: (next: BalanceInlineVariant) => void;
+  cardTone: FinanceBalanceCardToneId;
+  onCardToneChange: (next: FinanceBalanceCardToneId) => void;
 }) {
   const active = BALANCE_INLINE_VARIANTS.find((item) => item.id === value);
+  const activeTone = FINANCE_BALANCE_CARD_TONES.find((item) => item.id === cardTone);
   return (
     <div
-      className="fixed bottom-4 right-4 z-[110] flex flex-col gap-1.5 rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
+      className="flex flex-col gap-1.5 rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
       role="group"
       aria-label="Демо: баланс без модалки"
     >
@@ -2015,6 +2040,26 @@ function BalanceInlineVariantSwitcher({
         ))}
       </div>
       {active ? <p className="mb-0 px-1 text-xs text-gray-500">{active.label}</p> : null}
+      {value === '9' ? (
+        <>
+          <div className="mt-1 flex max-w-[22rem] flex-wrap items-center gap-1 border-t border-gray-100 pt-1.5">
+            <span className="px-1 text-xs text-gray-500">Тон</span>
+            {FINANCE_BALANCE_CARD_TONES.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                title={item.label}
+                onClick={() => onCardToneChange(item.id)}
+                className={`h-7 w-7 rounded-lg ring-1 transition-transform ${
+                  cardTone === item.id ? 'scale-110 ring-gray-900' : 'ring-black/10 hover:scale-105'
+                } ${item.shell}`}
+                aria-label={item.label}
+              />
+            ))}
+          </div>
+          {activeTone ? <p className="mb-0 px-1 text-xs text-gray-500">{activeTone.label}</p> : null}
+        </>
+      ) : null}
     </div>
   );
 }
@@ -2022,9 +2067,15 @@ function BalanceInlineVariantSwitcher({
 function FinanceBalancesCard({
   spend,
   inlineVariant,
+  onInlineVariantChange,
+  cardTone,
+  onCardToneChange,
 }: {
   spend: BalanceSpend;
   inlineVariant: BalanceInlineVariant;
+  onInlineVariantChange: (next: BalanceInlineVariant) => void;
+  cardTone: FinanceBalanceCardToneId;
+  onCardToneChange: (next: FinanceBalanceCardToneId) => void;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -2237,22 +2288,30 @@ function FinanceBalancesCard({
       </div>
     </div>
       <FinancePromoBonusesCard />
-      {balanceSchemeOpen ? null : (
-        <div
-          className="fixed bottom-[5.5rem] right-4 z-[110] max-w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
-          role="group"
-          aria-label="Демо: сценарий баланса"
-        >
-          <FinanceBalanceSimControls
-            simWeekId={simWeekId}
-            onSimWeekChange={changeSimWeek}
-            simDay={simDay}
-            onSimDayChange={changeSimDay}
-            simAdjust={simAdjust}
-            onSimAdjustChange={changeSimAdjust}
-          />
-        </div>
-      )}
+      <div className="fixed bottom-4 right-4 z-[110] flex w-[min(380px,calc(100vw-2rem))] flex-col gap-2">
+        {balanceSchemeOpen ? null : (
+          <div
+            className="rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
+            role="group"
+            aria-label="Демо: сценарий баланса"
+          >
+            <FinanceBalanceSimControls
+              simWeekId={simWeekId}
+              onSimWeekChange={changeSimWeek}
+              simDay={simDay}
+              onSimDayChange={changeSimDay}
+              simAdjust={simAdjust}
+              onSimAdjustChange={changeSimAdjust}
+            />
+          </div>
+        )}
+        <BalanceInlineVariantSwitcher
+          value={inlineVariant}
+          onChange={onInlineVariantChange}
+          cardTone={cardTone}
+          onCardToneChange={onCardToneChange}
+        />
+      </div>
     </>
   );
 }
@@ -3221,15 +3280,24 @@ function FinancePeriodPicker({
   );
 }
 
-function formatFinanceMonthHeading(date: Date): string {
-  const month = date.toLocaleDateString('ru-RU', { month: 'long' });
-  return `${month.charAt(0).toUpperCase()}${month.slice(1)} ${date.getFullYear()}`;
+function formatFinanceDayHeading(date: Date, showYear = false): string {
+  if (!showYear) {
+    return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  }
+  const raw = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+  return raw.replace(/\s*г\.?\s*$/i, '');
 }
 
-function financeMonthKey(value: string): string {
+function financeDayKey(value: string): string {
   const date = parseFinanceDate(value);
   if (!date) return 'unknown';
-  return `${date.getFullYear()}-${date.getMonth()}`;
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+function financeMonthKeyFromDayKey(dayKey: string): string {
+  const parts = dayKey.split('-');
+  if (parts.length < 2) return dayKey;
+  return `${parts[0]}-${parts[1]}`;
 }
 
 function FinanceMonthGroups<T>({
@@ -3254,7 +3322,7 @@ function FinanceMonthGroups<T>({
   getAmount: (row: T) => number;
   rowKey: (row: T) => string;
   renderRow: (row: T) => React.ReactNode;
-  /** Группировать по месяцам даже при выбранном периоде */
+  /** Группировать по дням даже при выбранном периоде */
   groupMonths?: boolean;
   renderMonthHeader?: (args: { key: string; title: string; total: number }) => React.ReactNode;
 }) {
@@ -3270,27 +3338,40 @@ function FinanceMonthGroups<T>({
   }
 
   const totals = new Map<string, number>();
-  const titles = new Map<string, string>();
   for (const row of sourceRows) {
-    const date = parseFinanceDate(getDate(row));
-    const key = financeMonthKey(getDate(row));
+    const key = financeDayKey(getDate(row));
     totals.set(key, (totals.get(key) ?? 0) + getAmount(row));
-    if (date && !titles.has(key)) titles.set(key, formatFinanceMonthHeading(date));
+  }
+
+  const titles = new Map<string, string>();
+  let previousYear: number | null = null;
+  for (const row of rows) {
+    const key = financeDayKey(getDate(row));
+    if (titles.has(key)) continue;
+    const date = parseFinanceDate(getDate(row));
+    if (!date) {
+      titles.set(key, 'Без даты');
+      continue;
+    }
+    const year = date.getFullYear();
+    const showYear = previousYear != null && year !== previousYear;
+    titles.set(key, formatFinanceDayHeading(date, showYear));
+    previousYear = year;
   }
 
   let previousKey: string | null = null;
   return (
     <>
       {rows.map((row) => {
-        const key = financeMonthKey(getDate(row));
-        const showMonth = key !== previousKey;
-        const separateFromPrevious = showMonth && previousKey !== null;
+        const key = financeDayKey(getDate(row));
+        const showDay = key !== previousKey;
+        const separateFromPrevious = showDay && previousKey !== null;
         previousKey = key;
         const title = titles.get(key) ?? 'Без даты';
         const total = totals.get(key) ?? 0;
         return (
           <React.Fragment key={rowKey(row)}>
-            {showMonth ? (
+            {showDay ? (
               <tr data-month-heading>
                 <td colSpan={colSpan} className={separateFromPrevious ? 'px-4 pb-2 pt-6' : 'px-4 py-2'}>
                   {renderMonthHeader ? (
@@ -3318,6 +3399,7 @@ const FinancePage: React.FC = () => {
   const [mainTab] = useState<'my_money' | 'bonuses'>('my_money');
   const balanceSpend = useBalanceSpend();
   const [inlineVariant, setInlineVariant] = useState<BalanceInlineVariant>(readBalanceInlineVariant);
+  const [cardTone, setCardTone] = useState<FinanceBalanceCardToneId>(readFinanceBalanceCardTone);
   const changeInlineVariant = (next: BalanceInlineVariant) => {
     setInlineVariant(next);
     try {
@@ -3325,6 +3407,11 @@ const FinancePage: React.FC = () => {
     } catch {
       /* ignore */
     }
+  };
+  const changeCardTone = (next: FinanceBalanceCardToneId) => {
+    setCardTone(next);
+    writeFinanceBalanceCardTone(next);
+    window.dispatchEvent(new Event('finance-balance-card-tone'));
   };
   const asideWidthClass = 'lg:w-[380px]';
   const [bufferSubTab, setBufferSubTab] = useState<'accrued' | 'spent'>('accrued');
@@ -3547,11 +3634,16 @@ const FinancePage: React.FC = () => {
 
   return (
     <main className="mx-auto w-full max-w-[1920px] px-6 py-8">
-      <BalanceInlineVariantSwitcher value={inlineVariant} onChange={changeInlineVariant} />
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
         <aside className={`flex w-full shrink-0 flex-col gap-4 ${asideWidthClass}`}>
           {balanceSpend.modals}
-          <FinanceBalancesCard spend={balanceSpend} inlineVariant={inlineVariant} />
+          <FinanceBalancesCard
+            spend={balanceSpend}
+            inlineVariant={inlineVariant}
+            onInlineVariantChange={changeInlineVariant}
+            cardTone={cardTone}
+            onCardToneChange={changeCardTone}
+          />
         </aside>
 
         <section className="min-w-0 flex-1 overflow-hidden rounded-2xl bg-[#F0F0F2] p-1">
@@ -3659,29 +3751,22 @@ const FinancePage: React.FC = () => {
                 ) : null}
                 {isExpenses || isCampaignTopups ? (
                   <>
-                    <div
-                      className="inline-flex h-8 w-fit shrink-0 items-center gap-0.5 rounded-lg bg-white p-0.5"
-                      role="tablist"
+                    <FinanceDropdown
                       aria-label="Канал"
-                    >
-                      {FINANCE_CHANNELS.map((item) => (
-                        <button
-                          key={item.id}
-                          type="button"
-                          role="tab"
-                          aria-selected={channel === item.id}
-                          className={bufferSubTabClass(channel === item.id)}
-                          onClick={() => {
-                            setChannel(item.id);
-                            if (item.id !== 'media') setMediaExpenseFilter('all');
-                            setSourceFilter('all');
-                            setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                          }}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
+                      value={channel}
+                      onChange={(value) => {
+                        const next = value as FinanceChannelFilter;
+                        setChannel(next);
+                        if (next !== 'media') setMediaExpenseFilter('all');
+                        setSourceFilter('all');
+                        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+                      }}
+                      className="shrink-0"
+                      options={FINANCE_CHANNELS.map((item) => ({
+                        value: item.id,
+                        label: item.label,
+                      }))}
+                    />
                     <FinanceDropdown
                       aria-label={isCampaignTopups ? 'Источник' : 'Источник списания'}
                       value={sourceFilter}
@@ -3691,10 +3776,7 @@ const FinancePage: React.FC = () => {
                       }}
                       className="shrink-0"
                       options={[
-                        {
-                          value: 'all',
-                          label: isCampaignTopups ? 'Источник' : 'Источник списания',
-                        },
+                        { value: 'all', label: 'Все источники' },
                         ...(isCampaignTopups ? EXPENSE_SOURCES : expenseSourceOptions).map((source) => ({
                           value: source,
                           label: source,
@@ -3752,6 +3834,9 @@ const FinancePage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
+                      {(() => {
+                        const freeShownForMonth = new Set<string>();
+                        return (
                       <FinanceMonthGroups
                         rows={filteredBufferAccruals}
                         sourceRows={filteredBufferAccruals}
@@ -3759,14 +3844,20 @@ const FinancePage: React.FC = () => {
                         colSpan={3}
                         amountSuffix="₽"
                         groupMonths
-                        renderMonthHeader={({ key, title, total }) => (
+                        renderMonthHeader={({ key, title, total }) => {
+                          const monthKey = financeMonthKeyFromDayKey(key);
+                          const showFree = !freeShownForMonth.has(monthKey);
+                          if (showFree) freeShownForMonth.add(monthKey);
+                          return (
                           <BufferMonthStatsBlock
-                            monthKey={key}
+                            monthKey={monthKey}
                             title={title}
                             total={total}
                             variant="accrued"
+                            showFreeOnCampaigns={showFree}
                           />
-                        )}
+                          );
+                        }}
                         getDate={(row) => row.date}
                         getAmount={(row) => row.amountRub}
                         rowKey={(row) => row.id}
@@ -3784,6 +3875,8 @@ const FinancePage: React.FC = () => {
                         </tr>
                         )}
                       />
+                        );
+                      })()}
                     </tbody>
                   </table>
                 ) : (
@@ -3806,7 +3899,7 @@ const FinancePage: React.FC = () => {
                         groupMonths
                         renderMonthHeader={({ key, title, total }) => (
                           <BufferMonthStatsBlock
-                            monthKey={key}
+                            monthKey={financeMonthKeyFromDayKey(key)}
                             title={title}
                             total={total}
                             variant="spent"
@@ -3941,9 +4034,9 @@ const FinancePage: React.FC = () => {
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
                         <th className="px-3 py-2 text-sm font-medium">Дата оплаты</th>
                         <th className="px-3 py-2 text-sm font-medium">Сумма, ₽</th>
-                        <th className="px-3 py-2 text-sm font-medium">ИНН плательщика</th>
-                        <th className="px-3 py-2 text-sm font-medium">Способ оплаты</th>
                         <th className="px-3 py-2 text-sm font-medium">Статус</th>
+                        <th className="px-3 py-2 text-sm font-medium">Способ оплаты</th>
+                        <th className="px-3 py-2 text-sm font-medium">ИНН плательщика</th>
                       </tr>
                     </thead>
                     <tbody className={FINANCE_TABLE_BODY_CLASS}>
@@ -3971,14 +4064,14 @@ const FinancePage: React.FC = () => {
                             <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
                               {fmtRub(row.amountRub)}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
-                              {row.inn}
+                            <td className="whitespace-nowrap px-4 py-2">
+                              <TopupStatusBadge status={row.status} />
                             </td>
                             <td className="whitespace-nowrap px-4 py-2 text-gray-900">
                               <TopupMethodLabel method={row.method} />
                             </td>
-                            <td className="whitespace-nowrap px-4 py-2">
-                              <TopupStatusBadge status={row.status} />
+                            <td className="whitespace-nowrap px-4 py-2 tabular-nums text-gray-900">
+                              {row.inn}
                             </td>
                           </tr>
                           )}

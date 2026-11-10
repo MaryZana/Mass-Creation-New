@@ -59,7 +59,8 @@ import {
   BulkPaymentModelModal,
   type BulkPaymentModelProduct,
 } from './components/BulkPaymentModelModal';
-import { AppHeader } from './components/AppHeader';
+import { AppHeader, readUnifiedAccountRub } from './components/AppHeader';
+import { FINANCE_BALANCE_DEMO_EVENT } from './utils/financeBalanceDemo';
 import {
   buildDemoBonusPackages,
   usePromoBonusDemo,
@@ -119,7 +120,6 @@ interface BonusPackage {
 
 // --- Constants ---
 const CATEGORIES = ['Брюки', 'Платья', 'Футболки', 'Аксессуары', 'Обувь', 'Электроника', 'Дом', 'Кольца', 'Фоторамки', 'Спортивная одежда', 'Косметика', 'Игрушки'];
-const UNIFIED_BALANCE = 105350;
 const TOTAL_PROMO_BONUS = 30000;
 const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
@@ -280,11 +280,12 @@ function evenBonusShares(caps: readonly number[], target: number): number[] {
 function computeLaunchAffordability(
   campaigns: readonly CampaignRecord[],
   bonusByCampaignId?: ReadonlyMap<string, number>,
+  unifiedBalanceRub = readUnifiedAccountRub('1'),
 ) {
   let amountToDebit = 0;
   let bonusToDebit = 0;
   let affordableCount = 0;
-  let runningBalance = UNIFIED_BALANCE;
+  let runningBalance = unifiedBalanceRub;
   const sorted = [...campaigns].sort((a, b) => {
     const bonusA = bonusByCampaignId?.get(a.id) ?? effectivePromoBonusAmount(a);
     const bonusB = bonusByCampaignId?.get(b.id) ?? effectivePromoBonusAmount(b);
@@ -1295,6 +1296,14 @@ const AutoRefillModal: React.FC<{
   onSave: (settings: { threshold: number; amount: number; usePromoBonuses: boolean }) => void;
   campaign: CampaignRecord | null;
 }> = ({ isOpen, onClose, onSave, campaign }) => {
+  const { profileId } = useProfile();
+  const [unifiedBalance, setUnifiedBalance] = useState(() => readUnifiedAccountRub(profileId));
+  useEffect(() => {
+    const sync = () => setUnifiedBalance(readUnifiedAccountRub(profileId));
+    sync();
+    window.addEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+    return () => window.removeEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+  }, [profileId]);
   const [threshold, setThreshold] = useState('1000');
   const [amount, setAmount] = useState('3000');
   const [usePromoBonuses, setUsePromoBonuses] = useState(true);
@@ -1367,7 +1376,7 @@ const AutoRefillModal: React.FC<{
              <div className="space-y-3">
                 <div className="flex items-center py-2">
                     <SingleAccountIcon className="w-6 h-6 text-gray-500 mr-4"/>
-                    <p className="mb-0 font-medium text-gray-800">Единый счёт: {UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽</p>
+                    <p className="mb-0 font-medium text-gray-800">Единый счёт: {unifiedBalance.toLocaleString('ru-RU')} ₽</p>
                 </div>
                 <div className="flex items-center py-2">
                     <ModalToggleSwitch checked={usePromoBonuses} onChange={setUsePromoBonuses} />
@@ -1454,6 +1463,14 @@ const BulkEditModal = ({
     allValidCampaigns: CampaignRecord[];
     selectedCampaignIds: string[];
 }) => {
+    const { profileId } = useProfile();
+    const [unifiedBalance, setUnifiedBalance] = useState(() => readUnifiedAccountRub(profileId));
+    useEffect(() => {
+      const sync = () => setUnifiedBalance(readUnifiedAccountRub(profileId));
+      sync();
+      window.addEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+      return () => window.removeEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+    }, [profileId]);
     const [value, setValue] = useState<string>('3000');
     const [useBonuses, setUseBonuses] = useState(false);
     const [selectedPkgId, setSelectedPkgId] = useState(BONUS_PACKAGES[0].id);
@@ -1818,7 +1835,7 @@ const BulkEditModal = ({
                                     <div className="flex items-center gap-3 py-1">
                                       <SingleAccountIcon className="h-5 w-5 shrink-0 text-gray-500" />
                                       <p className="mb-0 text-sm font-medium text-gray-800">
-                                        Единый счет: {UNIFIED_BALANCE.toLocaleString('ru-RU')}
+                                        Единый счет: {unifiedBalance.toLocaleString('ru-RU')}
                                       </p>
                                     </div>
                                     <div className="flex items-center gap-3 py-1">
@@ -1995,7 +2012,7 @@ const BulkEditModal = ({
                                     <div className="flex items-center py-2">
                                       <SingleAccountIcon className="mr-4 h-6 w-6 text-gray-500" />
                                       <p className="mb-0 font-medium text-gray-800">
-                                        Единый счёт: {UNIFIED_BALANCE.toLocaleString('ru-RU')} ₽
+                                        Единый счёт: {unifiedBalance.toLocaleString('ru-RU')} ₽
                                       </p>
                                     </div>
                                     <div className="flex items-center py-2">
@@ -2827,6 +2844,13 @@ export default function App() {
   } = useProfile();
   const { promoBonusTotal } = usePromoBonusDemo();
   const setMassCreationDemoChrome = useSetMassCreationDemoChrome();
+  const [unifiedBalance, setUnifiedBalance] = useState(() => readUnifiedAccountRub(profileId));
+  useEffect(() => {
+    const sync = () => setUnifiedBalance(readUnifiedAccountRub(profileId));
+    sync();
+    window.addEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+    return () => window.removeEventListener(FINANCE_BALANCE_DEMO_EVENT, sync);
+  }, [profileId]);
   const demoBonusPackages = useMemo(
     () => buildDemoBonusPackages(promoBonusTotal) as BonusPackage[],
     [promoBonusTotal],
@@ -3361,7 +3385,7 @@ export default function App() {
     { real: 0, bonus: 0, total: 0 }
   );
 
-  const globalDeficit = Math.max(0, globalTotals.real - UNIFIED_BALANCE);
+  const globalDeficit = Math.max(0, globalTotals.real - unifiedBalance);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState(false);
 
   const refreshUnifiedBalance = () => {
@@ -4562,13 +4586,20 @@ export default function App() {
         ? creationDailyLimitRules[first!.id]
         : createDefaultAdvancedDailyLimitSettings();
 
+    const anyLimitEnabled = campaigns.some(
+      (c) =>
+        (c.dailyLimit != null && c.dailyLimit > 0) ||
+        isDynamicDailyLimitConfigured(creationDailyLimitRules[c.id]),
+    );
+
     if (sharedLimit != null) {
       const limitStr = String(sharedLimit);
       setCreationBulkDailyLimitEnabled(true);
       setCreationBulkDailyLimitValue(limitStr);
       setCreationBulkSavedDailyLimit(limitStr);
     } else {
-      setCreationBulkDailyLimitEnabled(false);
+      // «Отключить», если у части выбранных лимит уже включён (даже при разных значениях)
+      setCreationBulkDailyLimitEnabled(anyLimitEnabled);
       setCreationBulkDailyLimitValue(String(DAILY_LIMIT_ABSOLUTE_MIN));
       setCreationBulkSavedDailyLimit('');
     }
@@ -4596,7 +4627,7 @@ export default function App() {
   };
 
   const launchPreview = useMemo(() => {
-    const configured = computeLaunchAffordability(allValidCampaigns);
+    const configured = computeLaunchAffordability(allValidCampaigns, undefined, unifiedBalance);
     const hasConfiguredBonuses = configured.bonusToDebit > 0;
     const alreadyDistributed = configured.bonusToDebit;
     const zeroedCampaigns = allValidCampaigns.map((campaign) => ({
@@ -4619,7 +4650,11 @@ export default function App() {
         value.bonusAmount,
       ]),
     );
-    const withSuggestedBonuses = computeLaunchAffordability(allValidCampaigns, bonusById);
+    const withSuggestedBonuses = computeLaunchAffordability(
+      allValidCampaigns,
+      bonusById,
+      unifiedBalance,
+    );
     const distribution: BonusDistributionRow[] = allValidCampaigns
       .map((c) => {
         const suggested = potentialAllocation.perCampaign.get(c.id);
@@ -4663,7 +4698,7 @@ export default function App() {
       distribution,
       promoAccountBalance,
     };
-  }, [allValidCampaigns, demoBonusPackages]);
+  }, [allValidCampaigns, demoBonusPackages, unifiedBalance]);
 
   /** Итоговое назначение бонусов по id кампании (абсолют). */
   const applyPromoBonusesAmount = useCallback(
@@ -4721,7 +4756,7 @@ export default function App() {
   useEffect(() => {
     if (isLaunching) {
       const timer = setTimeout(() => {
-        let currentBalance = UNIFIED_BALANCE;
+        let currentBalance = unifiedBalance;
         const successful = [];
         const failed = [];
 
@@ -4758,7 +4793,7 @@ export default function App() {
       }, 10000);
       return () => clearTimeout(timer);
     }
-  }, [isLaunching, allValidCampaigns, isMassCreationResearchAccess]);
+  }, [isLaunching, allValidCampaigns, isMassCreationResearchAccess, unifiedBalance]);
 
   const editableInputClass = "w-full text-sm bg-white border shadow-sm outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500 px-2 py-1.5 rounded-lg";
   const [showQuickSave, setShowQuickSave] = useState(false);
@@ -5174,6 +5209,12 @@ export default function App() {
             campaigns={budgetRefillCampaignItems}
             initialValues={budgetRefillInitialValues}
             submitLabel="Применить"
+            bonusHolds={allValidCampaigns}
+            excludeBonusHoldIds={
+              listBudgetTargetIds && listBudgetTargetIds.length > 0
+                ? listBudgetTargetIds
+                : selectedCampaignIds
+            }
             walletContext={{
               promoTotal: promoBonusTotal,
               promoAllocated: (() => {
@@ -5187,7 +5228,7 @@ export default function App() {
                   return sum + effectivePromoBonusAmount(c);
                 }, 0);
               })(),
-              elsBalance: UNIFIED_BALANCE,
+              elsBalance: unifiedBalance,
               elsReserved: (() => {
                 const ids = new Set(
                   listBudgetTargetIds && listBudgetTargetIds.length > 0
@@ -5394,11 +5435,9 @@ export default function App() {
         isDailyLimitEnabled: false,
         savedDailyLimitRub: 0,
         otherMaxProductBidRub: 0,
-        isBidChasingEnabled:
-          selectedCreationBulkAutobidderProducts.length > 0 &&
-          selectedCreationBulkAutobidderProducts.every(
-            (p) => creationAutobidderSetup[p.id]?.mode === 'positions',
-          ),
+        isBidChasingEnabled: selectedCreationBulkAutobidderProducts.some(
+          (p) => creationAutobidderSetup[p.id]?.mode === 'positions',
+        ),
         onDisable: () => {
           const scopedIds = new Set(
             selectedCreationBulkAutobidderProducts.map((p) => p.id),
@@ -5456,6 +5495,12 @@ export default function App() {
       campaigns={budgetRefillCampaignItems}
       initialValues={budgetRefillInitialValues}
       submitLabel="Применить"
+      bonusHolds={allValidCampaigns}
+      excludeBonusHoldIds={
+        listBudgetTargetIds && listBudgetTargetIds.length > 0
+          ? listBudgetTargetIds
+          : selectedCampaignIds
+      }
       walletContext={{
         promoTotal: promoBonusTotal,
         promoAllocated: (() => {
@@ -5469,7 +5514,7 @@ export default function App() {
             return sum + effectivePromoBonusAmount(c);
           }, 0);
         })(),
-        elsBalance: UNIFIED_BALANCE,
+        elsBalance: unifiedBalance,
         elsReserved: (() => {
           const ids = new Set(
             listBudgetTargetIds && listBudgetTargetIds.length > 0
@@ -5538,13 +5583,15 @@ export default function App() {
         autoUseBonuses: Boolean(campaignForBonusEdit.usePromoBonuses),
         preferAutoRefill: singleReplenishAction === 'autorefill',
       }}
+      bonusHolds={allValidCampaigns}
+      excludeBonusHoldIds={[campaignForBonusEdit.id]}
       walletContext={{
         promoTotal: promoBonusTotal,
         promoAllocated: Math.max(
           0,
           globalTotals.bonus - effectivePromoBonusAmount(campaignForBonusEdit),
         ),
-        elsBalance: UNIFIED_BALANCE,
+        elsBalance: unifiedBalance,
         elsReserved: Math.max(
           0,
           globalTotals.real -
