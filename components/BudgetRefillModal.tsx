@@ -84,9 +84,28 @@ function packageExpiryTs(expiry: string): number {
   return new Date(2000 + (y || 0), (m || 1) - 1, d || 1).getTime();
 }
 
+/** Равномерно делит `target` между кампаниями, не превышая лимит каждой (`caps`). */
+function evenBonusShares(caps: readonly number[], target: number): number[] {
+  const shares = caps.map(() => 0);
+  const order = caps.map((_, i) => i).sort((a, b) => caps[a] - caps[b]);
+  let remaining = Math.floor(target);
+  order.forEach((index, position) => {
+    const share = Math.floor(remaining / (order.length - position));
+    shares[index] = Math.min(caps[index], share);
+    remaining -= shares[index];
+  });
+  for (let i = order.length - 1; i >= 0 && remaining > 0; i -= 1) {
+    const index = order[i];
+    const extra = Math.min(caps[index] - shares[index], remaining);
+    shares[index] += extra;
+    remaining -= extra;
+  }
+  return shares;
+}
+
 /**
  * На каждую кампанию — ровно один пакет.
- * Берём тот, с которого можно списать больше (при равенстве — с ближайшим expiry).
+ * Если несколько кампаний берут один пакет — остаток делится между ними равномерно.
  */
 function allocateBonusForBudgets(
   packages: readonly BonusPackage[],
@@ -94,58 +113,113 @@ function allocateBonusForBudgets(
   promoCap: number | null = null,
   campaignIds?: readonly string[],
 ): CampaignBonusAlloc[] {
-  const pool = packages.map((pkg) => ({ ...pkg, left: pkg.amount }));
+  const n = budgets.length;
+  const result: CampaignBonusAlloc[] = budgets.map((_, index) => ({
+    campaignId: campaignIds?.[index] ?? String(index),
+    bonusAmount: 0,
+    slices: [] as BonusPackageSlice[],
+  }));
+  if (n === 0) return result;
+
   let promoLeft =
     promoCap != null && Number.isFinite(promoCap)
       ? Math.max(0, promoCap)
       : Number.POSITIVE_INFINITY;
 
-  return budgets.map((budget, index) => {
-    const campaignId = campaignIds?.[index] ?? String(index);
-    if (!Number.isFinite(budget) || budget <= 0 || promoLeft <= 0) {
-      return { campaignId, bonusAmount: 0, slices: [] };
-    }
+  const pool = [...packages]
+    .filter((pkg) => pkg.amount > 0)
+    .sort((a, b) => {
+      const byExpiry = packageExpiryTs(a.expiry) - packageExpiryTs(b.expiry);
+      if (byExpiry !== 0) return byExpiry;
+      return b.amount - a.amount;
+    })
+    .map((pkg) => ({ ...pkg, left: pkg.amount }));
 
-    let best: {
-      pkg: (typeof pool)[number];
-      amount: number;
-    } | null = null;
-
+  const assignedPkgId: Array<string | null> = budgets.map((budget) => {
+    if (!Number.isFinite(budget) || budget <= 0 || promoLeft <= 0) return null;
+    let bestId: string | null = null;
+    let bestAmount = 0;
+    let bestExpiry = Number.POSITIVE_INFINITY;
     for (const pkg of pool) {
       if (pkg.left <= 0) continue;
       const byPercent = Math.floor((budget * pkg.maxPercent) / 100);
       const amount = Math.min(pkg.left, byPercent, budget, promoLeft);
       if (amount <= 0) continue;
+      const expiry = packageExpiryTs(pkg.expiry);
       if (
-        !best ||
-        amount > best.amount ||
-        (amount === best.amount &&
-          packageExpiryTs(pkg.expiry) < packageExpiryTs(best.pkg.expiry))
+        amount > bestAmount ||
+        (amount === bestAmount && expiry < bestExpiry)
       ) {
-        best = { pkg, amount };
+        bestAmount = amount;
+        bestId = pkg.id;
+        bestExpiry = expiry;
       }
     }
-
-    if (!best) {
-      return { campaignId, bonusAmount: 0, slices: [] };
-    }
-
-    best.pkg.left -= best.amount;
-    promoLeft -= best.amount;
-
-    return {
-      campaignId,
-      bonusAmount: Math.floor(best.amount),
-      slices: [
-        {
-          packageId: best.pkg.id,
-          amount: Math.floor(best.amount),
-          maxPercent: best.pkg.maxPercent,
-          expiry: best.pkg.expiry,
-        },
-      ],
-    };
+    return bestId;
   });
+
+  for (const pkg of pool) {
+    const indices = assignedPkgId
+      .map((id, index) => (id === pkg.id ? index : -1))
+      .filter((index) => index >= 0);
+    if (indices.length === 0 || pkg.left <= 0 || promoLeft <= 0) continue;
+
+    const caps = indices.map((index) => {
+      const budget = budgets[index];
+      if (!Number.isFinite(budget) || budget <= 0) return 0;
+      const byPercent = Math.floor((budget * pkg.maxPercent) / 100);
+      return Math.max(0, Math.min(byPercent, budget, promoLeft));
+    });
+    const target = Math.min(
+      pkg.left,
+      promoLeft,
+      caps.reduce((sum, value) => sum + value, 0),
+    );
+    const shares = evenBonusShares(caps, target);
+
+    indices.forEach((campaignIndex, shareIndex) => {
+      const amount = Math.floor(shares[shareIndex] ?? 0);
+      if (amount <= 0) return;
+      result[campaignIndex] = {
+        campaignId: result[campaignIndex].campaignId,
+        bonusAmount: amount,
+        slices: [
+          {
+            packageId: pkg.id,
+            amount,
+            maxPercent: pkg.maxPercent,
+            expiry: pkg.expiry,
+          },
+        ],
+      };
+      pkg.left -= amount;
+      promoLeft -= amount;
+    });
+  }
+
+  return result;
+}
+
+/** Максимум бонусов на одну кампанию с выбранного пакета при равном делении на shareCount. */
+function maxBonusPerCampaignFromPackage(
+  pkg: BonusPackage,
+  budget: number,
+  shareCount: number,
+  perCampaignPromoCap: number | null,
+): number {
+  if (!Number.isFinite(budget) || budget <= 0 || pkg.amount <= 0) return 0;
+  const shares = Math.max(1, shareCount);
+  const evenFromPackage = Math.floor(pkg.amount / shares);
+  const byPercent = Math.floor((budget * pkg.maxPercent) / 100);
+  return Math.max(
+    0,
+    Math.min(
+      evenFromPackage,
+      byPercent,
+      Math.floor(budget),
+      perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
+    ),
+  );
 }
 
 const getPlural = (number: number, one: string, two: string, five: string) => {
@@ -335,6 +409,8 @@ type RefillLogic = {
   ) => (e: React.ChangeEvent<HTMLInputElement>) => void;
   bonusPickMode: 'auto' | 'manual';
   setBonusPickMode: (mode: 'auto' | 'manual') => void;
+  shareCount: number;
+  perCampaignPromoCap: number | null;
   canSubmit: boolean;
 };
 
@@ -462,6 +538,14 @@ function useRefillLogic(
         : fallbackPkg.id;
     const useBonus = Boolean(init?.useBonuses && (init.bonusAmount ?? 0) > 0);
     const bonusAmt = useBonus ? Math.max(0, Math.floor(init?.bonusAmount ?? 0)) : 0;
+    const initPkg =
+      packages.find((pkg) => pkg.id === pkgId) ?? fallbackPkg;
+    const evenMax = maxBonusPerCampaignFromPackage(
+      initPkg,
+      amount,
+      shareCount,
+      perCampaignPromoCap,
+    );
     const pickMode: 'auto' | 'manual' = 'manual';
     const times = init?.autoTimesPerDay;
     const freqMode: '1' | '2' | '3' | 'custom' =
@@ -474,7 +558,13 @@ function useRefillLogic(
     setRefillAmount(String(amount));
     setUseBonuses(useBonus);
     setSelectedPkgId(pkgId);
-    setBonusValue(bonusAmt > 0 ? bonusAmt : Math.min(amount, 3000));
+    setBonusValue(
+      bonusAmt > 0
+        ? Math.min(bonusAmt, evenMax)
+        : evenMax > 0
+          ? evenMax
+          : Math.min(amount, 3000),
+    );
     setBonusPickModeState(pickMode);
     setBudgetError('');
     setBudgetNotice('');
@@ -513,11 +603,11 @@ function useRefillLogic(
   }, [availablePackages, shareCount, currentBudgetValue, availablePromoCap]);
   const maxBonusAllowed = autoMode
     ? maxBonusFromAll
-    : Math.min(
-        selectedPkg.amount,
-        Math.floor((currentBudgetValue * selectedPkg.maxPercent) / 100),
-        Math.max(0, currentBudgetValue),
-        perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
+    : maxBonusPerCampaignFromPackage(
+        selectedPkg,
+        currentBudgetValue,
+        shareCount,
+        perCampaignPromoCap,
       );
   const cashToPay = Math.max(
     0,
@@ -533,16 +623,14 @@ function useRefillLogic(
       setBonusNotice('');
       return;
     }
-    const maxByPercent = Math.floor(
-      (currentBudgetValue * selectedPkg.maxPercent) / 100,
+    setBonusValue(
+      maxBonusPerCampaignFromPackage(
+        selectedPkg,
+        currentBudgetValue,
+        shareCount,
+        perCampaignPromoCap,
+      ),
     );
-    const next = Math.min(
-      currentBudgetValue,
-      maxByPercent,
-      selectedPkg.amount,
-      perCampaignPromoCap ?? Number.POSITIVE_INFINITY,
-    );
-    setBonusValue(next);
     setBonusNotice('');
   };
 
@@ -551,6 +639,15 @@ function useRefillLogic(
     setBonusValue(maxBonusFromAll);
     setBonusNotice('');
   }, [autoMode, useBonuses, maxBonusFromAll]);
+
+  useEffect(() => {
+    if (autoMode || !useBonuses) return;
+    setBonusValue((prev) => {
+      const numeric = parseDisplayValue(String(prev));
+      if (!Number.isFinite(numeric) || numeric <= maxBonusAllowed) return prev;
+      return maxBonusAllowed;
+    });
+  }, [autoMode, useBonuses, maxBonusAllowed]);
 
   const handleAutoFieldChange =
     (setter: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -565,7 +662,22 @@ function useRefillLogic(
     useBonuses,
     setUseBonuses: (v: boolean) => {
       setUseBonuses(v);
-      if (!v) setBonusPickModeState('manual');
+      if (!v) {
+        setBonusPickModeState('manual');
+        return;
+      }
+      if (autoMode) {
+        setBonusValue(maxBonusFromAll);
+        return;
+      }
+      setBonusValue(
+        maxBonusPerCampaignFromPackage(
+          selectedPkg,
+          currentBudgetValue,
+          shareCount,
+          perCampaignPromoCap,
+        ),
+      );
     },
     selectedPkgId,
     setSelectedPkgId,
@@ -642,6 +754,8 @@ function useRefillLogic(
     handleAutoFieldChange,
     bonusPickMode,
     setBonusPickMode,
+    shareCount,
+    perCampaignPromoCap,
     canSubmit: currentBudgetValue >= 1000,
   };
 }
@@ -1095,7 +1209,14 @@ function bonusLimitReason(logic: RefillLogic): string {
   const fullAmount = packageFullAmount(logic.selectedPkg);
   const max = logic.maxBonusAllowed;
   const usedElsewhere = fullAmount > packageAmount;
+  const shares = Math.max(1, logic.shareCount);
+  const evenFromPackage = Math.floor(packageAmount / shares);
 
+  if (shares > 1 && max === evenFromPackage && evenFromPackage < packageAmount) {
+    return usedElsewhere
+      ? `Остаток пакета ${formatForDisplay(packageAmount)} B из ${formatForDisplay(fullAmount)} B делим поровну на ${shares} ${getPlural(shares, 'кампанию', 'кампании', 'кампаний')} — до ${formatForDisplay(evenFromPackage)} B на каждую.`
+      : `Остаток пакета ${formatForDisplay(packageAmount)} B делим поровну на ${shares} ${getPlural(shares, 'кампанию', 'кампании', 'кампаний')} — до ${formatForDisplay(evenFromPackage)} B на каждую.`;
+  }
   if (usedElsewhere && max === packageAmount) {
     return `На пакете осталось ${formatForDisplay(packageAmount)} B из ${formatForDisplay(fullAmount)} B — часть уже на других кампаниях.`;
   }
@@ -1168,8 +1289,14 @@ function chooseBonusPackage(logic: RefillLogic, pkg: BonusPackage) {
     logic.clearBonusNotice();
     return;
   }
-  const maxByPercent = Math.floor((logic.currentBudgetValue * pkg.maxPercent) / 100);
-  logic.setBonusValue(Math.min(logic.currentBudgetValue, maxByPercent, pkg.amount));
+  logic.setBonusValue(
+    maxBonusPerCampaignFromPackage(
+      pkg,
+      logic.currentBudgetValue,
+      logic.shareCount,
+      logic.perCampaignPromoCap,
+    ),
+  );
   logic.clearBonusNotice();
 }
 
@@ -1460,7 +1587,6 @@ function SummaryBody({
   showDailyLimitInfo,
   dailyLimit,
   wallet,
-  shareCount = 1,
   campaigns = [],
 }: {
   logic: RefillLogic;
@@ -1469,16 +1595,10 @@ function SummaryBody({
   showDailyLimitInfo: boolean;
   dailyLimit: number;
   wallet?: BudgetWalletContext | null;
-  /** >1 — одна и та же сумма на каждую кампанию, лимит счёта делится поровну */
-  shareCount?: number;
   campaigns?: readonly BudgetRefillCampaignItem[];
 }) {
   const fallbackUnified = useUnifiedAccountRub();
   const elsBalance = wallet?.elsBalance ?? fallbackUnified;
-  const elsReserved = wallet?.elsReserved ?? 0;
-  const elsPool = Math.max(0, elsBalance - elsReserved);
-  const shares = Math.max(1, shareCount ?? 1);
-  const elsAvailable = Math.floor(elsPool / shares);
   const promoTotal = wallet?.promoTotal ?? logic.promoBonusTotal;
   const promoAvailable =
     wallet != null
@@ -1519,23 +1639,6 @@ function SummaryBody({
           autoFocus
           ariaLabel={isMassRefill ? 'Сумма на 1 кампанию' : 'Сумма пополнения'}
         />
-
-        <p className="mt-1.5 text-[12px] leading-4 text-gray-400 tabular-nums">
-          от 1 000{' '}
-          <span className="group relative inline-flex cursor-help">
-            до {formatForDisplay(elsAvailable)} ₽
-            <span
-              role="tooltip"
-              className="pointer-events-none absolute left-0 top-full z-20 mt-1.5 hidden w-[260px] rounded-xl bg-gray-900 px-3 py-2 text-left text-[12px] font-normal normal-case leading-4 text-white shadow-lg group-hover:block"
-            >
-              {shares > 1
-                ? `На счёте ${formatForDisplay(elsPool)} ₽. Поровну на ${shares} ${getPlural(shares, 'кампанию', 'кампании', 'кампаний')} — до ${formatForDisplay(elsAvailable)} ₽ на каждую.`
-                : elsReserved > 0
-                  ? `На счёте ${formatForDisplay(elsBalance)} ₽. На кампаниях в создании уже занято ${formatForDisplay(elsReserved)} ₽, поэтому можно ещё ${formatForDisplay(elsAvailable)} ₽.`
-                  : `Это весь остаток единого счёта — ${formatForDisplay(elsAvailable)} ₽.`}
-            </span>
-          </span>
-        </p>
 
         <div className="mt-4 border-t border-gray-100 pt-3.5">
           <button
@@ -1744,7 +1847,6 @@ export const BudgetRefillModal: React.FC<{
         showDailyLimitInfo={showDailyLimitInfo}
         dailyLimit={dailyLimit}
         wallet={walletContext}
-        shareCount={shareCount}
         campaigns={campaigns}
       />
     </RightSheetShell>

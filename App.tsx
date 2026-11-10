@@ -121,7 +121,6 @@ interface BonusPackage {
 // --- Constants ---
 const CATEGORIES = ['Брюки', 'Платья', 'Футболки', 'Аксессуары', 'Обувь', 'Электроника', 'Дом', 'Кольца', 'Фоторамки', 'Спортивная одежда', 'Косметика', 'Игрушки'];
 const TOTAL_PROMO_BONUS = 30000;
-const PAGE_SIZE = 50;
 const MASTER_PASSWORD = '01020808';
 const RESEARCH_PASSWORDS = {
   bonuses: '93876',
@@ -2145,29 +2144,6 @@ const BulkEditModal = ({
     )
 }
 
-const Pagination = ({ total, pageSize, current, onChange }: { total: number, pageSize: number, current: number, onChange: (page: number) => void }) => {
-    const totalPages = Math.ceil(total / pageSize);
-    if (totalPages <= 1) return null;
-    const handlePrev = () => { if (current > 1) onChange(current - 1); };
-    const handleNext = () => { if (current < totalPages) onChange(current + 1); };
-
-    let items = [];
-    if (totalPages <= 5) {
-        for (let i = 1; i <= totalPages; i++) items.push(i);
-    } else {
-        items.push(1);
-        if (current > 3) items.push('...');
-        if (current > 2) items.push(current - 1);
-        if (current > 1 && current < totalPages) items.push(current);
-        if (current < totalPages - 1) items.push(current + 1);
-        if (current < totalPages - 2) items.push('...');
-        items.push(totalPages);
-    }
-    const uniqueItems = [...new Set(items)];
-
-    return ( <div className="pagination-container"> <button onClick={handlePrev} className={`pagination-item ${current === 1 ? 'disabled' : ''}`} disabled={current === 1}>&lt;</button> {uniqueItems.map((item, index) => ( <button key={index} onClick={() => typeof item === 'number' && onChange(item)} className={`pagination-item ${current === item ? 'active' : ''} ${typeof item !== 'number' ? 'disabled' : ''}`} disabled={typeof item !== 'number'}> {item} </button> ))} <button onClick={handleNext} className={`pagination-item ${current === totalPages ? 'disabled' : ''}`} disabled={current === totalPages}>&gt;</button> </div> );
-};
-
 const BidInput = ({
     value,
     onChange,
@@ -3579,7 +3555,6 @@ export default function App() {
     );
   };
 
-  const handlePageChange = (groupId: string, page: number) => { setTemplateGroups(prev => prev.map(g => g.id === groupId ? { ...g, currentPage: page } : g)); };
     
   const handleUpdateCampaign = (groupId: string, campaignId: string, updates: Partial<CampaignRecord>) => {
       const field = Object.keys(updates)[0] as keyof CampaignRecord;
@@ -3940,12 +3915,33 @@ export default function App() {
     ) => {
       const pkg =
         BONUS_PACKAGES.find((item) => item.id === extras?.packageId) ?? BONUS_PACKAGES[0];
+      const scopeCampaigns = editingGroupId ? editedCampaigns : allValidCampaigns;
+      const packageRemaining = packageBalanceAfterCampaigns(
+        pkg.id,
+        scopeCampaigns,
+        new Set(ids),
+      );
+      const evenPackageShare =
+        ids.length > 1 ? Math.floor(packageRemaining / ids.length) : packageRemaining;
+      const requestedBonus =
+        extras?.useBonuses && (extras.bonusAmount ?? 0) > 0
+          ? Math.max(0, Math.floor(extras.bonusAmount ?? 0))
+          : 0;
+      const bonusPerCampaign =
+        requestedBonus > 0
+          ? Math.min(
+              requestedBonus,
+              evenPackageShare,
+              maxBonusForBudget(pkg, amount, packageRemaining),
+            )
+          : 0;
+      const pkgForApply = { ...pkg, amount: packageRemaining };
       const budgetValue = {
         __mode: 'budget' as const,
         total: amount,
-        isBonusActive: Boolean(extras?.useBonuses && (extras.bonusAmount ?? 0) > 0),
-        bonus: extras?.bonusAmount ?? 0,
-        selectedPkg: pkg,
+        isBonusActive: bonusPerCampaign > 0,
+        bonus: bonusPerCampaign,
+        selectedPkg: pkgForApply,
       };
 
       if (listBudgetTargetIds && listBudgetTargetIds.length > 0) {
@@ -4094,10 +4090,19 @@ export default function App() {
         if (action === 'budget' && value.isBonusActive) {
             const selectedPkg = value.selectedPkg as BonusPackage;
             const requested = Number(value.bonus);
-            const cap = maxBonusForBudget(
-              selectedPkg,
-              Number(value.total),
-              selectedPkg.amount,
+            const scopeCampaigns = editingGroupId ? editedCampaigns : allValidCampaigns;
+            const packageRemaining = packageBalanceAfterCampaigns(
+              selectedPkg.id,
+              scopeCampaigns,
+              new Set(selectedCampaignIds),
+            );
+            const evenShare =
+              selectedCampaignIds.length > 1
+                ? Math.floor(packageRemaining / selectedCampaignIds.length)
+                : packageRemaining;
+            const cap = Math.min(
+              evenShare,
+              maxBonusForBudget(selectedPkg, Number(value.total), packageRemaining),
             );
             const bonusPerCampaign = Math.min(Math.max(0, requested), cap);
             const bonusClamped = Number.isFinite(requested) && requested > bonusPerCampaign;
@@ -4105,6 +4110,7 @@ export default function App() {
               ...value,
               bonus: bonusPerCampaign,
               isBonusActive: bonusPerCampaign > 0,
+              selectedPkg: { ...selectedPkg, amount: packageRemaining },
             };
 
             if (bonusPerCampaign <= 0) {
@@ -4120,18 +4126,11 @@ export default function App() {
                 return;
             }
 
-            const fullCoverageCount = Math.floor(selectedPkg.amount / bonusPerCampaign);
-            
-            if (fullCoverageCount >= selectedCampaignIds.length) {
-                applyBulkChanges(nextValue, selectedCampaignIds, 'budget');
-                if (bonusClamped) {
-                  setToastMessage('Пополнили промобонусами только на доступное количество');
-                  setShowToast(true);
-                }
-            } else {
-                const remainingBonuses = selectedPkg.amount % bonusPerCampaign;
-                setBonusAppContext({ value: nextValue, fullCoverageCount, remainingBonuses });
-                setIsBonusInsufficiencyModalOpen(true);
+            // Остаток пакета уже поделён поровну в cap — хватает на все выбранные кампании
+            applyBulkChanges(nextValue, selectedCampaignIds, 'budget');
+            if (bonusClamped) {
+              setToastMessage('Пополнили промобонусами только на доступное количество');
+              setShowToast(true);
             }
             return;
         }
@@ -5918,39 +5917,11 @@ export default function App() {
             {templateGroups.map((group) => { 
             const campaignsForReview = editingGroupId === group.id ? editedCampaigns : group.campaigns.filter(c => c.status !== CampaignStatus.ERROR);
             const filteredGroupCampaigns = campaignsForReview.filter(c => filteredCampaigns.some(fc => fc.id === c.id));
-            const validCount = filteredGroupCampaigns.length; 
             const totals = filteredGroupCampaigns.reduce( (acc, campaign) => { const bonus = effectivePromoBonusAmount(campaign); acc.total += campaign.budget; acc.bonus += bonus; return acc; }, { total: 0, bonus: 0 } );
-            const paginatedCampaigns = filteredGroupCampaigns.slice((group.currentPage - 1) * PAGE_SIZE, group.currentPage * PAGE_SIZE);
-            const paginatedIds = paginatedCampaigns.map(c => c.id);
             const isCpmManual = group.config.paymentModel === PaymentModel.CPM && group.config.bidType === BidType.MANUAL;
             const isCpc = group.config.paymentModel === PaymentModel.CPC;
             // CPM ручная и CPC: две колонки Поиск / Рекомендации с выбором зон
             const showZoneColumns = isCpmManual || isCpc;
-            const hasSearchBids = showZoneColumns;
-            const hasRecommendationsBids = showZoneColumns;
-            const defaultZoneBid = isCpc
-              ? CPC_DEFAULT_SEARCH_BID_RUB
-              : CPM_DEFAULT_COMPETITIVE_BID_RUB;
-            const zonesLabel = (() => {
-              const isCpm = group.config.paymentModel === PaymentModel.CPM;
-              if (isCpm && group.config.bidType !== BidType.MANUAL) {
-                return 'Зоны показов: Поиск, Рекомендации';
-              }
-              if (isCpm || isCpc) {
-                const anySearchEnabled = campaignsForReview.some(c => c.searchBid != null);
-                const anyRecsEnabled = campaignsForReview.some(c => c.recommendationsBid != null);
-                const zones = [
-                  anySearchEnabled ? 'Поиск' : null,
-                  anyRecsEnabled ? 'Рекомендации' : null,
-                ].filter(Boolean) as string[];
-                return `Зоны показов: ${zones.length ? zones.join(', ') : '—'}`;
-              }
-              return null;
-            })();
-            const selectedOnPageCount = paginatedIds.filter(id => selectedCampaignIds.includes(id)).length;
-            const allOnPageSelected = selectedOnPageCount === paginatedIds.length && paginatedIds.length > 0;
-            const isIndeterminate = !allOnPageSelected && selectedOnPageCount > 0;
-            const showProspectColumn = campaignsForReview.some((c) => c.prospectCtr != null);
             if (filteredGroupCampaigns.length === 0 && areFiltersActive) return null;
 
             const islandTitle = isCpc
@@ -5983,7 +5954,7 @@ export default function App() {
                   defaultRecsBid={
                     isCpc ? CPC_DEFAULT_SEARCH_BID_RUB : CPM_DEFAULT_COMPETITIVE_BID_RUB
                   }
-                  campaigns={paginatedCampaigns}
+                  campaigns={filteredGroupCampaigns}
                   selectedIds={selectedCampaignIds}
                   onToggleSelect={handleSelectCampaign}
                   onToggleSelectAll={handleSelectAllOnPage}
@@ -5995,12 +5966,6 @@ export default function App() {
                   onAutobidderSetupChange={setCreationAutobidderSetup}
                   dailyLimitRules={creationDailyLimitRules}
                   onDailyLimitRulesChange={setCreationDailyLimitRules}
-                />
-                <Pagination
-                  total={validCount}
-                  pageSize={PAGE_SIZE}
-                  current={group.currentPage}
-                  onChange={(page) => handlePageChange(group.id, page)}
                 />
               </div>
             );
@@ -6292,19 +6257,10 @@ export default function App() {
             </div>
 
             <div className="flex shrink-0 flex-wrap items-center justify-end gap-3">
-              {globalDeficit > 0 ? (
-                <div className="flex max-w-[320px] items-start gap-2 rounded-xl bg-[#F2F2F7] px-3 py-2 text-xs leading-snug text-gray-700">
-                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#F5A623]" />
-                  <span>
-                    Кампании, на которые не хватает денег, создадим со статусом «Готова к
-                    запуску»
-                  </span>
-                </div>
-              ) : null}
               <button
                 type="button"
                 onClick={launchCampaigns}
-                disabled={isLaunching}
+                disabled={isLaunching || globalDeficit > 0}
                 className="inline-flex h-11 shrink-0 items-center justify-center rounded-[10px] bg-[#9C45FD] px-3 text-[17px] font-medium leading-5 tracking-[0.4px] text-white transition-colors hover:bg-[#8A35EE] disabled:cursor-not-allowed disabled:bg-gray-300"
               >
                 <span className="px-2">{`Создать ${totalAllValidCount} ${getPlural(totalAllValidCount, 'кампанию', 'кампании', 'кампаний')}`}</span>
