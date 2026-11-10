@@ -6311,8 +6311,10 @@ export function createDefaultAdvancedDailyLimitSettings(): AdvancedDailyLimitSet
   };
 }
 
-export function isDynamicDailyLimitConfigured(settings: AdvancedDailyLimitSettings): boolean {
-  if (!settings.autoIncreaseEnabled) return false;
+export function isDynamicDailyLimitConfigured(
+  settings: AdvancedDailyLimitSettings | null | undefined,
+): boolean {
+  if (!settings?.autoIncreaseEnabled) return false;
   if (settings.strategyId === 'maxSpend') return true;
   if (settings.increaseRules?.length) {
     return settings.increaseRules.some((r) => r.enabled && isDailyLimitIncreaseRuleValid(r));

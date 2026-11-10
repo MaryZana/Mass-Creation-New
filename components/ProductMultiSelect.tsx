@@ -207,7 +207,7 @@ export const ProductMultiSelect: React.FC<ProductMultiSelectProps> = ({
     return groups.sort((a, b) => a.category.localeCompare(b.category));
   }, [filteredOptions]);
 
-  const showGrouped = groupedByCategory.length >= 2;
+  const showGrouped = groupedByCategory.length >= 1;
 
   const toggleCategoryCollapsed = (category: string) => {
     setCollapsedCategories(prev => {

@@ -4585,11 +4585,11 @@ export default function App() {
         ? creationDailyLimitRules[first!.id]
         : createDefaultAdvancedDailyLimitSettings();
 
-    const anyLimitEnabled = campaigns.some(
-      (c) =>
-        (c.dailyLimit != null && c.dailyLimit > 0) ||
-        isDynamicDailyLimitConfigured(creationDailyLimitRules[c.id]),
-    );
+    const anyLimitEnabled = campaigns.some((c) => {
+      if (c.dailyLimit != null && c.dailyLimit > 0) return true;
+      const rules = creationDailyLimitRules[c.id];
+      return rules != null && isDynamicDailyLimitConfigured(rules);
+    });
 
     if (sharedLimit != null) {
       const limitStr = String(sharedLimit);
