@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X } from './Icons';
+import { RefreshCw, X } from './Icons';
 import {
   SearchBidForecastField,
   bidForCpcBarSegment,
   bidForCpmBarSegment,
   CPM_DEFAULT_COMPETITIVE_BID_RUB,
+  normalizeCpcSearchBidRubOnBlur,
   parseSearchBidRubInput,
   resolveCpcSearchBidStatus,
   resolveCpmBidStatus,
@@ -78,6 +79,32 @@ function parseBidInput(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function sameBidNumberRecord(
+  a: Record<string, number>,
+  b: Record<string, number>,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((key) => a[key] === b[key]);
+}
+
+function sharedCpcBidForItem(
+  item: BulkSearchBidItem,
+  range: BidChasingRange,
+): number {
+  const recommended = item.recommendedByTier[range];
+  if (Number.isFinite(recommended) && recommended > 0) return recommended;
+  return bidChasingPositionOption(range).demoBidRub;
+}
+
+type BulkSearchBidFormBaseline = {
+  mode: BulkSearchBidMode;
+  cpmPreset: 0 | 1 | 2 | 'manual';
+  bidsById: Record<string, number>;
+  globalDraft: string;
+};
+
 /** Демо-рекомендации по позициям для товара (seed от id/артикула). */
 export function buildBulkSearchRecommendedTiers(seed: number): Record<BidChasingRange, number> {
   const base = 150 + (Math.abs(seed) % 120);
@@ -143,6 +170,13 @@ function ProductBidRow({
     controls === 'cpm'
       ? resolveCpmBidStatus(bid, CPM_DEFAULT_COMPETITIVE_BID_RUB)
       : resolveCpcSearchBidStatus(bid);
+  const [simpleDraft, setSimpleDraft] = useState(String(bid));
+  const [simpleFocused, setSimpleFocused] = useState(false);
+
+  useEffect(() => {
+    if (simpleFocused) return;
+    setSimpleDraft(String(bid));
+  }, [bid, simpleFocused]);
 
   return (
     <div className="flex items-start justify-between gap-4 border-b border-gray-100 py-3.5 last:border-b-0">
@@ -167,10 +201,14 @@ function ProductBidRow({
             <input
               type="text"
               inputMode="decimal"
-              value={String(bid)}
-              onChange={(e) => {
-                const parsed = parseSearchBidRubInput(e.target.value);
-                if (parsed != null) onBidChange(parsed);
+              value={simpleDraft}
+              onChange={(e) => setSimpleDraft(e.target.value)}
+              onFocus={() => setSimpleFocused(true)}
+              onBlur={() => {
+                setSimpleFocused(false);
+                const next = normalizeCpcSearchBidRubOnBlur(simpleDraft);
+                setSimpleDraft(String(next));
+                onBidChange(next);
               }}
               className="box-border h-9 w-full bg-transparent px-2.5 pr-7 text-sm font-medium tabular-nums text-gray-900 outline-none"
               aria-label={`Ставка для ${item.name}`}
@@ -225,8 +263,17 @@ export function BulkSearchBidModal({
   const [globalDraft, setGlobalDraft] = useState('');
   const [bidsById, setBidsById] = useState<Record<string, number>>({});
   const [pickerItemId, setPickerItemId] = useState<string | null>(null);
+  const [formBaseline, setFormBaseline] = useState<BulkSearchBidFormBaseline | null>(
+    null,
+  );
   const searchBidPickerRef = useRef<HTMLDivElement | null>(null);
   const searchBidPickerPopoverRef = useRef<HTMLDivElement | null>(null);
+  /** Ручные ставки — не затираем при переключении на общую позицию / CPM-пресет */
+  const manualSnapshotRef = useRef<{
+    bidsById: Record<string, number>;
+    globalDraft: string;
+  } | null>(null);
+  const itemsKey = items.map((item) => item.id).join('|');
 
   // Подтягиваем актуальное состояние из списка при открытии
   useEffect(() => {
@@ -243,11 +290,31 @@ export function BulkSearchBidModal({
       items.length > 0 &&
       firstBid != null &&
       items.every((item) => item.bid === firstBid);
-    setGlobalDraft(allSame ? formatBidInput(firstBid) : '');
+    const nextGlobalDraft = allSame ? formatBidInput(firstBid) : '';
+    setGlobalDraft(nextGlobalDraft);
     setPickerItemId(null);
-    // items — снимок на открытие
+    manualSnapshotRef.current = {
+      bidsById: { ...next },
+      globalDraft: nextGlobalDraft,
+    };
+    setFormBaseline({
+      mode: 'manual',
+      cpmPreset: 'manual',
+      bidsById: { ...next },
+      globalDraft: nextGlobalDraft,
+    });
+    // items — снимок на открытие / смену состава
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, controls, title]);
+  }, [isOpen, controls, title, itemsKey]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (mode !== 'manual' || cpmPreset !== 'manual') return;
+    manualSnapshotRef.current = {
+      bidsById: { ...bidsById },
+      globalDraft,
+    };
+  }, [isOpen, mode, cpmPreset, bidsById, globalDraft]);
 
   useEffect(() => {
     if (!pickerItemId) return;
@@ -273,6 +340,60 @@ export function BulkSearchBidModal({
   }, [pickerItemId]);
 
   const count = items.length;
+  const isSharedCpc = showCpcPositionChips && mode !== 'manual';
+  const isSharedCpm = showCpmPresetChips && cpmPreset !== 'manual';
+  const isSharedAssignment = isSharedCpc || isSharedCpm;
+
+  const displayBidForItem = (item: BulkSearchBidItem): number => {
+    if (isSharedCpc) {
+      return sharedCpcBidForItem(item, mode);
+    }
+    if (isSharedCpm && cpmPreset !== 'manual') {
+      return bidForCpmBarSegment(cpmPreset).bid;
+    }
+    return bidsById[item.id] ?? item.bid;
+  };
+
+  const captureManualSnapshot = () => {
+    manualSnapshotRef.current = {
+      bidsById: { ...bidsById },
+      globalDraft,
+    };
+  };
+
+  const restoreManualSnapshot = () => {
+    const snapshot = manualSnapshotRef.current;
+    if (!snapshot) return;
+    setBidsById({ ...snapshot.bidsById });
+    setGlobalDraft(snapshot.globalDraft);
+  };
+
+  const freezeSharedIntoManual = (override?: {
+    itemId: string;
+    bid: number;
+  }) => {
+    const frozen: Record<string, number> = {};
+    for (const item of items) {
+      frozen[item.id] = displayBidForItem(item);
+    }
+    if (override) {
+      frozen[override.itemId] = override.bid;
+    }
+    setBidsById(frozen);
+    const first = frozen[items[0]?.id ?? ''];
+    const allSame =
+      items.length > 0 &&
+      first != null &&
+      items.every((item) => frozen[item.id] === first);
+    const nextGlobal = allSame && first != null ? formatBidInput(first) : '';
+    setGlobalDraft(nextGlobal);
+    manualSnapshotRef.current = {
+      bidsById: { ...frozen },
+      globalDraft: nextGlobal,
+    };
+    setMode('manual');
+    setCpmPreset('manual');
+  };
 
   const applyGlobalValue = (value: number) => {
     setBidsById((prev) => {
@@ -285,32 +406,40 @@ export function BulkSearchBidModal({
   };
 
   const applyModeToAll = (nextMode: BulkSearchBidMode) => {
+    if (nextMode === 'manual') {
+      setMode('manual');
+      setCpmPreset('manual');
+      restoreManualSnapshot();
+      return;
+    }
+    if (mode === 'manual' && cpmPreset === 'manual') {
+      captureManualSnapshot();
+    }
     setMode(nextMode);
     setCpmPreset('manual');
-    if (nextMode === 'manual') return;
-    const demoBid = bidChasingPositionOption(nextMode).demoBidRub;
-    setBidsById((prev) => {
-      const next = { ...prev };
-      for (const item of items) {
-        next[item.id] = demoBid;
-      }
-      return next;
-    });
-    setGlobalDraft(formatBidInput(demoBid));
+    const firstShared = items[0]
+      ? sharedCpcBidForItem(items[0], nextMode)
+      : bidChasingPositionOption(nextMode).demoBidRub;
+    const allSame =
+      items.length > 0 &&
+      items.every((item) => sharedCpcBidForItem(item, nextMode) === firstShared);
+    setGlobalDraft(allSame ? formatBidInput(firstShared) : '');
   };
 
   const applyCpmPresetToAll = (segment: 0 | 1 | 2) => {
+    if (mode === 'manual' && cpmPreset === 'manual') {
+      captureManualSnapshot();
+    }
     setCpmPreset(segment);
     setMode('manual');
     const demoBid = bidForCpmBarSegment(segment).bid;
-    setBidsById((prev) => {
-      const next = { ...prev };
-      for (const item of items) {
-        next[item.id] = demoBid;
-      }
-      return next;
-    });
     setGlobalDraft(formatBidInput(demoBid));
+  };
+
+  const selectCpmManual = () => {
+    setCpmPreset('manual');
+    setMode('manual');
+    restoreManualSnapshot();
   };
 
   const parsedGlobalBid = parseBidInput(globalDraft);
@@ -321,36 +450,102 @@ export function BulkSearchBidModal({
 
   /** Только нормализует черновик — ставки в строках меняются только по ссылкам ниже. */
   const normalizeGlobalDraft = () => {
+    if (globalDraft.trim() === '') return;
+    if (showCpcPositionChips || controls === 'simple') {
+      setGlobalDraft(formatBidInput(normalizeCpcSearchBidRubOnBlur(globalDraft)));
+      return;
+    }
     const parsed = parseBidInput(globalDraft);
     if (parsed == null) return;
     setGlobalDraft(formatBidInput(parsed));
   };
 
+  const ensureManualBeforeGlobalEdit = () => {
+    if (!isSharedAssignment) {
+      setMode('manual');
+      setCpmPreset('manual');
+      return;
+    }
+    freezeSharedIntoManual();
+  };
+
   const replaceAllBids = () => {
     if (!showGlobalBidActions || parsedGlobalBid == null) return;
+    if (isSharedAssignment) {
+      freezeSharedIntoManual();
+    }
     setMode('manual');
     setCpmPreset('manual');
-    applyGlobalValue(parsedGlobalBid);
-    setGlobalDraft(formatBidInput(parsedGlobalBid));
+    const nextBid =
+      showCpcPositionChips || controls === 'simple'
+        ? normalizeCpcSearchBidRubOnBlur(parsedGlobalBid)
+        : parsedGlobalBid;
+    applyGlobalValue(nextBid);
+    setGlobalDraft(formatBidInput(nextBid));
   };
 
   const addGlobalBidToAll = () => {
     if (!showGlobalBidActions || parsedGlobalBid == null) return;
+    const baseBids: Record<string, number> = {};
+    for (const item of items) {
+      baseBids[item.id] = displayBidForItem(item);
+    }
+    const next: Record<string, number> = {};
+    for (const item of items) {
+      const current = baseBids[item.id] ?? item.bid;
+      const base = Number.isFinite(current) ? current : 0;
+      next[item.id] = Math.round((base + parsedGlobalBid) * 100) / 100;
+    }
+    setBidsById(next);
     setMode('manual');
     setCpmPreset('manual');
-    setBidsById((prev) => {
-      const next = { ...prev };
-      for (const item of items) {
-        const current = prev[item.id] ?? item.bid;
-        const base = Number.isFinite(current) ? current : 0;
-        next[item.id] = Math.round((base + parsedGlobalBid) * 100) / 100;
-      }
-      return next;
-    });
+    manualSnapshotRef.current = {
+      bidsById: { ...next },
+      globalDraft,
+    };
   };
 
+  const handleRowBidChange = (itemId: string, nextBid: number) => {
+    if (isSharedAssignment) {
+      freezeSharedIntoManual({ itemId, bid: nextBid });
+      return;
+    }
+    setMode('manual');
+    setCpmPreset('manual');
+    setBidsById((prev) => ({ ...prev, [itemId]: nextBid }));
+  };
+
+  const restoreOriginalSettings = () => {
+    if (!formBaseline) return;
+    setMode(formBaseline.mode);
+    setCpmPreset(formBaseline.cpmPreset);
+    setBidsById({ ...formBaseline.bidsById });
+    setGlobalDraft(formBaseline.globalDraft);
+    setPickerItemId(null);
+    manualSnapshotRef.current = {
+      bidsById: { ...formBaseline.bidsById },
+      globalDraft: formBaseline.globalDraft,
+    };
+  };
+
+  const formIsDirty =
+    formBaseline != null &&
+    (mode !== formBaseline.mode ||
+      cpmPreset !== formBaseline.cpmPreset ||
+      globalDraft !== formBaseline.globalDraft ||
+      !sameBidNumberRecord(bidsById, formBaseline.bidsById));
+  const showRestoreOriginalSettings = formIsDirty;
+
   const handleApply = () => {
-    onApply(bidsById);
+    if (isSharedAssignment) {
+      const next: Record<string, number> = {};
+      for (const item of items) {
+        next[item.id] = displayBidForItem(item);
+      }
+      onApply(next);
+    } else {
+      onApply(bidsById);
+    }
     onClose();
   };
 
@@ -458,7 +653,7 @@ export function BulkSearchBidModal({
                       type="button"
                       role="tab"
                       aria-selected={cpmPreset === 'manual'}
-                      onClick={() => setCpmPreset('manual')}
+                      onClick={selectCpmManual}
                       className={`${MODE_CHIP_BASE} ${
                         cpmPreset === 'manual' ? MODE_CHIP_SELECTED : MODE_CHIP_IDLE
                       }`}
@@ -501,9 +696,8 @@ export function BulkSearchBidModal({
                     placeholder="0"
                     onChange={(e) => {
                       const raw = e.target.value.replace(/[^\d.,]/g, '');
+                      ensureManualBeforeGlobalEdit();
                       setGlobalDraft(raw);
-                      setMode('manual');
-                      setCpmPreset('manual');
                     }}
                     onBlur={normalizeGlobalDraft}
                     onKeyDown={(e) => {
@@ -524,9 +718,8 @@ export function BulkSearchBidModal({
                         type="button"
                         aria-label="Очистить"
                         onClick={() => {
+                          ensureManualBeforeGlobalEdit();
                           setGlobalDraft('');
-                          setMode('manual');
-                          setCpmPreset('manual');
                         }}
                         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80"
                       >
@@ -557,18 +750,14 @@ export function BulkSearchBidModal({
 
               <div className="mt-6">
                 {items.map((item) => {
-                  const rowBid = bidsById[item.id] ?? item.bid;
+                  const rowBid = displayBidForItem(item);
                   return (
                     <ProductBidRow
                       key={item.id}
                       item={item}
                       bid={rowBid}
                       controls={controls}
-                      onBidChange={(next) => {
-                        setMode('manual');
-                        setCpmPreset('manual');
-                        setBidsById((prev) => ({ ...prev, [item.id]: next }));
-                      }}
+                      onBidChange={(next) => handleRowBidChange(item.id, next)}
                       pickerOpen={showCpcPositionChips && pickerItemId === item.id}
                       onTogglePicker={() => {
                         if (!showCpcPositionChips) return;
@@ -589,7 +778,7 @@ export function BulkSearchBidModal({
                 ? (() => {
                     const pickerItem = items.find((i) => i.id === pickerItemId);
                     if (!pickerItem) return null;
-                    const bid = bidsById[pickerItem.id] ?? pickerItem.bid;
+                    const bid = displayBidForItem(pickerItem);
                     const visual = resolveCpcSearchBidStatus(bid);
                     const selectedPosition: BidChasingRange =
                       visual.kind === 'tier'
@@ -605,12 +794,10 @@ export function BulkSearchBidModal({
                         popoverRef={searchBidPickerPopoverRef}
                         selectedPosition={selectedPosition}
                         onSelectPosition={(position) => {
-                          setMode('manual');
-                          setBidsById((prev) => ({
-                            ...prev,
-                            [pickerItem.id]:
-                              bidChasingPositionOption(position).demoBidRub,
-                          }));
+                          const nextBid =
+                            pickerItem.recommendedByTier[position] ??
+                            bidChasingPositionOption(position).demoBidRub;
+                          handleRowBidChange(pickerItem.id, nextBid);
                           setPickerItemId(null);
                         }}
                         onClose={() => setPickerItemId(null)}
@@ -622,13 +809,25 @@ export function BulkSearchBidModal({
 
             <div className="flex shrink-0 flex-col gap-3 border-t border-gray-100 bg-gray-50/60 px-6 py-4 sm:px-8">
               <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
-                >
-                  Отмена
-                </button>
+                <div className="flex flex-wrap items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
+                  >
+                    Отмена
+                  </button>
+                  {showRestoreOriginalSettings ? (
+                    <button
+                      type="button"
+                      onClick={restoreOriginalSettings}
+                      className="inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F2F2F7] hover:text-gray-700"
+                    >
+                      <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
+                      Вернуть исходные настройки
+                    </button>
+                  ) : null}
+                </div>
                 <button
                   type="button"
                   onClick={handleApply}

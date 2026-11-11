@@ -41,6 +41,7 @@ import {
   bidForCpmBarSegment,
   CPC_DEFAULT_SEARCH_BID_RUB,
   CPM_DEFAULT_COMPETITIVE_BID_RUB,
+  normalizeCpcSearchBidRubOnBlur,
   resolveCpcSearchBidStatus,
   resolveCpmBidStatus,
   SearchBidForecastField,
@@ -81,6 +82,47 @@ function parseRubInput(raw: string): number | null {
   if (cleaned === '') return null;
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
+}
+
+function RecommendationsBidInput({
+  value,
+  onCommit,
+}: {
+  value: number;
+  onCommit: (next: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (focused) return;
+    setDraft(String(value));
+  }, [value, focused]);
+
+  return (
+    <div className="relative w-[140px] shrink-0 overflow-hidden rounded-[10px] border border-transparent bg-[#F2F2F7] transition-colors hover:bg-[#EBEBF0] focus-within:border-black focus-within:bg-white">
+      <input
+        type="text"
+        inputMode="decimal"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => {
+          setFocused(false);
+          const next = normalizeCpcSearchBidRubOnBlur(draft);
+          setDraft(String(next));
+          onCommit(next);
+        }}
+        className="box-border h-9 w-full bg-transparent px-2.5 pr-7 text-sm font-medium tabular-nums text-gray-900 outline-none"
+      />
+      <span
+        className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm font-medium text-[#A0A0AB]"
+        aria-hidden
+      >
+        ₽
+      </span>
+    </div>
+  );
 }
 
 function stockLeftForRow(row: Pick<CampaignRecord, 'nmId' | 'stockLeft'>): number {
@@ -1064,25 +1106,12 @@ export function MassCreationIsland({
                             />
                           </div>
                           {recsOn ? (
-                            <div className="relative w-[140px] shrink-0 overflow-hidden rounded-[10px] border border-transparent bg-[#F2F2F7] transition-colors hover:bg-[#EBEBF0] focus-within:border-black focus-within:bg-white">
-                              <input
-                                type="text"
-                                inputMode="decimal"
-                                value={String(row.recommendationsBid ?? defaultRecsBid)}
-                                onChange={(e) => {
-                                  const parsed = parseRubInput(e.target.value);
-                                  if (parsed != null)
-                                    onUpdate(row.id, { recommendationsBid: parsed });
-                                }}
-                                className="box-border h-9 w-full bg-transparent px-2.5 pr-7 text-sm font-medium tabular-nums text-gray-900 outline-none"
-                              />
-                              <span
-                                className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-sm font-medium text-[#A0A0AB]"
-                                aria-hidden
-                              >
-                                ₽
-                              </span>
-                            </div>
+                            <RecommendationsBidInput
+                              value={row.recommendationsBid ?? defaultRecsBid}
+                              onCommit={(next) =>
+                                onUpdate(row.id, { recommendationsBid: next })
+                              }
+                            />
                           ) : null}
                         </div>
                         {zoneOffError?.rowId === row.id && zoneOffError.zone === 'recs' ? (

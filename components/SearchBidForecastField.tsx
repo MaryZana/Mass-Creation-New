@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   bidChasingPositionOption,
   type BidChasingRange,
@@ -15,6 +15,9 @@ export const SEARCH_BID_FORECAST: Record<BidChasingRange, { label: string; fille
 
 /** CPC: ниже 2 ₽ — «Ниже рекомендуемой». */
 export const CPC_BELOW_RECOMMENDED_RUB = 2;
+
+/** Минимальная CPC-ставка при фиксации (blur). */
+export const CPC_SEARCH_BID_MIN_RUB = CPC_BELOW_RECOMMENDED_RUB;
 
 /** CPM: дефолт при создании списка — конкурентная ставка. */
 export const CPM_DEFAULT_COMPETITIVE_BID_RUB = 300;
@@ -181,6 +184,16 @@ export function parseSearchBidRubInput(raw: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** После blur: пусто / 0 / ниже минимума → минимум 2 ₽. */
+export function normalizeCpcSearchBidRubOnBlur(raw: string | number): number {
+  const parsed =
+    typeof raw === 'number' ? raw : parseSearchBidRubInput(String(raw));
+  if (parsed == null || !Number.isFinite(parsed) || parsed < CPC_SEARCH_BID_MIN_RUB) {
+    return CPC_SEARCH_BID_MIN_RUB;
+  }
+  return Math.round(parsed * 100) / 100;
+}
+
 const TONE_ACTIVE: Record<'green' | 'teal' | 'purple' | 'grey', string> = {
   green: 'bg-[#60A876]',
   teal: 'bg-[#2EC4B6]',
@@ -285,7 +298,14 @@ export function SearchBidForecastField({
   segmentMode?: 'cpc' | 'cpm';
 }) {
   const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState(() => value.replace(/\s*₽\s*$/u, '').trim());
+  const frozenStatusRef = useRef<RichBidVisualStatus | null>(null);
   const segmentLabels = segmentMode === 'cpm' ? CPM_SEGMENT_LABELS : CPC_SEGMENT_LABELS;
+
+  useEffect(() => {
+    if (focused) return;
+    setDraft(value.replace(/\s*₽\s*$/u, '').trim());
+  }, [value, focused]);
 
   if (status?.kind === 'autobidder') {
     return (
@@ -295,7 +315,7 @@ export function SearchBidForecastField({
     );
   }
 
-  const resolved: RichBidVisualStatus =
+  const liveResolved: RichBidVisualStatus =
     status ??
     (disabled
       ? { kind: 'failed' }
@@ -306,14 +326,48 @@ export function SearchBidForecastField({
           tone: 'green',
         });
 
-  const showWarning = resolved.kind === 'below';
-  const showBar = resolved.kind === 'tier' || resolved.kind === 'below';
-  const showCaption =
-    resolved.kind === 'tier' || resolved.kind === 'below' ? resolved.caption : '';
+  // Пока фокус — не пересчитываем «ниже рекомендуемой» / подпись по черновику
+  const resolved: RichBidVisualStatus =
+    focused && frozenStatusRef.current != null
+      ? frozenStatusRef.current
+      : liveResolved;
 
-  const numericDisplay = disabled
-    ? ''
-    : value.replace(/\s*₽\s*$/u, '').trim();
+  const showWarning = resolved.kind === 'below' && !focused;
+  const showBar = resolved.kind === 'tier' || (resolved.kind === 'below' && !focused);
+  const showCaption =
+    resolved.kind === 'tier'
+      ? resolved.caption
+      : resolved.kind === 'below' && !focused
+        ? resolved.caption
+        : '';
+
+  const numericDisplay = disabled ? '' : draft;
+
+  const commitDraftOnBlur = () => {
+    setFocused(false);
+    frozenStatusRef.current = null;
+    if (disabled || readOnly) {
+      onBlur?.();
+      return;
+    }
+    if (segmentMode === 'cpc') {
+      const next = normalizeCpcSearchBidRubOnBlur(draft);
+      const nextRaw = String(next);
+      setDraft(nextRaw);
+      onChange(nextRaw);
+    } else {
+      const parsed = parseSearchBidRubInput(draft);
+      if (parsed != null) {
+        const nextRaw = String(Math.round(parsed * 100) / 100);
+        setDraft(nextRaw);
+        onChange(nextRaw);
+      } else if (draft.trim() === '') {
+        // CPM: пустой ввод не коммитим — вернём отображение к value
+        setDraft(value.replace(/\s*₽\s*$/u, '').trim());
+      }
+    }
+    onBlur?.();
+  };
 
   const canSelectSegments =
     Boolean(onSegmentSelect) && !disabled && !readOnly && showBar;
@@ -365,12 +419,16 @@ export function SearchBidForecastField({
                 disabled={disabled}
                 readOnly={readOnly}
                 value={numericDisplay}
-                onChange={(e) => onChange(e.target.value)}
-                onFocus={() => setFocused(true)}
-                onBlur={() => {
-                  setFocused(false);
-                  onBlur?.();
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setDraft(raw);
+                  // Черновик локальный — в родителя и статус пишем только на blur
                 }}
+                onFocus={() => {
+                  setFocused(true);
+                  frozenStatusRef.current = liveResolved;
+                }}
+                onBlur={commitDraftOnBlur}
                 title={inputTitle}
                 onMouseEnter={onTipEnter}
                 onMouseLeave={onTipLeave}
