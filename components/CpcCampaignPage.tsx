@@ -5453,6 +5453,12 @@ export const BidChasingClustersModal: React.FC<{
   const [unifiedLimitDraft, setUnifiedLimitDraft] = useState('');
   /** Снимок формы при открытии — для «Вернуть исходные настройки» */
   const [formBaseline, setFormBaseline] = useState<BidChasingFormBaseline | null>(null);
+  /** Ручные позиции/лимиты — не затираем при переключении на общую настройку */
+  const manualSnapshotRef = useRef<{
+    positionsById: Record<string, BidChasingRange>;
+    maxBidDraftsById: Record<string, string>;
+  } | null>(null);
+  const productsKey = (products ?? []).map((p) => p.id).join('|');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -5501,6 +5507,13 @@ export const BidChasingClustersModal: React.FC<{
       setPositionsById(nextPositions);
       const nextAssignmentMode = products.length > 1 ? 'manual' : 'shared';
       setAssignmentMode(nextAssignmentMode);
+      manualSnapshotRef.current =
+        nextAssignmentMode === 'manual'
+          ? {
+              positionsById: { ...nextPositions },
+              maxBidDraftsById: { ...nextMax },
+            }
+          : null;
       setFormBaseline({
         assignmentMode: nextAssignmentMode,
         position: sharedPosition,
@@ -5512,6 +5525,7 @@ export const BidChasingClustersModal: React.FC<{
       setMaxBidDraftsById({});
       setPositionsById({});
       setAssignmentMode('shared');
+      manualSnapshotRef.current = null;
       const openMin = resolveBidChasingDemoBids(sharedPosition).demoBidMaxRub;
       const nextDraft = formatBidChasingMaxBidDraftValue(
         clampBidChasingMaxBidToMin(initialMaxBid, openMin),
@@ -5525,9 +5539,17 @@ export const BidChasingClustersModal: React.FC<{
         maxBidDraftsById: {},
       });
     }
-    // initialPositionsById читаем только при открытии / смене списка товаров
+    // initialPositionsById / products читаем при открытии или смене состава товаров
     // eslint-disable-next-line react-hooks/exhaustive-deps -- не сбрасывать форму на новый object identity
-  }, [isOpen, initialPosition, initialMaxBid, products]);
+  }, [isOpen, initialPosition, initialMaxBid, productsKey]);
+
+  useEffect(() => {
+    if (!isOpen || assignmentMode !== 'manual' || productCount <= 1) return;
+    manualSnapshotRef.current = {
+      positionsById: { ...positionsById },
+      maxBidDraftsById: { ...maxBidDraftsById },
+    };
+  }, [isOpen, assignmentMode, positionsById, maxBidDraftsById, productCount]);
 
   if (!isOpen) return null;
 
@@ -5577,7 +5599,7 @@ export const BidChasingClustersModal: React.FC<{
       maxBidDraft !== formBaseline.maxBidDraft ||
       !sameBidChasingStringRecord(maxBidDraftsById, formBaseline.maxBidDraftsById) ||
       unifiedLimitDraft.trim() !== '');
-  const showRestoreOriginalSettings = isBidChasingEnabled && formIsDirty;
+  const showRestoreOriginalSettings = formIsDirty;
 
   const handleMaxBidDraftChange = (raw: string, setter: (next: string) => void) => {
     const v = raw.replace(',', '.');
@@ -5627,9 +5649,19 @@ export const BidChasingClustersModal: React.FC<{
     setMaxBidDraft(formBaseline.maxBidDraft);
     setMaxBidDraftsById({ ...formBaseline.maxBidDraftsById });
     setUnifiedLimitDraft('');
+    manualSnapshotRef.current = {
+      positionsById: { ...formBaseline.positionsById },
+      maxBidDraftsById: { ...formBaseline.maxBidDraftsById },
+    };
   };
 
   const selectSharedPosition = (next: BidChasingPosition) => {
+    if (assignmentMode === 'manual' && isMultiProduct) {
+      manualSnapshotRef.current = {
+        positionsById: { ...positionsById },
+        maxBidDraftsById: { ...maxBidDraftsById },
+      };
+    }
     setAssignmentMode('shared');
     setPosition(next);
     const nextMin = resolveBidChasingDemoBids(next).demoBidMaxRub;
@@ -5638,30 +5670,17 @@ export const BidChasingClustersModal: React.FC<{
         clampBidChasingMaxBidToMin(parseBidChasingMaxBidDraft(prev), nextMin),
       ),
     );
-    if (next.kind === 'preset' && products && products.length > 0) {
-      setPositionsById((prev) => {
-        const synced: Record<string, BidChasingRange> = { ...prev };
-        for (const product of products) {
-          synced[product.id] = next.id;
-        }
-        return synced;
-      });
-      setMaxBidDraftsById((prev) => {
-        const nextDrafts: Record<string, string> = { ...prev };
-        for (const product of products) {
-          const range = resolveProductBidChasingRange(product.seed, next);
-          const draft = prev[product.id] ?? String(initialMaxBid);
-          nextDrafts[product.id] = formatBidChasingMaxBidDraftValue(
-            clampBidChasingMaxBidToMin(parseBidChasingMaxBidDraft(draft), range.maxRub),
-          );
-        }
-        return nextDrafts;
-      });
-    }
+    // Ручные позиции/лимиты не трогаем — вернутся при клике «Ручная»
   };
 
   const selectManualAssignment = () => {
     setAssignmentMode('manual');
+    const snapshot = manualSnapshotRef.current;
+    if (snapshot) {
+      setPositionsById({ ...snapshot.positionsById });
+      setMaxBidDraftsById({ ...snapshot.maxBidDraftsById });
+      return;
+    }
     const fallback = nearestPresetForBidChasingPosition(resolvedPosition);
     setPositionsById((prev) => {
       const next: Record<string, BidChasingRange> = { ...prev };
@@ -5670,6 +5689,34 @@ export const BidChasingClustersModal: React.FC<{
       }
       return next;
     });
+  };
+
+  const switchSharedRowToManual = (
+    productId: string,
+    nextId: BidChasingRange,
+    nextMinRub: number,
+  ) => {
+    const sharedPreset = nearestPresetForBidChasingPosition(resolvedPosition);
+    const frozenPositions: Record<string, BidChasingRange> = {};
+    const frozenLimits: Record<string, string> = {};
+    for (const row of productRowsMeta) {
+      frozenPositions[row.product.id] = sharedPreset;
+      frozenLimits[row.product.id] = row.draft;
+    }
+    frozenPositions[productId] = nextId;
+    frozenLimits[productId] = formatBidChasingMaxBidDraftValue(
+      clampBidChasingMaxBidToMin(
+        parseBidChasingMaxBidDraft(frozenLimits[productId] ?? String(initialMaxBid)),
+        nextMinRub,
+      ),
+    );
+    setPositionsById(frozenPositions);
+    setMaxBidDraftsById(frozenLimits);
+    manualSnapshotRef.current = {
+      positionsById: { ...frozenPositions },
+      maxBidDraftsById: { ...frozenLimits },
+    };
+    setAssignmentMode('manual');
   };
 
   const singleProductLimitMinRub = productRowsMeta[0]?.minRub ?? sharedLimitMinRub;
@@ -5958,7 +6005,6 @@ export const BidChasingClustersModal: React.FC<{
                       <div className="relative w-[5.75rem]">
                         <select
                           aria-label={`Позиции для ${product.name}`}
-                          disabled={!isManualAssignment}
                           value={rowPreset}
                           onChange={(e) => {
                             const nextId = e.target.value as BidChasingRange;
@@ -5967,6 +6013,14 @@ export const BidChasingClustersModal: React.FC<{
                               product.seed,
                               nextPosition,
                             );
+                            if (!isManualAssignment) {
+                              switchSharedRowToManual(
+                                product.id,
+                                nextId,
+                                nextRange.maxRub,
+                              );
+                              return;
+                            }
                             setPositionsById((prev) => ({
                               ...prev,
                               [product.id]: nextId,
@@ -5985,11 +6039,7 @@ export const BidChasingClustersModal: React.FC<{
                               };
                             });
                           }}
-                          className={`w-full appearance-none rounded-lg border py-2 pl-2 pr-7 text-sm tabular-nums text-gray-900 outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-100 ${
-                            isManualAssignment
-                              ? 'border-gray-200 bg-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500'
-                              : 'border-gray-100 bg-gray-50'
-                          }`}
+                          className="w-full appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-2 pr-7 text-sm tabular-nums text-gray-900 outline-none transition-colors focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                         >
                           {BID_CHASING_POSITION_OPTIONS.map((opt) => (
                             <option key={opt.id} value={opt.id}>
@@ -6000,9 +6050,7 @@ export const BidChasingClustersModal: React.FC<{
                           ))}
                         </select>
                         <ChevronDown
-                          className={`pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 ${
-                            isManualAssignment ? 'text-gray-400' : 'text-gray-300'
-                          }`}
+                          className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400"
                           aria-hidden
                         />
                       </div>
@@ -6073,23 +6121,25 @@ export const BidChasingClustersModal: React.FC<{
               >
                 Применить
               </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
-              >
-                Отменить
-              </button>
-              {showRestoreOriginalSettings ? (
+              <div className="flex flex-wrap items-center gap-3">
                 <button
                   type="button"
-                  onClick={restoreOriginalSettings}
-                  className="inline-flex items-center gap-2 text-sm font-medium text-gray-900 transition-colors hover:text-gray-700"
+                  onClick={onClose}
+                  className="rounded-xl bg-[#F2F2F7] px-6 py-2.5 text-sm font-medium text-gray-900 hover:bg-[#e8e8ed]"
                 >
-                  <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
-                  Вернуть исходные настройки
+                  Отменить
                 </button>
-              ) : null}
+                {showRestoreOriginalSettings ? (
+                  <button
+                    type="button"
+                    onClick={restoreOriginalSettings}
+                    className="inline-flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F2F2F7] hover:text-gray-700"
+                  >
+                    <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
+                    Вернуть исходные настройки
+                  </button>
+                ) : null}
+              </div>
               <div className="min-w-0 flex-1" />
               {isBidChasingEnabled ? (
                 <button
