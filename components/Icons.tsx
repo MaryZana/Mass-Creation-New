@@ -163,6 +163,14 @@ export const Smartphone = ({ className }: { className?: string }) => (
   </svg>
 );
 
+export const Monitor = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <rect width="20" height="14" x="2" y="3" rx="2" ry="2" />
+    <line x1="8" y1="21" x2="16" y2="21" />
+    <line x1="12" y1="17" x2="12" y2="21" />
+  </svg>
+);
+
 export const Landmark = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <line x1="3" y1="22" x2="21" y2="22" />
@@ -248,6 +256,13 @@ export const Menu = ({ className }: { className?: string }) => (
     <line x1="4" y1="6" x2="20" y2="6" />
     <line x1="4" y1="12" x2="20" y2="12" />
     <line x1="4" y1="18" x2="20" y2="18" />
+  </svg>
+);
+
+export const User = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M20 21a8 8 0 0 0-16 0" />
+    <circle cx="12" cy="8" r="4" />
   </svg>
 );
 
@@ -440,6 +455,14 @@ export const MoreVertical = ({ className }: { className?: string }) => (
     <circle cx="12" cy="12" r="1" />
     <circle cx="12" cy="5" r="1" />
     <circle cx="12" cy="19" r="1" />
+  </svg>
+);
+
+export const MoreHorizontal = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="5" cy="12" r="1" />
+    <circle cx="19" cy="12" r="1" />
   </svg>
 );
 

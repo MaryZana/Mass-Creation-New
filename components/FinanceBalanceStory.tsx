@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Calendar, ChevronDown, Clock } from './Icons';
+import { Calendar, ChevronDown, Clock, InfoCircleFill } from './Icons';
 import {
   financeBalanceWeekChargeDate,
   financeBalanceWeekDate,
@@ -21,7 +21,13 @@ export type FinanceBalanceStorySpend = {
   weekChargeRub: number;
   weekChargeDate: string;
   /** Перенесённые с прошлых недель платежи, которые списываются в это воскресенье */
-  dueFromEarlier: { period: string; chargeRub: number }[];
+  dueFromEarlier: {
+    period: string;
+    spentRub: number;
+    feePercent: number;
+    feeRub: number;
+    chargeRub: number;
+  }[];
   openPostpone: () => void;
   openSchedule: () => void;
 };
@@ -29,9 +35,9 @@ export type FinanceBalanceStorySpend = {
 export function formatPostponedPaymentsLabel(count: number) {
   const mod10 = count % 10;
   const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} отложенный платёж`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} отложенных платежа`;
-  return `${count} отложенных платежей`;
+  if (mod10 === 1 && mod100 !== 11) return `${count} Отложенный платёж`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} Отложенных платежа`;
+  return `${count} Отложенных платежей`;
 }
 
 export const FINANCE_BALANCE_STORY_VARIANTS = [
@@ -135,6 +141,19 @@ function Actions({ spend, tone = 'white' }: { spend: FinanceBalanceStorySpend; t
   );
 }
 
+function SpendRow({ label, value }: { label: React.ReactNode; value: string }) {
+  return (
+    <div className="flex justify-between gap-3 text-[13px] leading-5 text-gray-500">
+      <span className="min-w-0">{label}</span>
+      <span className="shrink-0 tabular-nums">{value}</span>
+    </div>
+  );
+}
+
+function SpendSectionTitle({ children }: { children: React.ReactNode }) {
+  return <p className="mb-2 text-[13px] font-medium text-gray-500">{children}</p>;
+}
+
 /** Расход, комиссия, к списанию и кнопки */
 function SpendDetails({
   spend,
@@ -154,79 +173,70 @@ function SpendDetails({
 }) {
   const btn = buttonClass ?? 'bg-[#F2F2F7] text-gray-900 hover:bg-[#ECECF0]';
   const totalRub = chargeRub ?? spend.weekChargeRub;
-  const thisWeekDueRub = spend.postponed ? 0 : spend.chargeRub;
   const hasDueFromEarlier = spend.dueFromEarlier.length > 0;
+  const sectioned = spend.postponed || hasDueFromEarlier;
 
   const thisWeekRows = (
-    <div className="space-y-1.5 text-xs text-gray-500">
-      <div className="flex justify-between gap-3">
-        <span>{spentLabel ?? `Расход на ${story.range}`}</span>
-        <span className="tabular-nums text-gray-700">{rub(spend.spentRub)}</span>
-      </div>
-      <div className="flex justify-between gap-3">
-        <span>{story.feeLabel}</span>
-        <span className="tabular-nums text-gray-700">{rub(spend.feeRub)}</span>
-      </div>
-      <div className="flex justify-between gap-3">
-        <span className="min-w-0 font-medium text-gray-700">
-          К оплате {spend.weekChargeDate}
-          {spend.postponed ? (
-            <span className="mt-0.5 block text-[11px] font-normal text-gray-500">
-              Перенесено на {spend.chargeDate} — в это воскресенье не списываем
-            </span>
-          ) : null}
-        </span>
-        <span className="shrink-0 font-medium tabular-nums text-gray-900">{rub(thisWeekDueRub)}</span>
-      </div>
+    <div className="space-y-1.5">
+      <SpendRow label={spentLabel ?? `Расход на ${story.range}`} value={rub(spend.spentRub)} />
+      <SpendRow label={story.feeLabel} value={rub(spend.feeRub)} />
     </div>
   );
 
+  const postponeNote = spend.postponed ? (
+    <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-white px-3 py-2.5">
+      <InfoCircleFill className="mt-0.5 h-4 w-4 shrink-0 text-[#3B82F6]" />
+      <p className="mb-0 text-[12px] leading-snug text-gray-600">
+        Оплата перенесена на {spend.chargeDate} — на этой неделе не спишем
+      </p>
+    </div>
+  ) : null;
+
   return (
     <div>
-      {hasDueFromEarlier ? (
+      {sectioned ? (
         <div className="space-y-3">
           <div>
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Эта неделя
-            </p>
+            <SpendSectionTitle>Эта неделя</SpendSectionTitle>
             {thisWeekRows}
+            {postponeNote}
           </div>
-          <div className="border-t border-gray-200/80 pt-3">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Отложенные с прошлых недель
-            </p>
-            <div className="space-y-1.5 text-xs text-gray-500">
-              {spend.dueFromEarlier.map((item) => (
-                <div key={item.period} className="flex justify-between gap-3">
-                  <span>Расход за {item.period}</span>
-                  <span className="tabular-nums text-gray-700">{rub(item.chargeRub)}</span>
-                </div>
-              ))}
+          {hasDueFromEarlier ? (
+            <div className="border-t border-gray-200/80 pt-3">
+              <SpendSectionTitle>Отложенные с прошлых недель</SpendSectionTitle>
+              <div className="space-y-3">
+                {spend.dueFromEarlier.map((item) => (
+                  <div key={item.period} className="space-y-1.5">
+                    <SpendRow label={`Расход за ${item.period}`} value={rub(item.spentRub)} />
+                    <SpendRow label={`Комиссия ${item.feePercent}%`} value={rub(item.feeRub)} />
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : null}
         </div>
       ) : (
         thisWeekRows
       )}
-      <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-200 pt-2">
-        <span className="text-sm font-semibold text-gray-900">
+      <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-gray-200/80 pt-3">
+        <span className="text-[13px] font-semibold text-gray-900">
           {chargeLabel ?? `К списанию ${story.chargeShort}`}
         </span>
-        <span className="text-sm font-bold tabular-nums text-gray-900">{rub(totalRub)}</span>
+        <span className="text-[13px] font-semibold tabular-nums text-gray-900">{rub(totalRub)}</span>
       </div>
-      <div className="mt-2.5 flex flex-col gap-1.5">
+      <div className="mt-3 flex flex-col gap-2">
         <button
           type="button"
           onClick={spend.openPostpone}
-          className={`flex h-7 w-full items-center justify-center rounded-lg px-2.5 text-xs font-medium transition-colors ${btn}`}
+          className={`flex h-9 w-full items-center justify-center rounded-xl px-3 text-[13px] font-medium transition-colors ${btn}`}
         >
-          {spend.postponed ? 'Изменить дату' : 'Отложить списание'}
+          {spend.postponed ? 'Изменить дату списания' : 'Отложить списание'}
         </button>
         {spend.postponedCount > 0 ? (
           <button
             type="button"
             onClick={spend.openSchedule}
-            className={`flex h-7 w-full items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${btn}`}
+            className={`flex h-9 w-full items-center justify-center gap-1.5 rounded-xl px-3 text-[13px] font-medium transition-colors ${btn}`}
           >
             <Calendar className="h-3.5 w-3.5 shrink-0" />
             {formatPostponedPaymentsLabel(spend.postponedCount)}
@@ -800,7 +810,7 @@ export function FinanceBalanceChargeRow({
         <ChevronDown className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
-        <div className="mt-1 rounded-xl bg-[#F7F7F9] p-3.5">
+        <div className="mt-1 rounded-2xl bg-[#F0F0F2] p-4">
           <SpendDetails
             spend={spend}
             story={story}

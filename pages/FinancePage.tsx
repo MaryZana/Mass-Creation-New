@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
+  ArrowUp,
   Calendar,
   Check,
   ChevronDown,
@@ -9,26 +10,22 @@ import {
   CreditCard,
   Download,
   Gift,
+  HelpCircle,
   InfoCircleFill,
   Landmark,
+  Menu,
+  Monitor,
   Plus,
   Search,
   Smartphone,
+  User,
   Wallet,
   X,
 } from '../components/Icons';
 import { UnifiedAccountInstructionModal } from '../components/UnifiedAccountInstructionModal';
+import { FinanceBalanceModalVariant } from '../components/FinanceBalanceModalVariants';
 import {
-  FinanceBalanceModalVariant,
-  FINANCE_BALANCE_CARD_TONES,
-  readFinanceBalanceCardTone,
-  writeFinanceBalanceCardTone,
-  type FinanceBalanceCardToneId,
-} from '../components/FinanceBalanceModalVariants';
-import {
-  FINANCE_BALANCE_STORY_VARIANTS,
   FinanceBalanceChargeRow,
-  FinanceBalanceStory,
   formatPostponedPaymentsLabel,
 } from '../components/FinanceBalanceStory';
 import {
@@ -91,6 +88,33 @@ const FINANCE_TITLE_GUIDE = {
   src: UNIFIED_ACCOUNT_VIDEO_SRC,
 } as const;
 
+/** RITM RtChipsAction · cloudy / base / sm — без @dpa, как MultiSelect chipsAction */
+const RITM_CHIPS_ACTION_CLASS =
+  'inline-flex h-9 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border-0 bg-white px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F7F7F8]';
+const RITM_CHIPS_ACTION_SM_CLASS =
+  'inline-flex h-7 w-max items-center justify-between gap-1 whitespace-nowrap rounded-lg border-0 bg-[#F6F6F8] px-2.5 text-xs font-medium text-gray-900';
+const RITM_CHIPS_ACTION_OPEN_CLASS = 'bg-[#F7F7F8]';
+const RITM_CHIPS_ACTION_SM_OPEN_CLASS = 'bg-[#EFEFF2]';
+const RITM_CHIPS_CHEVRON_CLASS = 'h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200';
+const RITM_CHIPS_CHEVRON_SM_CLASS = 'h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform duration-200';
+function ritmChipsActionClass(size: 'md' | 'sm' = 'md') {
+  return size === 'sm' ? RITM_CHIPS_ACTION_SM_CLASS : RITM_CHIPS_ACTION_CLASS;
+}
+function ritmChipsActionOpenClass(size: 'md' | 'sm' = 'md') {
+  return size === 'sm' ? RITM_CHIPS_ACTION_SM_OPEN_CLASS : RITM_CHIPS_ACTION_OPEN_CLASS;
+}
+function ritmChipsChevronClass(size: 'md' | 'sm' = 'md') {
+  return size === 'sm' ? RITM_CHIPS_CHEVRON_SM_CLASS : RITM_CHIPS_CHEVRON_CLASS;
+}
+/** RITM RtFormFieldText · neutral / filling / sm */
+const RITM_SEARCH_FIELD_CLASS =
+  'h-9 w-full rounded-xl border border-transparent bg-white py-1.5 pl-9 pr-3 text-sm font-medium text-gray-900 outline-none transition-colors placeholder:text-gray-400 hover:bg-[#F7F7F8] focus:border-black focus:bg-white focus:ring-0';
+/** RITM RtButton · cloudy / base / sm */
+const RITM_BUTTON_CLOUDY_CLASS =
+  'inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F7F7F8]';
+const RITM_DROPDOWN_MENU_CLASS =
+  'fixed z-[200] w-max overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-xl';
+
 type FinanceDropdownOption = {
   value: string;
   label: string;
@@ -105,6 +129,10 @@ function FinanceDropdown({
   className = '',
   menuClassName = '',
   chip = false,
+  size = 'md',
+  presentation = 'menu',
+  sheetContainer = null,
+  clearValue,
   'aria-label': ariaLabel,
 }: {
   value: string;
@@ -113,6 +141,11 @@ function FinanceDropdown({
   className?: string;
   menuClassName?: string;
   chip?: boolean;
+  size?: 'md' | 'sm';
+  presentation?: 'menu' | 'sheet';
+  sheetContainer?: HTMLElement | null;
+  /** Если задано и value !== clearValue — чип со сбросом (чёрный крестик) */
+  clearValue?: string;
   'aria-label'?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -120,9 +153,11 @@ function FinanceDropdown({
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
   const selected = options.find((opt) => opt.value === value) ?? options[0];
+  const useSheet = presentation === 'sheet';
+  const isFiltered = clearValue != null && value !== clearValue;
 
   useLayoutEffect(() => {
-    if (!open || !rootRef.current) {
+    if (useSheet || !open || !rootRef.current) {
       setMenuPos(null);
       return;
     }
@@ -138,10 +173,10 @@ function FinanceDropdown({
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [open]);
+  }, [open, useSheet]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || useSheet) return;
     const onDoc = (event: MouseEvent) => {
       const target = event.target as Node;
       if (rootRef.current?.contains(target)) return;
@@ -157,35 +192,99 @@ function FinanceDropdown({
       document.removeEventListener('click', onDoc);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, useSheet]);
+
+  const pick = (next: string) => {
+    onChange?.(next);
+    setOpen(false);
+  };
+
+  const triggerClass = `${
+    chip
+      ? size === 'sm'
+        ? 'inline-flex h-7 w-max items-center justify-between gap-1 whitespace-nowrap rounded-full bg-[#F6F6F8] px-2.5 text-xs font-medium text-gray-800'
+        : 'inline-flex h-9 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-full bg-white px-3 text-sm font-medium text-gray-800 transition-colors hover:bg-[#F7F7F8]'
+      : ritmChipsActionClass(size)
+  } ${open ? ritmChipsActionOpenClass(size) : ''} ${
+    isFiltered ? (size === 'sm' ? '!pr-1' : '!pr-1.5') : ''
+  }`;
 
   return (
     <div className={`relative ${className}`} ref={rootRef}>
-      <button
-        type="button"
-        aria-label={ariaLabel}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className={`inline-flex w-max items-center justify-between whitespace-nowrap text-sm font-medium transition-colors hover:bg-[#F3F5F8] ${
-          chip
-            ? 'h-8 gap-1.5 rounded-full bg-white px-3 text-gray-800'
-            : 'h-8 gap-1.5 rounded-xl border border-transparent bg-white px-2.5 text-gray-900'
-        } ${open ? 'bg-[#F3F5F8]' : ''}`}
-      >
-        <span>{selected?.label}</span>
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
-          aria-hidden
-        />
-      </button>
+      <div className={triggerClass}>
+        <button
+          type="button"
+          aria-label={ariaLabel}
+          aria-haspopup={useSheet ? 'dialog' : 'listbox'}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={`inline-flex min-w-0 items-center gap-1 text-left ${
+            isFiltered ? 'pr-1' : 'w-full justify-between'
+          }`}
+        >
+          <span className="truncate">{selected?.label}</span>
+          {!isFiltered ? (
+            <ChevronDown
+              className={`${ritmChipsChevronClass(size)} ${open ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          ) : null}
+        </button>
+        {isFiltered ? (
+          <button
+            type="button"
+            aria-label="Сбросить"
+            onClick={() => {
+              onChange?.(clearValue);
+              setOpen(false);
+            }}
+            className={`inline-flex shrink-0 items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80 ${
+              size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
+            }`}
+          >
+            <X className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3 w-3'} aria-hidden />
+          </button>
+        ) : null}
+      </div>
 
-      {open && menuPos
+      {useSheet ? (
+        <MobileSheet
+          open={open}
+          onClose={() => setOpen(false)}
+          title={ariaLabel ?? 'Выбор'}
+          container={sheetContainer}
+        >
+          <div className="overflow-hidden rounded-2xl bg-white" role="listbox" aria-label={ariaLabel}>
+            {options.map((opt, index) => {
+              const isSelected = opt.value === value;
+              return (
+                <React.Fragment key={opt.value}>
+                  {opt.dividerBefore ? (
+                    <div className="border-t border-gray-100" role="separator" />
+                  ) : null}
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => pick(opt.value)}
+                    className={`flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] transition-colors active:bg-[#F2F2F7] ${
+                      index > 0 && !opt.dividerBefore ? 'border-t border-gray-100' : ''
+                    } ${isSelected ? 'font-semibold text-gray-900' : 'font-medium text-gray-900'}`}
+                  >
+                    <span className="min-w-0 flex-1">{opt.label}</span>
+                    {isSelected ? <Check className="h-5 w-5 shrink-0 text-[#9A41FE]" aria-hidden /> : null}
+                  </button>
+                </React.Fragment>
+              );
+            })}
+          </div>
+        </MobileSheet>
+      ) : open && menuPos
         ? createPortal(
             <div
               ref={menuRef}
               style={{ top: menuPos.top, left: menuPos.left, minWidth: menuPos.width }}
-              className={`fixed z-[200] w-max overflow-hidden rounded-xl border border-gray-100 bg-white py-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)] ${menuClassName}`}
+              className={`${RITM_DROPDOWN_MENU_CLASS} ${menuClassName}`}
               role="listbox"
               aria-label={ariaLabel}
             >
@@ -200,12 +299,9 @@ function FinanceDropdown({
                       type="button"
                       role="option"
                       aria-selected={isSelected}
-                      onClick={() => {
-                        onChange?.(opt.value);
-                        setOpen(false);
-                      }}
-                      className={`flex w-full items-center gap-2 whitespace-nowrap px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${
-                        isSelected ? 'font-medium text-[#9A41FE]' : 'text-gray-900'
+                      onClick={() => pick(opt.value)}
+                      className={`flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${
+                        isSelected ? 'bg-[#F3E8FF] font-medium text-gray-900' : 'text-gray-900'
                       }`}
                     >
                       <span className="flex w-4 shrink-0 justify-center">
@@ -238,28 +334,50 @@ function FinanceDropdown({
   );
 }
 
-function TopupStatusFilter({
-  value,
+/** Мультивыбор: пустой values = «все»; выбранные — чип «A + B» с крестиком */
+function FinanceMultiDropdown({
+  values,
   onChange,
+  options,
+  placeholder,
+  className = '',
+  size = 'md',
+  presentation = 'menu',
+  sheetContainer = null,
+  'aria-label': ariaLabel,
 }: {
-  value: 'all' | TopupStatus;
-  onChange: (value: 'all' | TopupStatus) => void;
+  values: string[];
+  onChange: (next: string[]) => void;
+  options: FinanceDropdownOption[];
+  placeholder: string;
+  className?: string;
+  size?: 'md' | 'sm';
+  presentation?: 'menu' | 'sheet';
+  sheetContainer?: HTMLElement | null;
+  'aria-label'?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<string[]>(values);
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const selected = TOPUP_STATUS_OPTIONS.find((opt) => opt.value === value) ?? TOPUP_STATUS_OPTIONS[0];
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const useSheet = presentation === 'sheet';
+  const isFiltered = values.length > 0;
+  const selectedLabels = options.filter((opt) => values.includes(opt.value)).map((opt) => opt.label);
+
+  useEffect(() => {
+    if (open) setDraft([...values]);
+  }, [open, values]);
 
   useLayoutEffect(() => {
-    if (!open || !rootRef.current) {
+    if (useSheet || !open || !rootRef.current) {
       setMenuPos(null);
       return;
     }
     const update = () => {
       const rect = rootRef.current?.getBoundingClientRect();
       if (!rect) return;
-      setMenuPos({ top: rect.bottom + 6, left: rect.left });
+      setMenuPos({ top: rect.bottom + 6, left: rect.left, width: rect.width });
     };
     update();
     window.addEventListener('resize', update);
@@ -268,10 +386,10 @@ function TopupStatusFilter({
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [open]);
+  }, [open, useSheet]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || useSheet) return;
     const onDoc = (event: MouseEvent) => {
       const target = event.target as Node;
       if (rootRef.current?.contains(target)) return;
@@ -287,32 +405,312 @@ function TopupStatusFilter({
       document.removeEventListener('click', onDoc);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, useSheet]);
+
+  const toggle = (value: string) => {
+    setDraft((current) =>
+      current.includes(value) ? current.filter((item) => item !== value) : [...current, value],
+    );
+  };
+
+  const apply = () => {
+    onChange([...draft]);
+    setOpen(false);
+  };
+
+  const resetDraft = () => {
+    setDraft([]);
+  };
+
+  const cancel = () => {
+    setDraft([...values]);
+    setOpen(false);
+  };
+
+  const clear = () => {
+    onChange([]);
+    setDraft([]);
+    setOpen(false);
+  };
+
+  const triggerClass = `${ritmChipsActionClass(size)} ${open ? ritmChipsActionOpenClass(size) : ''} ${
+    isFiltered ? (size === 'sm' ? '!pr-1' : '!pr-1.5') : ''
+  }`;
+
+  const actions = (
+    <div className={`flex items-center gap-2 ${useSheet ? '' : 'border-t border-gray-100 bg-gray-50 p-2'}`}>
+      <button
+        type="button"
+        onClick={apply}
+        className={
+          useSheet
+            ? 'h-11 flex-1 rounded-xl bg-black text-[15px] font-semibold text-white transition-colors active:bg-[#1A1A1A]'
+            : 'rounded-lg bg-black px-6 py-2 text-sm font-bold text-white transition-colors hover:bg-[#1A1A1A]'
+        }
+      >
+        Применить
+      </button>
+      <button
+        type="button"
+        onClick={resetDraft}
+        className={
+          useSheet
+            ? 'h-11 flex-1 rounded-xl bg-[#E9E9EE] text-[15px] font-semibold text-gray-900 transition-colors active:bg-[#DEDEE3]'
+            : 'rounded-lg px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700'
+        }
+      >
+        Сбросить
+      </button>
+    </div>
+  );
+
+  const optionsList = (sheet: boolean) =>
+    options.map((opt, index) => {
+      const isSelected = draft.includes(opt.value);
+      return (
+        <button
+          key={opt.value}
+          type="button"
+          role="option"
+          aria-selected={isSelected}
+          onClick={() => toggle(opt.value)}
+          className={
+            sheet
+              ? `flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] transition-colors active:bg-[#F2F2F7] ${
+                  index > 0 ? 'border-t border-gray-100' : ''
+                } ${isSelected ? 'font-semibold text-gray-900' : 'font-medium text-gray-900'}`
+              : `flex w-full items-center gap-2 whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 ${
+                  isSelected ? 'bg-[#F3E8FF] font-medium text-gray-900' : 'text-gray-900'
+                }`
+          }
+        >
+          {sheet ? (
+            <>
+              <span className="min-w-0 flex-1">{opt.label}</span>
+              {isSelected ? <Check className="h-5 w-5 shrink-0 text-[#9A41FE]" aria-hidden /> : null}
+            </>
+          ) : (
+            <>
+              <span className="flex w-4 shrink-0 justify-center">
+                {isSelected ? <Check className="h-4 w-4 text-[#9A41FE]" aria-hidden /> : null}
+              </span>
+              <span>{opt.label}</span>
+            </>
+          )}
+        </button>
+      );
+    });
+
+  return (
+    <div className={`relative ${className}`} ref={rootRef}>
+      <div className={triggerClass}>
+        <button
+          type="button"
+          aria-label={ariaLabel}
+          aria-haspopup={useSheet ? 'dialog' : 'listbox'}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={`inline-flex min-w-0 items-center gap-1 text-left ${
+            isFiltered ? 'pr-1' : 'w-full justify-between'
+          }`}
+        >
+          <span className="truncate">
+            {isFiltered ? formatMultiChipLabel(selectedLabels) : placeholder}
+          </span>
+          {!isFiltered ? (
+            <ChevronDown
+              className={`${ritmChipsChevronClass(size)} ${open ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          ) : null}
+        </button>
+        {isFiltered ? (
+          <button
+            type="button"
+            aria-label="Сбросить"
+            onClick={clear}
+            className={`inline-flex shrink-0 items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80 ${
+              size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
+            }`}
+          >
+            <X className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3 w-3'} aria-hidden />
+          </button>
+        ) : null}
+      </div>
+
+      {useSheet ? (
+        <MobileSheet
+          open={open}
+          onClose={cancel}
+          title={ariaLabel ?? placeholder}
+          container={sheetContainer}
+          footer={actions}
+        >
+          <div className="overflow-hidden rounded-2xl bg-white" role="listbox" aria-label={ariaLabel}>
+            {optionsList(true)}
+          </div>
+        </MobileSheet>
+      ) : open && menuPos
+        ? createPortal(
+            <div
+              ref={menuRef}
+              style={{ top: menuPos.top, left: menuPos.left, minWidth: Math.max(menuPos.width, 220) }}
+              className={`${RITM_DROPDOWN_MENU_CLASS} !flex !flex-col !overflow-hidden !p-0`}
+              role="listbox"
+              aria-label={ariaLabel}
+              aria-multiselectable="true"
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto p-1">{optionsList(false)}</div>
+              {actions}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
+}
+
+function TopupStatusFilter({
+  value,
+  onChange,
+  size = 'md',
+  presentation = 'menu',
+  sheetContainer = null,
+  clearValue,
+}: {
+  value: 'all' | TopupStatus;
+  onChange: (value: 'all' | TopupStatus) => void;
+  size?: 'md' | 'sm';
+  presentation?: 'menu' | 'sheet';
+  sheetContainer?: HTMLElement | null;
+  clearValue?: 'all' | TopupStatus;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const selected = TOPUP_STATUS_OPTIONS.find((opt) => opt.value === value) ?? TOPUP_STATUS_OPTIONS[0];
+  const useSheet = presentation === 'sheet';
+  const isFiltered = clearValue != null && value !== clearValue;
+
+  useLayoutEffect(() => {
+    if (useSheet || !open || !rootRef.current) {
+      setMenuPos(null);
+      return;
+    }
+    const update = () => {
+      const rect = rootRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPos({ top: rect.bottom + 6, left: rect.left });
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open, useSheet]);
+
+  useEffect(() => {
+    if (!open || useSheet) return;
+    const onDoc = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('click', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('click', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open, useSheet]);
+
+  const pick = (next: 'all' | TopupStatus) => {
+    onChange(next);
+    setOpen(false);
+  };
 
   return (
     <div className="relative w-max" ref={rootRef}>
-      <button
-        type="button"
-        aria-label="Статус пополнения"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F3F5F8] ${
-          open ? 'bg-[#F3F5F8]' : ''
+      <div
+        className={`${ritmChipsActionClass(size)} ${open ? ritmChipsActionOpenClass(size) : ''} ${
+          isFiltered ? (size === 'sm' ? '!pr-1' : '!pr-1.5') : ''
         }`}
       >
-        <span>{selected.label}</span>
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
-          aria-hidden
-        />
-      </button>
-      {open && menuPos
+        <button
+          type="button"
+          aria-label="Статус пополнения"
+          aria-haspopup={useSheet ? 'dialog' : 'listbox'}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={`inline-flex min-w-0 items-center gap-1 text-left ${
+            isFiltered ? 'pr-1' : 'w-full justify-between'
+          }`}
+        >
+          <span className="truncate">{selected.label}</span>
+          {!isFiltered ? (
+            <ChevronDown
+              className={`${ritmChipsChevronClass(size)} ${open ? 'rotate-180' : ''}`}
+              aria-hidden
+            />
+          ) : null}
+        </button>
+        {isFiltered ? (
+          <button
+            type="button"
+            aria-label="Сбросить"
+            onClick={() => {
+              onChange(clearValue);
+              setOpen(false);
+            }}
+            className={`inline-flex shrink-0 items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80 ${
+              size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
+            }`}
+          >
+            <X className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3 w-3'} aria-hidden />
+          </button>
+        ) : null}
+      </div>
+      {useSheet ? (
+        <MobileSheet
+          open={open}
+          onClose={() => setOpen(false)}
+          title="Статус пополнения"
+          container={sheetContainer}
+        >
+          <div className="overflow-hidden rounded-2xl bg-white" role="listbox" aria-label="Статус пополнения">
+            {TOPUP_STATUS_OPTIONS.map((opt, index) => {
+              const isSelected = opt.value === value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  onClick={() => pick(opt.value)}
+                  className={`flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] transition-colors active:bg-[#F2F2F7] ${
+                    index > 0 ? 'border-t border-gray-100' : ''
+                  } ${isSelected ? 'font-semibold text-gray-900' : 'font-medium text-gray-900'}`}
+                >
+                  <span className="min-w-0 flex-1">{opt.label}</span>
+                  {isSelected ? <Check className="h-5 w-5 shrink-0 text-[#9A41FE]" aria-hidden /> : null}
+                </button>
+              );
+            })}
+          </div>
+        </MobileSheet>
+      ) : open && menuPos
         ? createPortal(
             <div
               ref={menuRef}
               style={{ top: menuPos.top, left: menuPos.left }}
-              className="fixed z-[200] w-max overflow-hidden rounded-xl border border-gray-100 bg-white p-1.5 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+              className={RITM_DROPDOWN_MENU_CLASS}
               role="listbox"
               aria-label="Статус пополнения"
             >
@@ -324,10 +722,7 @@ function TopupStatusFilter({
                     type="button"
                     role="option"
                     aria-selected={isSelected}
-                    onClick={() => {
-                      onChange(opt.value);
-                      setOpen(false);
-                    }}
+                    onClick={() => pick(opt.value)}
                     className={`flex w-full whitespace-nowrap rounded-lg px-3 py-2.5 text-left text-sm text-gray-900 transition-colors hover:bg-gray-50 ${
                       isSelected ? 'bg-[#F3E8FF] font-medium' : ''
                     }`}
@@ -344,26 +739,73 @@ function TopupStatusFilter({
   );
 }
 
-function FinanceTitleHelp() {
+function FinanceTitleHelp({
+  presentation = 'tooltip',
+  sheetContainer = null,
+}: {
+  presentation?: 'tooltip' | 'sheet';
+  sheetContainer?: HTMLElement | null;
+}) {
   const { openGuide, modal: videoModal, isOpen: guideOpen } = useFeatureVideoGuide();
   const tip = useDismissibleHoverTooltip(guideOpen);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const firstGuide = FINANCE_TITLE_GUIDE;
+  const useSheet = presentation === 'sheet';
+
+  const openVideo = () => {
+    if (useSheet) setSheetOpen(false);
+    else tip.dismiss();
+    openGuide({
+      title: firstGuide.title,
+      videoSrc: firstGuide.src,
+      description: `Видеоинструкция · ${firstGuide.duration}`,
+    });
+  };
 
   return (
     <div
       className="relative inline-flex"
-      onMouseEnter={tip.onMouseEnter}
-      onMouseLeave={tip.onMouseLeave}
+      onMouseEnter={useSheet ? undefined : tip.onMouseEnter}
+      onMouseLeave={useSheet ? undefined : tip.onMouseLeave}
     >
       {videoModal}
       <button
         type="button"
+        onClick={useSheet ? () => setSheetOpen(true) : undefined}
         className="inline-flex cursor-help items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
         aria-label="Информация и видеоинструкция по финансам"
+        aria-expanded={useSheet ? sheetOpen : tip.show}
+        aria-haspopup={useSheet ? 'dialog' : undefined}
       >
-        <InfoCircleFill className="h-4 w-4" />
+        <HelpCircle className="h-4 w-4" />
       </button>
-      {tip.show ? (
+      {useSheet ? (
+        <MobileSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          title="История операций"
+          container={sheetContainer}
+        >
+          <div className="rounded-2xl bg-white px-4 py-4">
+            <p className="mb-0 text-[15px] leading-snug text-gray-900">
+              Здесь счёт и баланс продвижения, промобонусы, история операций и возвраты. Видео поможет
+              разобраться, как всё устроено.
+            </p>
+            <button
+              type="button"
+              onClick={openVideo}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F2F2F7] px-3 py-3 text-[15px] font-semibold text-gray-900 transition-colors active:bg-[#E8E8ED]"
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white">
+                <svg viewBox="0 0 24 24" className="ml-px h-2.5 w-2.5" fill="currentColor" aria-hidden>
+                  <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+                </svg>
+              </span>
+              Как работает
+            </button>
+          </div>
+        </MobileSheet>
+      ) : tip.show ? (
         <div className="absolute left-0 top-full z-40 pt-1.5">
           <div className="w-[17rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
             <p>
@@ -372,14 +814,7 @@ function FinanceTitleHelp() {
             </p>
             <button
               type="button"
-              onClick={() => {
-                tip.dismiss();
-                openGuide({
-                  title: firstGuide.title,
-                  videoSrc: firstGuide.src,
-                  description: `Видеоинструкция · ${firstGuide.duration}`,
-                });
-              }}
+              onClick={openVideo}
               className="mt-2.5 flex w-full items-center justify-center gap-2 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-white/15"
             >
               <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-gray-400 text-black">
@@ -393,6 +828,55 @@ function FinanceTitleHelp() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function FinanceMobileHeader() {
+  return (
+    <header className="sticky top-0 z-30 border-b border-gray-200/80 bg-white">
+      <div className="flex h-14 items-center justify-between gap-3 px-3">
+        <button
+          type="button"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F2F2F7] text-gray-900 transition-colors active:bg-[#E8E8ED]"
+          aria-label="Открыть меню"
+        >
+          <Menu className="h-5 w-5" aria-hidden />
+        </button>
+
+        <button
+          type="button"
+          className="inline-flex min-w-0 items-center gap-1.5 rounded-xl px-1.5 py-1.5 transition-colors active:bg-gray-50"
+          aria-label="Раздел: продвижение"
+          aria-haspopup="menu"
+        >
+          <span className="text-[17px] font-bold leading-none tracking-tight text-[#9A41FE]">wb</span>
+          <span className="truncate text-[17px] font-bold leading-none tracking-tight text-gray-900">
+            продвижение
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-gray-900" aria-hidden />
+        </button>
+
+        <button
+          type="button"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[#F2F2F7] text-gray-900 transition-colors active:bg-[#E8E8ED]"
+          aria-label="Профиль"
+        >
+          <User className="h-5 w-5" aria-hidden />
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function FinanceHistoryMoreMenu() {
+  return (
+    <button
+      type="button"
+      className="ml-auto inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-black/[0.04] hover:text-gray-600"
+      aria-label="Скачать Excel"
+    >
+      <Download className="h-4 w-4" aria-hidden />
+    </button>
   );
 }
 
@@ -484,10 +968,8 @@ function balanceCurrentCaseRow(
 }
 
 type FinanceChannel = 'promotion' | 'media' | 'wibes';
-type FinanceChannelFilter = 'all' | FinanceChannel;
 
-const FINANCE_CHANNELS: { id: FinanceChannelFilter; label: string }[] = [
-  { id: 'all', label: 'Все каналы' },
+const FINANCE_CHANNEL_OPTIONS: { id: FinanceChannel; label: string }[] = [
   { id: 'promotion', label: 'Продвижение' },
   { id: 'media', label: 'Медиа' },
   { id: 'wibes', label: 'Инфлюенс' },
@@ -498,6 +980,16 @@ const FINANCE_CHANNEL_LABEL: Record<FinanceChannel, string> = {
   media: 'Медиа',
   wibes: 'Инфлюенс',
 };
+
+function formatMultiChipLabel(labels: string[]): React.ReactNode {
+  if (labels.length === 0) return null;
+  return labels.map((label, index) => (
+    <React.Fragment key={`${label}-${index}`}>
+      {index > 0 ? <span className="font-medium text-gray-400"> + </span> : null}
+      <span>{label}</span>
+    </React.Fragment>
+  ));
+}
 
 type MediaExpenseTag = 'pause' | 'fraud';
 
@@ -1980,102 +2472,16 @@ function ArrowUpRightIcon({ className }: { className?: string }) {
   );
 }
 
-const BALANCE_INLINE_VARIANTS = [
-  { id: '1', label: 'Подробности в модалке' },
-  ...FINANCE_BALANCE_STORY_VARIANTS,
-  { id: '6', label: 'Как 1 · список из 3 без номеров' },
-  { id: '7', label: 'Начисления карточками платежей' },
-  { id: '8', label: 'Как 6 · начисления по дням' },
-  { id: '9', label: 'Баланс как в шторке' },
-] as const;
-type BalanceInlineVariant = (typeof BALANCE_INLINE_VARIANTS)[number]['id'];
-const BALANCE_INLINE_VARIANT_KEY = 'finance-balance-inline-v2';
-
-function readBalanceInlineVariant(): BalanceInlineVariant {
-  try {
-    const raw = window.localStorage.getItem(BALANCE_INLINE_VARIANT_KEY);
-    const match = BALANCE_INLINE_VARIANTS.find((item) => item.id === raw);
-    if (match) return match.id;
-  } catch {
-    /* ignore */
-  }
-  return '1';
-}
-
-function BalanceInlineVariantSwitcher({
-  value,
-  onChange,
-  cardTone,
-  onCardToneChange,
-}: {
-  value: BalanceInlineVariant;
-  onChange: (next: BalanceInlineVariant) => void;
-  cardTone: FinanceBalanceCardToneId;
-  onCardToneChange: (next: FinanceBalanceCardToneId) => void;
-}) {
-  const active = BALANCE_INLINE_VARIANTS.find((item) => item.id === value);
-  const activeTone = FINANCE_BALANCE_CARD_TONES.find((item) => item.id === cardTone);
-  return (
-    <div
-      className="flex flex-col gap-1.5 rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
-      role="group"
-      aria-label="Демо: баланс без модалки"
-    >
-      <div className="flex items-center gap-1">
-        <span className="px-1 text-xs text-gray-500">Баланс</span>
-        {BALANCE_INLINE_VARIANTS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            title={item.label}
-            onClick={() => onChange(item.id)}
-            className={`min-w-[2rem] rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
-              value === item.id
-                ? 'bg-black text-white'
-                : 'bg-[rgba(74,74,89,0.08)] text-black hover:bg-[rgba(74,74,89,0.12)]'
-            }`}
-          >
-            {item.id}
-          </button>
-        ))}
-      </div>
-      {active ? <p className="mb-0 px-1 text-xs text-gray-500">{active.label}</p> : null}
-      {value === '9' ? (
-        <>
-          <div className="mt-1 flex max-w-[22rem] flex-wrap items-center gap-1 border-t border-gray-100 pt-1.5">
-            <span className="px-1 text-xs text-gray-500">Тон</span>
-            {FINANCE_BALANCE_CARD_TONES.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                title={item.label}
-                onClick={() => onCardToneChange(item.id)}
-                className={`h-7 w-7 rounded-lg ring-1 transition-transform ${
-                  cardTone === item.id ? 'scale-110 ring-gray-900' : 'ring-black/10 hover:scale-105'
-                } ${item.shell}`}
-                aria-label={item.label}
-              />
-            ))}
-          </div>
-          {activeTone ? <p className="mb-0 px-1 text-xs text-gray-500">{activeTone.label}</p> : null}
-        </>
-      ) : null}
-    </div>
-  );
-}
-
 function FinanceBalancesCard({
   spend,
-  inlineVariant,
-  onInlineVariantChange,
-  cardTone,
-  onCardToneChange,
+  simDemoOpen,
+  mobile,
+  sheetContainer,
 }: {
   spend: BalanceSpend;
-  inlineVariant: BalanceInlineVariant;
-  onInlineVariantChange: (next: BalanceInlineVariant) => void;
-  cardTone: FinanceBalanceCardToneId;
-  onCardToneChange: (next: FinanceBalanceCardToneId) => void;
+  simDemoOpen: boolean;
+  mobile: boolean;
+  sheetContainer: HTMLElement | null;
 }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -2085,6 +2491,7 @@ function FinanceBalancesCard({
   const [balanceCaseId] = useState<BalanceDemoCaseId>(readFinanceBalanceDemoCase);
   const [instructionOpen, setInstructionOpen] = useState(false);
   const [balanceSchemeOpen, setBalanceSchemeOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const schemeLayout: FinanceBalanceSchemeLayoutId = 'status';
   const [currentCase, setCurrentCase] = useState<FinanceBalanceCurrentCaseId>(
     readFinanceBalanceCurrentCase,
@@ -2126,9 +2533,11 @@ function FinanceBalancesCard({
   /** В раскладке «Статус» карточка следует симуляции недель */
   const balanceRub = schemeLayout === 'status' ? simView.availableNowRub : caseBalanceRub;
   const labelTip = useDismissibleHoverTooltip(instructionOpen);
+  const [helpSheetOpen, setHelpSheetOpen] = useState(false);
   const balanceSchemeData = balanceCurrentCaseRow(caseBalanceRub, currentCase, currentDay);
   const openInstruction = () => {
     labelTip.dismiss();
+    setHelpSheetOpen(false);
     setInstructionOpen(true);
   };
   const unifiedVariant = readFinanceUnifiedVariant();
@@ -2136,18 +2545,55 @@ function FinanceBalancesCard({
   const unifiedLabel = (
     <div
       className="relative inline-flex w-fit cursor-help items-center gap-1.5"
-      onMouseEnter={labelTip.onMouseEnter}
-      onMouseLeave={labelTip.onMouseLeave}
+      onMouseEnter={mobile ? undefined : labelTip.onMouseEnter}
+      onMouseLeave={mobile ? undefined : labelTip.onMouseLeave}
     >
       <span className="text-sm font-medium text-gray-600">Единый счёт</span>
       <button
         type="button"
+        onClick={
+          mobile
+            ? (event) => {
+                event.stopPropagation();
+                setHelpSheetOpen(true);
+              }
+            : undefined
+        }
         className="inline-flex items-center justify-center text-gray-400 transition-colors hover:text-gray-600"
         aria-label="Что такое счёт продвижения"
+        aria-expanded={mobile ? helpSheetOpen : labelTip.show}
+        aria-haspopup={mobile ? 'dialog' : undefined}
       >
         <InfoCircleFill className="h-4 w-4" />
       </button>
-      {labelTip.show ? (
+      {mobile ? (
+        <MobileSheet
+          open={helpSheetOpen}
+          onClose={() => setHelpSheetOpen(false)}
+          title="Единый счёт"
+          container={sheetContainer}
+        >
+          <div className="rounded-2xl bg-white px-4 py-4">
+            <p className="mb-0 text-[15px] leading-snug text-gray-900">Сумма ваших денег и баланса</p>
+            <p className="mb-0 mt-2 text-[15px] leading-snug text-gray-900">
+              Когда пополняете кампанию, деньги сначала списываются со счёта, а если суммы не хватит — с
+              баланса
+            </p>
+            <button
+              type="button"
+              onClick={openInstruction}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-[#F2F2F7] px-3 py-3 text-[15px] font-semibold text-gray-900 transition-colors active:bg-[#E8E8ED]"
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-900 text-white">
+                <svg viewBox="0 0 24 24" className="ml-px h-2.5 w-2.5" fill="currentColor" aria-hidden>
+                  <path d="M8 5.14v13.72a1 1 0 0 0 1.5.86l10.5-6.86a1 1 0 0 0 0-1.72L9.5 4.28A1 1 0 0 0 8 5.14Z" />
+                </svg>
+              </span>
+              Видеоинструкция
+            </button>
+          </div>
+        </MobileSheet>
+      ) : labelTip.show ? (
         <div className="absolute left-0 top-full z-50 pt-1.5">
           <div className="relative w-[17rem] rounded-xl bg-gray-900 px-3 py-2.5 text-left text-xs font-normal leading-snug text-white shadow-lg">
             <span
@@ -2182,17 +2628,13 @@ function FinanceBalancesCard({
     writeFinanceBalanceAmountRub(simView.availableNowRub);
   }, [schemeLayout, simView.availableNowRub]);
 
-  const framedInline = inlineVariant !== '1';
+  useEffect(() => {
+    setAccountOpen(false);
+  }, [mobile]);
 
-  return (
+  const totalRub = accountRub + balanceRub;
+  const modals = (
     <>
-      <div
-        className={
-          framedInline
-            ? 'relative z-20 rounded-2xl bg-[#F0F0F2] p-1'
-            : 'relative z-20 rounded-2xl bg-white p-4 sm:p-5'
-        }
-      >
       {instructionOpen && (
         <UnifiedAccountInstructionModal
           videoSrc={UNIFIED_ACCOUNT_VIDEO_SRC}
@@ -2231,87 +2673,145 @@ function FinanceBalancesCard({
           onClose={() => setBalanceSchemeOpen(false)}
         />
       ) : null}
-      <div className="flex flex-col gap-5">
-        <div>
-          {ownHeader ? null : (
-            <div className="flex items-center justify-between gap-3">
-              {unifiedLabel}
-              <button
-                type="button"
-                onClick={() => navigate(financeTopUpPath(pathname))}
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#9A41FE] text-white transition-colors hover:bg-[#8a38e8]"
-                aria-label="Пополнить счёт продвижения"
-              >
-                <Plus className="h-5 w-5" aria-hidden />
-              </button>
-            </div>
-          )}
+    </>
+  );
 
-          <div className={ownHeader ? '' : 'mt-3'}>
-            <FinanceMoneyIconRows
-              variant={unifiedVariant}
-              label={ownHeader ? unifiedLabel : undefined}
-              accountRub={accountRub}
-              balanceRub={balanceRub}
-              onOpen={() => setBalanceSchemeOpen(true)}
-              onTopUp={() => navigate(financeTopUpPath(pathname))}
-              balanceExtra={inlineVariant === '1' ? <BalanceSpendNestedPanel spend={spend} /> : undefined}
-              balanceInSlot={inlineVariant === '9'}
-              balanceSlot={
-                inlineVariant === '1' ? undefined : inlineVariant === '9' ? (
-                  <div className="rounded-xl bg-white pb-4">
-                    <FinanceBalanceModalVariant
-                      variant="feed"
-                      titleId="finance-balance-inline-title"
-                      view={simView}
-                      weekdayIndex={simDay}
-                      embedded
-                      compact
-                      cardLabel={<BalanceDarkLabel />}
-                    />
-                    <div className="mt-3 px-4">
-                      <FinanceBalanceChargeRow view={simView} weekdayIndex={simDay} spend={spend} />
-                    </div>
-                  </div>
-                ) : (
-                  <FinanceBalanceStory
-                    variant={inlineVariant}
-                    view={simView}
-                    weekdayIndex={simDay}
-                    spend={spend}
-                  />
-                )
-              }
-            />
+  const accountBody = (
+    <div className="flex flex-col gap-5">
+      <div>
+        {ownHeader ? null : (
+          <div className="flex items-center justify-between gap-3">
+            {unifiedLabel}
+            <button
+              type="button"
+              onClick={() => navigate(financeTopUpPath(pathname))}
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#9A41FE] text-white transition-colors hover:bg-[#8a38e8]"
+              aria-label="Пополнить счёт продвижения"
+            >
+              <Plus className="h-5 w-5" aria-hidden />
+            </button>
           </div>
+        )}
+
+        <div className={ownHeader ? '' : 'mt-3'}>
+          <FinanceMoneyIconRows
+            variant={unifiedVariant}
+            label={ownHeader ? unifiedLabel : undefined}
+            accountRub={accountRub}
+            balanceRub={balanceRub}
+            onOpen={() => setBalanceSchemeOpen(true)}
+            onTopUp={() => navigate(financeTopUpPath(pathname))}
+            balanceInSlot
+            balanceSlot={
+              <div className="rounded-xl bg-white pb-4">
+                <FinanceBalanceModalVariant
+                  variant="feed"
+                  titleId="finance-balance-inline-title"
+                  view={simView}
+                  weekdayIndex={simDay}
+                  embedded
+                  compact
+                  cardLabel={<BalanceDarkLabel />}
+                />
+                <div className="mt-3 px-4">
+                  <FinanceBalanceChargeRow view={simView} weekdayIndex={simDay} spend={spend} />
+                </div>
+              </div>
+            }
+          />
         </div>
       </div>
     </div>
-      <FinancePromoBonusesCard />
-      <div className="fixed bottom-4 right-4 z-[110] flex w-[min(380px,calc(100vw-2rem))] flex-col gap-2">
-        {balanceSchemeOpen ? null : (
-          <div
-            className="rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
-            role="group"
-            aria-label="Демо: сценарий баланса"
-          >
-            <FinanceBalanceSimControls
-              simWeekId={simWeekId}
-              onSimWeekChange={changeSimWeek}
-              simDay={simDay}
-              onSimDayChange={changeSimDay}
-              simAdjust={simAdjust}
-              onSimAdjustChange={changeSimAdjust}
-            />
-          </div>
-        )}
-        <BalanceInlineVariantSwitcher
-          value={inlineVariant}
-          onChange={onInlineVariantChange}
-          cardTone={cardTone}
-          onCardToneChange={onCardToneChange}
+  );
+
+  const accountCard = (
+    <div className="relative z-20 rounded-2xl bg-[#F0F0F2] p-1">{accountBody}</div>
+  );
+
+  const openAccount = () => setAccountOpen(true);
+  const goBonuses = () => navigate('/bonuses');
+
+  const compactStrip = (
+    <div className="grid grid-cols-2 gap-2">
+      <button
+        type="button"
+        onClick={openAccount}
+        className="flex min-w-0 items-center gap-2 rounded-2xl bg-white px-3 py-2.5 text-left transition-colors hover:bg-[#F7F7F8]"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12px] font-medium text-gray-500">Единый счёт</span>
+          <span className="mt-1 block text-[16px] font-bold leading-none tabular-nums text-gray-900">
+            {fmtRub(totalRub)} ₽
+          </span>
+          <span className="mt-1.5 space-y-0.5 text-[11px] leading-snug text-gray-500">
+            <span className="block">Счёт {fmtRub(accountRub)} ₽</span>
+            <span className="block">Баланс {fmtRub(balanceRub)} ₽</span>
+          </span>
+        </span>
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-lg bg-[#F2F2F7] text-gray-900">
+          <ChevronDown className="h-5 w-5" aria-hidden />
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={goBonuses}
+        className="flex min-w-0 items-center gap-2 rounded-2xl bg-white px-3 py-2.5 text-left transition-colors hover:bg-[#F7F7F8] active:bg-[#F2F2F7]"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12px] font-medium text-gray-500">Промобонусы</span>
+          <span className="mt-1 block text-[16px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
+            {fmtRub(promoBonusTotal)} B
+          </span>
+        </span>
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center self-center rounded-lg bg-[#F2F2F7] text-gray-900">
+          <ArrowUpRightIcon className="h-4 w-4" />
+        </span>
+      </button>
+    </div>
+  );
+
+  const simPanel =
+    simDemoOpen && !balanceSchemeOpen ? (
+      <div
+        className="fixed bottom-[4.75rem] right-5 z-[240] w-[min(380px,calc(100vw-2rem))] rounded-2xl bg-white p-2 shadow-xl ring-1 ring-black/5"
+        role="group"
+        aria-label="Демо: сценарий баланса"
+      >
+        <FinanceBalanceSimControls
+          simWeekId={simWeekId}
+          onSimWeekChange={changeSimWeek}
+          simDay={simDay}
+          onSimDayChange={changeSimDay}
+          simAdjust={simAdjust}
+          onSimAdjustChange={changeSimAdjust}
         />
       </div>
+    ) : null;
+
+  if (!mobile) {
+    return (
+      <>
+        {modals}
+        {accountCard}
+        <FinancePromoBonusesCard />
+        {simPanel}
+      </>
+    );
+  }
+
+  return (
+    <>
+      {modals}
+      {compactStrip}
+      <MobileSheet
+        open={accountOpen}
+        onClose={() => setAccountOpen(false)}
+        title="Единый счёт"
+        container={sheetContainer}
+      >
+        {accountBody}
+      </MobileSheet>
+      {simPanel}
     </>
   );
 }
@@ -2356,27 +2856,6 @@ function FinancePromoBonusesCard() {
         </p>
       </div>
     </button>
-  );
-}
-
-function HistoryClockIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" className={className} aria-hidden>
-      <circle cx="8" cy="8" r="5.25" stroke="currentColor" strokeWidth="1.4" />
-      <path
-        d="M8 5.25V8l1.75 1.1"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M11.8 3.4c.9.7 1.55 1.7 1.8 2.85"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinecap="round"
-      />
-    </svg>
   );
 }
 
@@ -2775,93 +3254,12 @@ function useBalanceSpend() {
 
 type BalanceSpend = ReturnType<typeof useBalanceSpend>;
 
-const fmtCharge = (rub: number) => `${fmtRub(rub)} ₽`;
-
 /** «8 ноября» → «8 нояб» */
 const shortDayMonth = (label: string) => {
   const [day, month, ...rest] = label.split(' ');
   if (!month) return label;
   return [day, month.length > 4 ? month.slice(0, 4) : month, ...rest].join(' ');
 };
-
-function BalanceSpendChargeAmount({ spend, className = '' }: { spend: BalanceSpend; className?: string }) {
-  return (
-    <span className={`tooltip shrink-0 whitespace-nowrap tabular-nums ${className}`}>
-      {fmtCharge(spend.chargeRub)}
-      <span className="tooltip-text !left-auto !right-0 !translate-x-0 !w-[16rem] !max-w-[16rem] !whitespace-normal !px-3 !py-2 !text-left !font-normal !leading-snug">
-        Сумма меняется, когда вы тратите баланс. Итоговую сумму рассчитаем {spend.chargeDate}.
-      </span>
-    </span>
-  );
-}
-
-function BalanceSpendRows({ spend }: { spend: BalanceSpend }) {
-  return (
-    <div className="space-y-2.5 text-sm">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-gray-500">{spend.periodLabel}</span>
-        <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(spend.spentRub)} ₽</span>
-      </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-gray-500">
-          Комиссия {spend.feePercent === 0 ? '0%' : `${formatFeePercent(spend.feePercent)}%`}
-        </span>
-        <span className="shrink-0 tabular-nums text-gray-500">{fmtRub(spend.feeRub)} ₽</span>
-      </div>
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="tooltip cursor-default whitespace-nowrap font-medium text-gray-900">
-          К списанию {shortDayMonth(spend.chargeDate)}
-          <span className="tooltip-text !left-0 !translate-x-0 !w-[15rem] !max-w-[15rem] !whitespace-normal !px-3 !py-2 !text-left !font-normal !leading-snug">
-            Спишем с баланса на портале продавца {spend.chargeDate}
-          </span>
-        </span>
-        <BalanceSpendChargeAmount spend={spend} className="font-bold text-gray-900" />
-      </div>
-    </div>
-  );
-}
-
-/** Серая плашка расхода, «выросшая» из строки баланса */
-function BalanceSpendNestedPanel({ spend }: { spend: BalanceSpend }) {
-  return (
-    <div className="relative mt-2 rounded-xl bg-[#F3F5F8] p-3">
-      <span
-        className="absolute -top-1.5 left-3 h-3 w-3 rotate-45 rounded-[2px] bg-[#F3F5F8]"
-        aria-hidden
-      />
-      <div className="mb-2.5 flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-gray-600">Расход</span>
-        {spend.postponed ? <HistoryClockIcon className="h-3.5 w-3.5 text-[#7C3AED]" /> : null}
-      </div>
-      <BalanceSpendRows spend={spend} />
-      <BalanceSpendActions spend={spend} />
-    </div>
-  );
-}
-
-function BalanceSpendActions({ spend }: { spend: BalanceSpend }) {
-  return (
-    <>
-      <button
-        type="button"
-        onClick={spend.openPostpone}
-        className="mt-3 flex h-7 w-full items-center justify-center rounded-lg bg-white px-2.5 text-xs font-medium text-gray-900 transition-colors hover:bg-gray-50"
-      >
-        {spend.postponed ? 'Изменить дату списания' : 'Отложить списание'}
-      </button>
-      {spend.postponedCount > 0 ? (
-        <button
-          type="button"
-          onClick={spend.openSchedule}
-          className="mt-1.5 flex h-7 w-full items-center justify-center gap-1.5 rounded-lg bg-white px-2.5 text-xs font-medium text-gray-900 transition-colors hover:bg-gray-50"
-        >
-          <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          {formatPostponedPaymentsLabel(spend.postponedCount)}
-        </button>
-      ) : null}
-    </>
-  );
-}
 
 type FinancePeriod = { kind: 'all' } | { kind: 'range'; from: Date; to: Date };
 
@@ -2979,9 +3377,15 @@ function buildFinanceMonthCells(year: number, month: number): Array<Date | null>
 function FinancePeriodPicker({
   value,
   onChange,
+  size = 'md',
+  presentation = 'menu',
+  sheetContainer = null,
 }: {
   value: FinancePeriod;
   onChange: (next: FinancePeriod) => void;
+  size?: 'md' | 'sm';
+  presentation?: 'menu' | 'sheet';
+  sheetContainer?: HTMLElement | null;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -2994,6 +3398,7 @@ function FinancePeriodPicker({
   const [pickingEnd, setPickingEnd] = useState(false);
   const [startInput, setStartInput] = useState('');
   const [endInput, setEndInput] = useState('');
+  const useSheet = presentation === 'sheet';
 
   const syncDraft = (from: Date | null, to: Date | null) => {
     setDraftFrom(from);
@@ -3015,7 +3420,7 @@ function FinancePeriodPicker({
   };
 
   useLayoutEffect(() => {
-    if (!open || !rootRef.current) {
+    if (useSheet || !open || !rootRef.current) {
       setMenuPos(null);
       return;
     }
@@ -3033,10 +3438,10 @@ function FinancePeriodPicker({
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
     };
-  }, [open]);
+  }, [open, useSheet]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || useSheet) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (rootRef.current?.contains(target)) return;
@@ -3052,7 +3457,7 @@ function FinancePeriodPicker({
       document.removeEventListener('click', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [open]);
+  }, [open, useSheet]);
 
   const pickDay = (day: Date) => {
     if (day > today) return;
@@ -3106,173 +3511,216 @@ function FinancePeriodPicker({
   const rangeTo = draftFrom && draftTo && draftFrom > draftTo ? draftFrom : draftTo;
   const selectedPreset = activeFinancePreset(value, today);
 
-  return (
-    <div className="relative w-max" ref={rootRef}>
+  const pickerBody = (
+    <>
+      <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Пресеты периода">
+        {FINANCE_PERIOD_PRESETS.map((preset) => {
+          const active = selectedPreset === preset.id;
+          return (
+            <button
+              key={preset.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => applyPreset(preset.id)}
+              className={`rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
+                active
+                  ? 'bg-[#F3F5F8] font-semibold text-gray-950'
+                  : 'text-gray-600 hover:bg-[#F3F5F8] hover:text-gray-900'
+              }`}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mb-2 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setViewMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-[#F3F5F8] hover:text-gray-800"
+          aria-label="Предыдущий месяц"
+        >
+          <ChevronDown className="h-4 w-4 rotate-90" aria-hidden />
+        </button>
+        <p className="text-sm font-semibold capitalize text-gray-900">{monthTitle}</p>
+        <button
+          type="button"
+          disabled={nextMonthDisabled}
+          onClick={() => setViewMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-[#F3F5F8] hover:text-gray-800 disabled:cursor-default disabled:text-gray-300 disabled:hover:bg-transparent"
+          aria-label="Следующий месяц"
+        >
+          <ChevronDown className="h-4 w-4 -rotate-90" aria-hidden />
+        </button>
+      </div>
+
+      <div className="mb-1 grid grid-cols-7">
+        {FINANCE_WEEKDAYS.map((label, index) => (
+          <div
+            key={label}
+            className={`py-1 text-center text-[11px] font-medium ${
+              index >= 5 ? 'text-[#E86B7A]' : 'text-gray-400'
+            }`}
+          >
+            {label}
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {cells.map((day, index) => {
+          if (!day) return <div key={`empty-${index}`} className="h-8" />;
+          const disabled = day > today;
+          const isStart = Boolean(rangeFrom && day.getTime() === rangeFrom.getTime());
+          const isEnd = Boolean(rangeTo && day.getTime() === rangeTo.getTime());
+          const inRange = Boolean(rangeFrom && rangeTo && day >= rangeFrom && day <= rangeTo);
+          const alone = isStart && isEnd;
+          const col = index % 7;
+          const roundLeft = inRange && (isStart || col === 0);
+          const roundRight = inRange && (isEnd || col === 6);
+          const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+          return (
+            <button
+              key={day.toISOString()}
+              type="button"
+              disabled={disabled}
+              onClick={() => pickDay(day)}
+              className={`relative flex h-8 items-center justify-center text-sm tabular-nums ${
+                disabled
+                  ? 'cursor-default text-gray-300'
+                  : isWeekend
+                    ? 'text-[#E86B7A]'
+                    : 'text-gray-900'
+              }`}
+            >
+              {inRange && (
+                <span
+                  aria-hidden
+                  className={
+                    alone
+                      ? 'absolute inset-y-0.5 left-0.5 right-0.5 rounded-full bg-[#ECEEF2]'
+                      : `absolute inset-y-0.5 bg-[#ECEEF2] ${
+                          roundLeft ? 'left-0.5 rounded-l-full' : 'left-0'
+                        } ${roundRight ? 'right-0.5 rounded-r-full' : 'right-0'}`
+                  }
+                />
+              )}
+              <span className={`relative z-[1] ${isStart || isEnd ? 'font-semibold' : ''}`}>
+                {day.getDate()}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
+        <input
+          value={startInput}
+          onChange={(event) => setStartInput(event.target.value)}
+          onBlur={commitInputs}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitInputs();
+          }}
+          inputMode="numeric"
+          placeholder="дд.мм.гггг"
+          aria-label="Дата начала"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-[#F3F5F8] px-2 text-sm tabular-nums text-gray-900 outline-none transition-colors hover:bg-[#E6E9EE] focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+        />
+        <span className="text-gray-300">—</span>
+        <input
+          value={endInput}
+          onChange={(event) => setEndInput(event.target.value)}
+          onBlur={commitInputs}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commitInputs();
+          }}
+          inputMode="numeric"
+          placeholder="дд.мм.гггг"
+          aria-label="Дата конца"
+          className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-[#F3F5F8] px-2 text-sm tabular-nums text-gray-900 outline-none transition-colors hover:bg-[#E6E9EE] focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+        />
+      </div>
       <button
         type="button"
-        aria-label="Период"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        onClick={openPicker}
-        className={`inline-flex h-8 w-max items-center justify-between gap-1.5 whitespace-nowrap rounded-xl border border-transparent bg-white px-2.5 text-sm font-medium text-gray-900 transition-colors hover:bg-[#F3F5F8] ${
-          open ? 'bg-[#F3F5F8]' : ''
+        onClick={applyRange}
+        disabled={!draftFrom || !draftTo}
+        className="mt-3 h-9 w-full rounded-lg bg-[#9A41FE] text-sm font-semibold text-white transition-colors hover:bg-[#8A35E8] disabled:cursor-default disabled:bg-gray-200 disabled:text-gray-400"
+      >
+        Применить
+      </button>
+    </>
+  );
+
+  const isFiltered = value.kind !== 'all';
+
+  return (
+    <div className="relative w-max" ref={rootRef}>
+      <div
+        className={`${ritmChipsActionClass(size)} ${open ? ritmChipsActionOpenClass(size) : ''} ${
+          isFiltered ? (size === 'sm' ? '!pr-1' : '!pr-1.5') : ''
         }`}
       >
-        <span className="inline-flex min-w-0 items-center gap-1.5">
-          <Calendar className="h-3.5 w-3.5 shrink-0 text-gray-500" aria-hidden />
-          <span className="truncate">{formatFinancePeriodLabel(value)}</span>
-        </span>
-        <ChevronDown
-          className={`h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform ${open ? 'rotate-180' : ''}`}
-          aria-hidden
-        />
-      </button>
-
-      {open && menuPos
-        ? createPortal(
-        <div
-          ref={dialogRef}
-          role="dialog"
-          aria-label="Выбрать период"
-          style={{ top: menuPos.top, left: menuPos.left }}
-          className="fixed z-[200] w-[min(320px,calc(100vw-2rem))] rounded-xl border border-gray-100 bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+        <button
+          type="button"
+          aria-label="Период"
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={openPicker}
+          className={`inline-flex min-w-0 items-center gap-1 text-left ${
+            isFiltered ? 'pr-1' : 'w-full justify-between'
+          }`}
         >
-          <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Пресеты периода">
-            {FINANCE_PERIOD_PRESETS.map((preset) => {
-              const active = selectedPreset === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => applyPreset(preset.id)}
-                  className={`rounded-lg px-2.5 py-1.5 text-sm transition-colors ${
-                    active
-                      ? 'bg-[#F3F5F8] font-semibold text-gray-950'
-                      : 'text-gray-600 hover:bg-[#F3F5F8] hover:text-gray-900'
-                  }`}
-                >
-                  {preset.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mb-2 flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setViewMonth((month) => new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-[#F3F5F8] hover:text-gray-800"
-              aria-label="Предыдущий месяц"
-            >
-              <ChevronDown className="h-4 w-4 rotate-90" aria-hidden />
-            </button>
-            <p className="text-sm font-semibold capitalize text-gray-900">{monthTitle}</p>
-            <button
-              type="button"
-              disabled={nextMonthDisabled}
-              onClick={() => setViewMonth((month) => new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-gray-500 hover:bg-[#F3F5F8] hover:text-gray-800 disabled:cursor-default disabled:text-gray-300 disabled:hover:bg-transparent"
-              aria-label="Следующий месяц"
-            >
-              <ChevronDown className="h-4 w-4 -rotate-90" aria-hidden />
-            </button>
-          </div>
-
-          <div className="mb-1 grid grid-cols-7">
-            {FINANCE_WEEKDAYS.map((label, index) => (
-              <div
-                key={label}
-                className={`py-1 text-center text-[11px] font-medium ${
-                  index >= 5 ? 'text-[#E86B7A]' : 'text-gray-400'
-                }`}
-              >
-                {label}
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7">
-            {cells.map((day, index) => {
-              if (!day) return <div key={`empty-${index}`} className="h-8" />;
-              const disabled = day > today;
-              const isStart = Boolean(rangeFrom && day.getTime() === rangeFrom.getTime());
-              const isEnd = Boolean(rangeTo && day.getTime() === rangeTo.getTime());
-              const inRange = Boolean(rangeFrom && rangeTo && day >= rangeFrom && day <= rangeTo);
-              const alone = isStart && isEnd;
-              const col = index % 7;
-              const roundLeft = inRange && (isStart || col === 0);
-              const roundRight = inRange && (isEnd || col === 6);
-              const isWeekend = day.getDay() === 0 || day.getDay() === 6;
-              return (
-                <button
-                  key={day.toISOString()}
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => pickDay(day)}
-                  className={`relative flex h-8 items-center justify-center text-sm tabular-nums ${
-                    disabled
-                      ? 'cursor-default text-gray-300'
-                      : isWeekend
-                        ? 'text-[#E86B7A]'
-                        : 'text-gray-900'
-                  }`}
-                >
-                  {inRange && (
-                    <span
-                      aria-hidden
-                      className={
-                        alone
-                          ? 'absolute inset-y-0.5 left-0.5 right-0.5 rounded-full bg-[#ECEEF2]'
-                          : `absolute inset-y-0.5 bg-[#ECEEF2] ${
-                              roundLeft ? 'left-0.5 rounded-l-full' : 'left-0'
-                            } ${roundRight ? 'right-0.5 rounded-r-full' : 'right-0'}`
-                      }
-                    />
-                  )}
-                  <span className={`relative z-[1] ${isStart || isEnd ? 'font-semibold' : ''}`}>
-                    {day.getDate()}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="mt-3 flex items-center gap-2 border-t border-gray-100 pt-3">
-            <input
-              value={startInput}
-              onChange={(event) => setStartInput(event.target.value)}
-              onBlur={commitInputs}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') commitInputs();
-              }}
-              inputMode="numeric"
-              placeholder="дд.мм.гггг"
-              aria-label="Дата начала"
-              className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-[#F3F5F8] px-2 text-sm tabular-nums text-gray-900 outline-none transition-colors hover:bg-[#E6E9EE] focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+          <span className={`inline-flex min-w-0 items-center ${size === 'sm' ? 'gap-1' : 'gap-1.5'}`}>
+            <Calendar
+              className={`${size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} shrink-0 text-gray-400`}
+              aria-hidden
             />
-            <span className="text-gray-300">—</span>
-            <input
-              value={endInput}
-              onChange={(event) => setEndInput(event.target.value)}
-              onBlur={commitInputs}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') commitInputs();
-              }}
-              inputMode="numeric"
-              placeholder="дд.мм.гггг"
-              aria-label="Дата конца"
-              className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-[#F3F5F8] px-2 text-sm tabular-nums text-gray-900 outline-none transition-colors hover:bg-[#E6E9EE] focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+            <span className="truncate">{formatFinancePeriodLabel(value)}</span>
+          </span>
+          {!isFiltered ? (
+            <ChevronDown
+              className={`${ritmChipsChevronClass(size)} ${open ? 'rotate-180' : ''}`}
+              aria-hidden
             />
-          </div>
+          ) : null}
+        </button>
+        {isFiltered ? (
           <button
             type="button"
-            onClick={applyRange}
-            disabled={!draftFrom || !draftTo}
-            className="mt-3 h-9 w-full rounded-lg bg-[#9A41FE] text-sm font-semibold text-white transition-colors hover:bg-[#8A35E8] disabled:cursor-default disabled:bg-gray-200 disabled:text-gray-400"
+            aria-label="Сбросить период"
+            onClick={() => {
+              onChange({ kind: 'all' });
+              setOpen(false);
+            }}
+            className={`inline-flex shrink-0 items-center justify-center rounded-full bg-black text-white transition-opacity hover:opacity-80 ${
+              size === 'sm' ? 'h-4 w-4' : 'h-5 w-5'
+            }`}
           >
-            Применить
+            <X className={size === 'sm' ? 'h-2.5 w-2.5' : 'h-3 w-3'} aria-hidden />
           </button>
-        </div>,
+        ) : null}
+      </div>
+
+      {useSheet ? (
+        <MobileSheet
+          open={open}
+          onClose={() => setOpen(false)}
+          title="Период"
+          container={sheetContainer}
+        >
+          <div className="rounded-2xl bg-white p-3">{pickerBody}</div>
+        </MobileSheet>
+      ) : open && menuPos
+        ? createPortal(
+            <div
+              ref={dialogRef}
+              role="dialog"
+              aria-label="Выбрать период"
+              style={{ top: menuPos.top, left: menuPos.left }}
+              className="fixed z-[200] w-[min(320px,calc(100vw-2rem))] rounded-xl border border-gray-100 bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+            >
+              {pickerBody}
+            </div>,
             document.body,
           )
         : null}
@@ -3395,24 +3843,219 @@ function FinanceMonthGroups<T>({
   );
 }
 
+type MobileOp = {
+  key: string;
+  date: string;
+  amount: number;
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  amountLabel: string;
+  /** Серая подпись под суммой — откуда списание */
+  amountCaption?: string;
+  amountTone?: 'default' | 'positive' | 'muted';
+  badge?: React.ReactNode;
+  details: { label: string; value: React.ReactNode }[];
+};
+
+function MobileOpIcon({
+  Icon,
+  circle = 'bg-[#F2F2F7] text-gray-600',
+}: {
+  Icon: React.ComponentType<{ className?: string }>;
+  circle?: string;
+}) {
+  return (
+    <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${circle}`}>
+      <Icon className="h-[18px] w-[18px]" aria-hidden />
+    </span>
+  );
+}
+
+const MOBILE_AMOUNT_TONE: Record<NonNullable<MobileOp['amountTone']>, string> = {
+  default: 'text-gray-900',
+  positive: 'text-[#12A150]',
+  muted: 'text-gray-400',
+};
+
+/** Банковская лента: дни с итогом, белый список; тап — детали */
+function FinanceMobileOpsList({
+  ops,
+  amountSuffix,
+  onOpen,
+  emptyHint,
+}: {
+  ops: MobileOp[];
+  amountSuffix: string;
+  onOpen: (op: MobileOp) => void;
+  emptyHint?: string;
+}) {
+  if (ops.length === 0) {
+    return (
+      <div className="rounded-2xl bg-white px-4 py-10 text-center">
+        <p className="mb-0 text-[15px] font-medium text-gray-900">Ничего не найдено</p>
+        <p className="mb-0 mt-1 text-[13px] text-gray-500">
+          {emptyHint ?? 'Попробуйте изменить фильтры или период'}
+        </p>
+      </div>
+    );
+  }
+
+  const groups: { key: string; title: string; total: number; ops: MobileOp[] }[] = [];
+  let previousYear: number | null = null;
+  for (const op of ops) {
+    const key = financeDayKey(op.date);
+    let group = groups[groups.length - 1];
+    if (!group || group.key !== key) {
+      const date = parseFinanceDate(op.date);
+      let title = 'Без даты';
+      if (date) {
+        const year = date.getFullYear();
+        title = formatFinanceDayHeading(date, previousYear != null && year !== previousYear);
+        previousYear = year;
+      }
+      group = { key, title, total: 0, ops: [] };
+      groups.push(group);
+    }
+    group.total += op.amount;
+    group.ops.push(op);
+  }
+
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => (
+        <section key={group.key}>
+          <div className="mb-1.5 flex items-baseline justify-between">
+            <h3 className="mb-0 text-[15px] font-semibold text-gray-900">{group.title}</h3>
+            <span className="text-[13px] tabular-nums text-gray-500">
+              {fmtRub(group.total)} {amountSuffix}
+            </span>
+          </div>
+          <div className="-mx-3 overflow-hidden">
+            {group.ops.map((op, index) => (
+              <button
+                key={op.key}
+                type="button"
+                onClick={() => onOpen(op)}
+                className={`flex w-full items-center gap-3 px-3 py-3 text-left transition-colors active:bg-[#F2F2F7] ${
+                  index > 0 ? 'border-t border-gray-100' : ''
+                }`}
+              >
+                {op.icon}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[15px] font-medium leading-5 text-gray-900">{op.title}</span>
+                  {op.subtitle ? (
+                    <span className="mt-0.5 block truncate text-[13px] leading-[18px] text-gray-500">
+                      {op.subtitle}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-0.5">
+                  <span
+                    className={`text-[15px] font-semibold tabular-nums leading-5 ${
+                      MOBILE_AMOUNT_TONE[op.amountTone ?? 'default']
+                    }`}
+                  >
+                    {op.amountLabel}
+                  </span>
+                  {op.amountCaption ? (
+                    <span className="max-w-[7.5rem] truncate text-[12px] leading-4 text-gray-500">
+                      {op.amountCaption}
+                    </span>
+                  ) : null}
+                  {op.badge}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+/** Шторка снизу внутри экрана телефона */
+function MobileSheet({
+  open,
+  onClose,
+  title,
+  container,
+  children,
+  footer,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  container: HTMLElement | null;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  if (!open) return null;
+  const sheet = (
+    <div className={`${container ? 'absolute' : 'fixed'} inset-0 z-[150] flex flex-col justify-end`}>
+      <button
+        type="button"
+        aria-label="Закрыть"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/40"
+      />
+      <div
+        role="dialog"
+        aria-label={title}
+        className="relative flex max-h-[88%] flex-col rounded-t-[28px] bg-[#F6F6F8] shadow-[0_-8px_32px_rgba(0,0,0,0.18)]"
+      >
+        <div className="flex justify-center pt-2">
+          <span className="h-1 w-9 rounded-full bg-gray-300" aria-hidden />
+        </div>
+        <div className="flex items-center justify-between px-4 pb-2 pt-2">
+          <h2 className="mb-0 text-[17px] font-semibold text-gray-900">{title}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Закрыть"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[#E9E9EE] text-gray-600"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>
+        {footer ? <div className="border-t border-gray-200/70 bg-[#F6F6F8] px-4 pb-6 pt-3">{footer}</div> : null}
+      </div>
+    </div>
+  );
+  return createPortal(sheet, container ?? document.body);
+}
+
+const FINANCE_IPHONE_PREVIEW_KEY = 'finance_iphone_preview_v1';
+/** iPhone 14 / 15 — CSS-пиксели */
+const IPHONE_PREVIEW = { label: 'iPhone 14', width: 390, height: 844 } as const;
+
+function readFinanceIphonePreview(): boolean {
+  try {
+    return sessionStorage.getItem(FINANCE_IPHONE_PREVIEW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeFinanceIphonePreview(on: boolean) {
+  try {
+    sessionStorage.setItem(FINANCE_IPHONE_PREVIEW_KEY, on ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
 const FinancePage: React.FC = () => {
   const [mainTab] = useState<'my_money' | 'bonuses'>('my_money');
+  const [iphonePreview, setIphonePreview] = useState(readFinanceIphonePreview);
+  const [simDemoOpen, setSimDemoOpen] = useState(false);
+  const mobile = iphonePreview;
+  const [phoneScreenEl, setPhoneScreenEl] = useState<HTMLDivElement | null>(null);
+  const [phoneScrollEl, setPhoneScrollEl] = useState<HTMLDivElement | null>(null);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  const [mobileOp, setMobileOp] = useState<MobileOp | null>(null);
   const balanceSpend = useBalanceSpend();
-  const [inlineVariant, setInlineVariant] = useState<BalanceInlineVariant>(readBalanceInlineVariant);
-  const [cardTone, setCardTone] = useState<FinanceBalanceCardToneId>(readFinanceBalanceCardTone);
-  const changeInlineVariant = (next: BalanceInlineVariant) => {
-    setInlineVariant(next);
-    try {
-      window.localStorage.setItem(BALANCE_INLINE_VARIANT_KEY, next);
-    } catch {
-      /* ignore */
-    }
-  };
-  const changeCardTone = (next: FinanceBalanceCardToneId) => {
-    setCardTone(next);
-    writeFinanceBalanceCardTone(next);
-    window.dispatchEvent(new Event('finance-balance-card-tone'));
-  };
   const asideWidthClass = 'lg:w-[380px]';
   const [bufferSubTab, setBufferSubTab] = useState<'accrued' | 'spent'>('accrued');
   const [historySection, setHistorySection] = useState<'campaigns' | 'account' | 'balance' | 'bonuses'>(
@@ -3422,11 +4065,19 @@ const FinancePage: React.FC = () => {
     'expenses',
   );
   const [period, setPeriod] = useState<FinancePeriod>({ kind: 'all' });
-  const [channel, setChannel] = useState<FinanceChannelFilter>('all');
+  const [channels, setChannels] = useState<FinanceChannel[]>([]);
   const [mediaExpenseFilter, setMediaExpenseFilter] = useState<'all' | MediaExpenseTag>('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | string>('all');
-  const expenseSourceOptions =
-    channel === 'wibes' ? WIBES_EXPENSE_SOURCES : EXPENSE_SOURCES;
+  const [sources, setSources] = useState<string[]>([]);
+  const expenseSourceOptions = useMemo(() => {
+    const onlyWibes = channels.length === 1 && channels[0] === 'wibes';
+    if (onlyWibes) return [...WIBES_EXPENSE_SOURCES];
+    if (channels.length === 0 || channels.includes('wibes')) {
+      return Array.from(new Set([...EXPENSE_SOURCES, ...WIBES_EXPENSE_SOURCES]));
+    }
+    return [...EXPENSE_SOURCES];
+  }, [channels]);
+  const showMediaExpenseFilter = channels.includes('media');
+  const onlyWibesChannel = channels.length === 1 && channels[0] === 'wibes';
   const [topupStatus, setTopupStatus] = useState<'all' | TopupStatus>('all');
   const [topupMethodFilter, setTopupMethodFilter] = useState<'all' | TopupMethod>('all');
   const [refundFundsFilter, setRefundFundsFilter] = useState<'all' | PendingRefundFunds>('all');
@@ -3450,15 +4101,16 @@ const FinancePage: React.FC = () => {
   };
 
   const filteredRows = DEMO_EXPENSES.filter((row) => {
-    if (channel !== 'all' && row.channel !== channel) return false;
+    if (channels.length > 0 && !channels.includes(row.channel)) return false;
     if (
-      channel === 'media' &&
+      showMediaExpenseFilter &&
       mediaExpenseFilter !== 'all' &&
+      row.channel === 'media' &&
       row.mediaTag !== mediaExpenseFilter
     ) {
       return false;
     }
-    if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
+    if (sources.length > 0 && !sources.includes(row.source)) return false;
     if (!dateInPeriod(row.debitDate, period)) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().toLowerCase();
@@ -3478,27 +4130,31 @@ const FinancePage: React.FC = () => {
   useEffect(() => {
     const node = expenseSentinelRef.current;
     if (!node || !hasMoreExpenses || isPendingRefunds || isTopups || isExpiredBonuses || isCampaignTopups) return;
-
-    const loadIfNear = () => {
-      const rect = node.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 240) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
         setVisibleExpenseCount((count) => Math.min(count + EXPENSE_PAGE_SIZE, filteredRows.length));
-      }
-    };
-
-    loadIfNear();
-    window.addEventListener('scroll', loadIfNear, { passive: true });
-    window.addEventListener('resize', loadIfNear);
-    return () => {
-      window.removeEventListener('scroll', loadIfNear);
-      window.removeEventListener('resize', loadIfNear);
-    };
-  }, [filteredRows.length, hasMoreExpenses, isPendingRefunds, isTopups, isExpiredBonuses, isCampaignTopups, visibleExpenseCount]);
+      },
+      { root: mobile ? phoneScrollEl : null, rootMargin: '280px 0px', threshold: 0 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [
+    filteredRows.length,
+    hasMoreExpenses,
+    isPendingRefunds,
+    isTopups,
+    isExpiredBonuses,
+    isCampaignTopups,
+    visibleExpenseCount,
+    mobile,
+    phoneScrollEl,
+  ]);
   const periodTotal = filteredRows.reduce((sum, row) => sum + row.amountRub, 0);
 
   const filteredCampaignTopups = DEMO_CAMPAIGN_TOPUPS.filter((row) => {
-    if (channel !== 'all' && row.channel !== channel) return false;
-    if (sourceFilter !== 'all' && row.source !== sourceFilter) return false;
+    if (channels.length > 0 && !channels.includes(row.channel)) return false;
+    if (sources.length > 0 && !sources.includes(row.source)) return false;
     if (!dateInPeriod(row.date, period)) return false;
     if (!searchQuery.trim()) return true;
     const q = searchQuery.trim().toLowerCase();
@@ -3517,24 +4173,25 @@ const FinancePage: React.FC = () => {
   useEffect(() => {
     const node = expenseSentinelRef.current;
     if (!node || !hasMoreCampaignTopups || !isCampaignTopups) return;
-
-    const loadIfNear = () => {
-      const rect = node.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 240) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
         setVisibleExpenseCount((count) =>
           Math.min(count + EXPENSE_PAGE_SIZE, filteredCampaignTopups.length),
         );
-      }
-    };
-
-    loadIfNear();
-    window.addEventListener('scroll', loadIfNear, { passive: true });
-    window.addEventListener('resize', loadIfNear);
-    return () => {
-      window.removeEventListener('scroll', loadIfNear);
-      window.removeEventListener('resize', loadIfNear);
-    };
-  }, [filteredCampaignTopups.length, hasMoreCampaignTopups, isCampaignTopups, visibleExpenseCount]);
+      },
+      { root: mobile ? phoneScrollEl : null, rootMargin: '280px 0px', threshold: 0 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [
+    filteredCampaignTopups.length,
+    hasMoreCampaignTopups,
+    isCampaignTopups,
+    visibleExpenseCount,
+    mobile,
+    phoneScrollEl,
+  ]);
 
   const filteredTopups = DEMO_TOPUPS.filter((row) => {
     if (!dateInPeriod(row.date, period)) return false;
@@ -3556,25 +4213,19 @@ const FinancePage: React.FC = () => {
   useEffect(() => {
     const node = topupSentinelRef.current;
     if (!node || !hasMoreTopups || !isTopups) return;
-
-    const loadIfNear = () => {
-      const rect = node.getBoundingClientRect();
-      if (rect.top <= window.innerHeight + 240) {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
         setVisibleTopupCount((count) => Math.min(count + EXPENSE_PAGE_SIZE, filteredTopups.length));
-      }
-    };
-
-    loadIfNear();
-    window.addEventListener('scroll', loadIfNear, { passive: true });
-    window.addEventListener('resize', loadIfNear);
-    return () => {
-      window.removeEventListener('scroll', loadIfNear);
-      window.removeEventListener('resize', loadIfNear);
-    };
-  }, [filteredTopups.length, hasMoreTopups, isTopups, visibleTopupCount]);
+      },
+      { root: mobile ? phoneScrollEl : null, rootMargin: '280px 0px', threshold: 0 },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [filteredTopups.length, hasMoreTopups, isTopups, visibleTopupCount, mobile, phoneScrollEl]);
 
   const filteredPendingRefunds = DEMO_PENDING_REFUNDS.filter((row) => {
-    if (channel !== 'all' && row.channel !== channel) return false;
+    if (channels.length > 0 && !channels.includes(row.channel)) return false;
     if (refundFundsFilter !== 'all' && row.funds !== refundFundsFilter) return false;
     if (!dateInPeriod(row.finishedAt, period)) return false;
     if (!searchQuery.trim()) return true;
@@ -3632,29 +4283,539 @@ const FinancePage: React.FC = () => {
       active ? 'bg-[#F0F0F2] text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-900'
     }`;
 
-  return (
-    <main className="mx-auto w-full max-w-[1920px] px-6 py-8">
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6">
-        <aside className={`flex w-full shrink-0 flex-col gap-4 ${asideWidthClass}`}>
+  const resetPaging = () => {
+    setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
+    setVisibleTopupCount(EXPENSE_PAGE_SIZE);
+  };
+
+  const changeHistorySection = (value: 'campaigns' | 'account' | 'balance' | 'bonuses') => {
+    setHistorySection(value);
+    setSources([]);
+    resetPaging();
+    if (value === 'campaigns') setCampaignSubTab('expenses');
+    if (value === 'balance') setBufferSubTab('accrued');
+  };
+
+  const changeChannels = (next: string[]) => {
+    const typed = next as FinanceChannel[];
+    setChannels(typed);
+    if (!typed.includes('media')) setMediaExpenseFilter('all');
+    setSources([]);
+    resetPaging();
+  };
+
+  const expenseOp = (row: ExpenseRow): MobileOp => {
+    const icon = EXPENSE_SOURCE_ICON[row.source as keyof typeof EXPENSE_SOURCE_ICON];
+    return {
+      key: row.id ?? `${row.campaignId}-${row.debitDate}-${row.source}-${row.amountRub}`,
+      date: row.debitDate,
+      amount: row.amountRub,
+      icon: <MobileOpIcon Icon={icon?.Icon ?? Wallet} circle={icon?.circle} />,
+      title: row.campaignName,
+      subtitle: `ID ${row.campaignId} · ${FINANCE_CHANNEL_LABEL[row.channel]}`,
+      amountLabel: `−${fmtRub(row.amountRub)} ₽`,
+      amountCaption: row.source,
+      badge: row.mediaTag ? (
+        <span className="rounded-md bg-[#F2F2F7] px-1.5 py-0.5 text-[11px] text-gray-600">
+          {row.mediaTag === 'pause' ? 'Приостановка' : 'Фрод'}
+        </span>
+      ) : row.isCorrection ? (
+        <span className="text-[11px] text-gray-400">Корректировка</span>
+      ) : undefined,
+      details: [
+        { label: 'Кампания', value: row.campaignName },
+        { label: 'ID кампании', value: <span className="tabular-nums">{row.campaignId}</span> },
+        { label: 'Тип', value: row.campaignType },
+        { label: 'Канал', value: FINANCE_CHANNEL_LABEL[row.channel] },
+        ...(row.mediaTag ? [{ label: 'Тип списания', value: MEDIA_EXPENSE_TAG_LABEL[row.mediaTag] }] : []),
+        { label: 'Дата списания', value: row.debitDate },
+        { label: 'Источник', value: <ExpenseSourceLabel source={row.source} /> },
+        { label: 'Номер документа', value: <CopyDocumentNo value={row.documentNo} /> },
+      ],
+    };
+  };
+
+  const mobileView: { ops: MobileOp[]; suffix: string; hasMore: boolean; sentinel: 'expense' | 'topup' | null } =
+    (() => {
+      if (isBufferHistory) {
+        const rows = bufferSubTab === 'accrued' ? filteredBufferAccruals : filteredBufferSpends;
+        return {
+          suffix: '₽',
+          hasMore: false,
+          sentinel: null,
+          ops: rows.map((row) => {
+            const spent = 'commissionPercent' in row;
+            return {
+              key: row.id,
+              date: row.date,
+              amount: row.amountRub,
+              icon: <MobileOpIcon Icon={Coins} circle="bg-[#E7F8EE] text-[#12A150]" />,
+              title: spent ? 'Списание с баланса' : 'Начисление на баланс',
+              subtitle: `За ${row.periodLabel}`,
+              amountLabel: `${spent ? '−' : '+'}${fmtRub(row.amountRub)} ₽`,
+              amountTone: spent ? 'default' : 'positive',
+              details: [
+                { label: spent ? 'Дата списания' : 'Дата начисления', value: row.date },
+                { label: 'За период', value: row.periodLabel },
+                ...(spent
+                  ? [{ label: 'Комиссия', value: `${(row as { commissionPercent: number }).commissionPercent}%` }]
+                  : []),
+              ],
+            } satisfies MobileOp;
+          }),
+        };
+      }
+      if (isTopups) {
+        return {
+          suffix: '₽',
+          hasMore: hasMoreTopups,
+          sentinel: 'topup' as const,
+          ops: visibleTopups.map((row) => {
+            const icon = TOPUP_METHOD_ICON[row.method];
+            const failed = row.status === 'failed';
+            return {
+              key: row.id,
+              date: row.date,
+              amount: failed ? 0 : row.amountRub,
+              icon: <MobileOpIcon Icon={icon.Icon} circle={icon.circle} />,
+              title: 'Пополнение счёта',
+              subtitle: row.method,
+              amountLabel: `+${fmtRub(row.amountRub)} ₽`,
+              amountTone: failed ? 'muted' : row.status === 'success' ? 'positive' : 'default',
+              badge: row.status === 'success' ? undefined : <TopupStatusBadge status={row.status} />,
+              details: [
+                { label: 'Дата оплаты', value: row.date },
+                { label: 'Статус', value: <TopupStatusBadge status={row.status} /> },
+                { label: 'Способ оплаты', value: <TopupMethodLabel method={row.method} /> },
+                { label: 'ИНН плательщика', value: <span className="tabular-nums">{row.inn}</span> },
+              ],
+            } satisfies MobileOp;
+          }),
+        };
+      }
+      if (isExpiredBonuses) {
+        return {
+          suffix: 'B',
+          hasMore: false,
+          sentinel: null,
+          ops: filteredExpiredBonuses.map((row) => ({
+            key: row.id,
+            date: row.endsAt,
+            amount: row.amountB,
+            icon: <MobileOpIcon Icon={Gift} circle="bg-[#F3E8FF] text-[#9A41FE]" />,
+            title: row.campaignName ?? row.campaignType,
+            subtitle: `ID ${fmtRub(row.campaignId)}${row.campaignName ? ` · ${row.campaignType}` : ''}`,
+            amountLabel: `${fmtRub(row.amountB)} B`,
+            details: [
+              { label: 'Конец действия', value: row.endsAt },
+              ...(row.campaignName ? [{ label: 'Кампания', value: row.campaignName }] : []),
+              { label: 'ID кампании', value: <span className="tabular-nums">{fmtRub(row.campaignId)}</span> },
+              { label: 'Тип', value: row.campaignType },
+            ],
+          })),
+        };
+      }
+      if (isPendingRefunds) {
+        return {
+          suffix: '₽',
+          hasMore: false,
+          sentinel: null,
+          ops: filteredPendingRefunds.map((row) => ({
+            key: String(row.campaignId),
+            date: row.finishedAt,
+            amount: row.amountRub,
+            icon: <MobileOpIcon Icon={Coins} />,
+            title: row.campaignName,
+            subtitle: `${row.campaignType} · ${PENDING_REFUND_FUNDS_LABEL[row.funds]}`,
+            amountLabel: `+${fmtRub(row.amountRub)} ₽`,
+            badge: <RefundStatusBadge status={row.status} />,
+            details: [
+              { label: 'Кампания', value: row.campaignName },
+              { label: 'ID кампании', value: <span className="tabular-nums">{row.campaignId}</span> },
+              { label: 'Тип', value: row.campaignType },
+              { label: 'Куда вернём', value: PENDING_REFUND_FUNDS_LABEL[row.funds] },
+              { label: 'Дата завершения', value: row.finishedAt },
+              { label: 'Статус', value: <RefundStatusBadge status={row.status} /> },
+              { label: 'Срок возврата', value: '≈ 5–7 дней' },
+            ],
+          })),
+        };
+      }
+      if (isCampaignTopups) {
+        return {
+          suffix: '₽',
+          hasMore: hasMoreCampaignTopups,
+          sentinel: 'expense' as const,
+          ops: visibleCampaignTopups.map((row) => {
+            const icon = EXPENSE_SOURCE_ICON[row.source as keyof typeof EXPENSE_SOURCE_ICON];
+            return {
+              key: row.id,
+              date: row.date,
+              amount: row.amountRub,
+              icon: <MobileOpIcon Icon={icon?.Icon ?? Wallet} circle={icon?.circle} />,
+              title: row.campaignName,
+              subtitle: `ID ${row.campaignId} · ${FINANCE_CHANNEL_LABEL[row.channel]}`,
+              amountLabel: `${fmtRub(row.amountRub)} ₽`,
+              amountCaption: row.source,
+              details: [
+                { label: 'Кампания', value: row.campaignName },
+                { label: 'ID кампании', value: <span className="tabular-nums">{row.campaignId}</span> },
+                { label: 'Канал', value: FINANCE_CHANNEL_LABEL[row.channel] },
+                { label: 'Дата пополнения', value: row.date },
+                { label: 'Источник', value: <ExpenseSourceLabel source={row.source} /> },
+              ],
+            } satisfies MobileOp;
+          }),
+        };
+      }
+      return {
+        suffix: '₽',
+        hasMore: hasMoreExpenses,
+        sentinel: 'expense' as const,
+        ops: visibleExpenses.map(expenseOp),
+      };
+    })();
+
+  const mobileToolbar = (
+    <div className="mt-3 space-y-3">
+      <div className="relative w-full">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400"
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => {
+            setSearchQuery(e.target.value);
+            resetPaging();
+          }}
+          placeholder="Поиск"
+          aria-label="Поиск"
+          className="h-9 w-full rounded-xl border border-transparent bg-[#F6F6F8] py-2 pl-9 pr-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-black"
+        />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="shrink-0">
+          <FinancePeriodPicker
+            value={period}
+            onChange={setFinancePeriod}
+            size="sm"
+            presentation="sheet"
+            sheetContainer={phoneScreenEl}
+          />
+        </div>
+        <FinanceDropdown
+          size="sm"
+          presentation="sheet"
+          sheetContainer={phoneScreenEl}
+          aria-label="Тип истории"
+          value={
+            historySection === 'account'
+              ? 'account'
+              : historySection === 'bonuses'
+                ? 'bonuses'
+                : 'campaigns'
+          }
+          onChange={(value) => {
+            const next = value as 'campaigns' | 'account' | 'bonuses';
+            changeHistorySection(next);
+            if (next === 'campaigns') setCampaignSubTab('expenses');
+          }}
+          className="shrink-0"
+          options={[
+            { value: 'campaigns', label: 'Списания по кампаниям' },
+            { value: 'account', label: 'Пополнение счёта' },
+            { value: 'bonuses', label: 'Истёкшие бонусы' },
+          ]}
+        />
+        {isExpenses && showMediaExpenseFilter ? (
+          <FinanceDropdown
+            size="sm"
+            presentation="sheet"
+            sheetContainer={phoneScreenEl}
+            clearValue="all"
+            aria-label="Тип списания медиа"
+            value={mediaExpenseFilter}
+            onChange={(value) => {
+              setMediaExpenseFilter(value as 'all' | MediaExpenseTag);
+              resetPaging();
+            }}
+            className="shrink-0"
+            options={[
+              { value: 'all', label: 'Тип списания' },
+              { value: 'pause', label: MEDIA_EXPENSE_TAG_LABEL.pause },
+              { value: 'fraud', label: MEDIA_EXPENSE_TAG_LABEL.fraud },
+            ]}
+          />
+        ) : null}
+        {isPendingRefunds ? (
+          <FinanceDropdown
+            size="sm"
+            presentation="sheet"
+            sheetContainer={phoneScreenEl}
+            clearValue="all"
+            aria-label="Тип возврата"
+            value={refundFundsFilter}
+            onChange={(value) => setRefundFundsFilter(value as 'all' | PendingRefundFunds)}
+            className="shrink-0"
+            options={[
+              { value: 'all', label: 'Тип возврата' },
+              { value: 'balance', label: PENDING_REFUND_FUNDS_LABEL.balance },
+              { value: 'bonuses', label: PENDING_REFUND_FUNDS_LABEL.bonuses },
+            ]}
+          />
+        ) : isTopups ? (
+          <>
+            <div className="shrink-0">
+              <TopupStatusFilter
+                size="sm"
+                presentation="sheet"
+                sheetContainer={phoneScreenEl}
+                clearValue="all"
+                value={topupStatus}
+                onChange={(value) => {
+                  setTopupStatus(value);
+                  resetPaging();
+                }}
+              />
+            </div>
+            <FinanceDropdown
+              size="sm"
+              presentation="sheet"
+              sheetContainer={phoneScreenEl}
+              clearValue="all"
+              aria-label="Способ оплаты"
+              value={topupMethodFilter}
+              onChange={(value) => {
+                setTopupMethodFilter(value as 'all' | TopupMethod);
+                resetPaging();
+              }}
+              className="shrink-0"
+              options={[
+                { value: 'all', label: 'Способ оплаты' },
+                ...TOPUP_METHODS.map((method) => ({ value: method, label: method })),
+              ]}
+            />
+          </>
+        ) : null}
+        {isExpenses || isCampaignTopups ? (
+          <>
+            <FinanceMultiDropdown
+              size="sm"
+              presentation="sheet"
+              sheetContainer={phoneScreenEl}
+              aria-label="Канал"
+              placeholder="Все каналы"
+              values={channels}
+              onChange={changeChannels}
+              className="shrink-0"
+              options={FINANCE_CHANNEL_OPTIONS.map((item) => ({
+                value: item.id,
+                label: item.label,
+              }))}
+            />
+            <FinanceMultiDropdown
+              size="sm"
+              presentation="sheet"
+              sheetContainer={phoneScreenEl}
+              aria-label={isCampaignTopups ? 'Источник' : 'Источник списания'}
+              placeholder="Все источники"
+              values={sources}
+              onChange={(next) => {
+                setSources(next);
+                resetPaging();
+              }}
+              className="shrink-0"
+              options={(isCampaignTopups ? EXPENSE_SOURCES : expenseSourceOptions).map((source) => ({
+                value: source,
+                label: source,
+              }))}
+            />
+          </>
+        ) : isBufferHistory ? (
+          <div
+            className="inline-flex h-8 w-fit shrink-0 items-center gap-0.5 rounded-lg bg-white p-0.5"
+            role="tablist"
+            aria-label="Операции баланса"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bufferSubTab === 'accrued'}
+              className={bufferSubTabClass(bufferSubTab === 'accrued')}
+              onClick={() => setBufferSubTab('accrued')}
+            >
+              Начисления
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={bufferSubTab === 'spent'}
+              className={bufferSubTabClass(bufferSubTab === 'spent')}
+              onClick={() => setBufferSubTab('spent')}
+            >
+              Списания
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  const mobileContent = (
+    <div className="mt-3 pb-3">
+      <FinanceMobileOpsList
+        ops={mobileView.ops}
+        amountSuffix={mobileView.suffix}
+        onOpen={setMobileOp}
+        emptyHint={
+          isExpenses ? 'Ищите по номеру документа, а не по номеру УПД' : undefined
+        }
+      />
+      {mobileView.hasMore ? (
+        <div
+          ref={mobileView.sentinel === 'topup' ? topupSentinelRef : expenseSentinelRef}
+          className="h-8"
+          aria-hidden
+        />
+      ) : null}
+    </div>
+  );
+
+  const mobileSheets = mobile ? (
+    <>
+      <MobileSheet
+        open={mobileOp != null}
+        onClose={() => setMobileOp(null)}
+        title="Операция"
+        container={phoneScreenEl}
+      >
+        {mobileOp ? (
+          <>
+            <div className="flex flex-col items-center pb-5 pt-2 text-center">
+              <div className="scale-125">{mobileOp.icon}</div>
+              <p className="mb-0 mt-4 line-clamp-2 text-[15px] font-medium text-gray-600">{mobileOp.title}</p>
+              <p
+                className={`mb-0 mt-1 text-[30px] font-bold tabular-nums leading-tight ${
+                  MOBILE_AMOUNT_TONE[mobileOp.amountTone ?? 'default']
+                }`}
+              >
+                {mobileOp.amountLabel}
+              </p>
+              {mobileOp.badge ? <div className="mt-2">{mobileOp.badge}</div> : null}
+            </div>
+            <div className="overflow-hidden rounded-2xl bg-white">
+              {mobileOp.details.map((item, index) => (
+                <div
+                  key={item.label}
+                  className={`flex items-start justify-between gap-4 px-4 py-3 text-[15px] ${
+                    index > 0 ? 'border-t border-gray-100' : ''
+                  }`}
+                >
+                  <span className="shrink-0 text-gray-500">{item.label}</span>
+                  <span className="min-w-0 text-right text-gray-900">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : null}
+      </MobileSheet>
+    </>
+  ) : null;
+
+  const toggleIphonePreview = () => {
+    setIphonePreview((prev) => {
+      const next = !prev;
+      writeFinanceIphonePreview(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const scrollRoot = mobile ? phoneScrollEl : null;
+    const readTop = () => (scrollRoot ? scrollRoot.scrollTop : window.scrollY || document.documentElement.scrollTop);
+    const onScroll = () => setShowScrollTop(readTop() > 280);
+    onScroll();
+    if (scrollRoot) {
+      scrollRoot.addEventListener('scroll', onScroll, { passive: true });
+      return () => scrollRoot.removeEventListener('scroll', onScroll);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [mobile, phoneScrollEl]);
+
+  const scrollToTop = () => {
+    if (mobile && phoneScrollEl) {
+      phoneScrollEl.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const page = (
+    <>
+      {mobile ? <FinanceMobileHeader /> : null}
+      <main
+        className={
+          mobile
+            ? 'mx-auto w-full bg-[#F6F6F8] px-3 py-4'
+            : 'mx-auto w-full max-w-[1920px] px-6 py-8'
+        }
+      >
+      <div
+        className={
+          mobile
+            ? 'flex flex-col gap-4'
+            : 'flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-6'
+        }
+      >
+        <aside
+          className={
+            mobile
+              ? 'flex w-full shrink-0 flex-col gap-3'
+              : `flex w-full shrink-0 flex-col gap-4 ${asideWidthClass}`
+          }
+        >
           {balanceSpend.modals}
           <FinanceBalancesCard
             spend={balanceSpend}
-            inlineVariant={inlineVariant}
-            onInlineVariantChange={changeInlineVariant}
-            cardTone={cardTone}
-            onCardToneChange={changeCardTone}
+            simDemoOpen={simDemoOpen}
+            mobile={mobile}
+            sheetContainer={phoneScreenEl}
           />
         </aside>
 
-        <section className="min-w-0 flex-1 overflow-hidden rounded-2xl bg-[#F0F0F2] p-1">
-          <div className="px-4 pt-4 sm:px-7 sm:pt-6">
+        <section
+          className={
+            mobile
+              ? 'min-w-0 flex-1 overflow-hidden rounded-t-[20px] bg-white px-3 pt-4 pb-3'
+              : 'min-w-0 flex-1 overflow-hidden rounded-2xl bg-[#F0F0F2] p-1'
+          }
+        >
+          <div className={mobile ? 'px-0 pt-0' : 'px-4 pt-4 sm:px-7 sm:pt-6'}>
             <div className="flex min-w-0 items-center gap-2">
-              <h1 className="mb-0 text-[28px] font-bold leading-tight tracking-tight text-gray-900">История операций</h1>
-              <FinanceTitleHelp />
+              <h1
+                className={`mb-0 font-bold leading-tight tracking-tight text-gray-900 ${
+                  mobile ? 'text-[22px]' : 'text-[28px]'
+                }`}
+              >
+                История операций
+              </h1>
+              <FinanceTitleHelp
+                presentation={mobile ? 'sheet' : 'tooltip'}
+                sheetContainer={phoneScreenEl}
+              />
+              <FinanceHistoryMoreMenu />
             </div>
           </div>
 
-          {mainTab === 'my_money' ? (
+          {mobile && mainTab === 'my_money' ? (
+            <>
+              {mobileToolbar}
+              {mobileContent}
+            </>
+          ) : mainTab === 'my_money' ? (
             <>
               <div className="mt-3 flex min-w-0 flex-wrap items-center gap-3 px-4 sm:px-7">
                 <div className="relative w-[16rem] shrink-0">
@@ -3671,7 +4832,8 @@ const FinancePage: React.FC = () => {
                       setVisibleTopupCount(EXPENSE_PAGE_SIZE);
                     }}
                     placeholder="Поиск"
-                    className="h-8 w-full rounded-xl border border-transparent bg-white py-1.5 pl-9 pr-3 text-sm text-gray-900 outline-none transition-colors placeholder:text-gray-400 hover:bg-white/80 focus:border-[#9A41FE] focus:ring-1 focus:ring-[#9A41FE]"
+                    aria-label="Поиск"
+                    className={RITM_SEARCH_FIELD_CLASS}
                   />
                 </div>
                 <div className="shrink-0">
@@ -3682,7 +4844,7 @@ const FinancePage: React.FC = () => {
                   value={historySection}
                   onChange={(value) => {
                     setHistorySection(value as 'campaigns' | 'account' | 'balance' | 'bonuses');
-                    setSourceFilter('all');
+                    setSources([]);
                     setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
                     setVisibleTopupCount(EXPENSE_PAGE_SIZE);
                     if (value === 'campaigns') setCampaignSubTab('expenses');
@@ -3695,10 +4857,11 @@ const FinancePage: React.FC = () => {
                     { value: 'bonuses', label: 'Возвраты бонусов' },
                   ]}
                 />
-                {isExpenses && channel === 'media' ? (
+                {isExpenses && showMediaExpenseFilter ? (
                   <FinanceDropdown
                     aria-label="Тип списания медиа"
                     value={mediaExpenseFilter}
+                    clearValue="all"
                     onChange={(value) => {
                       setMediaExpenseFilter(value as 'all' | MediaExpenseTag);
                       setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
@@ -3751,37 +4914,32 @@ const FinancePage: React.FC = () => {
                 ) : null}
                 {isExpenses || isCampaignTopups ? (
                   <>
-                    <FinanceDropdown
+                    <FinanceMultiDropdown
                       aria-label="Канал"
-                      value={channel}
-                      onChange={(value) => {
-                        const next = value as FinanceChannelFilter;
-                        setChannel(next);
-                        if (next !== 'media') setMediaExpenseFilter('all');
-                        setSourceFilter('all');
-                        setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
-                      }}
+                      placeholder="Все каналы"
+                      values={channels}
+                      onChange={changeChannels}
                       className="shrink-0"
-                      options={FINANCE_CHANNELS.map((item) => ({
+                      options={FINANCE_CHANNEL_OPTIONS.map((item) => ({
                         value: item.id,
                         label: item.label,
                       }))}
                     />
-                    <FinanceDropdown
+                    <FinanceMultiDropdown
                       aria-label={isCampaignTopups ? 'Источник' : 'Источник списания'}
-                      value={sourceFilter}
-                      onChange={(value) => {
-                        setSourceFilter(value);
+                      placeholder="Все источники"
+                      values={sources}
+                      onChange={(next) => {
+                        setSources(next);
                         setVisibleExpenseCount(EXPENSE_PAGE_SIZE);
                       }}
                       className="shrink-0"
-                      options={[
-                        { value: 'all', label: 'Все источники' },
-                        ...(isCampaignTopups ? EXPENSE_SOURCES : expenseSourceOptions).map((source) => ({
+                      options={(isCampaignTopups ? [...EXPENSE_SOURCES] : expenseSourceOptions).map(
+                        (source) => ({
                           value: source,
                           label: source,
-                        })),
-                      ]}
+                        }),
+                      )}
                     />
                   </>
                 ) : isBufferHistory ? (
@@ -3810,14 +4968,6 @@ const FinancePage: React.FC = () => {
                     </button>
                   </div>
                 ) : null}
-                <button
-                  type="button"
-                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-white px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-white/80"
-                >
-                  <Download className="h-3.5 w-3.5 text-gray-500" aria-hidden />
-                  Excel
-                  <span className="tooltip-text">Скачать</span>
-                </button>
               </div>
 
               <div className="mt-3 rounded-xl bg-white px-4 py-4 sm:px-7 sm:py-5">
@@ -4185,7 +5335,7 @@ const FinancePage: React.FC = () => {
                       )}
                     </tbody>
                   </table>
-                ) : channel === 'wibes' ? (
+                ) : onlyWibesChannel ? (
                   <table className="w-full min-w-[860px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
                       <tr className={FINANCE_TABLE_HEAD_ROW_CLASS}>
@@ -4361,21 +5511,25 @@ const FinancePage: React.FC = () => {
             </>
           ) : (
             <>
-              <div className="mt-3 flex min-w-0 flex-nowrap items-center gap-3 px-4 sm:px-7">
+              <div
+                className={
+                  mobile
+                    ? 'mt-3 flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto px-3 pb-1'
+                    : 'mt-3 flex min-w-0 flex-nowrap items-center gap-3 px-4 sm:px-7'
+                }
+              >
                 <div className="shrink-0">
                   <FinancePeriodPicker value={period} onChange={setFinancePeriod} />
                 </div>
-                <button
-                  type="button"
-                  className="tooltip ml-auto inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-xl border border-transparent bg-white px-3 text-sm font-medium text-gray-900 transition-colors hover:bg-white/80"
-                >
-                  <Download className="h-3.5 w-3.5 text-gray-500" aria-hidden />
-                  Excel
-                  <span className="tooltip-text">Скачать</span>
-                </button>
               </div>
 
-              <div className="mt-3 rounded-xl bg-white px-4 py-4 sm:px-7 sm:py-5">
+              <div
+                className={
+                  mobile
+                    ? 'mt-3 rounded-xl bg-white px-3 py-3'
+                    : 'mt-3 rounded-xl bg-white px-4 py-4 sm:px-7 sm:py-5'
+                }
+              >
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[640px] border-separate border-spacing-0 text-left text-sm">
                     <thead>
@@ -4423,7 +5577,110 @@ const FinancePage: React.FC = () => {
           )}
         </section>
       </div>
+      {mobileSheets}
     </main>
+    </>
+  );
+
+  return (
+    <>
+      <div className="fixed bottom-5 right-5 z-[240] flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setSimDemoOpen((open) => !open)}
+          className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2.5 text-sm font-medium shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-colors ${
+            simDemoOpen
+              ? 'border-gray-900 bg-gray-900 text-white hover:bg-black'
+              : 'border-gray-200 bg-white text-gray-900 hover:bg-gray-50'
+          }`}
+          aria-pressed={simDemoOpen}
+          aria-expanded={simDemoOpen}
+          aria-label={simDemoOpen ? 'Скрыть сценарий баланса' : 'Открыть сценарий баланса'}
+        >
+          Сценарий
+        </button>
+        <button
+          type="button"
+          onClick={toggleIphonePreview}
+          className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3.5 py-2.5 text-sm font-medium text-gray-900 shadow-[0_8px_24px_rgba(0,0,0,0.12)] transition-colors hover:bg-gray-50"
+          aria-pressed={iphonePreview}
+          aria-label={iphonePreview ? 'Переключить на десктоп' : 'Переключить на iPhone'}
+        >
+          {iphonePreview ? (
+            <Monitor className="h-4 w-4 text-gray-600" aria-hidden />
+          ) : (
+            <Smartphone className="h-4 w-4 text-gray-600" aria-hidden />
+          )}
+          {iphonePreview ? 'Десктоп' : 'iPhone'}
+        </button>
+      </div>
+
+      {iphonePreview ? (
+        <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-start bg-[#E8E8EC] px-4 py-8">
+          <p className="mb-3 text-sm font-medium tabular-nums text-gray-600">
+            {IPHONE_PREVIEW.label} · {IPHONE_PREVIEW.width} × {IPHONE_PREVIEW.height}
+          </p>
+          <div
+            className="relative shrink-0 bg-black shadow-[0_24px_80px_rgba(0,0,0,0.35)]"
+            style={{
+              width: IPHONE_PREVIEW.width + 24,
+              height: IPHONE_PREVIEW.height + 24,
+              borderRadius: 44,
+              padding: 12,
+            }}
+          >
+            <div
+              className="pointer-events-none absolute left-1/2 top-3 z-20 h-[28px] w-[100px] -translate-x-1/2 rounded-full bg-black"
+              aria-hidden
+            />
+            <div
+              ref={setPhoneScreenEl}
+              className="relative overflow-hidden bg-[#F6F6F8]"
+              style={{
+                width: IPHONE_PREVIEW.width,
+                height: IPHONE_PREVIEW.height,
+                borderRadius: 34,
+              }}
+            >
+              <div
+                ref={setPhoneScrollEl}
+                className="h-full overflow-y-auto overflow-x-hidden overscroll-y-contain"
+              >
+                {page}
+              </div>
+              {showScrollTop ? (
+                <button
+                  type="button"
+                  onClick={scrollToTop}
+                  className="absolute bottom-8 right-3 z-30 inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-[0_8px_24px_rgba(0,0,0,0.16)] ring-1 ring-black/5 transition-transform active:scale-95"
+                  aria-label="Наверх"
+                >
+                  <ArrowUp className="h-5 w-5" aria-hidden />
+                </button>
+              ) : null}
+              <div
+                className="pointer-events-none absolute bottom-2 left-1/2 h-1 w-[108px] -translate-x-1/2 rounded-full bg-black/25"
+                aria-hidden
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          {page}
+          {showScrollTop ? (
+            <button
+              type="button"
+              onClick={scrollToTop}
+              className="fixed bottom-24 right-5 z-[230] inline-flex h-11 w-11 items-center justify-center rounded-full bg-white text-gray-900 shadow-[0_8px_24px_rgba(0,0,0,0.16)] ring-1 ring-black/5 transition-transform hover:bg-[#F7F7F8] active:scale-95"
+              aria-label="Наверх"
+            >
+              <ArrowUp className="h-5 w-5" aria-hidden />
+            </button>
+          ) : null}
+        </>
+      )}
+    </>
   );
 };
 

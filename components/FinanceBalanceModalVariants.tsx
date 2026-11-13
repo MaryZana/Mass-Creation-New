@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Calendar, Check, ChevronDown, Clock, Coins, Info, InfoCircleFill, Wallet } from './Icons';
+import {
+  Calendar,
+  Check,
+  ChevronDown,
+  Clock,
+  Coins,
+  Info,
+  InfoCircleFill,
+  Wallet,
+} from './Icons';
 import {
   FINANCE_BALANCE_WEEK_DAYS,
   buildFinanceBalanceSimView,
@@ -37,6 +46,9 @@ export const FINANCE_BALANCE_CARD_TONES = [
     calcHead: 'text-white/80',
     calcStrong: 'text-white',
     calcZero: 'text-red-300',
+    zeroPanel: 'bg-white/[0.08] text-white/65',
+    zeroTitle: 'text-white',
+    zeroIcon: 'text-white/60',
     calcBorder: 'border-white/10',
     barTrack: 'bg-white/12',
     barFill: 'bg-white/45',
@@ -59,6 +71,9 @@ export const FINANCE_BALANCE_CARD_TONES = [
     calcHead: 'text-gray-800',
     calcStrong: 'text-gray-900',
     calcZero: 'text-red-500',
+    zeroPanel: 'bg-[#F5F5F7] text-gray-600',
+    zeroTitle: 'text-gray-900',
+    zeroIcon: 'text-gray-500',
     calcBorder: 'border-black/[0.10]',
     barTrack: 'bg-black/[0.07]',
     barFill: 'bg-gray-900/35',
@@ -335,9 +350,6 @@ function LimitCalculation({
 
   return (
     <div className="mt-3 space-y-2">
-      <div className={`rounded-xl p-3.5 text-xs leading-snug ${panel} ${head}`}>
-        Лимит — это сумма, которую мы выделили вам на продвижение на эту неделю. Берём среднюю прибыль за последние 3 недели
-      </div>
       <div className={`rounded-xl p-3.5 text-xs ${panel}`}>
         <p className={`mb-1 ${head}`}>Прибыль по фин. отчётам</p>
         {weeks.map((amount, index) => (
@@ -1549,40 +1561,53 @@ function FeedVariant({
             </div>
           </div>
         ) : null}
-        <button
-          type="button"
-          onClick={() => setCalcOpen((open) => !open)}
-          aria-expanded={calcOpen}
-          className={`mt-4 flex w-full items-center justify-between border-t ${tone.border} pt-3 text-left text-xs ${tone.muted}`}
-        >
-          <span>Лимит недели {d.range}</span>
-          <span
-            className={`flex items-center gap-1.5 tabular-nums leading-none ${tone.calcStrong} ${
-              compact ? 'text-sm font-medium' : 'text-base font-semibold'
-            }`}
-          >
-            {fmtRub(view.grossRub)} ₽
-            <ChevronDown
-              className={`h-4 w-4 ${tone.chevron} transition-transform ${calcOpen ? 'rotate-180' : ''}`}
-            />
-          </span>
-        </button>
+        {(() => {
+          const inlineNote = d.zeroWeek
+            ? { title: 'На этой неделе без начисления', explain: view.explain }
+            : reserveCoversLimit
+              ? {
+                  title: 'Резерв в кампаниях больше лимита',
+                  explain: `В кампаниях ${fmtRub(view.reservePendingRub)} ₽ — это больше лимита недели ${fmtRub(view.grossRub)} ₽, поэтому на баланс ничего не придёт`,
+                }
+              : null;
+          return (
+            <div className={`mt-4 border-t ${tone.border} pt-3`}>
+              <button
+                type="button"
+                onClick={() => setCalcOpen((open) => !open)}
+                aria-expanded={calcOpen}
+                className={`flex w-full items-center justify-between text-left text-xs ${tone.muted}`}
+              >
+                <span>Лимит недели {d.range}</span>
+                <span
+                  className={`flex items-center gap-1.5 tabular-nums leading-none ${tone.calcStrong} ${
+                    compact ? 'text-sm font-medium' : 'text-base font-semibold'
+                  }`}
+                >
+                  {fmtRub(view.grossRub)} ₽
+                  <ChevronDown
+                    className={`h-4 w-4 ${tone.chevron} transition-transform ${calcOpen ? 'rotate-180' : ''}`}
+                  />
+                </span>
+              </button>
+              {inlineNote ? (
+                <div
+                  className={`mt-2.5 flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs leading-snug ${tone.zeroPanel}`}
+                >
+                  <Info className={`mt-px h-3.5 w-3.5 shrink-0 ${tone.zeroIcon}`} />
+                  <div className="min-w-0">
+                    <p className={`mb-0 font-semibold ${tone.zeroTitle}`}>{inlineNote.title}</p>
+                    <p className="mb-0 mt-0.5">{inlineNote.explain}</p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          );
+        })()}
         {calcOpen ? <LimitCalculation view={view} tone={tone} /> : null}
       </div>
 
       <div className={compact ? 'px-4' : ''}>
-      {d.zeroWeek ? (
-        <ZeroWeekNote
-          explain={view.explain}
-          calcOpen={calcOpen}
-          onToggleCalc={() => setCalcOpen((open) => !open)}
-        />
-      ) : reserveCoversLimit ? (
-        <ZeroWeekNote
-          title="Резерв в кампаниях больше лимита"
-          explain={`В кампаниях ${fmtRub(view.reservePendingRub)} ₽ — это больше лимита недели ${fmtRub(view.grossRub)} ₽, поэтому на баланс ничего не придёт`}
-        />
-      ) : null}
 
       {spendBlock}
 
