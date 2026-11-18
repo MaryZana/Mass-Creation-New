@@ -1,4 +1,11 @@
 import React, { useEffect, useState } from 'react';
+import { useFinanceLocale } from './FinanceLocaleContext';
+import {
+  formatFinanceMoney,
+  formatFinanceNumber,
+  financeWeekdayLongLabels,
+  tFinance,
+} from './financeI18n';
 import {
   Calendar,
   Check,
@@ -36,7 +43,7 @@ export const FINANCE_BALANCE_CARD_TONES = [
     id: 'black',
     label: 'Чёрный',
     dark: true,
-    shell: 'bg-[#2B2B30] text-white',
+    shell: 'bg-[#63616C] text-white',
     muted: 'text-white/55',
     soft: 'text-white/75',
     pill: 'bg-white/10 text-white/70',
@@ -245,11 +252,11 @@ export function writeFinanceBalanceModalVariant(id: FinanceBalanceModalVariantId
   }
 }
 
-const fmtRub = (n: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n);
+const fmtRub = (n: number) => formatFinanceNumber(n);
 
 const TUESDAY = 1;
 const THURSDAY = 3;
-const DAY_NAMES = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+const DAY_NAMES = () => financeWeekdayLongLabels();
 
 function daysWord(n: number) {
   const mod10 = n % 10;
@@ -312,6 +319,8 @@ type Props = {
   compact?: boolean;
   /** Подпись над суммой в тёмной карточке */
   cardLabel?: React.ReactNode;
+  /** Контент под блоком «Ожидается» */
+  afterExpected?: React.ReactNode;
 };
 
 function useDerived(view: FinanceBalanceSimView, day: number) {
@@ -356,17 +365,17 @@ function LimitCalculation({
           <div key={index} className={row}>
             <span>{financeBalanceWeekRangeLabelShort(undefined, view.weekOffset - 3 + index)}</span>
             <span className={`tabular-nums ${amount === 0 ? zero : value}`}>
-              {fmtRub(amount)} ₽
+              {formatFinanceMoney(amount)}
             </span>
           </div>
         ))}
         <div className={`${row} mt-1 border-t ${border} pt-2.5`}>
           <span>{hasZero ? 'Есть неделя с 0 ₽ — начисления нет' : 'Среднее за 3 недели'}</span>
-          <span className={`tabular-nums ${value}`}>{fmtRub(average)} ₽</span>
+          <span className={`tabular-nums ${value}`}>{formatFinanceMoney(average)}</span>
         </div>
         <div className={`${row} font-semibold ${strong}`}>
-          <span>Лимит недели</span>
-          <span className="tabular-nums">{fmtRub(view.grossRub)} ₽</span>
+          <span>{tFinance('weekLimit')}</span>
+          <span className="tabular-nums">{formatFinanceMoney(view.grossRub)}</span>
         </div>
       </div>
     </div>
@@ -522,11 +531,11 @@ function TimelineVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
       key: 'tue',
       date: `Вторник, ${d.tuesdayDate}`,
       title: d.tuesdayDone ? 'Начислили' : 'Начислим',
-      amount: `+${fmtRub(view.tuesdayRub)} ₽`,
+      amount: `+${formatFinanceMoney(view.tuesdayRub)}`,
       done: d.tuesdayDone,
       note:
         view.unusedWipedRub > 0 && d.tuesdayDone
-          ? `Перед этим сгорел остаток прошлой недели — ${fmtRub(view.unusedWipedRub)} ₽`
+          ? `Перед этим сгорел остаток прошлой недели — ${formatFinanceMoney(view.unusedWipedRub)}`
           : null,
       tone: 'accrual' as const,
     },
@@ -534,7 +543,7 @@ function TimelineVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
       key: 'thu',
       date: `Четверг, ${d.thursdayDate}`,
       title: d.thursdayDone ? 'Начислили' : 'Начислим',
-      amount: `+${fmtRub(view.thursdayRub)} ₽`,
+      amount: `+${formatFinanceMoney(view.thursdayRub)}`,
       done: d.thursdayDone,
       note: null,
       tone: 'accrual' as const,
@@ -543,7 +552,7 @@ function TimelineVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
       key: 'burn',
       date: `Вторник, ${d.burnDate}`,
       title: 'Остаток сгорит',
-      amount: view.availableNowRub > 0 ? `−${fmtRub(view.availableNowRub)} ₽` : '0 ₽',
+      amount: view.availableNowRub > 0 ? `−${formatFinanceMoney(view.availableNowRub)}` : '0 ₽',
       done: false,
       note: 'Сразу после этого придёт начисление на следующую неделю',
       tone: 'burn' as const,
@@ -556,7 +565,7 @@ function TimelineVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
       <div className="mt-6 rounded-2xl bg-[#F7F7F9] p-5">
         <p className="text-sm text-gray-500">Сейчас на балансе</p>
         <p className="mt-1 text-[36px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-          {fmtRub(view.availableNowRub)} ₽
+          {formatFinanceMoney(view.availableNowRub)}
         </p>
         <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
           <Clock className="h-3.5 w-3.5" />
@@ -629,13 +638,13 @@ function CalendarVariant({
   let headline: string;
   let detail: string;
   if (selected === TUESDAY) {
-    headline = `+${fmtRub(view.tuesdayRub)} ₽ на баланс`;
+    headline = `+${formatFinanceMoney(view.tuesdayRub)} на баланс`;
     detail =
       dayView.unusedWipedRub > 0
-        ? `Сначала сгорает остаток прошлой недели — ${fmtRub(dayView.unusedWipedRub)} ₽, потом приходит начисление`
+        ? `Сначала сгорает остаток прошлой недели — ${formatFinanceMoney(dayView.unusedWipedRub)}, потом приходит начисление`
         : 'Основная часть недельного начисления — 75%';
   } else if (selected === THURSDAY) {
-    headline = `+${fmtRub(view.thursdayRub)} ₽ на баланс`;
+    headline = `+${formatFinanceMoney(view.thursdayRub)} на баланс`;
     detail = 'Оставшиеся 25% недельного начисления';
   } else {
     headline = 'Без начислений';
@@ -655,7 +664,7 @@ function CalendarVariant({
         ].map((stat) => (
           <div key={stat.label} className="rounded-xl bg-[#F7F7F9] p-3">
             <p className="text-xs text-gray-500">{stat.label}</p>
-            <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{fmtRub(stat.value)} ₽</p>
+            <p className="mt-1 text-base font-semibold tabular-nums text-gray-900">{formatFinanceMoney(stat.value)}</p>
           </div>
         ))}
       </div>
@@ -663,7 +672,7 @@ function CalendarVariant({
       {d.zeroWeek ? <ZeroWeekNote explain={view.explain} /> : null}
 
       <div className="mt-6 grid grid-cols-7 gap-1.5" role="tablist" aria-label="Дни недели">
-        {FINANCE_BALANCE_WEEK_DAYS.map((label, index) => {
+        {FINANCE_BALANCE_WEEK_DAYS().map((label, index) => {
           const accrual = index === TUESDAY || index === THURSDAY;
           const active = index === selected;
           const date = financeBalanceWeekDate(index, undefined, view.weekOffset).split(' ')[0];
@@ -701,13 +710,13 @@ function CalendarVariant({
 
       <div className="mt-3 rounded-2xl border border-gray-100 p-4">
         <p className="text-xs text-gray-500">
-          {DAY_NAMES[selected]}, {financeBalanceWeekDate(selected, undefined, view.weekOffset)}
+          {DAY_NAMES()[selected]}, {financeBalanceWeekDate(selected, undefined, view.weekOffset)}
         </p>
         <p className="mt-1 text-lg font-semibold text-gray-900">{headline}</p>
         <p className="mt-1 text-sm leading-relaxed text-gray-500">{detail}</p>
         <div className="mt-3 flex items-center justify-between border-t border-gray-100 pt-3 text-sm">
           <span className="text-gray-500">Баланс в конце дня</span>
-          <span className="font-semibold tabular-nums text-gray-900">{fmtRub(dayView.availableNowRub)} ₽</span>
+          <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(dayView.availableNowRub)}</span>
         </div>
       </div>
     </>
@@ -728,7 +737,7 @@ function LimitVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
       icon: <ArrowInIcon className="h-4 w-4" />,
       title: 'Начисление от WB',
       sub: `${d.tuesdayDone ? 'Пришло' : 'Придёт'} во вторник, ${d.tuesdayDate}`,
-      amount: `+${fmtRub(view.tuesdayRub)} ₽`,
+      amount: `+${formatFinanceMoney(view.tuesdayRub)}`,
       muted: !d.tuesdayDone,
     },
     {
@@ -736,7 +745,7 @@ function LimitVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
       icon: <ArrowInIcon className="h-4 w-4" />,
       title: 'Начисление от WB',
       sub: `${d.thursdayDone ? 'Пришло' : 'Придёт'} в четверг, ${d.thursdayDate}`,
-      amount: `+${fmtRub(view.thursdayRub)} ₽`,
+      amount: `+${formatFinanceMoney(view.thursdayRub)}`,
       muted: !d.thursdayDone,
     },
     ...(spent > 0
@@ -746,7 +755,7 @@ function LimitVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
             icon: <Wallet className="h-4 w-4" />,
             title: 'Потратили на продвижение',
             sub: 'С начала недели',
-            amount: `−${fmtRub(spent)} ₽`,
+            amount: `−${formatFinanceMoney(spent)}`,
             muted: false,
           },
         ]
@@ -760,10 +769,10 @@ function LimitVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
       <div className="mt-6">
         <div className="flex items-baseline justify-between gap-3">
           <p className="text-sm text-gray-500">Можно потратить сейчас</p>
-          <p className="text-sm text-gray-500">лимит {fmtRub(view.netRub)} ₽</p>
+          <p className="text-sm text-gray-500">лимит {formatFinanceMoney(view.netRub)}</p>
         </div>
         <p className="mt-1 text-[36px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-          {fmtRub(view.availableNowRub)} ₽
+          {formatFinanceMoney(view.availableNowRub)}
         </p>
         <div className="mt-4 flex h-3 overflow-hidden rounded-full bg-gray-100" aria-hidden>
           <span className="h-full bg-gray-300" style={{ width: pct(Math.min(spent, view.netRub)) }} />
@@ -775,14 +784,14 @@ function LimitVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
         </div>
         <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-gray-300" /> Потрачено {fmtRub(spent)} ₽
+            <span className="h-2 w-2 rounded-full bg-gray-300" /> Потрачено {formatFinanceMoney(spent)}
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[#9A41FE]" /> Доступно {fmtRub(view.availableNowRub)} ₽
+            <span className="h-2 w-2 rounded-full bg-[#9A41FE]" /> Доступно {formatFinanceMoney(view.availableNowRub)}
           </span>
           {pending > 0 ? (
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2 w-2 rounded-full bg-[#E9D5FF]" /> Ещё придёт {fmtRub(pending)} ₽
+              <span className="h-2 w-2 rounded-full bg-[#E9D5FF]" /> Ещё придёт {formatFinanceMoney(pending)}
             </span>
           ) : null}
         </div>
@@ -837,7 +846,7 @@ function QaVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
       icon: <Coins className="h-5 w-5" />,
       tone: 'bg-[#F3E8FF] text-[#7C3AED]',
       question: 'Сколько дадим на этой неделе?',
-      answer: `${fmtRub(view.netRub)} ₽`,
+      answer: `${formatFinanceMoney(view.netRub)}`,
       text: d.zeroWeek ? view.explain : `На неделю ${d.range}. Можно тратить на продвижение и рекламу`,
     },
     {
@@ -857,7 +866,7 @@ function QaVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
       icon: <Clock className="h-5 w-5" />,
       tone: 'bg-amber-50 text-amber-700',
       question: 'Что будет, если не потрачу?',
-      answer: `${fmtRub(view.availableNowRub)} ₽ сгорит`,
+      answer: `${formatFinanceMoney(view.availableNowRub)} сгорит`,
       text: `Во вторник, ${d.burnDate}, остаток обнулится, и придёт новое начисление. Осталось ${d.daysToBurn} ${daysWord(d.daysToBurn)}`,
     },
   ];
@@ -897,7 +906,7 @@ function QaVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
                         <span
                           className={`font-semibold tabular-nums ${row.done ? 'text-gray-900' : 'text-gray-400'}`}
                         >
-                          {fmtRub(row.value)} ₽
+                          {formatFinanceMoney(row.value)}
                         </span>
                       </div>
                     ))}
@@ -913,7 +922,7 @@ function QaVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
   );
 }
 
-const DAY_SHORT = FINANCE_BALANCE_WEEK_DAYS;
+const DAY_SHORT = () => FINANCE_BALANCE_WEEK_DAYS();
 
 /** 6 — банковская выписка: дата, операция, сумма, остаток */
 function StatementVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
@@ -952,11 +961,11 @@ function StatementVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'
       <div className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-xl bg-gray-100 text-sm">
         <div className="bg-white p-3">
           <p className="text-xs text-gray-500">Входящий остаток</p>
-          <p className="mt-1 font-semibold tabular-nums text-gray-900">{fmtRub(view.startAvailableRub)} ₽</p>
+          <p className="mt-1 font-semibold tabular-nums text-gray-900">{formatFinanceMoney(view.startAvailableRub)}</p>
         </div>
         <div className="bg-white p-3">
           <p className="text-xs text-gray-500">Остаток на {financeBalanceWeekDate(weekdayIndex, undefined, view.weekOffset)}</p>
-          <p className="mt-1 font-semibold tabular-nums text-gray-900">{fmtRub(view.availableNowRub)} ₽</p>
+          <p className="mt-1 font-semibold tabular-nums text-gray-900">{formatFinanceMoney(view.availableNowRub)}</p>
         </div>
       </div>
 
@@ -992,9 +1001,9 @@ function StatementVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'
                   }`}
                 >
                   {line.amount > 0 ? '+' : '−'}
-                  {fmtRub(Math.abs(line.amount))} ₽
+                  {formatFinanceMoney(Math.abs(line.amount))}
                 </td>
-                <td className="whitespace-nowrap py-2.5 text-right align-top tabular-nums">{fmtRub(line.after)} ₽</td>
+                <td className="whitespace-nowrap py-2.5 text-right align-top tabular-nums">{formatFinanceMoney(line.after)}</td>
               </tr>
             ))
           )}
@@ -1037,7 +1046,7 @@ function OpRow({
       </div>
       <span className={`text-sm font-semibold tabular-nums ${kind === 'in' ? 'text-emerald-600' : 'text-gray-900'}`}>
         {kind === 'in' ? '+' : '−'}
-        {fmtRub(amount)} ₽
+        {formatFinanceMoney(amount)}
       </span>
       {trailing}
     </div>
@@ -1052,7 +1061,10 @@ function FeedVariant({
   embedded = false,
   compact = false,
   cardLabel,
+  afterExpected,
 }: Omit<Props, 'variant'>) {
+  const { t, locale } = useFinanceLocale();
+  void locale;
   const gap = compact ? 'mt-4' : 'mt-6';
   const d = useDerived(view, weekdayIndex);
   const [calcOpen, setCalcOpen] = useState(false);
@@ -1067,7 +1079,7 @@ function FeedVariant({
   const tone = financeBalanceCardTone(cardToneId);
   const ledger = buildLedger(view, weekdayIndex);
   const groupTitle = (day: LedgerDay) =>
-    day.index === weekdayIndex ? 'Сегодня' : day.index === weekdayIndex - 1 ? 'Вчера' : `${DAY_NAMES[day.index]}, ${day.date}`;
+    day.index === weekdayIndex ? t('today') : day.index === weekdayIndex - 1 ? t('yesterday') : `${DAY_NAMES()[day.index]}, ${day.date}`;
 
   const past = ledger.filter((day) => !day.planned);
   /** День начисления по графику — показываем, даже если резерв съел всю сумму */
@@ -1100,19 +1112,19 @@ function FeedVariant({
         className={`${flush ? '' : 'ml-12 '}mt-1.5 space-y-1 border-t border-dashed border-gray-200 pt-2 text-xs text-gray-500`}
       >
         <div className="flex justify-between gap-3">
-          <span>По графику · {share} лимита</span>
-          <span className="tabular-nums text-gray-700">{fmtRub(grossFor(day))} ₽</span>
+          <span>{t('bySchedule')} · {share} {t('ofLimit')}</span>
+          <span className="tabular-nums text-gray-700">{formatFinanceMoney(grossFor(day))}</span>
         </div>
         <div className="flex justify-between gap-3">
           <span className="inline-flex items-center gap-1">
-            Баланс в кампаниях
+            {t('balanceInCampaigns')}
             <CampaignBalanceInformer />
           </span>
-          <span className="tabular-nums text-gray-700">−{fmtRub(cutRub)} ₽</span>
+          <span className="tabular-nums text-gray-700">−{formatFinanceMoney(cutRub)}</span>
         </div>
         <div className="flex justify-between gap-3 font-semibold text-gray-900">
-          <span>{day.planned ? 'Придёт на баланс' : 'Пришло на баланс'}</span>
-          <span className="tabular-nums">{fmtRub(day.accrualRub)} ₽</span>
+          <span>{day.planned ? t('willArrive') : t('arrived')}</span>
+          <span className="tabular-nums">{formatFinanceMoney(day.accrualRub)}</span>
         </div>
       </div>
     );
@@ -1125,14 +1137,14 @@ function FeedVariant({
     if (spendView === 'buckets') {
       const tiles = [
         {
-          label: 'В кампаниях',
-          value: `${fmtRub(view.periodReserveRub)} ₽`,
+          label: t('inCampaigns'),
+          value: `${formatFinanceMoney(view.periodReserveRub)}`,
           tone: 'text-gray-900',
           hint: view.periodReserveRub > 0 ? 'Вычтем из следующего начисления' : '',
         },
         {
-          label: 'Потрачено',
-          value: `${view.periodSpentRub > 0 ? '−' : ''}${fmtRub(view.periodSpentRub)} ₽`,
+          label: t('spent'),
+          value: `${view.periodSpentRub > 0 ? '−' : ''}${formatFinanceMoney(view.periodSpentRub)}`,
           tone: 'text-gray-900',
           hint: '',
         },
@@ -1156,7 +1168,7 @@ function FeedVariant({
               key: 'spent',
               icon: <ArrowOutIcon className="h-4 w-4" />,
               title: 'Потрачено на продвижение',
-              amount: `${fmtRub(spentRub)} ₽`,
+              amount: `${formatFinanceMoney(spentRub)}`,
               text: `Выставим на портале продавца ${chargeDate}. На начисление не влияет`,
             }
           : null,
@@ -1165,7 +1177,7 @@ function FeedVariant({
               key: 'reserve',
               icon: <Wallet className="h-4 w-4" />,
               title: 'Резерв в кампаниях',
-              amount: `${fmtRub(reserveDeductedRub)} ₽`,
+              amount: `${formatFinanceMoney(reserveDeductedRub)}`,
               text: `Вычли из начисления${reserveDay ? ` ${reserveDay.date}` : ''}. Лимит недели не изменился`,
             }
           : null,
@@ -1203,7 +1215,7 @@ function FeedVariant({
                 К оплате {chargeDate} · не уменьшает начисления
               </p>
             </div>
-            <span className="text-sm font-semibold tabular-nums text-gray-900">{fmtRub(spentRub)} ₽</span>
+            <span className="text-sm font-semibold tabular-nums text-gray-900">{formatFinanceMoney(spentRub)}</span>
           </div>
         </div>
       ) : null;
@@ -1213,23 +1225,23 @@ function FeedVariant({
         {
           key: 'tue',
           day: `Вт, ${d.tuesdayDate}`,
-          value: `+${fmtRub(view.tuesdayRub)} ₽`,
-          note: view.grossTuesdayRub > view.tuesdayRub ? `−${fmtRub(view.grossTuesdayRub - view.tuesdayRub)} ₽ резерв` : 'на баланс',
+          value: `+${formatFinanceMoney(view.tuesdayRub)}`,
+          note: view.grossTuesdayRub > view.tuesdayRub ? `−${formatFinanceMoney(view.grossTuesdayRub - view.tuesdayRub)} резерв` : 'на баланс',
           done: d.tuesdayDone,
           tone: 'text-emerald-600',
         },
         {
           key: 'thu',
           day: `Чт, ${d.thursdayDate}`,
-          value: `+${fmtRub(view.thursdayRub)} ₽`,
-          note: view.grossThursdayRub > view.thursdayRub ? `−${fmtRub(view.grossThursdayRub - view.thursdayRub)} ₽ резерв` : 'на баланс',
+          value: `+${formatFinanceMoney(view.thursdayRub)}`,
+          note: view.grossThursdayRub > view.thursdayRub ? `−${formatFinanceMoney(view.grossThursdayRub - view.thursdayRub)} резерв` : 'на баланс',
           done: d.thursdayDone,
           tone: 'text-emerald-600',
         },
         {
           key: 'sun',
           day: `Вс, ${chargeDate}`,
-          value: `${spentRub > 0 ? '−' : ''}${fmtRub(spentRub)} ₽`,
+          value: `${spentRub > 0 ? '−' : ''}${formatFinanceMoney(spentRub)}`,
           note: 'на портале',
           done: false,
           tone: 'text-gray-900',
@@ -1274,13 +1286,13 @@ function FeedVariant({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <div className="rounded-2xl bg-[#F7F7F9] p-4">
             <p className="text-xs text-gray-500">Зачислено</p>
-            <p className="mt-1.5 text-lg font-semibold tabular-nums text-emerald-600">+{fmtRub(accruedRub)} ₽</p>
+            <p className="mt-1.5 text-lg font-semibold tabular-nums text-emerald-600">+{formatFinanceMoney(accruedRub)}</p>
           </div>
           <div className="rounded-2xl bg-[#F7F7F9] p-4">
             <p className="text-xs text-gray-500">Потрачено</p>
             <p className="mt-1.5 text-lg font-semibold tabular-nums text-gray-900">
               {spentRub > 0 ? '−' : ''}
-              {fmtRub(spentRub)} ₽
+              {formatFinanceMoney(spentRub)}
             </p>
             {spentRub > 0 ? <p className="mt-1 text-[11px] leading-tight text-gray-500">на портале {chargeDate}</p> : null}
           </div>
@@ -1314,7 +1326,7 @@ function FeedVariant({
               {spentDays.map((day) => (
                 <li key={day.index} className="flex justify-between py-1.5 text-xs text-gray-500">
                   <span>{groupTitle(day)}</span>
-                  <span className="tabular-nums text-gray-700">−{fmtRub(day.spentRub)} ₽</span>
+                  <span className="tabular-nums text-gray-700">−{formatFinanceMoney(day.spentRub)}</span>
                 </li>
               ))}
             </ul>
@@ -1327,7 +1339,7 @@ function FeedVariant({
         <div className="mt-6 rounded-2xl bg-[#F7F7F9] p-4">
           <div className="flex items-baseline justify-between">
             <p className="text-sm text-gray-900">Продвижение и реклама</p>
-            <p className="text-sm font-semibold tabular-nums text-gray-900">−{fmtRub(spentRub)} ₽</p>
+            <p className="text-sm font-semibold tabular-nums text-gray-900">−{formatFinanceMoney(spentRub)}</p>
           </div>
           <div className="mt-4 flex h-12 items-end gap-1.5" aria-hidden>
             {ledger.map((day) => (
@@ -1340,7 +1352,7 @@ function FeedVariant({
             ))}
           </div>
           <div className="mt-1.5 flex gap-1.5 text-center text-[10px] text-gray-400">
-            {FINANCE_BALANCE_WEEK_DAYS.map((label, index) => (
+            {FINANCE_BALANCE_WEEK_DAYS().map((label, index) => (
               <span key={label} className={`flex-1 ${index === weekdayIndex ? 'font-semibold text-gray-900' : ''}`}>
                 {label}
               </span>
@@ -1363,13 +1375,13 @@ function FeedVariant({
               <span>{row.label}</span>
               <span className={`tabular-nums ${row.sign === '+' ? 'text-emerald-600' : 'text-gray-900'}`}>
                 {row.sign}
-                {fmtRub(row.value)} ₽
+                {formatFinanceMoney(row.value)}
               </span>
             </div>
           ))}
           <div className="flex justify-between py-2.5 font-semibold text-gray-900">
             <span>Доступно</span>
-            <span className="tabular-nums">{fmtRub(view.availableNowRub)} ₽</span>
+            <span className="tabular-nums">{formatFinanceMoney(view.availableNowRub)}</span>
           </div>
         </div>
       );
@@ -1381,7 +1393,7 @@ function FeedVariant({
             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-white text-gray-600">
               <ArrowOutIcon className="h-3 w-3" />
             </span>
-            Потрачено <span className="font-semibold tabular-nums text-gray-900">{fmtRub(spentRub)} ₽</span>
+            Потрачено <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(spentRub)}</span>
             <span className="text-gray-300">·</span>
             на портале {chargeDate}
           </span>
@@ -1412,14 +1424,14 @@ function FeedVariant({
                 <span className="h-2 w-2 rounded-full bg-gray-900" />
                 Потрачено
               </span>
-              <span className="font-semibold tabular-nums text-gray-900">{fmtRub(spentRub)} ₽</span>
+              <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(spentRub)}</span>
             </div>
             <div className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-gray-600">
                 <span className="h-2 w-2 rounded-full bg-gray-200" />
                 Осталось
               </span>
-              <span className="font-semibold tabular-nums text-gray-900">{fmtRub(view.availableNowRub)} ₽</span>
+              <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(view.availableNowRub)}</span>
             </div>
             {spentRub > 0 ? <p className="text-xs text-gray-500">{chargeCaption}</p> : null}
           </div>
@@ -1436,7 +1448,7 @@ function FeedVariant({
           id={titleId}
           className={`${compact ? 'text-lg' : 'text-2xl'} font-bold tracking-tight text-gray-900`}
         >
-          Баланс
+          {t('balance')}
         </h2>
       )}
       {compact ? null : (
@@ -1471,19 +1483,19 @@ function FeedVariant({
           <BalanceIntro />
         </div>
       ) : (
-      <>
+      <div className={compact ? 'flex flex-col' : undefined}>
       <div className={`${compact ? 'rounded-xl px-4 py-3' : 'mt-6 rounded-2xl p-5'} ${tone.shell}`}>
         {cardLabel ? (
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">{cardLabel}</div>
-            <span className="text-lg font-bold tabular-nums">{fmtRub(view.availableNowRub)} ₽</span>
+            <span className="text-lg font-bold tabular-nums">{formatFinanceMoney(view.availableNowRub)}</span>
           </div>
         ) : spendView === 'split' ? (
           <div className="flex items-end justify-between gap-4">
             <div>
               <span className="tooltip inline-flex cursor-default">
                 <span className="text-[34px] font-bold leading-none tabular-nums tracking-tight">
-                  {fmtRub(view.availableNowRub)} ₽
+                  {formatFinanceMoney(view.availableNowRub)}
                 </span>
                 <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-2 !w-max !translate-x-0 !whitespace-nowrap !px-2.5 !py-1.5 !text-xs !font-normal">
                   Остаток на балансе
@@ -1493,7 +1505,7 @@ function FeedVariant({
             <div className={`border-l ${tone.splitBorder} pl-4 text-right`}>
               <p className={`text-xs ${tone.muted}`}>Потрачено</p>
               <p className={`mt-1.5 text-lg font-semibold leading-none tabular-nums ${tone.soft}`}>
-                {fmtRub(spentRub)} ₽
+                {formatFinanceMoney(spentRub)}
               </p>
               {spentRub > 0 ? <p className={`mt-1.5 text-[11px] ${tone.muted}`}>на портале {chargeDate}</p> : null}
             </div>
@@ -1501,7 +1513,7 @@ function FeedVariant({
         ) : (
           <span className="tooltip inline-flex cursor-default">
             <span className={`${compact ? 'text-[28px]' : 'text-[34px]'} font-bold leading-none tabular-nums tracking-tight`}>
-              {fmtRub(view.availableNowRub)} ₽
+              {formatFinanceMoney(view.availableNowRub)}
             </span>
             <span className="tooltip-text !bottom-auto !left-0 !top-full !mt-2 !w-max !translate-x-0 !whitespace-nowrap !px-2.5 !py-1.5 !text-xs !font-normal">
               Остаток на балансе
@@ -1515,14 +1527,14 @@ function FeedVariant({
           aria-hidden={!(d.daysToBurn <= 2 && view.availableNowRub > 0)}
         >
           <Info className={`h-3.5 w-3.5 shrink-0 ${tone.pillIcon}`} />
-          Обнулится во вторник, {d.burnDate}
+          {t('resetsOnTuesday')}, {d.burnDate}
         </p>
         {spendView === 'stack' && view.grossRub > 0 ? (
           (() => {
             const parts = [
-              { key: 'spent', label: 'Потрачено', value: spentRub, bar: tone.barStrong, dot: tone.barStrong },
-              { key: 'reserve', label: 'В кампаниях', value: reserveDeductedRub, bar: tone.barSoft, dot: tone.barSoft },
-              { key: 'left', label: 'Осталось', value: view.availableNowRub, bar: tone.barFill, dot: tone.barFill },
+              { key: 'spent', label: t('spent'), value: spentRub, bar: tone.barStrong, dot: tone.barStrong },
+              { key: 'reserve', label: t('inCampaigns'), value: reserveDeductedRub, bar: tone.barSoft, dot: tone.barSoft },
+              { key: 'left', label: t('remaining'), value: view.availableNowRub, bar: tone.barFill, dot: tone.barFill },
             ];
             const total = Math.max(1, parts.reduce((sum, part) => sum + part.value, 0));
             return (
@@ -1539,7 +1551,7 @@ function FeedVariant({
                     <span key={part.key} className="flex items-center gap-1.5">
                       <span className={`h-2 w-2 rounded-full ${part.dot}`} />
                       {part.label}
-                      <span className={`tabular-nums ${tone.calcStrong}`}>{fmtRub(part.value)} ₽</span>
+                      <span className={`tabular-nums ${tone.calcStrong}`}>{formatFinanceMoney(part.value)}</span>
                     </span>
                   ))}
                 </div>
@@ -1554,8 +1566,8 @@ function FeedVariant({
             </div>
             <div className={`mt-2 flex justify-between text-xs ${tone.muted}`}>
               <span>
-                Потрачено{' '}
-                <span className={`font-semibold tabular-nums ${tone.calcStrong}`}>{fmtRub(spentRub)} ₽</span>
+                {t('spent')}{' '}
+                <span className={`font-semibold tabular-nums ${tone.calcStrong}`}>{formatFinanceMoney(spentRub)}</span>
               </span>
               {spentRub > 0 ? <span>на портале {chargeDate}</span> : null}
             </div>
@@ -1563,11 +1575,11 @@ function FeedVariant({
         ) : null}
         {(() => {
           const inlineNote = d.zeroWeek
-            ? { title: 'На этой неделе без начисления', explain: view.explain }
+            ? { title: t('noAccrualThisWeek'), explain: view.explain }
             : reserveCoversLimit
               ? {
                   title: 'Резерв в кампаниях больше лимита',
-                  explain: `В кампаниях ${fmtRub(view.reservePendingRub)} ₽ — это больше лимита недели ${fmtRub(view.grossRub)} ₽, поэтому на баланс ничего не придёт`,
+                  explain: `В кампаниях ${formatFinanceMoney(view.reservePendingRub)} — это больше лимита недели ${formatFinanceMoney(view.grossRub)}, поэтому на баланс ничего не придёт`,
                 }
               : null;
           return (
@@ -1578,13 +1590,13 @@ function FeedVariant({
                 aria-expanded={calcOpen}
                 className={`flex w-full items-center justify-between text-left text-xs ${tone.muted}`}
               >
-                <span>Лимит недели {d.range}</span>
+                <span>{t('weekLimit')} {d.range}</span>
                 <span
                   className={`flex items-center gap-1.5 tabular-nums leading-none ${tone.calcStrong} ${
                     compact ? 'text-sm font-medium' : 'text-base font-semibold'
                   }`}
                 >
-                  {fmtRub(view.grossRub)} ₽
+                  {formatFinanceMoney(view.grossRub)}
                   <ChevronDown
                     className={`h-4 w-4 ${tone.chevron} transition-transform ${calcOpen ? 'rotate-180' : ''}`}
                   />
@@ -1607,13 +1619,13 @@ function FeedVariant({
         {calcOpen ? <LimitCalculation view={view} tone={tone} /> : null}
       </div>
 
-      <div className={compact ? 'px-4' : ''}>
+      <div className={compact ? 'px-4 pb-3' : ''}>
 
       {spendBlock}
 
       {compact && accrualGroups.length > 0 ? (
         <div className={gap}>
-          <p className="mb-0 text-sm font-medium text-gray-500">Начислено</p>
+          <p className="mb-0 text-sm font-medium text-gray-500">{t('accrued')}</p>
           {accrualGroups.map((day) => (
             <div key={day.index} className="mt-2 rounded-xl border border-dashed border-gray-200 px-2.5 py-2">
               <div className="flex items-start gap-2.5">
@@ -1624,14 +1636,14 @@ function FeedVariant({
                   <div className="flex items-center gap-2.5">
                     <div className="min-w-0 flex-1">
                       <p className="mb-0 text-sm leading-tight text-gray-900">
-                        {day.index === TUESDAY ? 'Первая часть баланса' : 'Вторая часть баланса'}
+                        {day.index === TUESDAY ? t('firstBalancePart') : t('secondBalancePart')}
                       </p>
                       <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
-                        {DAY_NAMES[day.index]}, {day.date} · {day.index === TUESDAY ? '75%' : '25%'}
+                        {DAY_NAMES()[day.index]}, {day.date} · {day.index === TUESDAY ? '75%' : '25%'}
                       </p>
                     </div>
                     <span className="text-sm font-semibold tabular-nums text-emerald-600">
-                      +{fmtRub(day.accrualRub)} ₽
+                      +{formatFinanceMoney(day.accrualRub)}
                     </span>
                   </div>
                   {accrualBreakdown(day, true)}
@@ -1648,7 +1660,7 @@ function FeedVariant({
           <div className="mt-1">
             <OpRow
               kind="in"
-              title={day.index === TUESDAY ? 'Первая часть баланса' : 'Вторая часть баланса'}
+              title={day.index === TUESDAY ? t('firstBalancePart') : t('secondBalancePart')}
               amount={day.accrualRub}
             />
             {accrualBreakdown(day)}
@@ -1656,59 +1668,109 @@ function FeedVariant({
         </div>
       ))}
 
-      {upcoming.length > 0 || showPendingCharge ? (
-        <div className={gap}>
-          <p className="mb-0 text-sm font-medium text-gray-500">Ожидается</p>
-          {upcoming.map((day) => (
-            <div
-              key={day.index}
-              className={`mt-2 rounded-xl border border-dashed border-gray-200 ${compact ? 'px-2.5 py-2' : 'px-3 py-2.5'}`}
-            >
-              <div className={`flex items-start ${compact ? 'gap-2.5' : 'gap-3'}`}>
-                <span
-                  className={`flex shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400 ${
-                    compact ? 'h-8 w-8' : 'h-9 w-9'
-                  }`}
-                >
-                  <ArrowInIcon className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className={`flex items-center ${compact ? 'gap-2.5' : 'gap-3'}`}>
-                    <div className="min-w-0 flex-1">
-                      <p className="mb-0 text-sm leading-tight text-gray-700">
-                        {day.index === TUESDAY ? 'Первая часть баланса' : 'Вторая часть баланса'}
-                      </p>
-                      <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
-                        {DAY_NAMES[day.index]}, {day.date} · {day.index === TUESDAY ? '75%' : '25%'}
-                      </p>
+      {upcoming.length > 0 || showPendingCharge || afterExpected ? (
+        compact ? (
+          <div className={gap}>
+            {upcoming.length > 0 || showPendingCharge ? (
+              <p className="mb-0 text-sm font-medium text-gray-500">{t('expected')}</p>
+            ) : null}
+            {upcoming.map((day) => (
+              <div
+                key={day.index}
+                className="mt-2 rounded-xl border border-dashed border-gray-200 px-2.5 py-2"
+              >
+                <div className="flex items-start gap-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400">
+                    <ArrowInIcon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-0 text-sm leading-tight text-gray-700">
+                          {day.index === TUESDAY ? t('firstBalancePart') : t('secondBalancePart')}
+                        </p>
+                        <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
+                          {DAY_NAMES()[day.index]}, {day.date} · {day.index === TUESDAY ? '75%' : '25%'}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums text-gray-400">
+                        +{formatFinanceMoney(day.accrualRub)}
+                      </span>
                     </div>
-                    <span className="text-sm font-semibold tabular-nums text-gray-400">
-                      +{fmtRub(day.accrualRub)} ₽
-                    </span>
+                    {accrualBreakdown(day, true)}
                   </div>
-                  {accrualBreakdown(day, true)}
                 </div>
               </div>
-            </div>
-          ))}
-          {showPendingCharge ? (
-            <div className="mt-2 flex items-center gap-3 rounded-xl border border-dashed border-gray-200 px-3 py-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400">
-                <ArrowOutIcon className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="mb-0 text-sm leading-tight text-gray-700">Оплата продвижения</p>
-                <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
-                  {DAY_NAMES[6]}, {chargeDate} · на портале продавца
-                </p>
+            ))}
+            {showPendingCharge ? (
+              <div className="mt-2 flex items-center gap-3 rounded-xl border border-dashed border-gray-200 px-3 py-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400">
+                  <ArrowOutIcon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="mb-0 text-sm leading-tight text-gray-700">{t('promoPayment')}</p>
+                  <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
+                    {DAY_NAMES()[6]}, {chargeDate} · {t('onSellerPortal')}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold tabular-nums text-gray-400">−{formatFinanceMoney(spentRub)}</span>
               </div>
-              <span className="text-sm font-semibold tabular-nums text-gray-400">−{fmtRub(spentRub)} ₽</span>
-            </div>
-          ) : null}
-        </div>
+            ) : null}
+            {afterExpected}
+          </div>
+        ) : (
+          <div className={gap}>
+            {upcoming.length > 0 || showPendingCharge ? (
+              <p className="mb-0 text-sm font-medium text-gray-500">{t('expected')}</p>
+            ) : null}
+            {upcoming.map((day) => (
+              <div
+                key={day.index}
+                className="mt-2 rounded-xl border border-dashed border-gray-200 px-3 py-2.5"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400">
+                    <ArrowInIcon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="mb-0 text-sm leading-tight text-gray-700">
+                          {day.index === TUESDAY ? t('firstBalancePart') : t('secondBalancePart')}
+                        </p>
+                        <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
+                          {DAY_NAMES()[day.index]}, {day.date} · {day.index === TUESDAY ? '75%' : '25%'}
+                        </p>
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums text-gray-400">
+                        +{formatFinanceMoney(day.accrualRub)}
+                      </span>
+                    </div>
+                    {accrualBreakdown(day, true)}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {showPendingCharge ? (
+              <div className="mt-2 flex items-center gap-3 rounded-xl border border-dashed border-gray-200 px-3 py-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-50 text-gray-400">
+                  <ArrowOutIcon className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="mb-0 text-sm leading-tight text-gray-700">{t('promoPayment')}</p>
+                  <p className="mb-0 mt-0.5 text-xs leading-tight text-gray-500">
+                    {DAY_NAMES()[6]}, {chargeDate} · {t('onSellerPortal')}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold tabular-nums text-gray-400">−{formatFinanceMoney(spentRub)}</span>
+              </div>
+            ) : null}
+            {afterExpected}
+          </div>
+        )
       ) : null}
       </div>
-      </>
+      </div>
       )}
     </>
   );
@@ -1740,13 +1802,13 @@ function TurnoverVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
             <span className="text-gray-600">{row.label}</span>
             <span className={`tabular-nums ${row.value === 0 ? 'text-gray-400' : 'text-gray-900'}`}>
               {row.sign && row.value > 0 ? `${row.sign} ` : ''}
-              {fmtRub(row.value)} ₽
+              {formatFinanceMoney(row.value)}
             </span>
           </div>
         ))}
         <div className="flex items-baseline justify-between gap-3 bg-[#F7F7F9] px-4 py-3.5">
           <span className="text-sm font-semibold text-gray-900">Остаток сейчас</span>
-          <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(view.availableNowRub)} ₽</span>
+          <span className="text-lg font-bold tabular-nums text-gray-900">{formatFinanceMoney(view.availableNowRub)}</span>
         </div>
       </div>
 
@@ -1770,7 +1832,7 @@ function TurnoverVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
               style={{ height: `${Math.max(3, (day.closeRub / max) * 100)}%` }}
             />
             <span className={`text-[11px] ${day.index === weekdayIndex ? 'font-semibold text-gray-900' : 'text-gray-500'}`}>
-              {DAY_SHORT[day.index]}
+              {DAY_SHORT()[day.index]}
             </span>
           </div>
         ))}
@@ -1812,12 +1874,12 @@ function ChartVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
         <div>
           <p className="text-sm text-gray-500">Остаток сейчас</p>
           <p className="mt-1 text-[34px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-            {fmtRub(view.availableNowRub)} ₽
+            {formatFinanceMoney(view.availableNowRub)}
           </p>
         </div>
         <div className="text-right text-sm">
           <p className="text-gray-500">Лимит недели</p>
-          <p className="mt-1 font-semibold tabular-nums text-gray-900">{fmtRub(view.netRub)} ₽</p>
+          <p className="mt-1 font-semibold tabular-nums text-gray-900">{formatFinanceMoney(view.netRub)}</p>
         </div>
       </div>
 
@@ -1831,7 +1893,7 @@ function ChartVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
           ) : null}
         </svg>
         <div className="mt-1.5 grid grid-cols-7 text-center text-[11px]">
-          {DAY_SHORT.map((label, index) => (
+          {DAY_SHORT().map((label, index) => (
             <span key={label} className={index === weekdayIndex ? 'font-semibold text-gray-900' : 'text-gray-400'}>
               {label}
             </span>
@@ -1843,8 +1905,8 @@ function ChartVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>) {
 
       <div className="mt-6 divide-y divide-gray-100 border-y border-gray-100 text-sm">
         {[
-          { label: `Зачисление · вт ${d.tuesdayDate}`, value: `+${fmtRub(view.tuesdayRub)} ₽`, done: d.tuesdayDone },
-          { label: `Зачисление · чт ${d.thursdayDate}`, value: `+${fmtRub(view.thursdayRub)} ₽`, done: d.thursdayDone },
+          { label: `Зачисление · вт ${d.tuesdayDate}`, value: `+${formatFinanceMoney(view.tuesdayRub)}`, done: d.tuesdayDone },
+          { label: `Зачисление · чт ${d.thursdayDate}`, value: `+${formatFinanceMoney(view.thursdayRub)}`, done: d.thursdayDone },
           { label: `Обнуление остатка · вт ${d.burnDate}`, value: 'весь остаток', done: false },
         ].map((row) => (
           <div key={row.label} className="flex items-center justify-between gap-3 py-3">
@@ -1865,21 +1927,21 @@ function ScheduleVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
       key: 'tue',
       date: d.tuesdayDate,
       label: 'Зачисление 75%',
-      amount: `+${fmtRub(view.tuesdayRub)} ₽`,
+      amount: `+${formatFinanceMoney(view.tuesdayRub)}`,
       status: d.tuesdayDone ? 'done' : 'pending',
     },
     {
       key: 'thu',
       date: d.thursdayDate,
       label: 'Зачисление 25%',
-      amount: `+${fmtRub(view.thursdayRub)} ₽`,
+      amount: `+${formatFinanceMoney(view.thursdayRub)}`,
       status: d.thursdayDone ? 'done' : 'pending',
     },
     {
       key: 'reset',
       date: d.burnDate,
       label: 'Обнуление остатка',
-      amount: view.availableNowRub > 0 ? `до −${fmtRub(view.availableNowRub)} ₽` : '0 ₽',
+      amount: view.availableNowRub > 0 ? `до −${formatFinanceMoney(view.availableNowRub)}` : '0 ₽',
       status: 'reset',
     },
   ] as const;
@@ -1899,12 +1961,12 @@ function ScheduleVariant({ titleId, view, weekdayIndex }: Omit<Props, 'variant'>
       <div className="mt-6 flex items-center gap-4 rounded-2xl bg-[#F7F7F9] p-4">
         <div className="min-w-0 flex-1">
           <p className="text-xs text-gray-500">Доступно сейчас</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{fmtRub(view.availableNowRub)} ₽</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{formatFinanceMoney(view.availableNowRub)}</p>
         </div>
         <div className="h-10 w-px bg-gray-200" aria-hidden />
         <div className="min-w-0 flex-1">
           <p className="text-xs text-gray-500">Всего за неделю</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{fmtRub(view.netRub)} ₽</p>
+          <p className="mt-1 text-2xl font-bold tabular-nums text-gray-900">{formatFinanceMoney(view.netRub)}</p>
         </div>
       </div>
 

@@ -1,4 +1,11 @@
 import React, { useState } from 'react';
+import { useFinanceLocale } from './FinanceLocaleContext';
+import {
+  formatFinanceMoney,
+  formatPostponedPaymentsLabelI18n,
+  tFinance,
+  tFinanceTemplate,
+} from './financeI18n';
 import { Calendar, ChevronDown, Clock, InfoCircleFill } from './Icons';
 import {
   financeBalanceWeekChargeDate,
@@ -33,11 +40,7 @@ export type FinanceBalanceStorySpend = {
 };
 
 export function formatPostponedPaymentsLabel(count: number) {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return `${count} Отложенный платёж`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} Отложенных платежа`;
-  return `${count} Отложенных платежей`;
+  return formatPostponedPaymentsLabelI18n(count);
 }
 
 export const FINANCE_BALANCE_STORY_VARIANTS = [
@@ -60,7 +63,7 @@ const TUESDAY = 1;
 const THURSDAY = 3;
 
 const fmtRub = (n: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n);
-const rub = (n: number) => `${fmtRub(n)} ₽`;
+const rub = (n: number) => formatFinanceMoney(n);
 
 /** «8 ноября» → «8 нояб» */
 const short = (label: string) => {
@@ -88,7 +91,7 @@ function useStory(view: FinanceBalanceSimView, day: number, spend: FinanceBalanc
     burnDate: short(financeBalanceWeekDate(TUESDAY, undefined, day < TUESDAY ? offset : offset + 1)),
     zeroWeek: view.grossRub <= 0,
     chargeShort: short(spend.chargeDate),
-    feeLabel: `Комиссия ${spend.feePercent}%`,
+    feeLabel: `${tFinance('commission')} ${spend.feePercent}%`,
     daysToCharge: spend.postponed ? null : Math.max(0, 6 - day),
     spentPct: view.grossRub > 0 ? Math.min(100, Math.round((spend.spentRub / view.grossRub) * 100)) : 0,
   };
@@ -123,13 +126,15 @@ function LimitCalc({ view, dark = false }: { view: FinanceBalanceSimView; dark?:
 }
 
 function Actions({ spend, tone = 'white' }: { spend: FinanceBalanceStorySpend; tone?: 'white' | 'gray' }) {
+  const { t, locale } = useFinanceLocale();
+  void locale;
   const base = `flex h-7 w-full items-center justify-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-gray-900 transition-colors ${
     tone === 'white' ? 'bg-white hover:bg-gray-50' : 'bg-[#F2F2F7] hover:bg-[#ECECF0]'
   }`;
   return (
     <div className="mt-3 flex gap-1.5">
       <button type="button" onClick={spend.openPostpone} className={base}>
-        {spend.postponed ? 'Изменить дату' : 'Отложить списание'}
+        {spend.postponed ? t('changeDate') : t('postponeCharge')}
       </button>
       {spend.postponedCount > 0 ? (
         <button type="button" onClick={spend.openSchedule} className={base}>
@@ -171,6 +176,8 @@ function SpendDetails({
   /** Сумма в итоговой строке; по умолчанию spend.weekChargeRub */
   chargeRub?: number;
 }) {
+  const { t, locale } = useFinanceLocale();
+  void locale;
   const btn = buttonClass ?? 'bg-[#F2F2F7] text-gray-900 hover:bg-[#ECECF0]';
   const totalRub = chargeRub ?? spend.weekChargeRub;
   const hasDueFromEarlier = spend.dueFromEarlier.length > 0;
@@ -178,7 +185,7 @@ function SpendDetails({
 
   const thisWeekRows = (
     <div className="space-y-1.5">
-      <SpendRow label={spentLabel ?? `Расход на ${story.range}`} value={rub(spend.spentRub)} />
+      <SpendRow label={spentLabel ?? `${t('spendOn')} ${story.range}`} value={rub(spend.spentRub)} />
       <SpendRow label={story.feeLabel} value={rub(spend.feeRub)} />
     </div>
   );
@@ -187,7 +194,7 @@ function SpendDetails({
     <div className="mt-2.5 flex items-start gap-2 rounded-xl bg-white px-3 py-2.5">
       <InfoCircleFill className="mt-0.5 h-4 w-4 shrink-0 text-[#3B82F6]" />
       <p className="mb-0 text-[12px] leading-snug text-gray-600">
-        Оплата перенесена на {spend.chargeDate} — на этой неделе не спишем
+        {tFinanceTemplate('paymentMovedNote', { date: spend.chargeDate })}
       </p>
     </div>
   ) : null;
@@ -197,18 +204,18 @@ function SpendDetails({
       {sectioned ? (
         <div className="space-y-3">
           <div>
-            <SpendSectionTitle>Эта неделя</SpendSectionTitle>
+            <SpendSectionTitle>{t('thisWeek')}</SpendSectionTitle>
             {thisWeekRows}
             {postponeNote}
           </div>
           {hasDueFromEarlier ? (
             <div className="border-t border-gray-200/80 pt-3">
-              <SpendSectionTitle>Отложенные с прошлых недель</SpendSectionTitle>
+              <SpendSectionTitle>{t('deferredFromEarlier')}</SpendSectionTitle>
               <div className="space-y-3">
                 {spend.dueFromEarlier.map((item) => (
                   <div key={item.period} className="space-y-1.5">
-                    <SpendRow label={`Расход за ${item.period}`} value={rub(item.spentRub)} />
-                    <SpendRow label={`Комиссия ${item.feePercent}%`} value={rub(item.feeRub)} />
+                    <SpendRow label={`${t('spendFor')} ${item.period}`} value={rub(item.spentRub)} />
+                    <SpendRow label={`${t('commission')} ${item.feePercent}%`} value={rub(item.feeRub)} />
                   </div>
                 ))}
               </div>
@@ -220,7 +227,7 @@ function SpendDetails({
       )}
       <div className="mt-3 flex items-baseline justify-between gap-3 border-t border-gray-200/80 pt-3">
         <span className="text-[13px] font-semibold text-gray-900">
-          {chargeLabel ?? `К списанию ${story.chargeShort}`}
+          {chargeLabel ?? `${t('toCharge')} ${story.chargeShort}`}
         </span>
         <span className="text-[13px] font-semibold tabular-nums text-gray-900">{rub(totalRub)}</span>
       </div>
@@ -230,7 +237,7 @@ function SpendDetails({
           onClick={spend.openPostpone}
           className={`flex h-9 w-full items-center justify-center rounded-xl px-3 text-[13px] font-medium transition-colors ${btn}`}
         >
-          {spend.postponed ? 'Изменить дату списания' : 'Отложить списание'}
+          {spend.postponed ? t('changeChargeDate') : t('postponeCharge')}
         </button>
         {spend.postponedCount > 0 ? (
           <button
@@ -788,6 +795,8 @@ export function FinanceBalanceChargeRow({
   weekdayIndex: number;
   spend: FinanceBalanceStorySpend;
 }) {
+  const { t, locale } = useFinanceLocale();
+  void locale;
   const story = useStory(view, weekdayIndex, spend);
   const [open, setOpen] = useState(false);
   const weekChargeDate = spend.weekChargeDate;
@@ -801,9 +810,9 @@ export function FinanceBalanceChargeRow({
         className="-mx-1.5 flex w-[calc(100%+0.75rem)] items-center gap-2 rounded-lg px-1.5 py-2.5 text-left text-xs"
       >
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-medium text-gray-500">К оплате {weekChargeDate}</span>
+          <span className="block text-sm font-medium text-gray-500">{t('dueToPay')} {weekChargeDate}</span>
           <span className="mt-0.5 block text-[11px] font-normal text-gray-400">
-            С баланса на портале продавца
+            {t('fromBalanceOnPortal')}
           </span>
         </span>
         <span className="text-sm font-normal tabular-nums text-gray-900">{rub(weekChargeRub)}</span>
@@ -815,8 +824,8 @@ export function FinanceBalanceChargeRow({
             spend={spend}
             story={story}
             buttonClass="bg-white text-gray-900 hover:bg-gray-50"
-            spentLabel={`Расход за ${financeBalanceWeekRangeLabel(undefined, view.weekOffset)}`}
-            chargeLabel={`Итого к оплате ${weekChargeDate}`}
+            spentLabel={`${t('spendFor')} ${financeBalanceWeekRangeLabel(undefined, view.weekOffset)}`}
+            chargeLabel={`${t('totalDue')} ${weekChargeDate}`}
             chargeRub={weekChargeRub}
           />
         </div>

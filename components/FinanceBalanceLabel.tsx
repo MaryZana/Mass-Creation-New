@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useFinanceLocale } from './FinanceLocaleContext';
+import { formatFinanceMoney, formatFinanceNumber, tFinance } from './financeI18n';
 import { createPortal } from 'react-dom';
 import {
   BalanceIntro,
@@ -8,7 +10,7 @@ import {
 import { notifySidePanelOpen, useCloseOnOtherSidePanel } from './FeatureVideoGuide';
 import { ChevronRight, Coins, InfoCircleFill, Plus, Wallet, X } from './Icons';
 
-const fmtRub = (n: number) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 0 }).format(n);
+const fmtRub = (n: number) => formatFinanceNumber(n);
 
 function IconTile({ tone = 'own' }: { children?: React.ReactNode; tone?: 'own' | 'balance' }) {
   const Icon = tone === 'balance' ? Coins : Wallet;
@@ -78,7 +80,7 @@ function FormulaRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
   return (
     <div className="text-sm">
       <p className="text-[28px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-        {fmtRub(accountRub + balanceRub)} ₽
+        {formatFinanceMoney(accountRub + balanceRub)}
       </p>
       <div className="mt-3 flex items-center gap-1.5">
         {tileButton(
@@ -87,7 +89,7 @@ function FormulaRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           chip,
           <>
             <span className="text-xs text-gray-500">Счёт</span>
-            <span className="font-semibold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+            <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
           </>,
         )}
         <span className="shrink-0 text-base font-semibold text-gray-300">+</span>
@@ -97,7 +99,7 @@ function FormulaRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           chip,
           <>
             <span className="text-xs text-gray-500">Баланс</span>
-            <span className="font-semibold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+            <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
           </>,
         )}
       </div>
@@ -116,7 +118,7 @@ function TreeRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
   return (
     <div className="text-sm">
       <p className="text-[28px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-        {fmtRub(accountRub + balanceRub)} ₽
+        {formatFinanceMoney(accountRub + balanceRub)}
       </p>
       <div className="mt-2">
         <div className="flex items-stretch">
@@ -124,7 +126,7 @@ function TreeRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           <div className="ml-2 min-w-0 flex-1">
             <ClickableRow onClick={onTopUp} ariaLabel="Пополнить счёт">
               <span className="min-w-0 flex-1 text-gray-600">Счёт</span>
-              <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+              <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
               <Plus className="h-4 w-4 shrink-0 text-gray-400" />
             </ClickableRow>
           </div>
@@ -134,7 +136,7 @@ function TreeRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           <div className="ml-2 min-w-0 flex-1">
             <ClickableRow onClick={onOpen} ariaLabel="Начисления баланса">
               <span className="min-w-0 flex-1 text-gray-600">Баланс</span>
-              <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+              <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
               <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
             </ClickableRow>
           </div>
@@ -150,7 +152,7 @@ function SplitRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
   return (
     <div className="text-sm">
       <p className="text-[28px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-        {fmtRub(accountRub + balanceRub)} ₽
+        {formatFinanceMoney(accountRub + balanceRub)}
       </p>
       <div className="mt-3 flex overflow-hidden rounded-xl border border-gray-200">
         {tileButton(
@@ -161,7 +163,7 @@ function SplitRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
               <Wallet className="h-5 w-5 shrink-0" /> Счёт
             </span>
-            <span className="font-semibold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+            <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
           </>,
         )}
         <span className="w-px shrink-0 bg-gray-200" aria-hidden />
@@ -173,7 +175,7 @@ function SplitRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
             <span className="flex items-center gap-1.5 text-xs text-gray-500">
               <Coins className="h-5 w-5 shrink-0" /> Баланс
             </span>
-            <span className="font-semibold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+            <span className="font-semibold tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
           </>,
         )}
       </div>
@@ -188,21 +190,21 @@ function ReceiptRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
       <div className="space-y-0.5">
         <ClickableRow onClick={onTopUp} ariaLabel="Пополнить счёт">
           <span className="min-w-0 flex-1 text-gray-600">Счёт</span>
-          <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+          <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
           <Plus className="h-4 w-4 shrink-0 text-gray-400" />
         </ClickableRow>
         <ClickableRow onClick={onOpen} ariaLabel="Начисления баланса">
           <span className="min-w-0 flex-1 text-gray-600">
             <span className="mr-1.5 text-gray-300">+</span>Баланс
           </span>
-          <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+          <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
           <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
         </ClickableRow>
       </div>
       <div className="mt-2 flex items-baseline justify-between border-t border-gray-200 pt-3">
         <span className="text-gray-500">Итого</span>
         <span className="text-[24px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-          {fmtRub(accountRub + balanceRub)} ₽
+          {formatFinanceMoney(accountRub + balanceRub)}
         </span>
       </div>
     </div>
@@ -216,7 +218,7 @@ function NestedRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
   return (
     <div className="rounded-2xl bg-[#F3F4F6] p-1.5 text-sm">
       <p className="mb-0 px-2 pb-3 pt-2 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-        {fmtRub(accountRub + balanceRub)} ₽
+        {formatFinanceMoney(accountRub + balanceRub)}
       </p>
       <div className="space-y-1.5">
         {tileButton(
@@ -226,7 +228,7 @@ function NestedRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           <>
             <IconTile tone="own" />
             <span className="min-w-0 flex-1 text-gray-600">Счёт</span>
-            <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+            <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
             <Plus className="h-4 w-4 shrink-0 text-gray-400" />
           </>,
         )}
@@ -237,7 +239,7 @@ function NestedRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
           <>
             <IconTile tone="balance" />
             <span className="min-w-0 flex-1 text-gray-600">Баланс</span>
-            <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+            <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
             <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
           </>,
         )}
@@ -272,7 +274,7 @@ function GrayTotal({ label, totalRub }: { label: React.ReactNode; totalRub: numb
     <div className="px-2 pb-3 pt-2">
       {label}
       <p className="mb-0 mt-1.5 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-        {fmtRub(totalRub)} ₽
+        {formatFinanceMoney(totalRub)}
       </p>
     </div>
   );
@@ -315,20 +317,25 @@ function AccountHowInformer() {
 }
 
 function AccountLabel({ plain = false }: { plain?: boolean }) {
+  const { t, locale } = useFinanceLocale();
+  void locale;
+
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5">
       {plain ? <Wallet className="h-5 w-5 shrink-0 text-gray-900" /> : <IconTile tone="own" />}
-      <span className="text-gray-600">Счёт</span>
+      <span className="text-gray-600">{t('account')}</span>
       <AccountHowInformer />
     </span>
   );
 }
 
 function BalanceLabel({ plain = false }: { plain?: boolean }) {
+  const { t, locale } = useFinanceLocale();
+  void locale;
   return (
     <span className="flex min-w-0 flex-1 items-center gap-1.5">
       {plain ? <Coins className="h-5 w-5 shrink-0 text-gray-900" /> : <IconTile tone="balance" />}
-      <span className="text-gray-600">Баланс</span>
+      <span className="text-gray-600">{t('balance')}</span>
     </span>
   );
 }
@@ -462,6 +469,8 @@ function BalanceHowInformer({ dark = false }: { dark?: boolean }) {
 
 /** Подпись «Баланс» с информером — светлая/тёмная под тон карточки */
 export function BalanceDarkLabel() {
+  const { locale } = useFinanceLocale();
+  void locale;
   const [dark, setDark] = useState(() => financeBalanceCardTone(readFinanceBalanceCardTone()).dark);
 
   useEffect(() => {
@@ -473,7 +482,7 @@ export function BalanceDarkLabel() {
   return (
     <span className="relative z-10 flex items-center gap-1.5 text-sm">
       <Coins className={`h-5 w-5 shrink-0 ${dark ? 'text-white' : 'text-gray-900'}`} />
-      <span className={dark ? 'text-white/70' : 'text-gray-600'}>Баланс</span>
+      <span className={dark ? 'text-white/70' : 'text-gray-600'}>{tFinance('balance')}</span>
       <BalanceHowInformer dark={dark} />
     </span>
   );
@@ -487,12 +496,12 @@ function GrayPlusRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Labele
       <div className="space-y-1.5">
         <div className={`${whiteRow} py-1.5 pr-1.5`}>
           <AccountLabel />
-          <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+          <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
           <PurplePlus onClick={onTopUp} />
         </div>
         <button type="button" onClick={onOpen} aria-label="Начисления баланса" className={`${whiteRow} ${whiteRowHover}`}>
           <BalanceLabel />
-          <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+          <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
           <span className="flex h-8 w-8 shrink-0 items-center justify-center">
             <ChevronRight className="h-4 w-4 text-gray-400" />
           </span>
@@ -512,7 +521,7 @@ function GrayActionsRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
           <IconTile tone="own" />
           <span className="min-w-0 flex-1">
             <span className="block text-xs leading-tight text-gray-500">Счёт</span>
-            <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+            <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
           </span>
           <button
             type="button"
@@ -526,7 +535,7 @@ function GrayActionsRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
           <IconTile tone="balance" />
           <span className="min-w-0 flex-1">
             <span className="block text-xs leading-tight text-gray-500">Баланс</span>
-            <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+            <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
           </span>
           <button
             type="button"
@@ -550,7 +559,7 @@ function GraySideButtonRows({ label, accountRub, balanceRub, onOpen, onTopUp }: 
         <div className="flex gap-1.5">
           <div className={`${whiteRow} min-w-0 flex-1`}>
             <AccountLabel />
-            <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+            <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
           </div>
           <button
             type="button"
@@ -563,7 +572,7 @@ function GraySideButtonRows({ label, accountRub, balanceRub, onOpen, onTopUp }: 
         </div>
         <button type="button" onClick={onOpen} aria-label="Начисления баланса" className={`${whiteRow} ${whiteRowHover}`}>
           <BalanceLabel />
-          <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+          <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
           <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
         </button>
       </div>
@@ -577,7 +586,7 @@ function GrayCaptionRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
     <div className="rounded-2xl bg-[#F3F4F6] p-1.5 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-2 pb-3 pt-2.5">
         <p className="mb-0 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-          {fmtRub(accountRub + balanceRub)} ₽
+          {formatFinanceMoney(accountRub + balanceRub)}
         </p>
         {label}
       </div>
@@ -588,7 +597,7 @@ function GrayCaptionRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
             <span className="block leading-tight text-gray-900">Счёт</span>
             <span className="text-xs leading-tight text-gray-500">Пополняете вы</span>
           </span>
-          <span className="font-medium tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+          <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
           <PurplePlus onClick={onTopUp} />
         </div>
         <button type="button" onClick={onOpen} aria-label="Начисления баланса" className={`${whiteRow} ${whiteRowHover} py-1.5 pr-1.5`}>
@@ -597,7 +606,7 @@ function GrayCaptionRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
             <span className="block leading-tight text-gray-900">Баланс</span>
             <span className="text-xs leading-tight text-gray-500">Начисляет WB</span>
           </span>
-          <span className="font-medium tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+          <span className="font-medium tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
           <span className="flex h-8 w-8 shrink-0 items-center justify-center">
             <ChevronRight className="h-4 w-4 text-gray-400" />
           </span>
@@ -607,7 +616,7 @@ function GrayCaptionRows({ label, accountRub, balanceRub, onOpen, onTopUp }: Lab
   );
 }
 
-/** 10 — счёт на белой строке с кнопкой, баланс — текстовой строкой прямо на сером */
+/** 10 — счёт на серой строке с кнопкой, баланс — текстовой строкой / слотом */
 function GrayLightBalanceRows({
   label,
   accountRub,
@@ -637,7 +646,7 @@ function GrayLightBalanceRows({
           <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#9A41FE] text-white transition-colors group-hover:bg-[#8a38e8]">
             <Plus className="h-4 w-4" />
           </span>
-          <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+          <span className="text-lg font-bold tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
         </button>
       </div>
     ) : (
@@ -651,36 +660,36 @@ function GrayLightBalanceRows({
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#9A41FE] text-white transition-colors group-hover:bg-[#8a38e8]">
           <Plus className="h-4 w-4" />
         </span>
-        <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(accountRub)} ₽</span>
+        <span className="text-lg font-bold tabular-nums text-gray-900">{formatFinanceMoney(accountRub)}</span>
       </button>
     );
 
   return (
-    <div className="text-sm">
+    <div className={`text-sm ${balanceInSlot && balanceSlot ? 'flex flex-col' : ''}`}>
       {balanceSlot ? (
         <>
           <div className="px-3.5 pt-3.5">
             {label}
             <p className="mb-0 mt-1.5 pb-3 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-              {fmtRub(accountRub + balanceRub)} ₽
+              {formatFinanceMoney(accountRub + balanceRub)}
             </p>
           </div>
           {balanceInSlot ? (
-            <div className="space-y-1">
-              <div className="rounded-xl bg-white">{accountRow(true)}</div>
+            <div className="flex flex-col gap-1">
+              <div className="rounded-xl bg-[#F0F0F2]">{accountRow(true)}</div>
               {balanceSlot}
             </div>
           ) : (
-          <div className="rounded-xl bg-white">
+          <div className="rounded-xl bg-[#F0F0F2]">
               <>
                 {accountRow(true)}
-                <div className="flex w-full items-center gap-2 border-t border-gray-200 px-4 pt-3 pb-1">
+                <div className="flex w-full items-center gap-2 border-t border-gray-200/80 px-4 pt-3 pb-1">
                   <span className="relative z-10 flex min-w-0 flex-1 items-center gap-1.5">
                     <IconTile tone="balance" />
-                    <span className="text-gray-600">Баланс</span>
+                    <span className="text-gray-600">{tFinance('balance')}</span>
                     <BalanceHowInformer />
                   </span>
-                  <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+                  <span className="text-lg font-bold tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
                 </div>
                 <div className="px-4 pb-4 pt-1">{balanceSlot}</div>
               </>
@@ -691,13 +700,13 @@ function GrayLightBalanceRows({
         <>
           {label}
           <p className="mb-0 mt-1.5 pb-3 text-[26px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-            {fmtRub(accountRub + balanceRub)} ₽
+            {formatFinanceMoney(accountRub + balanceRub)}
           </p>
           {accountRow(false)}
           {hideBalanceChevron ? (
             <div className="mt-0.5 flex items-center gap-2.5 -mx-1.5 w-[calc(100%+0.75rem)] px-1.5 py-1">
               <BalanceLabel />
-              <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+              <span className="text-lg font-bold tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
             </div>
           ) : (
             <button
@@ -707,7 +716,7 @@ function GrayLightBalanceRows({
               className="group mt-0.5 flex items-center gap-2.5 -mx-1.5 w-[calc(100%+0.75rem)] rounded-xl px-1.5 py-1 text-left transition-colors hover:bg-black/[0.04]"
             >
               <BalanceLabel />
-              <span className="text-lg font-bold tabular-nums text-gray-900">{fmtRub(balanceRub)} ₽</span>
+              <span className="text-lg font-bold tabular-nums text-gray-900">{formatFinanceMoney(balanceRub)}</span>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#F2F2F7] text-gray-700 transition-colors group-hover:bg-[#ECECF0]">
                 <ChevronRight className="h-4 w-4" />
               </span>
@@ -769,7 +778,7 @@ function CurrentRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
   return (
     <div className="text-sm">
       <p className="cursor-default text-[28px] font-bold leading-none tabular-nums tracking-tight text-gray-900">
-        {fmtRub(accountRub + balanceRub)} ₽
+        {formatFinanceMoney(accountRub + balanceRub)}
       </p>
       <div className="mt-2 space-y-0.5">
         <ClickableRow onClick={onTopUp} ariaLabel="Пополнить счёт">
@@ -778,7 +787,7 @@ function CurrentRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
             <span className="min-w-0 whitespace-nowrap text-gray-600">Счёт</span>
           </span>
           <span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-gray-900">
-            {fmtRub(accountRub)} ₽
+            {formatFinanceMoney(accountRub)}
           </span>
           <Plus className="h-4 w-4 shrink-0 text-gray-400" />
         </ClickableRow>
@@ -788,7 +797,7 @@ function CurrentRows({ accountRub, balanceRub, onOpen, onTopUp }: RowsProps) {
             <span className="min-w-0 whitespace-nowrap text-gray-600">Баланс</span>
           </span>
           <span className="shrink-0 whitespace-nowrap font-medium tabular-nums text-gray-900">
-            {fmtRub(balanceRub)} ₽
+            {formatFinanceMoney(balanceRub)}
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-gray-400" />
         </ClickableRow>

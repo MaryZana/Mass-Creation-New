@@ -128,9 +128,9 @@ function RecommendationsBidInput({
 function stockLeftForRow(row: Pick<CampaignRecord, 'nmId' | 'stockLeft'>): number {
   if (row.stockLeft != null && Number.isFinite(row.stockLeft)) return Math.max(0, row.stockLeft);
   const seed = Math.abs(row.nmId) || 1;
-  const bucket = seed % 20;
-  if (bucket === 0) return 0;
-  if (bucket <= 2) return 1 + (seed % 8);
+  // Нулевой остаток редко и «рандомно» по nmId (~2%), без привязки к первой строке
+  if (seed % 47 === 0) return 0;
+  if (seed % 17 <= 1) return 1 + (seed % 8);
   return 20 + (seed % 480);
 }
 
@@ -781,7 +781,7 @@ export function MassCreationIsland({
             {campaigns.map((row, rowIndex) => {
               const searchOn = row.searchBid != null;
               const recsOn = row.recommendationsBid != null;
-              const stockLeft = rowIndex === 0 ? 0 : stockLeftForRow(row);
+              const stockLeft = stockLeftForRow(row);
               const bidderSetup = autobidderSetup[row.id];
               const bidderLabel = autobidderCellLabel(bidderSetup);
               const showConflict = rowIndex === 2;

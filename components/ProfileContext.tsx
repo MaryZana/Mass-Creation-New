@@ -1,12 +1,19 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
-export type ProfileId = '1' | '2' | '3';
+export type ProfileId = '1' | '2' | '3' | '4';
 
 /** Новый кабинет без кампаний — только экран первой кампании. */
 export const NEW_SELLER_PROFILE_ID: ProfileId = '3';
 
+/** Спецконтрактник — вместо счёта и баланса платит с контрактов WB. */
+export const SPECIAL_CONTRACTOR_PROFILE_ID: ProfileId = '4';
+
 export function isNewSellerProfile(profileId: ProfileId): boolean {
   return profileId === NEW_SELLER_PROFILE_ID;
+}
+
+export function isSpecialContractorProfile(profileId: ProfileId): boolean {
+  return profileId === SPECIAL_CONTRACTOR_PROFILE_ID;
 }
 
 /** Товар, подставляемый на странице создания одной кампании после «Повторить». */
@@ -29,6 +36,7 @@ export const PROFILES = [
   { id: '1' as const, label: 'Профиль 1', company: 'ООО «Первый»' },
   { id: '2' as const, label: 'Профиль 2', company: 'ООО «Второй»' },
   { id: '3' as const, label: 'Новый селлер', company: 'Новый селлер' },
+  { id: '4' as const, label: 'Спецконтрактник', company: 'спецконтрактник' },
 ] as const;
 
 type ProfileContextValue = {

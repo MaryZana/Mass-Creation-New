@@ -87,7 +87,8 @@ import ProductPromotionConceptPage from './pages/ProductPromotionConceptPage';
 import StatsPage from './pages/StatsPage';
 import AudienceMetricsPage from './pages/AudienceMetricsPage';
 import FinancePage from './pages/FinancePage';
-import FinanceTopUpPage from './pages/FinanceTopUpPage';
+import FinanceTopUpPage, { FinanceTopUpSheetHost } from './pages/FinanceTopUpPage';
+import { openFinanceTopUp } from './utils/financeTopUpSheet';
 import BonusesPage from './pages/BonusesPage';
 import OverviewPage from './pages/OverviewPage';
 import HelpPage from './pages/HelpPage';
@@ -5105,6 +5106,7 @@ export default function App() {
           campaignCreationActive={false}
           researchAccess={isBonusesResearchAccess ? 'bonuses' : null}
         />
+        <FinanceTopUpSheetHost />
         <CampaignsInsightFilterProvider>
           <OverviewBridgeProvider
             value={{
@@ -5336,6 +5338,7 @@ export default function App() {
             : null
       }
     />
+    <FinanceTopUpSheetHost />
     <Toast show={showToast} message={toastMessage} onClose={() => setShowToast(false)} />
     {cpmBidRoundedAlertNode}
     <UndoToast campaign={lastDeleted?.campaign} onUndo={handleUndoDelete} />
@@ -6244,7 +6247,7 @@ export default function App() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => navigate('/finance/top-up')}
+                          onClick={() => openFinanceTopUp()}
                           className="text-sm font-medium text-[#3B82F6] underline underline-offset-2 hover:text-[#2563EB]"
                         >
                           Пополнить счет

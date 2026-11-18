@@ -6,10 +6,18 @@ import {
   PRODUCT_PROMOTION_CONCEPT_PATH,
 } from '../constants/campaignListRoutes';
 import { Check, ChevronDown, MoreVertical, Plus, X } from './Icons';
-import { isNewSellerProfile, PROFILES, useProfile, type ProfileId } from './ProfileContext';
+import {
+  isNewSellerProfile,
+  isSpecialContractorProfile,
+  PROFILES,
+  useProfile,
+  type ProfileId,
+} from './ProfileContext';
+import { contractsTotals } from './FinanceContracts';
 import { usePromoBonusDemo } from './PromoBonusDemoContext';
 import { FINANCE_BALANCE_DEMO_EVENT, readFinanceBufferRub } from '../utils/financeBalanceDemo';
-import { financeHomePath, financeTopUpPath } from '../utils/financeRoutes';
+import { financeHomePath } from '../utils/financeRoutes';
+import { openFinanceTopUp } from '../utils/financeTopUpSheet';
 
 export const NEW_SELLER_CREATE_CAMPAIGN_PATH = '/create-campaign';
 
@@ -159,12 +167,14 @@ export const PROMO_BONUS_TOTAL_BY_PROFILE: Record<ProfileId, number> = {
   '1': 250_000,
   '2': 250_000,
   '3': 5_000,
+  '4': 250_000,
 };
 
 export const PROMOTION_ACCOUNT_BALANCE_BY_PROFILE: Record<ProfileId, number> = {
   '1': 105_350,
   '2': 105_350,
   '3': 12_400,
+  '4': 105_350,
 };
 
 /** Единый счёт = счёт продвижения + баланс (буфер) — одно значение везде */
@@ -176,6 +186,7 @@ const TASKS_DROPDOWN_NEW_COUNT: Record<ProfileId, number> = {
   '1': 1,
   '2': 3,
   '3': 0,
+  '4': 1,
 };
 
 const TASKS_DROPDOWN_EARN_MORE = 12_400;
@@ -261,14 +272,16 @@ export function AppHeader({
     window.addEventListener(FINANCE_BALANCE_DEMO_EVENT, syncBuffer);
     return () => window.removeEventListener(FINANCE_BALANCE_DEMO_EVENT, syncBuffer);
   }, []);
-  const elsBalanceRub = PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId] + bufferRub;
+  const specialContractor = isSpecialContractorProfile(profileId);
+  const elsBalanceRub = specialContractor
+    ? contractsTotals().totalRub
+    : PROMOTION_ACCOUNT_BALANCE_BY_PROFILE[profileId] + bufferRub;
   const newTasksCount = TASKS_DROPDOWN_NEW_COUNT[profileId];
   const campaignsNavActive = isCampaignsNavPath(location.pathname);
   const statsNavActive = isStatsNavPath(location.pathname);
   const helpNavActive = location.pathname === '/help' || location.pathname.startsWith('/help/');
   const productSpaceId = resolveProductSpace(location.pathname);
   const financeTo = financeHomePath(location.pathname);
-  const financeTopUpTo = financeTopUpPath(location.pathname);
   const activeProductSpace =
     PRODUCT_SPACES.find((space) => space.id === productSpaceId) ?? PRODUCT_SPACES[0];
   const isNewSeller = isNewSellerProfile(profileId);
@@ -785,15 +798,15 @@ export function AppHeader({
                 </p>
               </div>
             )}
-            {!isResearchAccess ? (
-              <NavLink
-                to={financeTopUpTo}
-                onClick={onNavigate}
+            {!isResearchAccess && !specialContractor ? (
+              <button
+                type="button"
+                onClick={() => openFinanceTopUp()}
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#F2F2F7] text-gray-900 transition-colors hover:bg-[#E8E8ED]"
                 aria-label="Пополнить счёт"
               >
                 <Plus className="h-4 w-4" aria-hidden />
-              </NavLink>
+              </button>
             ) : null}
           </div>
 

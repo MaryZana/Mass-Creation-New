@@ -34,7 +34,9 @@ type GuideState = {
 
 const SIDE_PANEL_OPEN_EVENT = 'wb-side-panel:open';
 
-type SidePanelOpenDetail = { source: 'video-guide' | 'unified-account' | 'balance-faq' };
+type SidePanelOpenDetail = {
+  source: 'video-guide' | 'unified-account' | 'balance-faq' | 'finance-top-up';
+};
 
 /** Сообщить другим панелям, что открылась новая — предыдущие должны закрыться. */
 export function notifySidePanelOpen(source: SidePanelOpenDetail['source']) {

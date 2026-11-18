@@ -1,5 +1,12 @@
 /** Демо-переключатель буфера на странице финансов. Шапка читает ту же сумму. */
 
+import {
+  formatFinanceDay,
+  formatFinanceDayShort,
+  financeWeekdayLabels,
+  getFinanceLocaleId,
+} from '../components/financeI18n';
+
 export const FINANCE_BALANCE_DEMO_STORAGE_KEY = 'finance_balance_demo_case';
 export const FINANCE_BALANCE_AMOUNT_KEY = 'finance_balance_amount_rub';
 export const FINANCE_BALANCE_DEMO_EVENT = 'finance-balance-demo';
@@ -61,26 +68,11 @@ export const FINANCE_BALANCE_CURRENT_DAYS = [
 
 export type FinanceBalanceCurrentDayId = (typeof FINANCE_BALANCE_CURRENT_DAYS)[number]['id'];
 
-const MONTHS_GENITIVE = [
-  'января',
-  'февраля',
-  'марта',
-  'апреля',
-  'мая',
-  'июня',
-  'июля',
-  'августа',
-  'сентября',
-  'октября',
-  'ноября',
-  'декабря',
-];
-
 export function financeBalancePayoutDates(now = new Date()): { tuesday: string; thursday: string } {
   const mondayOffset = (now.getDay() + 6) % 7;
   const at = (weekdayOffset: number) => {
     const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - mondayOffset + weekdayOffset);
-    return `${date.getDate()} ${MONTHS_GENITIVE[date.getMonth()]}`;
+    return formatFinanceDay(date);
   };
   return { tuesday: at(1), thursday: at(3) };
 }
@@ -96,7 +88,7 @@ export function financeBalanceWeekDate(
     now.getMonth(),
     now.getDate() - mondayOffset + weekdayIndex + weekOffset * 7,
   );
-  return `${date.getDate()} ${MONTHS_GENITIVE[date.getMonth()]}`;
+  return formatFinanceDay(date);
 }
 
 export function financeBalanceWeekRangeLabel(now = new Date(), weekOffset = 0): string {
@@ -108,27 +100,16 @@ export function financeBalanceWeekRangeLabel(now = new Date(), weekOffset = 0): 
   );
   const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
   if (monday.getMonth() === sunday.getMonth()) {
-    return `${monday.getDate()}–${sunday.getDate()} ${MONTHS_GENITIVE[monday.getMonth()]}`;
+    const month = formatFinanceDay(monday).replace(/^\d+\s*/, '').replace(/^\d+月/, '月');
+    if (getFinanceLocaleId() === 'zh-CN') {
+      return `${monday.getMonth() + 1}月${monday.getDate()}日–${sunday.getDate()}日`;
+    }
+    return `${monday.getDate()}–${sunday.getDate()} ${month}`;
   }
-  return `${monday.getDate()} ${MONTHS_GENITIVE[monday.getMonth()]} – ${sunday.getDate()} ${MONTHS_GENITIVE[sunday.getMonth()]}`;
+  return `${formatFinanceDay(monday)} – ${formatFinanceDay(sunday)}`;
 }
 
-const MONTHS_SHORT = [
-  'янв',
-  'фев',
-  'мар',
-  'апр',
-  'мая',
-  'июн',
-  'июл',
-  'авг',
-  'сен',
-  'окт',
-  'нояб',
-  'дек',
-];
-
-/** Короткий период: «26 окт – 1 нояб» */
+/** Короткий период: «26 окт – 1 нояб» / локализовано */
 export function financeBalanceWeekRangeLabelShort(now = new Date(), weekOffset = 0): string {
   const mondayOffset = (now.getDay() + 6) % 7;
   const monday = new Date(
@@ -137,13 +118,24 @@ export function financeBalanceWeekRangeLabelShort(now = new Date(), weekOffset =
     now.getDate() - mondayOffset + weekOffset * 7,
   );
   const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
-  if (monday.getMonth() === sunday.getMonth()) {
-    return `${monday.getDate()}–${sunday.getDate()} ${MONTHS_SHORT[monday.getMonth()]}`;
+  if (getFinanceLocaleId() === 'zh-CN') {
+    if (monday.getMonth() === sunday.getMonth()) {
+      return `${monday.getMonth() + 1}月${monday.getDate()}日–${sunday.getDate()}日`;
+    }
+    return `${monday.getMonth() + 1}月${monday.getDate()}日–${sunday.getMonth() + 1}月${sunday.getDate()}日`;
   }
-  return `${monday.getDate()} ${MONTHS_SHORT[monday.getMonth()]} – ${sunday.getDate()} ${MONTHS_SHORT[sunday.getMonth()]}`;
+  const short = (d: Date) => formatFinanceDayShort(d);
+  if (monday.getMonth() === sunday.getMonth()) {
+    const monthPart = short(monday).replace(/^\d+\s*/, '');
+    return `${monday.getDate()}–${sunday.getDate()} ${monthPart}`;
+  }
+  return `${short(monday)} – ${short(sunday)}`;
 }
 
-export const FINANCE_BALANCE_WEEK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'] as const;
+/** Короткие дни недели по текущей локали финансов */
+export const financeBalanceWeekDays = () => financeWeekdayLabels();
+/** @deprecated используйте financeBalanceWeekDays() — оставлено как alias */
+export const FINANCE_BALANCE_WEEK_DAYS = financeBalanceWeekDays;
 
 /** Траты баланса в день в симуляции */
 export const FINANCE_BALANCE_DAILY_SPEND_OPTIONS = [0, 5_000] as const;

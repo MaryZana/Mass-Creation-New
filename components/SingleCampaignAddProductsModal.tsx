@@ -308,6 +308,7 @@ export function SingleCampaignAddProductsModal({
   const singleSelectMode = maxSelect <= 1;
 
   const selectSingleProduct = (product: SingleCampaignSelectableProduct) => {
+    if (isCpcMode && !product.cpcCompatible) return;
     if (alreadyAddedNmIds.has(product.nmId)) return;
     setPending([product]);
   };
@@ -317,6 +318,7 @@ export function SingleCampaignAddProductsModal({
       selectSingleProduct(product);
       return;
     }
+    if (isCpcMode && !product.cpcCompatible) return;
     if (alreadyAddedNmIds.has(product.nmId)) return;
     setPending((prev) => {
       if (prev.some((p) => p.nmId === product.nmId)) {
@@ -564,9 +566,10 @@ export function SingleCampaignAddProductsModal({
                         </td>
                       </tr>
                     ) : (
-                      sortedFilteredProducts.map((product, index) => {
+                      sortedFilteredProducts.map((product) => {
                         const isAdded = alreadyAddedNmIds.has(product.nmId);
-                        const disabled = isAdded;
+                        const isIncompatible = isCpcMode && !product.cpcCompatible;
+                        const disabled = isAdded || isIncompatible;
                         const isChecked = pending.some((p) => p.nmId === product.nmId);
                         const atCap =
                           !singleSelectMode && pending.length >= maxSelect && !isChecked;
@@ -615,9 +618,11 @@ export function SingleCampaignAddProductsModal({
                               <p className="mt-0.5 text-sm font-medium text-gray-900">
                                 {product.productName}
                               </p>
-                              {isAdded && (
+                              {isAdded ? (
                                 <p className="mt-0.5 text-xs text-gray-500">Уже в кампании</p>
-                              )}
+                              ) : isIncompatible ? (
+                                <p className="mt-0.5 text-xs text-red-600">Не продвигается по CPC</p>
+                              ) : null}
                             </td>
                           </tr>
                         );
